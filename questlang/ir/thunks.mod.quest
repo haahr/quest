@@ -76,6 +76,10 @@ export
         knownMember with i: nodes.Import member: String type: Type end
     end
 
+    (* Where a global is bound: by a let in body (atStart false), or as a
+     * parameter of a join whose continuation is body (atStart true) *)
+    Def Site = Tuple body: Body atStart: Bool end
+
     Let Thunker = Tuple
         unit: nodes.Unit
         (* The thunks made so far, by key (typeKey, layoutKey), so that
@@ -100,6 +104,13 @@ export
         madeInto: hashMap.T(Int Int)
         dropped: hashMap.T(Int Bool)
         droppedFunctions: hashMap.T(Int Bool)
+        (* For conversions of immutable globals, made once: where each such
+         * global is bound, by id; the global holding each conversion, by the
+         * global's id and the plan's types; and the lets of those, each to go
+         * where its global is bound *)
+        topLets: hashMap.T(Int Site)
+        globalConversions: hashMap.T(String Variable)
+        pending: vector.T(Tuple after: Int stmt: Stmt end)
     end
 
     (* ======================================================================
@@ -584,6 +595,71 @@ export
             end
         end
 
+    (* Whether a descriptor mentions only the descriptor variables own holds *)
+    let rec ownDescriptor(d: Descriptor own: hashMap.T(Int Bool)): Bool =
+        case d
+            when descVar with x then hashMap.contains(own x.v.id)
+            when descStatic then true
+            when descInstantiate with x then
+                begin
+                    let var ok1 = true
+                    for i = 0 upto {extent x.args - 1} do
+                        if not(ownDescriptor(x.args[i] own)) then ok1 := false end
+                    end
+                    ok1
+                end
+        end
+
+    (* Whether plan p, of fields and thunk parameters a, converts by no
+     * descriptor but static ones and its own thunk parameters': so that it
+     * can convert where nothing of the code it appears in is bound *)
+    let rec planOwnDescriptors(descs: Array(Descriptor) a: Adapted own: hashMap.T(Int Bool)): Bool =
+        begin
+            for i = 0 upto {extent a.thunkParams - 1} do
+                begin hashMap.insert(own a.thunkParams[i].v.id true) ok end
+            end
+            let var ok1 = true
+            for i = 0 upto {extent descs - 1} do if not(ownDescriptor(descs[i] own)) then ok1 := false end end
+            for i = 0 upto {extent a.fields - 1} do
+                if maybe.isSome(a.fields[i]) then
+                    let f = maybe.unwrap(a.fields[i])
+                    let fa = tuple let fields = f.fields let thunkParams = f.thunkParams end
+                    if not(planOwnDescriptors(f.descriptors fa own)) then ok1 := false end
+                end
+            end
+            ok1
+        end
+
+    (* The global holding x's conversion, when x converts by an adapt plan an
+     * immutable global the unit's top level binds, by a plan of static
+     * descriptors: made once, by a let after the global's (pending), and
+     * read wherever the global is converted so *)
+    let globalConversion(t: Thunker x: nodes.OpConvert): maybe.T(Variable) =
+        case x.value
+            when atomVar with v then
+                let isAdapt = case x.plan.kind when planAdapt then true else false end
+                if isAdapt andif not(v.v.isMutable) andif hashMap.contains(t.topLets v.v.id)
+                    andif planOwnDescriptors(x.plan.descriptors adaptedOf(t x.plan)
+                        hashMap.new(:Int :Bool intEqual hash.int))
+                then
+                    let key = conv.int(v.v.id) <> "\n" <> typeKey(x.plan.target) <> "\n" <> layoutKey(x.plan.layout)
+                    let found = hashMap.get(t.globalConversions key)
+                    if maybe.isSome(found) then found
+                    else
+                        let g = nodes.newVar(v.v.hint x.plan.target false)
+                        let converted = option opConvert of Op with
+                            let var value = x.value
+                            let var plan = x.plan
+                        end
+                        plan(t maybe.some(x.plan))
+                        vector.append(t.pending tuple let after = v.v.id let stmt = nodes.letStmt(g converted) end)
+                        begin hashMap.insert(t.globalConversions key g) ok end
+                        maybe.some(g)
+                    end
+                else maybe.none(:Variable) end
+            when atomConst then maybe.none(:Variable)
+        end
+
     (* An operation with its thunks: the operation that replaces it, if any,
      * after the statements that compute its operands (added to before) *)
     let operation(t: Thunker before: vector.T(Stmt) o: Op result: maybe.T(Variable)): maybe.T(Op) =
@@ -603,6 +679,9 @@ export
                 elsif maybe.isSome(known) andif {case x.plan.kind when planAdapt then true else false end} then
                     let f = adapter(t x.plan adaptedOf(t x.plan) known)
                     maybe.some(closureOp(f array of :Atom end array of :Type end array of :Descriptor end))
+                elsif maybe.isSome(globalConversion(t x)) then
+                    let g = maybe.unwrap(globalConversion(t x))
+                    maybe.some(option opAtom of Op with let var atom = nodes.atomOfVar(g) end)
                 else
                     plan(t maybe.some(x.plan))
                     maybe.none()
@@ -736,7 +815,42 @@ export
                 let madeInto = hashMap.new(:Int :Int intEqual hash.int)
                 let dropped = hashMap.new(:Int :Bool intEqual hash.int)
                 let droppedFunctions = hashMap.new(:Int :Bool intEqual hash.int)
+                let topLets = hashMap.new(:Int :Site intEqual hash.int)
+                let globalConversions = hashMap.new(:String :Variable stringOp.equal hash.string)
+                let pending = vector.new(:Tuple after: Int stmt: Stmt end)
             end
+            (* Where the globals are bound: the main body's and the modules'
+             * initializations' lets and join parameters outside loops *)
+            let globals = walk.globalVariables(unit)
+            let rec sites(b: Body): Ok =
+                for k = 0 upto {vector.length(b.statements) - 1} do
+                    let st = vector.get(b.statements k)
+                    case st
+                        when sLet with x then
+                            if hashMap.contains(globals x.v.id) then
+                                begin hashMap.insert(t.topLets x.v.id tuple let body = b let atStart = false end) ok end
+                            end
+                        when sJoin with x then
+                            for j = 0 upto {extent x.params - 1} do
+                                if hashMap.contains(globals x.params[j].id) then
+                                    begin
+                                        hashMap.insert(t.topLets x.params[j].id
+                                            tuple let body = x.continuation let atStart = true end)
+                                        ok
+                                    end
+                                end
+                            end
+                        else ok
+                    end
+                    case st
+                        when sLoop then ok
+                        else
+                            let inner = walk.statementBodies(st)
+                            for j = 0 upto {extent inner - 1} do sites(inner[j]) end
+                    end
+                end
+            sites(unit.main)
+            for i = 0 upto {vector.length(unit.modules) - 1} do sites(vector.get(unit.modules i).init) end
             walk.countUses(unit t.uses hashMap.new(:Int :Bool intEqual hash.int))
             let bodies = vector.new(:Body)
             vector.append(bodies unit.main)
@@ -772,6 +886,23 @@ export
                 let f = vector.get(unit.functions i)
                 if not(hashMap.contains(t.droppedFunctions f.id)) then body(t f.body) end
                 i := i + 1
+            end
+            (* Each global conversion, after its global's let *)
+            for k = 0 upto {vector.length(t.pending) - 1} do
+                let p = vector.get(t.pending k)
+                let site = hashMap.find(t.topLets p.after)
+                let b = site.body
+                let rewritten = vector.new(:Stmt)
+                if site.atStart then vector.append(rewritten p.stmt) end
+                for j = 0 upto {vector.length(b.statements) - 1} do
+                    let s = vector.get(b.statements j)
+                    vector.append(rewritten s)
+                    case s
+                        when sLet with x then if x.v.id is p.after then vector.append(rewritten p.stmt) end
+                        else ok
+                    end
+                end
+                b.statements := rewritten
             end
             (* The closures made only to be converted, and their functions,
              * now unused *)

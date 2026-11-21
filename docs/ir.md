@@ -601,6 +601,12 @@ printer makes its thunks itself.
   Real ...)`, `hashMap.forEach(m fun(k v) ...)`) is then one allocation, where the closure and its adapter were two
   (`language/converted_lambdas`). Within one unit, the specializer's clones of generic functions already take such
   closures at their own types.
+- **A conversion of an immutable global** (one the main body or a module's initialization binds outside loops, by a
+  let or as a join's parameter, and that functions read, `walk.globalVariables`) by a plan whose descriptors are
+  static or its own adapter's is made once, where the global is bound, into a global of its own: after the let, or
+  at the start of the join's continuation. Every conversion of it by that plan, anywhere in the unit, reads the
+  converted global. model-elimination's `matchConv = literalsConv(...)`, converted at each of millions of calls, is
+  converted once (`language/global_conversions`).
 - **A type application whose instance is a function** is a closure of its thunk (`qa_type_app`), capturing the function
   applied and taking the type arguments, as closure conversion's lifted functions take their enclosing functions' type
   parameters: the thunk's type parameters are the applied function's first ones, supplied by the closure, then the

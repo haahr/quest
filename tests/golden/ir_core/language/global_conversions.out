@@ -1,0 +1,119 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import vector = "collections/vector" : collections/Vector
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @12:45
+      let %2: String = prim <>(s, "\n") @12:59
+      let %3: Ok = call writer.putString(%1, %2) @12:28
+      return %3
+    }
+  }
+  funs rec {
+    fun make(k: Int, depth: Int): Fun(x: Int): Int {
+      join k1(r: Fun(x: Int): Int) {
+        return r
+      } in {
+        let %4: Bool = prim is(depth, 0) @16:8
+        if %4 { @16:5
+          funs {
+            fun f(x: Int): Int {
+              let %5: Int = prim +(x, k) @16:41
+              return %5
+            }
+          }
+          jump k1(f) @16:5
+        } else {
+          let %6: Int = prim -(depth, 1) @16:59
+          let %7: Fun(x: Int): Int = call make(k, %6) @16:52
+          jump k1(%7) @16:5
+        }
+      }
+    }
+  }
+  funs rec {
+    fun pair(k.1: Int, depth.1: Int): Fun(a: Int b: Int): Int {
+      join k2(r.1: Fun(a: Int b: Int): Int) {
+        return r.1
+      } in {
+        let %8: Bool = prim is(depth.1, 0) @18:8
+        if %8 { @18:5
+          funs {
+            fun f.1(a: Int, b: Int): Int {
+              let %9: Int = prim *(b, k.1) @18:52
+              let %10: Int = prim +(a, %9) @18:48
+              return %10
+            }
+          }
+          jump k2(f.1) @18:5
+        } else {
+          let %11: Int = prim -(depth.1, 1) @18:70
+          let %12: Fun(a: Int b: Int): Int = call pair(k.1, %11) @18:63
+          jump k2(%12) @18:5
+        }
+      }
+    }
+  }
+  let v: vector.T(Int) = type_app vector.new [Int] @20:9
+  var i: Int = 1 @21:1
+  let %13: Bool = prim <=(i, 5) @21:1
+  if %13 { @21:1
+    loop L1 {
+      let i.1: Int = i @21:1
+      do call vector.append [Int](v, i.1) @21:21
+      let %14: Bool = prim is(i, 5) @21:1
+      if %14 { @21:1
+        break L1 @21:1
+      }
+      let %15: Int = prim +(i, 1) @21:1
+      i := %15 @21:1
+    }
+  }
+  let %16: Int = call vector.get [Int](v, 2) @24:20
+  let addSome: Fun(x: Int): Int = call make(%16, 3) @24:15
+  let %17: Int = call vector.get [Int](v, 1) @26:20
+  let combine: Fun(a: Int b: Int): Int = call pair(%17, 2) @26:15
+  join k3(shift: Fun(x: Int): Int) {
+    funs rec {
+      fun total(n: Int): Int {
+        join k4(r.2: Int) {
+          return r.2
+        } in {
+          let %18: Bool = prim is(n, 0) @31:8
+          if %18 { @31:5
+            jump k4(0) @31:5
+          } else {
+            let %19: vector.T(Int) = call vector.map [Int Int](v, addSome) @33:52
+            let %20: vector.T(Int) = call vector.map [Int Int](%19, shift) @33:31
+            let %21: Int = call vector.fold [Int Int](%20, 0, combine) @33:9
+            let %22: Int = prim -(n, 1) @34:21
+            let %23: Int = call total(%22) @34:15
+            let %24: Int = prim +(%21, %23) @33:9
+            jump k4(%24) @31:5
+          }
+        }
+      }
+    }
+    let %25: Int = call total(200) @36:28
+    let %26: String = call conv.int(%25) @36:19
+    let %27: String = prim <>("total ", %26) @36:7
+    do call print(%27) @36:1
+    let %28: vector.T(Int) = call vector.map [Int Int](v, addSome) @37:40
+    let %29: Int = call vector.get [Int](%28, 4) @37:29
+    let %30: String = call conv.int(%29) @37:20
+    let %31: String = prim <>("mapped ", %30) @37:7
+    do call print(%31) @37:1
+  } in {
+    let %32: Int = call vector.length [Int](v) @28:16
+    let %33: Bool = prim >(%32, 3) @28:16
+    if %33 { @28:13
+      let %34: Fun(x: Int): Int = call make(10, 1) @28:42
+      jump k3(%34) @28:13
+    } else {
+      let %35: Fun(x: Int): Int = call make(20, 1) @28:58
+      jump k3(%35) @28:13
+    }
+  }
+}
+

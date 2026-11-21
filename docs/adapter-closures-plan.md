@@ -136,8 +136,11 @@ C), the counts of §1 again, and a commit; `tools/check` once at the end, then t
    with captures of each kind, and one converted inside another. The C fixed point found that `ir/clone` copied a
    closure's function with it, right before closure conversion and wrong after: a closed cloner
    (`clone.newClosedCloner`) keeps it.
-3. **Globals' conversions made once** (§2.2): model-elimination's 6.7 million. A test of a global closure converted in
-   a loop, and one converted inside a function called before the global is bound.
+3. **Globals' conversions made once** (§2.2): model-elimination's 6.7 million. **Done:** 6.7 million to 30
+   (1,238.5 to 1,231.7 million allocations). Contification binds a global computed by a call in an `if` as a join's
+   parameter, so the conversion goes at the start of the join's continuation too. Its test,
+   `language/global_conversions`, converts globals bound by a let and by a join, one at two types. The case of a
+   function converting a global before it is bound reads an unbound value before and after, and is not tested.
 4. **Repeated conversions** (§2.4): the counts by site and original closure; if a site converts one closure many
    times, the loop hoisting, with a test of a conversion in a loop and in a branch of one; if none does, the counts
    are recorded and the stage ends there.

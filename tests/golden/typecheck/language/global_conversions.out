@@ -1,0 +1,214 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('vector') : 'Vector')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'make' :rec :type Fun(k: Int depth: Int): Fun(x: Int): Int
+      :value (TypedFun :params (('k' : Int) ('depth' : Int)) :type Fun(k: Int depth: Int): Fun(x: Int): Int
+        :body (TypedIf :type Fun(x: Int): Int
+          :cond (TypedInfix 'is' :type Bool
+            :left (TypedVar 'depth' :type Int)
+            :right (TypedInt 0 :type Int))
+          :then (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+            :body (TypedInfix '+' :type Int
+              :left (TypedVar 'x' :type Int)
+              :right (TypedVar 'k' :type Int)))
+          :else (TypedApp :type Fun(x: Int): Int
+            :func (TypedVar 'make' :type Fun(k: Int depth: Int): Fun(x: Int): Int)
+            :args (
+              (TypedVar 'k' :type Int)
+              (TypedInfix '-' :type Int
+                :left (TypedVar 'depth' :type Int)
+                :right (TypedInt 1 :type Int))
+            )))))
+    (TypedLetValue 'pair' :rec :type Fun(k: Int depth: Int): Fun(a: Int b: Int): Int
+      :value (TypedFun :params (('k' : Int) ('depth' : Int)) :type Fun(k: Int depth: Int): Fun(a: Int b: Int): Int
+        :body (TypedIf :type Fun(a: Int b: Int): Int
+          :cond (TypedInfix 'is' :type Bool
+            :left (TypedVar 'depth' :type Int)
+            :right (TypedInt 0 :type Int))
+          :then (TypedFun :params (('a' : Int) ('b' : Int)) :type Fun(a: Int b: Int): Int
+            :body (TypedInfix '+' :type Int
+              :left (TypedVar 'a' :type Int)
+              :right (TypedInfix '*' :type Int
+                :left (TypedVar 'b' :type Int)
+                :right (TypedVar 'k' :type Int))))
+          :else (TypedApp :type Fun(a: Int b: Int): Int
+            :func (TypedVar 'pair' :type Fun(k: Int depth: Int): Fun(a: Int b: Int): Int)
+            :args (
+              (TypedVar 'k' :type Int)
+              (TypedInfix '-' :type Int
+                :left (TypedVar 'depth' :type Int)
+                :right (TypedInt 1 :type Int))
+            )))))
+    (TypedLetValue 'v' :type vector.T(Int)
+      :value (TypedTypeApp [Int] :type vector.T(Int)
+        :func (TypedSelect 'new' :type All(A :: TYPE) vector.T(A)
+          :target (TypedVar 'vector' :type Module 'vector'))))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 1 :type Int)
+        :stop (TypedInt 5 :type Int)
+        :body (TypedApp :type Ok
+          :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) value: Int): Ok
+            :func (TypedSelect 'append' :type All(A :: TYPE) Fun(v: vector.T(A) value: A): Ok
+              :target (TypedVar 'vector' :type Module 'vector')))
+          :args (
+            (TypedVar 'v' :type vector.T(Int))
+            (TypedVar 'i' :type Int)
+          ))))
+    (TypedLetValue 'addSome' :type Fun(x: Int): Int
+      :value (TypedApp :type Fun(x: Int): Int
+        :func (TypedVar 'make' :type Fun(k: Int depth: Int): Fun(x: Int): Int)
+        :args (
+          (TypedApp :type Int
+            :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) index: Int): Int
+              :func (TypedSelect 'get' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): A
+                :target (TypedVar 'vector' :type Module 'vector')))
+            :args (
+              (TypedVar 'v' :type vector.T(Int))
+              (TypedInt 2 :type Int)
+            ))
+          (TypedInt 3 :type Int)
+        )))
+    (TypedLetValue 'combine' :type Fun(a: Int b: Int): Int
+      :value (TypedApp :type Fun(a: Int b: Int): Int
+        :func (TypedVar 'pair' :type Fun(k: Int depth: Int): Fun(a: Int b: Int): Int)
+        :args (
+          (TypedApp :type Int
+            :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) index: Int): Int
+              :func (TypedSelect 'get' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): A
+                :target (TypedVar 'vector' :type Module 'vector')))
+            :args (
+              (TypedVar 'v' :type vector.T(Int))
+              (TypedInt 1 :type Int)
+            ))
+          (TypedInt 2 :type Int)
+        )))
+    (TypedLetValue 'shift' :type Fun(x: Int): Int
+      :value (TypedIf :type Fun(x: Int): Int
+        :cond (TypedInfix '>' :type Bool
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int)): Int
+              :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                :target (TypedVar 'vector' :type Module 'vector')))
+            :args (
+              (TypedVar 'v' :type vector.T(Int))
+            ))
+          :right (TypedInt 3 :type Int))
+        :then (TypedApp :type Fun(x: Int): Int
+          :func (TypedVar 'make' :type Fun(k: Int depth: Int): Fun(x: Int): Int)
+          :args (
+            (TypedInt 10 :type Int)
+            (TypedInt 1 :type Int)
+          ))
+        :else (TypedApp :type Fun(x: Int): Int
+          :func (TypedVar 'make' :type Fun(k: Int depth: Int): Fun(x: Int): Int)
+          :args (
+            (TypedInt 20 :type Int)
+            (TypedInt 1 :type Int)
+          ))))
+    (TypedLetValue 'total' :rec :type Fun(n: Int): Int
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+        :body (TypedIf :type Int
+          :cond (TypedInfix 'is' :type Bool
+            :left (TypedVar 'n' :type Int)
+            :right (TypedInt 0 :type Int))
+          :then (TypedInt 0 :type Int)
+          :else (TypedInfix '+' :type Int
+            :left (TypedApp :type Int
+              :func (TypedTypeApp [Int Int] :type Fun(v: vector.T(Int) init: Int f: Fun(acc: Int elem: Int): Int): Int
+                :func (TypedSelect 'fold' :type All(A :: TYPE Acc :: TYPE) Fun(v: vector.T(A) init: Acc f: Fun(acc: Acc elem: A): Acc): Acc
+                  :target (TypedVar 'vector' :type Module 'vector')))
+              :args (
+                (TypedApp :type vector.T(Int)
+                  :func (TypedTypeApp [Int Int] :type Fun(v: vector.T(Int) f: Fun(elem: Int): Int): vector.T(Int)
+                    :func (TypedSelect 'map' :type All(A :: TYPE B :: TYPE) Fun(v: vector.T(A) f: Fun(elem: A): B): vector.T(B)
+                      :target (TypedVar 'vector' :type Module 'vector')))
+                  :args (
+                    (TypedApp :type vector.T(Int)
+                      :func (TypedTypeApp [Int Int] :type Fun(v: vector.T(Int) f: Fun(elem: Int): Int): vector.T(Int)
+                        :func (TypedSelect 'map' :type All(A :: TYPE B :: TYPE) Fun(v: vector.T(A) f: Fun(elem: A): B): vector.T(B)
+                          :target (TypedVar 'vector' :type Module 'vector')))
+                      :args (
+                        (TypedVar 'v' :type vector.T(Int))
+                        (TypedVar 'addSome' :type Fun(x: Int): Int)
+                      ))
+                    (TypedVar 'shift' :type Fun(x: Int): Int)
+                  ))
+                (TypedInt 0 :type Int)
+                (TypedVar 'combine' :type Fun(a: Int b: Int): Int)
+              ))
+            :right (TypedApp :type Int
+              :func (TypedVar 'total' :type Fun(n: Int): Int)
+              :args (
+                (TypedInfix '-' :type Int
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 1 :type Int))
+              ))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'total ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedVar 'total' :type Fun(n: Int): Int)
+                  :args (
+                    (TypedInt 200 :type Int)
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'mapped ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) index: Int): Int
+                    :func (TypedSelect 'get' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): A
+                      :target (TypedVar 'vector' :type Module 'vector')))
+                  :args (
+                    (TypedApp :type vector.T(Int)
+                      :func (TypedTypeApp [Int Int] :type Fun(v: vector.T(Int) f: Fun(elem: Int): Int): vector.T(Int)
+                        :func (TypedSelect 'map' :type All(A :: TYPE B :: TYPE) Fun(v: vector.T(A) f: Fun(elem: A): B): vector.T(B)
+                          :target (TypedVar 'vector' :type Module 'vector')))
+                      :args (
+                        (TypedVar 'v' :type vector.T(Int))
+                        (TypedVar 'addSome' :type Fun(x: Int): Int)
+                      ))
+                    (TypedInt 4 :type Int)
+                  ))
+              )))
+        )))
+  ))
