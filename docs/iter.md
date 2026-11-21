@@ -48,7 +48,7 @@ They have three kinds of user:
    or a `close` for an iterator over a file, or take another shape if one becomes cheaper, without changing a caller,
    and the importers' interfaces do not record it. The price is a call into `util/iter` for each `more` and `next` at
    the consumer, since separate compilation inlines nothing across modules (§2); a whole program folds the stages
-   into its loop through the abstract type's copies (abstract-inlining-plan.md).
+   into its loop through the abstract type's copies ([ir.md](ir.md) §8.6).
 3. **`more` and `next`, for familiarity.** `more` says whether there is another element and changes nothing a caller
    can see: calling it twice is calling it once. `next` returns the element and moves past it. This is Java's
    `Iterator` (`hasNext`, `next`), which most programmers know, and `next` gives each element once, so a `map`'s
@@ -156,7 +156,7 @@ less than reaching the held element through another module's abstract type does.
   `iter.next` away, and the whole pipeline too: to about a loop written out through a `map` (11), and to 2.5 times
   one through a `filter`, whose element is held and checked by both `more` and `next`. With `iter.T` abstract, as
   built, the same: the simplifier folds a known tuple's projections through the copies that give it the abstract
-  type ([abstract-inlining-plan.md](abstract-inlining-plan.md); 56 through a `map` before it).
+  type ([ir.md](ir.md) §8.6; 56 through a `map` before it).
 - **Building a pipeline** allocates its stages' closures: two per stage, and the state of the stages that have any.
   In a whole program, those it inlines are not allocated.
 

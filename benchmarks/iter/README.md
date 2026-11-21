@@ -32,7 +32,7 @@ At `7e9b5f89`, the library's first version (2026-11-20, arm64), instructions ret
 | `filter` | 151 | 116 |
 | `sumInt` | 140 | 116 |
 
-With tuple projections folded through copies of another type (docs/abstract-inlining-plan.md, 2026-11-20), the
+With tuple projections folded through copies of another type (docs/ir.md §8.6, 2026-11-20), the
 whole program's stages are inlined into the loop:
 
 | Workload | Separate | Whole program |
