@@ -377,7 +377,12 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
         return True
     trail.assume(pair, sub_lazy, sup_lazy)
 
-    # 6. Type Variable bound checking
+    # 6. Type Variable bound checking. Solving has no undo, so the bound's
+    #    proof may solve a metavariable and then fail; that is harmless here,
+    #    since the alternative cannot succeed: no rule in step 7 has a named
+    #    subtype (a variable, abstract type, or path), so the goal fails either
+    #    way. A failed top-level proof may leave solutions, which only the error
+    #    that follows it reports
     if isinstance(sub_lazy, (QTypeVar, QAbstractType, QPathType)):
         if sub_lazy.bound and isinstance(sub_lazy.bound, QPowerKind):
             if _prove_subtype(sub_lazy.bound.bound, sup_lazy, env, trail, fuel):

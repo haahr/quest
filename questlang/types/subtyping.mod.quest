@@ -317,7 +317,15 @@ export
                             true
                         else
                             assume(trail lazyPair sub sup)
-                            (* 5. A type variable's bound *)
+                            (* 5. A type variable's bound. Solving has no
+                             *    undo, so the bound's proof may solve a
+                             *    metavariable and then fail; that is harmless
+                             *    here, since the alternative cannot succeed:
+                             *    structural has no rule for a named subtype
+                             *    (a variable, abstract type, or path), so the
+                             *    goal fails either way. A failed top-level
+                             *    proof may leave solutions, which only the
+                             *    error that follows it reports *)
                             let bound = if isNamed(sub) then model.powerBoundOf(sub) else maybe.none(:Type) end
                             if maybe.isSome(bound) andif prove(maybe.unwrap(bound) sup env trail fuel) then
                                 true

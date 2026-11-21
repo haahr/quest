@@ -46,26 +46,6 @@ fault gone.
 ---
 
 
-## A failed subtyping alternative leaves its metavariables solved
-
-**Problem.** `subtyping.solve` assigns a metavariable in place (`x.meta.instance := some(t)`), and nothing records the
-assignment to undo it. `step` tries a type variable's bound first and falls back to the structural rules when that
-fails (`prove(bound sup)`, then `structural(sub sup …)`, types/subtyping.mod.quest:321–326); a metavariable solved
-inside the failed attempt stays solved, so the fallback, and a record's or variant's later fields, are checked against
-a solution that no proof stands behind. Found by reading the code in the review behind
-[compiler-refactoring-ideas.md](compiler-refactoring-ideas.md) (2026-11-20); no program is known to go wrong.
-
-**Where to start.** A program where the bound's proof solves a metavariable and then fails, typechecked by both
-compilers (`./quest --stop-after typecheck`, `./questboot --stop-after typecheck`), and whether the bootstrap's
-subtyping has the same shape. The fix is a trail of assignments with `mark()` and `undoTo(mark)`, undone when an
-alternative fails (OCaml's `Btype.snapshot`/`backtrack`, Lean's `MetavarContext` save and restore); assignments are
-made in two places, `subtyping.solve` and `model`'s path compression (types/model.mod.quest:766).
-
-**Done when.** Such a program typechecks as it should in both compilers, with a test, or the review finds that no
-metavariable can be solved in a failed alternative and says why in a comment at `step`.
-
----
-
 ## The C printer decides where a collection can happen by reading its own C
 
 **Problem.** Whether an emitted line may allocate, and so collect, is decided by scanning its text for an identifier
