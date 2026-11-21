@@ -253,6 +253,82 @@ export
             end
         end
 
+    (* A call of one of the standard library's external functions that C
+     * inlines, as the instructions it is, where inlineExternal does not
+     * already make them: a word shift by a count that is not a constant, and
+     * the string's and ascii's operations that read or write a byte; none for
+     * any other symbol. The C backend calls the C function itself (the C
+     * printer's libraryExternal), which clang inlines, and the SSA would
+     * otherwise call it. It is reached both from an imported member, through
+     * libraryExternal's symbol for it (callOp), and from a member of a module
+     * in the unit, through the symbol its thunk forwards to (callClosure), as
+     * whole-program compilation calls them *)
+    let externalOperation(fn: vals.Fn symbol: String args: Array(Atom)): maybe.T(Array(Int)) =
+        begin
+            let none = maybe.none(:Array(Int))
+            let one(v: Int): maybe.T(Array(Int)) = maybe.some(array of v end)
+            let x(): Int = vals.atom1(fn args[0])
+            let y(): Int = vals.atom1(fn args[1])
+            let noSite = fun(): Array(Int) array of :Int end
+            (* A string's byte at an index, after the check of
+             * quest_string_get_char and quest_string_set_char: a null string,
+             * or an index outside it, raises string.error *)
+            let byteAddress(s: Int idx: Int): Int =
+                begin
+                    vals.check(fn vals.binary(fn ssa.opPeq s vals.null(fn)) false "quest_raise_string_error" noSite)
+                    let length = vals.invariantWord(fn s runtimeLayout.offset("QString" "length") vals.tInt)
+                    vals.check(fn vals.binary(fn ssa.opUlt idx length) true "quest_raise_string_error" noSite)
+                    vals.indexPtr(fn vals.invariantWord(fn s runtimeLayout.offset("QString" "data") vals.tPtr) idx)
+                end
+            let named(name: String): Bool = vals.eq(symbol name)
+            if named("quest_word_shift_val") andif maybe.isNone(intConstant(args[1])) then
+                (* quest_word_shift: left by a positive count, right by a
+                 * negative one, 0 by one of 64 or more either way *)
+                begin
+                    let w = x()
+                    let n = y()
+                    let shifted(op: ssa.Opcode by: Int): Array(Int) =
+                        representation.choose(fn vals.binary(fn ssa.opUlt by vals.constant(fn 64)) array of vals.tInt end
+                            fun(): Array(Int) array of vals.binary(fn op w by) end
+                            fun(): Array(Int) array of vals.constant(fn 0) end)
+                    maybe.some(representation.choose(fn vals.binary(fn ssa.opLt n vals.constant(fn 0))
+                        array of vals.tInt end
+                        fun(): Array(Int) shifted(ssa.opLshr vals.binary(fn ssa.opSub vals.constant(fn 0) n))
+                        fun(): Array(Int) shifted(ssa.opShl n)))
+                end
+            elsif named("quest_ascii_char") then
+                (* A Char is held zero-extended *)
+                let n = x()
+                vals.check(fn vals.binary(fn ssa.opUlt n vals.constant(fn 256)) true "quest_raise_ascii_error" noSite)
+                one(n)
+            elsif named("quest_string_length") then
+                let s = x()
+                maybe.some(representation.choose(fn vals.binary(fn ssa.opPeq s vals.null(fn))
+                    array of vals.tInt end
+                    fun(): Array(Int) array of vals.constant(fn 0) end
+                    fun(): Array(Int)
+                        array of vals.invariantWord(fn s runtimeLayout.offset("QString" "length") vals.tInt) end))
+            elsif named("quest_string_get_char") then
+                one(vals.load(fn byteAddress(x() y()) 0 vals.part(vals.tInt 1 false)))
+            elsif named("quest_string_set_char") then
+                let s = x()
+                let address = byteAddress(s y())
+                (* A read-only string (a literal) raises string.error, as
+                 * quest_string_set_char does: its header's bit, in the byte of
+                 * the word before the string that holds it *)
+                let bit = runtimeLayout.constant("Q_HEADER_READONLY_BIT")
+                let headerByte = vals.load(fn s {bit / 8} - 8 vals.part(vals.tInt 1 false))
+                let var mask = 1
+                for k = 1 upto {bit % 8} do mask := 2 * mask end
+                let clear = vals.binary(fn ssa.opEq vals.binary(fn ssa.opAnd headerByte vals.constant(fn mask))
+                    vals.constant(fn 0))
+                vals.check(fn clear true "quest_raise_string_error" noSite)
+                vals.store(fn address 0 1 vals.atom1(fn args[2]))
+                maybe.some(array of :Int end)
+            else none
+            end
+        end
+
     (* A direct call whose results are ps *)
     let directCallOf(fn: vals.Fn symbol: String lead: Array(Int) args: Array(Atom) ps: Array(vals.Part)): Array(Int) =
         begin
@@ -315,10 +391,15 @@ export
                  * components (questlang/ir/unbox) *)
                 let ps = if k.code.unboxedResult then vals.unboxedParts(k.code.resultType) else resultParts(callee.type) end
                 let thunked = forwardedExternal(k.code)
-                let inlined = if maybe.isSome(thunked) then
+                let operation = if maybe.isSome(thunked) then
+                    externalOperation(fn maybe.unwrap(thunked) args)
+                else maybe.none(:Array(Int)) end
+                let inlined = if maybe.isSome(thunked) andif maybe.isNone(operation) then
                     inlineExternal(fn maybe.unwrap(thunked) args)
                 else maybe.none(:Int) end
-                if maybe.isSome(inlined) then
+                if maybe.isSome(operation) then
+                    maybe.unwrap(operation)
+                elsif maybe.isSome(inlined) then
                     array of maybe.unwrap(inlined) end
                 elsif maybe.isSome(thunked) then
                     directCallOf(fn maybe.unwrap(thunked) array of :Int end args ps)
@@ -374,95 +455,6 @@ export
             end
         end
 
-    (* A call of one of the standard library's external functions that C
-     * inlines, as the instructions it is, where inlineExternal does not
-     * already make them: a word shift by a count that is not a constant, and
-     * the string's and ascii's operations that read or write a byte. The C
-     * backend calls the C function itself (the C printer's libraryExternal),
-     * which clang inlines, and the SSA would otherwise call the module's
-     * wrapper. The rest of word's operations are inlineExternal's, through
-     * libraryExternal's symbol for them (callOp) *)
-    let libraryOperation(fn: vals.Fn imp: ir.Import member: String o: ir.OpCall): maybe.T(Array(Int)) =
-        begin
-            let none = maybe.none(:Array(Int))
-            let one(v: Int): maybe.T(Array(Int)) = maybe.some(array of v end)
-            let x(): Int = vals.atom1(fn o.args[0])
-            let y(): Int = vals.atom1(fn o.args[1])
-            let noSite = fun(): Array(Int) array of :Int end
-            (* A string's byte at an index, after the check of
-             * quest_string_get_char and quest_string_set_char: a null string,
-             * or an index outside it, raises string.error *)
-            let byteAddress(s: Int idx: Int): Int =
-                begin
-                    vals.check(fn vals.binary(fn ssa.opPeq s vals.null(fn)) false "quest_raise_string_error" noSite)
-                    let length = vals.invariantWord(fn s runtimeLayout.offset("QString" "length") vals.tInt)
-                    vals.check(fn vals.binary(fn ssa.opUlt idx length) true "quest_raise_string_error" noSite)
-                    vals.indexPtr(fn vals.invariantWord(fn s runtimeLayout.offset("QString" "data") vals.tPtr) idx)
-                end
-            let named(name: String): Bool = vals.eq(member name)
-            if maybe.isNone(imp.libPath) orif not(concrete(o.calleeType)) then none
-            else
-                let lib = maybe.unwrap(imp.libPath)
-                if vals.eq(lib "word") then
-                    if named("shift") andif maybe.isNone(intConstant(o.args[1])) then
-                        (* quest_word_shift: left by a positive count, right by
-                         * a negative one, 0 by one of 64 or more either way *)
-                        begin
-                            let w = x()
-                            let n = y()
-                            let shifted(op: ssa.Opcode by: Int): Array(Int) =
-                                representation.choose(fn vals.binary(fn ssa.opUlt by vals.constant(fn 64)) array of vals.tInt end
-                                    fun(): Array(Int) array of vals.binary(fn op w by) end
-                                    fun(): Array(Int) array of vals.constant(fn 0) end)
-                            maybe.some(representation.choose(fn vals.binary(fn ssa.opLt n vals.constant(fn 0))
-                                array of vals.tInt end
-                                fun(): Array(Int) shifted(ssa.opLshr vals.binary(fn ssa.opSub vals.constant(fn 0) n))
-                                fun(): Array(Int) shifted(ssa.opShl n)))
-                        end
-                    else none
-                    end
-                elsif vals.eq(lib "ascii") then
-                    (* A Char is held zero-extended *)
-                    if named("val") then one(x())
-                    elsif named("char") then
-                        let n = x()
-                        vals.check(fn vals.binary(fn ssa.opUlt n vals.constant(fn 256)) true "quest_raise_ascii_error"
-                            noSite)
-                        one(n)
-                    else none
-                    end
-                elsif vals.eq(lib "string") then
-                    if named("length") then
-                        let s = x()
-                        maybe.some(representation.choose(fn vals.binary(fn ssa.opPeq s vals.null(fn))
-                            array of vals.tInt end
-                            fun(): Array(Int) array of vals.constant(fn 0) end
-                            fun(): Array(Int)
-                                array of vals.invariantWord(fn s runtimeLayout.offset("QString" "length") vals.tInt) end))
-                    elsif named("getChar") then
-                        one(vals.load(fn byteAddress(x() y()) 0 vals.part(vals.tInt 1 false)))
-                    elsif named("setChar") then
-                        let s = x()
-                        let address = byteAddress(s y())
-                        (* A read-only string (a literal) raises string.error, as
-                         * quest_string_set_char does: its header's bit, in the
-                         * byte of the word before the string that holds it *)
-                        let bit = runtimeLayout.constant("Q_HEADER_READONLY_BIT")
-                        let headerByte = vals.load(fn s {bit / 8} - 8 vals.part(vals.tInt 1 false))
-                        let var mask = 1
-                        for k = 1 upto {bit % 8} do mask := 2 * mask end
-                        let clear = vals.binary(fn ssa.opEq vals.binary(fn ssa.opAnd headerByte vals.constant(fn mask))
-                            vals.constant(fn 0))
-                        vals.check(fn clear true "quest_raise_string_error" noSite)
-                        vals.store(fn address 0 1 vals.atom1(fn o.args[2]))
-                        maybe.some(array of :Int end)
-                    else none
-                    end
-                else none
-                end
-            end
-        end
-
     (* The C function a call of an imported member is, if the member is one of
      * the standard library's external functions built into the compiler
      * (questlang/repr/externals), the import resolves to lib/, and no
@@ -506,12 +498,14 @@ export
                     callClosure(fn v descs o.args)
                 else
                     let imp = maybe.unwrap(importOf(r))
-                    let inline = libraryOperation(fn imp member o)
+                    let calleeType = maybe.unwrapOr(o.calleeType model.okType)
+                    let direct = libraryExternal(imp member o.args calleeType)
+                    let inline = if maybe.isSome(direct) andif concrete(o.calleeType) then
+                        externalOperation(fn maybe.unwrap(direct) o.args)
+                    else maybe.none(:Array(Int)) end
                     if maybe.isSome(inline) then maybe.unwrap(inline)
                     else
                         let clean = symbols.mangleModuleName(imp.canonicalPath)
-                        let calleeType = maybe.unwrapOr(o.calleeType model.okType)
-                        let direct = libraryExternal(imp member o.args calleeType)
                         let inlined = if maybe.isSome(direct) then
                             inlineExternal(fn maybe.unwrap(direct) o.args)
                         else maybe.none(:Int) end
