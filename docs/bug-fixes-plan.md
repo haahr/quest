@@ -23,7 +23,7 @@ last. Delete this plan when its last step lands, as each step deletes its task.
 **Potential improvements** (nothing goes wrong; the code could be faster), not in this plan:
 
 - A function value converted to a supertype allocates its adapter's closure every time (allocation, 4.6 percent of
-  the compiler's build).
+  the compiler's build): done, [benchmarks.md](benchmarks.md) §34.
 - `maybe.T` is abstract, so every test of one in another module is a call (instructions per use).
 
 The ideas in [compiler-refactoring-ideas.md](compiler-refactoring-ideas.md) are improvements too; several steps

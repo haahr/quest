@@ -5,22 +5,6 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
-## A function value converted to a supertype allocates its adapter's closure every time
-
-**Problem.** An adapt plan (a closure used at a function type whose arguments or result need converting, ir.md §8.4.1)
-allocates a two-word closure, `QAdaptClosure { fn, orig }`, each time the conversion runs. The compiler's build makes
-48.9 million of them, 4.6 percent of its allocations, more than one object per closure saved
-([benchmarks.md](benchmarks.md) §32).
-
-**Where to start.** The design in [adapter-closures-plan.md](adapter-closures-plan.md): the counts by kind (§1), an
-imported member's adapter static (§2.1, 89 percent of the compiler's), a lambda made at the converted type (§2.3), a
-global's conversion made once (§2.2), and the steps (§3).
-
-**Done when.** The adapters the compiler makes most are static or made once, measured as §32 measures, or the idea is
-dropped with its measurement.
-
----
-
 ## `maybe.T` is abstract, so every test of one in another module is a call
 
 **Problem.** `util/maybe` exports `T` abstract, though it is only `Option none some with val: A end end` and has no

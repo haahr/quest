@@ -3181,3 +3181,55 @@ from §27.4:
 So the programs §13 and §27.4 found slow through ssac alone (flat-array, count-graphs, boyer, vliw,
 model-elimination) were slow for this reason, and now run in about C's time; those without a `try` in their hot
 code (tak, fib, peek) are unchanged. The rest of the suite was not timed again.
+
+## 34. Adapter closures made once, or not at all (2026-11-21)
+
+A function converted to a function type whose C signature differs, most often a concrete function passed to a library's
+generic one, was a new two-word closure holding the original at each conversion (`QAdaptClosure`, an adapt plan's,
+[ir.md](ir.md) §8.4.1). The thunk pass now makes three kinds of them static, once, or not at all: an imported module's
+function converted (`hash.int` to `hashMap.new`, `sort.intCompare` to `sort.sort`) has a static adapter calling the
+member directly (`2514c0a8`); a closure made only to be converted, a lambda passed to `vector.map` or
+`hashMap.forEach`, is made at the converted type, a copy of its function, one allocation where there were two
+(`ab6449a5`); and a conversion of an immutable global the program computes is made once, where the global is bound
+(`530911fa`).
+
+**Allocations**, counted by layout (a temporary counter in the `allocations` mode), before the plan (`316e9ae1`) and
+after:
+
+- **The compiler's build** (stage 2 compiling the driver, from an empty `.build/quest-stages`): 48.6 million adapter
+  closures to none. 89 percent were imported functions passed to generic ones (`hashMap.new(intEqual hash.int)` in
+  `types/model`, `sort.bisectRight(... sort.intCompare)` in `machine/regalloc`), the rest lambdas passed to
+  `hashMap.forEach`. The build's allocations went from 1,055.8 to 1,012.2 million with the first step, 4.1 percent
+  fewer; the later steps add about 150 lines to the pass, which the build compiles, and it ends at 1,014.3 million.
+- **The MLton suite**, all 46 at `--scale 0.05`: 21.8 million adapter closures to 147,198, and 7,045.2 to 7,023.1
+  million allocations (0.31 percent fewer): simple 6.86 percent fewer (its `lists.map` lambdas), model-elimination
+  0.54 (its global `matchConv`, converted at each call), tyan 0.51, vliw 0.45, mlyacc 0.41, nucleic 0.26.
+
+The plan's last stage, hoisting conversions that repeat in a loop, was not taken: after the three changes too few
+adapter closures remain for hoisting or a cache to matter. A cache from (closure, type) to adapter would cost a lookup
+at each conversion, more than the allocation it saves, and keep every closure it saw alive.
+
+**Times**, on arm64, `run.py time --scale 0.25`, under `tools/exclusive` (load under 5): the seven programs whose
+allocations moved by more than 0.1 percent, and the compiler's build. The whole suite waits for the next baseline.
+
+| Program | n | before | after | after / before |
+|---|--:|--:|--:|--:|
+| simple | 256 | 8.44 | 8.02 | 0.950 |
+| tyan | 96 | 6.96 | 6.89 | 0.990 |
+| count-graphs | 3 | 9.61 | 9.59 | 0.998 |
+| model-elimination | 1 | 15.93 | 15.84 | 0.994 |
+| mlyacc | 768 | 6.19 | 6.25 | 1.010 |
+| vliw | 256 | 5.54 | 5.57 | 1.005 |
+| nucleic | 1024 | 6.15 | 6.11 | 0.993 |
+
+simple, tyan, and count-graphs are means of five runs each, the two compilers alternating (simple 8.39 to 8.54 s before,
+7.97 to 8.06 after); the others one run each, within the ±3 percent a single run varies by. A single run first showed
+simple 3 percent slower, which the five did not bear out. The compiler's build took 68 and 67 s before, 69 and 67 s
+after.
+
+**Why simple gains 5 percent and the collector does not explain it:** under `QUEST_GC_STATS=1` simple allocated 28,650
+MB before and 27,058 MB after, and its 465 and 439 collections paused for 51 and 53 ms in all, under 1 percent of the
+run. Dead young objects cost the collector almost nothing; what the 66 million adapter closures cost was their
+allocation, the call through each, and its conversions, about 6 ns apiece. The stats also report no minor collections
+(`gc minors: 0`) for simple's 465, which is worth a look of its own.
+
