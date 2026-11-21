@@ -264,6 +264,12 @@ export
     let raising(A::TYPE it: Interpreter exc: model.ExceptionValue offset: maybe.T(Int)): A =
         at(it offset fun(): A model.raiseException(:A exc maybe.none(:Int)))
 
+    (* What a variable declared without a value holds until it is assigned:
+     * a string no program can make, told apart by identity (opIsSet) *)
+    let unsetText = "<unset>"
+    let unsetValue: Value = model.stringValue(unsetText)
+    let isUnset(v: Value): Bool = case v when vString with x then x.s is unsetText else false end
+
     let deref(v0: Value): Value =
         begin
             let var v = v0
@@ -808,6 +814,13 @@ export
                 treewalk.noteFrames(maybe.unwrap(e) it.renv)
                 option vRaised of Value with let e = maybe.unwrap(e) end
             when opAddrVar then address(it o f)
+            (* A cell declared without a value holds the unset value until
+             * assigned (sVarDecl) *)
+            when opIsSet with x then
+                case lookup(f x.v)
+                    when vRef with r then model.boolValue(not(isUnset(model.deref(r.r))))
+                    else fail(:Value "is_set of a variable that is not mutable")
+                end
             when opAddrCell then address(it o f)
             when opAddrField then address(it o f)
             when opAddrComponent then address(it o f)
@@ -877,7 +890,8 @@ export
                 if hashMap.contains(it.declared x.v.id) then bindDeclared(f x.v v) else setValue(f x.v v) end
                 noSignal
             when sVarDecl with x then
-                setValue(f x.v model.cellValue(if maybe.isSome(x.init) then atom(it maybe.unwrap(x.init) f) else model.okValue end))
+                setValue(f x.v
+                    model.cellValue(if maybe.isSome(x.init) then atom(it maybe.unwrap(x.init) f) else unsetValue end))
                 noSignal
             when sAssign with x then
                 case lookup(f x.v)

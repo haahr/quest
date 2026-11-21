@@ -1,0 +1,41 @@
+(* An out argument passed to a generic parameter, which the callee may leave
+ * unassigned: the location keeps its value then, and takes the callee's
+ * otherwise. The call goes through a function variable, so that it stays
+ * generic (not specialized), and its argument passes through a QVal cell. *)
+
+import writer : Writer;
+import conv : Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+let rec set(A::TYPE out x: A y: A n: Int assign: Bool): Ok =
+    if n > 0 then set(:A @x y n - 1 assign) elsif assign then x := y end;
+let var f: All(A::TYPE out x: A y: A n: Int assign: Bool) Ok = set;
+
+let var i = 7;
+f(:Int @i 70 3 false);
+print("int kept: " <> conv.int(i));
+f(:Int @i 70 3 true);
+print("int set: " <> conv.int(i));
+
+let var r = 2.5;
+f(:Real @r 25.0 3 false);
+print("real kept: " <> conv.real(r));
+f(:Real @r 25.0 3 true);
+print("real set: " <> conv.real(r));
+
+let var b = true;
+f(:Bool @b false 3 false);
+print("bool kept: " <> if b then "true" else "false" end);
+
+let var s = "old";
+f(:String @s "new" 3 false);
+print("string kept: " <> s);
+f(:String @s "new" 3 true);
+print("string set: " <> s);
+
+let var p: Record x: Int end = record x = 1 end;
+f(:Record x: Int end @p record x = 2 end 3 false);
+print("record kept: " <> conv.int(p.x));
+f(:Record x: Int end @p record x = 2 end 3 true);
+print("record set: " <> conv.int(p.x));

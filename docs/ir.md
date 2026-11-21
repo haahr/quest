@@ -208,6 +208,7 @@ The operations, by group (the stage column says where they may appear; `C` is Co
 | Auto values | `auto[τ](a)` | C+ |
 | Exceptions | `exception Name` (generative), `exception_payload(e)`, `caught_exception(e)` | C+ |
 | Addresses | `addr x` (a mutable variable), `addr r.name`, `addr t.#i`, `addr a[i]`, `cell(a)` (a fresh cell, for `var(e)`), `load p` | C+ |
+| Cells | `is_set x`: whether a variable declared without a value (an `out` argument's cell, §8.3), null until then, has been assigned | R+ |
 | Conversions | `convert(a, plan)` (§8) | R+ |
 
 From the represented stage on, operations also carry the represent pass's decisions about how they reach their
@@ -453,7 +454,10 @@ parameter's generic representation (a bounded type parameter's values are held a
 converts for them), in the context of the call's instantiation (and its
 result back the same way); a `var` or `out` argument whose location is laid out differently from its parameter is
 passed as a temporary of the parameter's representation (a shadow cell), copied in for `var` and out to the location
-after the call; a location holding a record or variant boxed agrees with a generic parameter's `word` and is passed
+after the call. A callee need not assign an `out` parameter, and the location then keeps its value: an `out`
+argument at a generic parameter's instantiation (an `Int` at `A`) is copied in as a `var` argument is, and any other's
+cell is declared without a value, null in every backend until assigned, and written back only when `is_set` says
+the callee assigned it (`language/out_generic_unassigned`, `language/out_converted_unassigned`); a location holding a record or variant boxed agrees with a generic parameter's `word` and is passed
 by `cast`. An auto value's payload is stored in the auto type's witness-independent layout, its type
 component's values at their own type (inspect reads them by the stored descriptor). Plans (`plan`):
 

@@ -2014,6 +2014,11 @@ export
                     "((" <> locationCType(x.v.type) <> " *)&" <> name(p x.v) <> ")"
                 else "(&" <> name(p x.v) <> ")"
                 end
+            (* A cell declared without a value is null until assigned
+             * (sVarDecl): a pointer, or a QVal's word *)
+            when opIsSet with x then
+                if stringOp.equal(varCType(p x.v) "QVal") then "(" <> name(p x.v) <> ".i != 0)"
+                else "(" <> name(p x.v) <> " != NULL)" end
             when opAddrCell with x then
                 let cell = temp(p locationCType(atomType(x.init)))
                 emit(p cell <> " = " <> atom(p x.init) <> ";")
@@ -2263,7 +2268,12 @@ export
                 let c = operation(p x.value maybe.none())
                 emit(p c <> ";")
             when sVarDecl with x then
-                if maybe.isSome(x.init) then assign(p x.v atom(p maybe.unwrap(x.init))) end
+                if maybe.isSome(x.init) then assign(p x.v atom(p maybe.unwrap(x.init)))
+                (* Without a value, a pointer or QVal is null until assigned
+                 * (opIsSet), each time the declaration runs *)
+                elsif stringOp.equal(varCType(p x.v) "QVal") then emit(p name(p x.v) <> ".i = 0;")
+                elsif strutil.endsWith(varCType(p x.v) "*") then emit(p name(p x.v) <> " = NULL;")
+                end
             when sAssign with x then assign(p x.v atom(p x.value))
             when sStoreAt with x then
                 emit(p "*" <> atom(p x.address) <> " = " <> atom(p x.value) <> ";")

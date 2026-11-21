@@ -551,6 +551,14 @@ class AddrVar:
 
 
 @dataclass(eq=False)
+class IsSet:
+    """Whether a variable declared without a value (an out argument's cell,
+    docs/ir.md section 8.3) has been assigned since: its storage, a single
+    reference, starts null (Bool)."""
+    var: Var
+
+
+@dataclass(eq=False)
 class AddrCell:
     """The address of a fresh cell holding `init`, in its slot form
     (`var(e)`)."""
@@ -598,7 +606,8 @@ class Load:
 Operation = Union[
     Prim, Call, TypeApp, ModuleMember, Builtin, External, CallExternal, MakeClosure, EnvField, Convert, MakeTuple,
     TupleField, MakeRecord, RecordField, MakeVariant, MakeOption, IsTag, Payload, Ordinal, MakeArray, ArrayRep, Index,
-    MakeAuto, MakeException, ExceptionPayload, CaughtException, AddrVar, AddrCell, AddrField, AddrComponent, AddrElement, Load,
+    MakeAuto, MakeException, ExceptionPayload, CaughtException, AddrVar, IsSet, AddrCell, AddrField, AddrComponent, AddrElement,
+    Load,
 ]
 
 

@@ -49,6 +49,7 @@ from quest.ir.slots import decide_slots, may_be_stored_as_subtype, tuple_access
 from quest.ir.walk import statement_bodies
 from quest.repr.written import array_element as written_element, fun_signature, quantified, written_structure
 from quest.types import (
+    BOOL_TYPE,
     auto_payload_type,
     is_kind_equal,
     is_type_equal,
@@ -884,6 +885,14 @@ class _Representer:
         layout_out = (instantiation, False) if instantiation else None
         p_out = plan(param_t, location_t, layout_out)
         p_in = None if param.is_out else plan(location_t, param_t, (instantiation, True) if instantiation else None)
+        # An out argument whose location is the generic parameter at its
+        # instantiation (an Int for A at Int) starts from the location's value
+        # in the parameter's layout, as a var argument does, so that a callee
+        # that assigns nothing leaves the location as it was
+        keeps = (param.is_out and bool(instantiation) and p_out is not None
+                 and _equal(location_t, param_t.substitute(instantiation)))
+        if keeps:
+            p_in = plan(location_t, param_t, (instantiation, True))
         if p_out is None and p_in is None:
             return address
         ref_t = QOutType(element_type=param_t) if param.is_out else QVarType(element_type=param_t)
@@ -898,7 +907,7 @@ class _Representer:
         temp = ir.Var("cell", param_t, mutable=True)
         temp_address = ir.Var("", ref_t)
         init = None
-        if not param.is_out:
+        if not param.is_out or keeps:
             current = ir.Var("", location_t)
             before.append(ir.Let(current, ir.Load(address)))
             init = current
@@ -907,13 +916,24 @@ class _Representer:
                 before.append(ir.Let(init, ir.Convert(current, p_in)))
         before.append(ir.VarDecl(temp, init))
         before.append(ir.Let(temp_address, ir.AddrVar(temp)))
+        # An out argument's cell without a value (one whose location is a
+        # supertype laid out differently) is written back only if the callee
+        # assigned it: a callee that assigns nothing leaves the location as it
+        # was
+        writeback = ir.Body()
         written = ir.Var("", param_t)
-        after.append(ir.Let(written, temp))
+        writeback.statements.append(ir.Let(written, temp))
         if p_out is not None:
             converted = ir.Var("", location_t)
-            after.append(ir.Let(converted, ir.Convert(written, p_out)))
+            writeback.statements.append(ir.Let(converted, ir.Convert(written, p_out)))
             written = converted
-        after.append(ir.StoreAt(written, address))
+        writeback.statements.append(ir.StoreAt(written, address))
+        if init is not None:
+            after.extend(writeback.statements)
+        else:
+            is_set = ir.Var("", BOOL_TYPE)
+            after.append(ir.Let(is_set, ir.IsSet(temp)))
+            after.append(ir.If(is_set, writeback, ir.Body()))
         return temp_address
 
     def run(self) -> None:

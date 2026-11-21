@@ -98,6 +98,8 @@ _REAL_RELATIONAL = ("<<", "<<=", ">>", ">>=")
 
 # The value of a let rec's variable before its value is computed
 _UNBOUND = object()
+# What a variable declared without a value holds until it is assigned (IsSet)
+_UNSET = object()
 
 
 class IRInterpreterError(Exception):
@@ -513,6 +515,9 @@ class Interpreter:
                 return QRaised(raised.raised)
             case ir.AddrVar() | ir.AddrCell() | ir.AddrField() | ir.AddrComponent() | ir.AddrElement():
                 return self.address(o, frame)
+            case ir.IsSet(var=var):
+                # A cell declared without a value holds _UNSET until assigned
+                return QBool(frame.lookup(var).value is not _UNSET)
             case ir.Load(address=a):
                 return _deref(self.atom(a, frame))
         raise IRInterpreterError(f"not an operation: {type(o).__name__}")
@@ -677,7 +682,7 @@ class Interpreter:
                 else:
                     frame.values[id(var)] = v
             case ir.VarDecl(var=var, init=init):
-                frame.values[id(var)] = QRef(self.atom(init, frame) if init is not None else OK_VALUE)
+                frame.values[id(var)] = QRef(self.atom(init, frame) if init is not None else _UNSET)
             case ir.Assign(var=var, value=value):
                 frame.lookup(var).assign(self.atom(value, frame))
             case ir.StoreAt() | ir.StoreField() | ir.StoreComponent() | ir.StoreElement():

@@ -4442,6 +4442,14 @@ export
             when opAddrVar with x then
                 if not(isLocated(f x.v)) then fail("the address of " <> x.v.hint <> ", which is not located") end
                 getParts(f x.v)
+            (* A cell declared without a value holds null until assigned
+             * (sVarDecl): its slot, read without unboxing *)
+            when opIsSet with x then
+                if not(isLocated(f x.v)) then fail("is_set of " <> x.v.hint <> ", which is not located") end
+                getParts(f x.v)
+                emit(f i1(ops.arrayGet tSlots))
+                emit(f i(ops.refIsNull))
+                emit(f i(ops.i32Eqz))
             when opAddrCell with x then
                 boxedAtom(f x.init)
                 emit(f i2(ops.arrayNewFixed tSlots 1))

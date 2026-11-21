@@ -1,0 +1,133 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @10:45
+      let %2: String = prim <>(s, "\n") @10:59
+      let %3: Ok = call writer.putString(%1, %2) @10:28
+      return %3
+    }
+  }
+  funs rec {
+    fun setRecord(out x: Record p: Int q: Int end, n: Int, assign: Bool): Ok {
+      let %4: Bool = prim >(n, 0) @14:8
+      if %4 { @14:5
+        let %5: Var(Record p: Int q: Int end) = addr x @14:29
+        let %6: Int = prim -(n, 1) @14:32
+        do call setRecord(%5, %6, assign) @14:19
+      } else {
+        if assign { @14:52
+          let %7: Record p: Int q: Int end = record(p = 5, q = 6) @14:69
+          x := %7 @14:64
+        }
+      }
+      return ok
+    }
+  }
+  let %8: Record p: Int end = record(p = 1) @15:32
+  var r: Record p: Int end = %8 @15:1
+  let %9: Var(Record p: Int end) = addr r @16:11
+  do call setRecord(%9, 3, false) @16:1
+  let %10: Int = record_field(r, p) @17:35
+  let %11: String = call conv.int(%10) @17:26
+  let %12: String = prim <>("record kept: ", %11) @17:7
+  do call print(%12) @17:1
+  let %13: Var(Record p: Int end) = addr r @18:11
+  do call setRecord(%13, 3, true) @18:1
+  let %14: Int = record_field(r, p) @19:34
+  let %15: String = call conv.int(%14) @19:25
+  let %16: String = prim <>("record set: ", %15) @19:7
+  do call print(%16) @19:1
+  funs rec {
+    fun setVariant(out x.1: Small, n.1: Int, assign.1: Bool): Ok {
+      let %17: Bool = prim >(n.1, 0) @25:8
+      if %17 { @25:5
+        let %18: Var(Small) = addr x.1 @25:30
+        let %19: Int = prim -(n.1, 1) @25:33
+        do call setVariant(%18, %19, assign.1) @25:19
+      } else {
+        if assign.1 { @25:53
+          let %20: Small = variant(b, 9) @25:70
+          x.1 := %20 @25:65
+        }
+      }
+      return ok
+    }
+  }
+  funs {
+    fun shown(v: Large): String {
+      join k1(r.1: String) {
+        return r.1
+      } in {
+        switch tag(v) { @27:5
+          case a (s.1: String): {
+            let %21: String = prim <>("a ", s.1) @27:31
+            jump k1(%21) @27:5
+          }
+          case b (n.2: Int): {
+            let %22: String = call conv.int(n.2) @27:68
+            let %23: String = prim <>("b ", %22) @27:60
+            jump k1(%23) @27:5
+          }
+        }
+      }
+    }
+  }
+  let %24: Large = variant(a, "first") @28:20
+  var v.1: Large = %24 @28:1
+  let %25: Var(Large) = addr v.1 @29:12
+  do call setVariant(%25, 3, false) @29:1
+  let %26: String = call shown(v.1) @30:27
+  let %27: String = prim <>("variant kept: ", %26) @30:7
+  do call print(%27) @30:1
+  let %28: Var(Large) = addr v.1 @31:12
+  do call setVariant(%28, 3, true) @31:1
+  let %29: String = call shown(v.1) @32:26
+  let %30: String = prim <>("variant set: ", %29) @32:7
+  do call print(%30) @32:1
+  funs rec {
+    fun setFun(out g: Fun(x: Record p: Int end): Int, n.3: Int, assign.2: Bool): Ok {
+      let %31: Bool = prim >(n.3, 0) @36:8
+      if %31 { @36:5
+        let %32: Var(Fun(x: Record p: Int end): Int) = addr g @36:26
+        let %33: Int = prim -(n.3, 1) @36:29
+        do call setFun(%32, %33, assign.2) @36:19
+      } else {
+        if assign.2 { @36:49
+          funs {
+            fun f(x.2: Record p: Int end): Int {
+              let %34: Int = record_field(x.2, p) @36:97
+              let %35: Int = prim *(%34, 10) @36:97
+              return %35
+            }
+          }
+          g := f @36:61
+        }
+      }
+      return ok
+    }
+  }
+  funs {
+    fun f.1(x.3: Record p: Int q: Int end): Int {
+      let %36: Int = record_field(x.3, q) @37:89
+      return %36
+    }
+  }
+  var h: Fun(x: Record p: Int q: Int end): Int = f.1 @37:1
+  let %37: Var(Fun(x: Record p: Int q: Int end): Int) = addr h @38:8
+  do call setFun(%37, 3, false) @38:1
+  let %38: Record p: Int q: Int end = record(p = 3, q = 4) @39:39
+  let %39: Int = call h(%38) @39:37
+  let %40: String = call conv.int(%39) @39:28
+  let %41: String = prim <>("function kept: ", %40) @39:7
+  do call print(%41) @39:1
+  let %42: Var(Fun(x: Record p: Int q: Int end): Int) = addr h @40:8
+  do call setFun(%42, 3, true) @40:1
+  let %43: Record p: Int q: Int end = record(p = 3, q = 4) @41:38
+  let %44: Int = call h(%43) @41:36
+  let %45: String = call conv.int(%44) @41:27
+  let %46: String = prim <>("function set: ", %45) @41:7
+  do call print(%46) @41:1
+}
+

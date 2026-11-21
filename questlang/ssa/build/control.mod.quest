@@ -194,6 +194,12 @@ export
                 elsif vals.isGlobal(fn x.v) then array of vals.symbolAt(fn vals.globalSymbol(fn.u x.v)) end
                 else array of vals.slotOf(fn x.v) end
                 end
+            (* A cell declared without a value is null until assigned
+             * (sVarDecl): its one word, a pointer or a QVal *)
+            when opIsSet with x then
+                let w = vals.read(fn x.v)[0]
+                let p = case ssa.typeOf(fn.f w) when typeVal then vals.fromVal(fn w vals.tPtr) else w end
+                array of vals.binary(fn ssa.opPne p vals.null(fn)) end
             when opAddrCell with x then
                 let t = ir.atomType(x.init)
                 let s = ssa.newSlot(fn.f 8 * {if extent vals.parts(t) is 0 then 1 else extent vals.parts(t) end} 8)
@@ -354,7 +360,21 @@ export
                 when sDo with x then begin operation(fn x.value maybe.none()) ok end
                 when sVarDecl with x then
                     if not(vals.isGlobal(fn x.v)) then begin vals.slotOf(fn x.v) ok end end
-                    if maybe.isSome(x.init) then vals.write(fn x.v vals.atom(fn maybe.unwrap(x.init))) end
+                    if maybe.isSome(x.init) then vals.write(fn x.v vals.atom(fn maybe.unwrap(x.init)))
+                    else
+                        (* Without a value, its words are null until assigned
+                         * (opIsSet), each time the declaration runs *)
+                        let ps = vals.varParts(x.v)
+                        let zeros = array of(extent ps 0)
+                        for k = 0 upto {extent ps - 1} do
+                            zeros[k] := case ps[k].type
+                                when typePtr then vals.null(fn)
+                                when typeVal then vals.toVal(fn vals.constant(fn 0))
+                                else vals.constant(fn 0)
+                            end
+                        end
+                        vals.write(fn x.v zeros)
+                    end
                 when sAssign with x then vals.write(fn x.v vals.atom(fn x.value))
                 when sIf with x then
                     let c = vals.atom1(fn x.cond)

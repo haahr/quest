@@ -228,7 +228,7 @@ def replace_vars(node, f) -> None:
             node.descriptor = _replaced(node.descriptor, f)
         case ir.ExceptionPayload() | ir.CaughtException():
             node.exception = _replaced(node.exception, f)
-        case ir.AddrVar():
+        case ir.AddrVar() | ir.IsSet():
             node.var = _replaced(node.var, f)
         case ir.AddrCell():
             node.init = _replaced(node.init, f)
@@ -368,6 +368,7 @@ _FIELDS_OF: dict[type, Callable[[Any], tuple]] = {
     ir.ExceptionPayload: lambda node: (node.exception,),
     ir.CaughtException: lambda node: (node.exception,),
     ir.AddrVar: lambda node: (node.var,),
+    ir.IsSet: lambda node: (node.var,),
     ir.AddrCell: lambda node: (node.init,),
     ir.AddrField: lambda node: (node.base, node.name, node.view_map),
     ir.AddrComponent: lambda node: (node.base, node.index, node.access, node.view_map),
@@ -460,6 +461,7 @@ _CONTENTS: dict[type, Callable[[Any], tuple]] = {
     ir.ExceptionPayload: lambda node: (node.exception,),
     ir.CaughtException: lambda node: (node.exception,),
     ir.AddrVar: lambda node: (node.var,),
+    ir.IsSet: lambda node: (node.var,),
     ir.AddrCell: lambda node: (node.init,),
     ir.AddrField: lambda node: (node.base, node.name),
     ir.AddrComponent: lambda node: (node.base, node.index, node.access),
@@ -579,6 +581,7 @@ _REBUILD: dict[type, Callable[[Any, tuple], Any]] = {
     ir.ExceptionPayload: lambda node, values: ir.ExceptionPayload(exception=values[0]),
     ir.CaughtException: lambda node, values: ir.CaughtException(exception=values[0]),
     ir.AddrVar: lambda node, values: ir.AddrVar(var=values[0]),
+    ir.IsSet: lambda node, values: ir.IsSet(var=values[0]),
     ir.AddrCell: lambda node, values: ir.AddrCell(init=values[0]),
     ir.AddrField: lambda node, values: ir.AddrField(base=values[0], name=values[1], view_map=values[2]),
     ir.AddrComponent: lambda node, values: ir.AddrComponent(

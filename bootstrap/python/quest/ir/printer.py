@@ -226,6 +226,8 @@ class _Printer:
                 return f"caught_exception({self.atom(e)})"
             case ir.AddrVar(var=var):
                 return f"addr {self.name(var)}"
+            case ir.IsSet(var=var):
+                return f"is_set {self.name(var)}"
             case ir.AddrCell(init=init):
                 return f"cell({self.atom(init)})"
             case ir.AddrField(base=base, name=name):

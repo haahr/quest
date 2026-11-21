@@ -658,6 +658,12 @@ class CPrinter:
                 return shape_qval_to_slot(f"{self.name(e)}.payload", shape(result.type))
             case ir.CaughtException(exception=e):
                 return call("quest_raised_capture", [f"&{self.name(e)}"])
+            case ir.IsSet(var=var):
+                # A cell declared without a value is null until assigned
+                # (VarDecl): a pointer, or a QVal's word
+                if self.var_c_type(var) == "QVal":
+                    return f"({self.name(var)}.i != 0)"
+                return f"({self.name(var)} != NULL)"
             case ir.AddrVar(var=var):
                 if self.is_pointer_param(var):
                     return self.name(var)
@@ -1477,6 +1483,12 @@ class CPrinter:
             case ir.VarDecl(var=var, init=init):
                 if init is not None:
                     self.assign(var, self.atom(init))
+                # Without a value, a pointer or QVal is null until assigned
+                # (IsSet), each time the declaration runs
+                elif self.var_c_type(var) == "QVal":
+                    self.emit(f"{self.name(var)}.i = 0;")
+                elif self.var_c_type(var).endswith("*"):
+                    self.emit(f"{self.name(var)} = NULL;")
             case ir.Assign(var=var, value=value):
                 self.assign(var, self.atom(value))
             case ir.StoreAt(value=value, address=address):

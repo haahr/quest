@@ -945,7 +945,15 @@ export
             let paramType = param.type
             let instantiated = not(isEmpty(instantiation))
             let pOut = plan(paramType locationType if instantiated then layoutOf(instantiation false) else noLayout end)
-            let pIn = if param.isOut then none else plan(locationType paramType if instantiated then layoutOf(instantiation true) else noLayout end) end
+            (* An out argument whose location is the generic parameter at its
+             * instantiation (an Int for A at Int) starts from the location's
+             * value in the parameter's layout, as a var argument does, so
+             * that a callee that assigns nothing leaves the location as it
+             * was *)
+            let keeps = param.isOut andif instantiated andif maybe.isSome(pOut)
+                andif equal(locationType model.substitute(paramType instantiation.subst))
+            let inLayout = if instantiated then layoutOf(instantiation true) else noLayout end
+            let pIn = if param.isOut andif not(keeps) then none else plan(locationType paramType inLayout) end
             if maybe.isNone(pOut) andif maybe.isNone(pIn) then
                 address
             else
@@ -963,7 +971,7 @@ export
                     let temp = nodes.newVar("cell" paramType true)
                     let tempAddress = nodes.newVar("" refType false)
                     let var init = maybe.none(:Atom)
-                    if not(param.isOut) then
+                    if not(param.isOut) orif keeps then
                         let current = nodes.newVar("" locationType false)
                         vector.append(before nodes.letStmt(current option opLoad of Op with let var address = address end))
                         init := maybe.some(nodes.atomOfVar(current))
@@ -977,16 +985,36 @@ export
                         let var pos = ~1 let var v = temp let var init = init
                     end)
                     vector.append(before nodes.letStmt(tempAddress option opAddrVar of Op with let var v = temp end))
+                    (* An out argument's cell without a value (one whose
+                     * location is a supertype laid out differently) is
+                     * written back only if the callee assigned it: a callee
+                     * that assigns nothing leaves the location as it was *)
+                    let writeback = nodes.newBody()
                     let var written = nodes.newVar("" paramType false)
-                    vector.append(after nodes.letStmt(written nodes.opOfVar(temp)))
+                    vector.append(writeback.statements nodes.letStmt(written nodes.opOfVar(temp)))
                     if maybe.isSome(pOut) then
                         let converted = nodes.newVar("" locationType false)
-                        vector.append(after letConvert(converted nodes.atomOfVar(written) maybe.unwrap(pOut)))
+                        vector.append(writeback.statements
+                            letConvert(converted nodes.atomOfVar(written) maybe.unwrap(pOut)))
                         written := converted
                     end
-                    vector.append(after option sStoreAt of Stmt with
+                    vector.append(writeback.statements option sStoreAt of Stmt with
                         let var pos = ~1 let var value = nodes.atomOfVar(written) let var address = address
                     end)
+                    if maybe.isSome(init) then
+                        for i = 0 upto {vector.length(writeback.statements) - 1} do
+                            vector.append(after vector.get(writeback.statements i))
+                        end
+                    else
+                        let set = nodes.newVar("" model.boolType false)
+                        vector.append(after nodes.letStmt(set option opIsSet of Op with let var v = temp end))
+                        vector.append(after option sIf of Stmt with
+                            let var pos = ~1
+                            let var cond = nodes.atomOfVar(set)
+                            let var thenBody = writeback
+                            let var elseBody = nodes.newBody()
+                        end)
+                    end
                     nodes.atomOfVar(tempAddress)
                 end
             end

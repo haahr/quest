@@ -1,0 +1,89 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @9:45
+      let %2: String = prim <>(s, "\n") @9:59
+      let %3: Ok = call writer.putString(%1, %2) @9:28
+      return %3
+    }
+  }
+  funs rec {
+    fun set [A::TYPE](out x: A, y: A, n: Int, assign: Bool): Ok {
+      let %4: Bool = prim >(n, 0) @12:8
+      if %4 { @12:5
+        let %5: Var(A) = addr x @12:26
+        let %6: Int = prim -(n, 1) @12:31
+        do call set [A](%5, y, %6, assign) @12:19
+      } else {
+        if assign { @12:51
+          x := y @12:63
+        }
+      }
+      return ok
+    }
+  }
+  var f: All(A :: TYPE) Fun(out x: A y: A n: Int assign: Bool): Ok = set @13:1
+  var i: Int = 7 @15:1
+  let %7: Var(Int) = addr i @16:8
+  do call f [Int](%7, 70, 3, false) @16:1
+  let %8: String = call conv.int(i) @17:23
+  let %9: String = prim <>("int kept: ", %8) @17:7
+  do call print(%9) @17:1
+  let %10: Var(Int) = addr i @18:8
+  do call f [Int](%10, 70, 3, true) @18:1
+  let %11: String = call conv.int(i) @19:22
+  let %12: String = prim <>("int set: ", %11) @19:7
+  do call print(%12) @19:1
+  var r: Real = 2.5 @21:1
+  let %13: Var(Real) = addr r @22:9
+  do call f [Real](%13, 25.0, 3, false) @22:1
+  let %14: String = call conv.real(r) @23:24
+  let %15: String = prim <>("real kept: ", %14) @23:7
+  do call print(%15) @23:1
+  let %16: Var(Real) = addr r @24:9
+  do call f [Real](%16, 25.0, 3, true) @24:1
+  let %17: String = call conv.real(r) @25:23
+  let %18: String = prim <>("real set: ", %17) @25:7
+  do call print(%18) @25:1
+  var b: Bool = true @27:1
+  let %19: Var(Bool) = addr b @28:9
+  do call f [Bool](%19, false, 3, false) @28:1
+  join k1(r.1: String) {
+    let %20: String = prim <>("bool kept: ", r.1) @29:7
+    do call print(%20) @29:1
+    var s.1: String = "old" @31:1
+    let %21: Var(String) = addr s.1 @32:11
+    do call f [String](%21, "new", 3, false) @32:1
+    let %22: String = prim <>("string kept: ", s.1) @33:7
+    do call print(%22) @33:1
+    let %23: Var(String) = addr s.1 @34:11
+    do call f [String](%23, "new", 3, true) @34:1
+    let %24: String = prim <>("string set: ", s.1) @35:7
+    do call print(%24) @35:1
+    let %25: Record x: Int end = record(x = 1) @37:32
+    var p: Record x: Int end = %25 @37:1
+    let %26: Var(Record x: Int end) = addr p @38:22
+    let %27: Record x: Int end = record(x = 2) @38:25
+    do call f [Record x: Int end](%26, %27, 3, false) @38:1
+    let %28: Int = record_field(p, x) @39:35
+    let %29: String = call conv.int(%28) @39:26
+    let %30: String = prim <>("record kept: ", %29) @39:7
+    do call print(%30) @39:1
+    let %31: Var(Record x: Int end) = addr p @40:22
+    let %32: Record x: Int end = record(x = 2) @40:25
+    do call f [Record x: Int end](%31, %32, 3, true) @40:1
+    let %33: Int = record_field(p, x) @41:34
+    let %34: String = call conv.int(%33) @41:25
+    let %35: String = prim <>("record set: ", %34) @41:7
+    do call print(%35) @41:1
+  } in {
+    if b { @29:24
+      jump k1("true") @29:24
+    } else {
+      jump k1("false") @29:24
+    }
+  }
+}
+
