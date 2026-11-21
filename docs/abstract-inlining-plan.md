@@ -2,8 +2,9 @@
 
 Under `--whole-program`, an iterator's pipeline does not fold into the loop that walks it, because its tuple
 reaches the loop through copies that change its type, and the simplifier's tuple projection fold does not follow
-them. This plan makes it follow them. The tasklist entry "A whole program does not inline through a module's
-abstract type" ([tasklist.md](tasklist.md)) points here. Not started; a prototype was measured on 2026-11-20 (§2).
+them. This plan makes it follow them. It replaces the tasklist entry "A whole program does not inline through a
+module's abstract type". Complete 2026-11-20: steps 1–3 (§4) done, and `map` measured at 11.1 instructions per
+element in a whole program (`benchmarks/iter/README.md`).
 
 ## 1. The problem
 

@@ -47,8 +47,8 @@ They have three kinds of user:
    in `lib/`, and it would fix the representation for good. Abstract, `iter.T` can grow a change counter, a size hint,
    or a `close` for an iterator over a file, or take another shape if one becomes cheaper, without changing a caller,
    and the importers' interfaces do not record it. The price is a call into `util/iter` for each `more` and `next` at
-   the consumer, since separate compilation inlines nothing across modules, and, for now, a whole program that does
-   not fold the stages into its loop (§2, §7).
+   the consumer, since separate compilation inlines nothing across modules (§2); a whole program folds the stages
+   into its loop through the abstract type's copies (abstract-inlining-plan.md).
 3. **`more` and `next`, for familiarity.** `more` says whether there is another element and changes nothing a caller
    can see: calling it twice is calling it once. `next` returns the element and moves past it. This is Java's
    `Iterator` (`hasNext`, `next`), which most programmers know, and `next` gives each element once, so a `map`'s
@@ -139,7 +139,7 @@ compiled by the self-hosted compiler at `589fe937` (arm64), as separate units (t
 | Pull, `more`/`next` closures, read in place, own option whose `var` is overwritten | 53 | 130 | 11 | 46 | 1.8 MB |
 | Pull, `more`/`next` closures, read in place, own option around a reused cell | 53 | 143 | 11 | 47 | 1.8 MB |
 | The `var`'s row through `iter.more(it)` and `iter.next(it)`, the tuple visible | 76 | 142 | 11 | 46 | 1.8 MB |
-| **`util/iter` as built: abstract `iter.T`, checking `next` (`benchmarks/iter/`)** | 82 | 151 | 56 | 116 | |
+| **`util/iter` as built: abstract `iter.T`, checking `next` (`benchmarks/iter/`)** | 82 | 151 | 11 | 45 | |
 | Pull, `more`/`next` closures, own option per held element | 53 | 161 | | | 72 MB |
 | Pull, `more`/`next` closures, `maybe.some` per held element | 53 | 230 | | | 72 MB |
 | Pull, `more`/`next` closures, `util/maybe` around a reused cell | 53 | 305 | | | 1.8 MB |
@@ -155,8 +155,8 @@ less than reaching the held element through another module's abstract type does.
 - **A whole program** inlines across modules. With the tuple visible, it inlines the consumer's `iter.more` and
   `iter.next` away, and the whole pipeline too: to about a loop written out through a `map` (11), and to 2.5 times
   one through a `filter`, whose element is held and checked by both `more` and `next`. With `iter.T` abstract, as
-  built, the stages stay closures called through the iterator (56 through a `map`): the simplifier does not see
-  through the `let` that gives the tuple its abstract type (§7).
+  built, the same: the simplifier folds a known tuple's projections through the copies that give it the abstract
+  type ([abstract-inlining-plan.md](abstract-inlining-plan.md); 56 through a `map` before it).
 - **Building a pipeline** allocates its stages' closures: two per stage, and the state of the stages that have any.
   In a whole program, those it inlines are not allocated.
 
@@ -167,8 +167,9 @@ table's).
 
 `util/iterTools` was not measured, and no benchmark uses it. Each of its stages is one `iter.make`, two closures and a
 state tuple when it is made, and per element the calls through its source's closures plus its own: about 23
-instructions per element per stage under separate compilation, and the same under a whole program until the fold of
-§7. The combinatoric iterators and `batched`, `windows`, and `groupBy` allocate an array per element as well.
+instructions per element per stage under separate compilation; under a whole program its stages fold into the
+loop as `util/iter`'s do. The combinatoric iterators and `batched`, `windows`, and `groupBy` allocate an array per
+element as well.
 
 ## 3. Producers
 
@@ -297,13 +298,6 @@ Left out:
   lines over these; they can be added when a program wants one.
 
 Pending:
-- **Folding through the abstract type in a whole program.** The simplifier's fold of a known tuple's field does not
-  follow the copy that gives the tuple its abstract type, so a whole program's pipeline stays closures (56
-  instructions per element through a `map`, where a prototype of the fold gives 11).
-  [abstract-inlining-plan.md](abstract-inlining-plan.md), not started, has the fold and what else it reaches, and the
-  tasklist entry "A whole program does not inline through a module's abstract type" ([tasklist.md](tasklist.md))
-  points to it. It would reach `util/iterTools`'s stages, the collections' iterators, and `regexp.findIter` alike.
-  Separate compilation would still pay its call per `more` and `next`.
 - **`maybe.T` public.** `filterMap`'s function, `unfold`'s step, `find`, `first`, and the rest speak `maybe.T`,
   which is abstract, so every test of one outside `util/maybe` is a call; that is why the stages hold their elements
   in a slot of their own (rule 5). The tasklist entry "`maybe.T` is abstract, so every test of one in another module

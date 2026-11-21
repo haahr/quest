@@ -45,20 +45,6 @@ benchmarks.md, or the idea is dropped with its measurement.
 
 ---
 
-## A whole program does not inline through a module's abstract type
-
-**Problem.** Under `--whole-program`, a value that a module hands out as its abstract type is bound by a `let` that
-changes its type (`let %19: iter.T(Int) = %18`, the tuple at the abstract type), and the simplifier does not see
-through that copy when it folds `tuple_field` of a known tuple. So an iterator's closures stay closures called
-through the tuple: `benchmarks/iter/`'s `map` takes 56 instructions per element in a whole program, where the same
-library with `T` visible takes 11, its pipeline folded into the loop ([iter.md](iter.md) §2 and rule 2). Any
-module whose abstract type is a tuple of closures, or of known values, pays the same.
-
-**Plan.** [abstract-inlining-plan.md](abstract-inlining-plan.md): the fold, measured with a prototype (56 → 11),
-what else it reaches, and its steps.
-
----
-
 ## An interface may declare a member twice
 
 **Problem.** Both typecheckers accept an interface that declares the same member twice, with different types, and a

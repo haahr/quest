@@ -1,0 +1,37 @@
+(* Reading a module's abstract tuple's components through copies of another
+ * type (docs/ir.md §8.6): in a whole program the simplifier folds the
+ * projection of an immutable component to what the tuple was made of, through
+ * the copy at ledger.T and the module's copy at T, but must not fold a var
+ * one, which add changes; nor through a prefix supertype, whose components
+ * are at the same positions, seen through a record view *)
+
+import ledger: Ledger;
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+let a = ledger.new("a" 10);
+print(ledger.name(a) <> " " <> conv.int(ledger.balance(a)));
+ledger.add(a 5);
+print(ledger.name(a) <> " " <> conv.int(ledger.balance(a)));
+let b = a;
+ledger.add(b 1);
+print(ledger.describe(a) <> ", " <> ledger.describe(b));
+
+let total(n: Int): Int =
+    begin
+        let l = ledger.new("loop" 0)
+        for i = 1 upto n do ledger.add(l i) end
+        ledger.balance(l)
+    end;
+print("total " <> conv.int(total(100)));
+
+Let Big = Record x: Int y: Int z: Int end;
+Let Small = Record x: Int y: Int end;
+Let Wide = Tuple r: Big var n: Int tag: String end;
+Let Narrow = Tuple r: Small var n: Int end;
+let w: Wide = tuple let r = record x = 1 y = 2 z = 3 end let var n = 4 let tag = "w" end;
+let narrow: Narrow = w;
+narrow.n := narrow.n + 10;
+print("narrow " <> conv.int(narrow.r.x + narrow.r.y) <> " " <> conv.int(narrow.n) <> " wide " <> conv.int(w.n));

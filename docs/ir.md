@@ -661,7 +661,10 @@ at most six, each followed by contification:
 - a `switch` on an option or variant made in the same function, and `!` of one; a case of a known option that binds
   its payload is left, since the binder shares the option's payload, which compiled code copies from the tuple it was
   made of (a variant's payload is the value itself);
-- projections of a tuple made in the same function, when it has no `var` components and nothing reads its identity;
+- projections of a tuple made in the same function, bound directly or through copies of immutable variables of
+  another type (a module's abstract type for its manifest one, a prefix supertype), which copy propagation leaves:
+  the component is `var` in neither the projection's type nor the made tuple's, and its argument is a constant or
+  an immutable variable; the tuple itself is left to dead-code removal;
 - `ordinal` of a known option, and `is` between known options of different cases or of one case made without
   components ([c-representation.md](c-representation.md) §5.3);
 - a join point jumped to only at its body's end straightened, and a jump to a join point whose continuation only

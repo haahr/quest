@@ -1,6 +1,7 @@
 # util/iter's Benchmark
 
-What a pipeline of iterators costs per element, against a loop written out ([docs/iter.md](../../docs/iter.md) §2).
+What a pipeline of iterators costs per element, against a loop written out ([docs/iter-plan.md](../../docs/iter-plan.md)
+§2 and step 1).
 
 | Path | What |
 |---|---|
@@ -31,6 +32,14 @@ At `7e9b5f89`, the library's first version (2026-11-20, arm64), instructions ret
 | `filter` | 151 | 116 |
 | `sumInt` | 140 | 116 |
 
-Under `--whole-program`, the stages are not inlined into the loop, as they are when `iter.T` is a visible type (11
-instructions per element through `map`): the simplifier does not see through the `let` that gives the tuple its
-abstract type ([docs/iter.md](../../docs/iter.md) §7).
+With tuple projections folded through copies of another type (docs/abstract-inlining-plan.md, 2026-11-20), the
+whole program's stages are inlined into the loop:
+
+| Workload | Separate | Whole program |
+|---|---:|---:|
+| `loop` | 17 | 17 |
+| `map` | 82 | 11 |
+| `filter` | 151 | 45 |
+| `sumInt` | 140 | 45 |
+
+`map` is now the visible type's 11. What `filter` and `sumInt` have left is the lookahead slot's tag test and stores.

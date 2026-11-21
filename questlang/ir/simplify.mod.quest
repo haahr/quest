@@ -317,16 +317,38 @@ export
             {index >= extent sh.components} orif sh.components[index].isVar
         end
 
+    (* The atom whose variable a tuple was made into, found from an atom
+     * bound to it directly or through copies (of another type, such as
+     * iter.T(Int) of the tuple, which copy propagation leaves), if any *)
+    let rec tupleSource(s: Simplifier a: Atom): maybe.T(Atom) =
+        begin
+            let d = defOf(s a)
+            if maybe.isSome(d) then
+                case maybe.unwrap(d)
+                    when opAtom with x then
+                        case x.atom
+                            when atomVar with y then if y.v.isMutable then maybe.none() else tupleSource(s x.atom) end
+                            when atomConst then maybe.none()
+                        end
+                    when opMakeTuple then maybe.some(a)
+                    else maybe.none()
+                end
+            else
+                maybe.none()
+            end
+        end
+
     (* The operation that replaces another, if it is simpler *)
     let simpler(s: Simplifier o: Op): maybe.T(Op) =
         case o
             when opPrim with x then foldPrim(s x)
             when opTupleField with x then
-                let d = defOf(s x.tup)
-                if maybe.isSome(d) then
-                    case maybe.unwrap(d)
+                let src = tupleSource(s x.tup)
+                if maybe.isSome(src) then
+                    case maybe.unwrap(defOf(s maybe.unwrap(src)))
                         when opMakeTuple with t then
                             if {x.index < extent t.args} andif not(varComponent(nodes.atomType(x.tup) x.index))
+                                andif not(varComponent(nodes.atomType(maybe.unwrap(src)) x.index))
                                 andif stable(t.args[x.index]) then
                                 maybe.some(nodes.opOfAtom(t.args[x.index]))
                             else

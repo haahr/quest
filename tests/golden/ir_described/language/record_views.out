@@ -5,8 +5,6 @@ static descriptor(Record a: Int b: Int c: Int d: Int end)
 static descriptor(Record b: Int c: Int d: Int end)
 static descriptor(Record c: Int d: Int end)
 static descriptor(Record d: Int end)
-static descriptor(Tuple r: Big n: Int end)
-static descriptor(Tuple r: Mid n: Int end)
 static offsets(Record a: Int b: Int c: Int d: Int end <- Record a: Int b: Int c: Int d: Int end) registered
 fun same [A::<: Mid](descriptor_A: descriptor, x: A): A {
   return x
@@ -66,42 +64,38 @@ main {
       let %29: String = call conv.int(r.1) @8:52
       let %30: String = prim <>(%29, "\n") @8:52
       let %31: Ok = call writer.putString(%28, %30) @8:21
-      let bigTuple: Tuple r: Big n: Int end = tuple(box big, 5) @39:41
-      let bigTuple.1: Tuple r: Mid n: Int end = convert(bigTuple, view(descriptor(Tuple r: Big n: Int end), descriptor(Tuple r: Mid n: Int end)))
-      let midTuple: Tuple r: Mid n: Int end = bigTuple.1 @40:41
-      let box: box(Mid) = tuple_field(midTuple, 0) via proxy @41:3
-      let %32: Mid = convert(box, slot_unbox)
+      let big.3: Mid = convert(big, record_view(descriptor(Record c: Int d: Int end)))
+      let %32: Mid = big.3 @41:3
       let %33: Int = record_field(%32, c) @41:3
-      let %34: Int = tuple_field(midTuple, 1) via original @41:18
-      let %35: Int = prim +(%33, %34) @41:3
-      let %36: writer.T = member writer.output @8:38
-      let %37: String = call conv.int(%35) @8:52
-      let %38: String = prim <>(%37, "\n") @8:52
-      let %39: Ok = call writer.putString(%36, %38) @8:21
+      let %34: Int = prim +(%33, 5) @41:3
+      let %35: writer.T = member writer.output @8:38
+      let %36: String = call conv.int(%34) @8:52
+      let %37: String = prim <>(%36, "\n") @8:52
+      let %38: Ok = call writer.putString(%35, %37) @8:21
       let same.1: All(A <: Mid) Fun(x: A): A = closure same {}
       let same_spec.1: Fun(x: Big): Big = closure same_spec {}
       let bigAgain: Big = call same_spec.1(big) @45:21
-      let %40: Int = record_field(bigAgain, b) @46:3
-      let %41: writer.T = member writer.output @8:38
-      let %42: String = call conv.int(%40) @8:52
-      let %43: String = prim <>(%42, "\n") @8:52
-      let %44: Ok = call writer.putString(%41, %43) @8:21
-      let %45: writer.T = member writer.output @49:16
-      do call dynamic.extern(%45, d) @49:1
-      let %46: writer.T = member writer.output @50:18
-      do call writer.putString(%46, "\n") @50:1
+      let %39: Int = record_field(bigAgain, b) @46:3
+      let %40: writer.T = member writer.output @8:38
+      let %41: String = call conv.int(%39) @8:52
+      let %42: String = prim <>(%41, "\n") @8:52
+      let %43: Ok = call writer.putString(%40, %42) @8:21
+      let %44: writer.T = member writer.output @49:16
+      do call dynamic.extern(%44, d) @49:1
+      let %45: writer.T = member writer.output @50:18
+      do call writer.putString(%45, "\n") @50:1
     } in {
       inspect anyMid (witness: descriptor) { @36:3
         case Mid of descriptor(Mid) (x.2: Tuple a: Mid end) converting (component(witness, descriptor(Mid))): {
-          let box.1: box(Mid) = tuple_field(x.2, 0) via proxy @36:39
-          let %47: Mid = convert(box.1, slot_unbox)
-          let %48: Int = record_field(%47, c) @36:39
-          let box.2: box(Mid) = tuple_field(x.2, 0) via proxy @36:52
-          let %49: Mid = convert(box.2, slot_unbox)
-          let %50: Int = record_field(%49, d) @36:52
-          let %51: Int = prim +(10, %50) @36:47
-          let %52: Int = prim *(%48, %51) @36:39
-          jump k2(%52) @36:3
+          let box: box(Mid) = tuple_field(x.2, 0) via proxy @36:39
+          let %46: Mid = convert(box, slot_unbox)
+          let %47: Int = record_field(%46, c) @36:39
+          let box.1: box(Mid) = tuple_field(x.2, 0) via proxy @36:52
+          let %48: Mid = convert(box.1, slot_unbox)
+          let %49: Int = record_field(%48, d) @36:52
+          let %50: Int = prim +(10, %49) @36:47
+          let %51: Int = prim *(%47, %50) @36:39
+          jump k2(%51) @36:3
         }
         else: {
           jump k2(0) @36:3
@@ -111,10 +105,10 @@ main {
   } in {
     inspect d (witness.1: descriptor) { @33:3
       case Small of descriptor(Small) (s: Tuple a: Small end) converting (component(witness.1, descriptor(Small))): {
-        let box.3: box(Small) = tuple_field(s, 0) via proxy @33:36
-        let %53: Small = convert(box.3, slot_unbox)
-        let %54: Int = record_field(%53, d) @33:36
-        jump k1(%54) @33:3
+        let box.2: box(Small) = tuple_field(s, 0) via proxy @33:36
+        let %52: Small = convert(box.2, slot_unbox)
+        let %53: Int = record_field(%52, d) @33:36
+        jump k1(%53) @33:3
       }
       else: {
         jump k1(0) @33:3

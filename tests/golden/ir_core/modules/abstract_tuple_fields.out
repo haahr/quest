@@ -1,0 +1,84 @@
+import ledger = "ledger" : Ledger
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @12:45
+      let %2: String = prim <>(s, "\n") @12:59
+      let %3: Ok = call writer.putString(%1, %2) @12:28
+      return %3
+    }
+  }
+  let a: ledger.T = call ledger.new("a", 10) @14:9
+  let %4: String = call ledger.name(a) @15:7
+  let %5: Int = call ledger.balance(a) @15:41
+  let %6: String = call conv.int(%5) @15:32
+  let %7: String = prim <>(" ", %6) @15:25
+  let %8: String = prim <>(%4, %7) @15:7
+  do call print(%8) @15:1
+  do call ledger.add(a, 5) @16:1
+  let %9: String = call ledger.name(a) @17:7
+  let %10: Int = call ledger.balance(a) @17:41
+  let %11: String = call conv.int(%10) @17:32
+  let %12: String = prim <>(" ", %11) @17:25
+  let %13: String = prim <>(%9, %12) @17:7
+  do call print(%13) @17:1
+  let b: ledger.T = a @18:9
+  do call ledger.add(b, 1) @19:1
+  let %14: String = call ledger.describe(a) @20:7
+  let %15: String = call ledger.describe(b) @20:37
+  let %16: String = prim <>(", ", %15) @20:29
+  let %17: String = prim <>(%14, %16) @20:7
+  do call print(%17) @20:1
+  funs {
+    fun total(n: Int): Int {
+      let l: ledger.T = call ledger.new("loop", 0) @24:17
+      var i: Int = 1 @25:9
+      let %18: Bool = prim <=(i, n) @25:9
+      if %18 { @25:9
+        loop L1 {
+          let i.1: Int = i @25:9
+          do call ledger.add(l, i.1) @25:29
+          let %19: Bool = prim is(i, n) @25:9
+          if %19 { @25:9
+            break L1 @25:9
+          }
+          let %20: Int = prim +(i, 1) @25:9
+          i := %20 @25:9
+        }
+      }
+      let %21: Int = call ledger.balance(l) @26:9
+      return %21
+    }
+  }
+  let %22: Int = call total(100) @28:28
+  let %23: String = call conv.int(%22) @28:19
+  let %24: String = prim <>("total ", %23) @28:7
+  do call print(%24) @28:1
+  let r: Record x: Int y: Int z: Int end = record(x = 1, y = 2, z = 3) @34:29
+  let n.1: Int = 4 @34:70
+  let tag: String = "w" @34:82
+  let w: Wide = tuple(r, n.1, tag) @34:15
+  let narrow: Narrow = w @35:22
+  let %25: Int = tuple_field(narrow, 1) @36:13
+  let %26: Int = prim +(%25, 10) @36:13
+  store narrow.#1 := %26 @36:1
+  let %27: Small = tuple_field(narrow, 0) @37:29
+  let %28: Int = record_field(%27, x) @37:29
+  let %29: Small = tuple_field(narrow, 0) @37:42
+  let %30: Int = record_field(%29, y) @37:42
+  let %31: Int = prim +(%28, %30) @37:29
+  let %32: String = call conv.int(%31) @37:20
+  let %33: Int = tuple_field(narrow, 1) @37:73
+  let %34: String = call conv.int(%33) @37:64
+  let %35: Int = tuple_field(w, 1) @37:107
+  let %36: String = call conv.int(%35) @37:98
+  let %37: String = prim <>(" wide ", %36) @37:86
+  let %38: String = prim <>(%34, %37) @37:64
+  let %39: String = prim <>(" ", %38) @37:57
+  let %40: String = prim <>(%32, %39) @37:20
+  let %41: String = prim <>("narrow ", %40) @37:7
+  do call print(%41) @37:1
+}
+
