@@ -10,6 +10,14 @@ between them.
     tools/check --light            the checks a move of modules needs, not a push's
     tools/check --jobs N           any of these with N cores, not the machine's
     tools/check --serial           any of these with the suites one after another
+    tools/check --no-exclusive     any of these without taking the machine-wide lock
+
+Each takes the lock that tools/exclusive takes (docs/testing.md section 4.2):
+it waits for any other worktree's check or timing to end, and then for the
+machine to be quiet (the load under 5 for 3 minutes), and holds the lock
+until it is done, so that its timeouts are those of a machine doing nothing
+else. When the only failures are timeouts and the terminal tests, each is run
+again, alone, once, and the run passes if they pass then.
 
 The change is what differs from origin/main: the commits since they diverged,
 and what is not yet committed. A change only to the self-hosted compiler, its
@@ -76,6 +84,9 @@ import time
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT_DIR / "tools"))
+
+import exclusive  # noqa: E402
 OUTPUT_DIR = ROOT_DIR / ".build" / "check"
 # The unit tests that drive a terminal (tests/python/test_readline_terminal.py)
 PTY_TESTS = "tests/python/test_readline_terminal.py"
@@ -201,6 +212,66 @@ def report(suites: list[Suite], start: float) -> list[str]:
     return failed
 
 
+def timed_out(output: str) -> list[tuple[str, str]] | None:
+    """The tests a run_tests.py run's output says failed, as (phase, test),
+    if every one of them timed out; None if any failed otherwise, or if the
+    run failed and names no test that did."""
+    lines = output.splitlines()
+    tests = []
+    for i, line in enumerate(lines):
+        if line.startswith("  [FAIL] ") and ":" in line:
+            following = lines[i + 1] if i + 1 < len(lines) else ""
+            if "TIMED OUT" not in following:
+                return None
+            phase, _, test = line[len("  [FAIL] "):].partition(":")
+            tests.append((phase, test))
+    return tests or None
+
+
+def alone(command: list[str], phase: str, test: str) -> list[str]:
+    """command, a run_tests.py run, narrowed to one test in one phase, on one
+    worker."""
+    narrowed = []
+    skip = False
+    for argument in command:
+        if skip:
+            skip = False
+        elif argument in ("-j", "--phase", "-k", "--test"):
+            skip = True
+        else:
+            narrowed.append(argument)
+    return [*narrowed, "--phase", phase, "-k", test, "-j", "1"]
+
+
+def rerun(failed: list[Suite], start: float) -> bool:
+    """Runs again, alone and once each, the failures that load explains: the
+    terminal tests' suite, and the tests that timed out. Whether every
+    failure was one of those and passes now; nothing is run if any failure
+    was of another kind."""
+    plan = []
+    for suite in failed:
+        if suite.name == "pty":
+            plan.append(Suite("pty-again", suite.command, suite.environment))
+            continue
+        tests = timed_out(suite.output.read_text(encoding="utf-8", errors="replace"))
+        if tests is None:
+            return False
+        for n, (phase, test) in enumerate(tests):
+            plan.append(Suite(f"{suite.name}-again-{n + 1}", alone(suite.command, phase, test), suite.environment))
+    print(f"Running again, alone: {', '.join(suite.name for suite in plan)} (timeouts and terminal tests, which "
+          "load explains)", flush=True)
+    for suite in plan:
+        suite.run(start)
+    return not report(plan, start)
+
+
+def outcome(suites: list[Suite], start: float) -> bool:
+    """Reports the suites; whether they passed, their timeouts and terminal
+    tests once run again alone (rerun)."""
+    failed = report(suites, start)
+    return not failed or rerun([suite for suite in suites if suite.name in failed], start)
+
+
 def stress_tier(python: str, cores: int, self_hosted_only: bool) -> bool:
     """Runs the stress tier; whether it passed. The driver is ./quest's stage
     2, built first without the checks (the launcher builds what is stale)."""
@@ -224,7 +295,7 @@ def stress_tier(python: str, cores: int, self_hosted_only: bool) -> bool:
     print(f"Running the stress tier ({', '.join(suite.name for suite in suites)}) {together_word()}; output in "
           f"{OUTPUT_DIR.relative_to(ROOT_DIR)}/", flush=True)
     run_at_once(suites, start)
-    return not report(suites, start)
+    return outcome(suites, start)
 
 
 def changed_files() -> list[str] | None:
@@ -302,7 +373,17 @@ def main() -> int:
     parser.add_argument("--jobs", type=int, metavar="N",
                         help="the cores to split between the suites, rather than the machine's; also each build's "
                         "modules at once (QUEST_JOBS)")
+    parser.add_argument("--no-exclusive", action="store_true",
+                        help="run at once, without the machine-wide lock and the wait for a quiet machine")
     args = parser.parse_args()
+    if args.no_exclusive:
+        return checks(args, parser)
+    with exclusive.exclusive("tools/check " + " ".join(sys.argv[1:])):
+        return checks(args, parser)
+
+
+def checks(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    """Runs the checks args asks for; 0 if they pass."""
     if args.jobs is not None and args.jobs < 1:
         parser.error("--jobs must be at least 1")
     cores = args.jobs or os.cpu_count() or 4
@@ -395,7 +476,7 @@ def main() -> int:
     for suite in after:
         suite.run(start)
 
-    return 1 if report([*together, *after], start) else 0
+    return 0 if outcome([*together, *after], start) else 1
 
 
 if __name__ == "__main__":

@@ -49,6 +49,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
+sys.path.insert(0, str(ROOT / "tools"))
+
+import exclusive  # noqa: E402
 SML_DIR = HERE / "sml"
 DATA_DIR = HERE / "DATA"
 EXPECTED_DIR = HERE / "expected"
@@ -387,7 +390,22 @@ def main() -> int:
     parser.add_argument("--clean", action="store_true",
                         help="remove the build tree, .build/, before building anything (reference, check, time)")
     parser.add_argument("--exclude", default="", help="benchmarks to leave out of a second mean, NAME,... (report)")
+    parser.add_argument("--no-exclusive", action="store_true",
+                        help="time at once, without the machine-wide lock and the wait for a quiet machine (time)")
     args = parser.parse_intermixed_args()
+    # Timing takes the lock tools/exclusive takes, and waits for a quiet
+    # machine; building and checking, which are not timed, only wait while
+    # another job holds it (docs/testing.md section 4.2)
+    if args.command == "time" and not args.no_exclusive:
+        with exclusive.exclusive("run.py " + " ".join(sys.argv[1:])):
+            return commands(args)
+    if args.command != "report":
+        exclusive.yield_to_holder("run.py " + args.command)
+    return commands(args)
+
+
+def commands(args: argparse.Namespace) -> int:
+    """Runs the command args names."""
     if args.command == "report":
         return report(args.names, [n for n in args.exclude.split(",") if n])
     names = benchmark_names(args.names)

@@ -828,6 +828,32 @@ the check. It says which, and why; `--all` and `--self-hosted-only` choose for i
   the terminal ones, in about a quarter of the full check's time. It misses the other backends, the stress modes,
   and behavior, so it is never enough for a push, and a step that changes code rather than moving it needs more.
 
+### 4.2. One Heavy Job at a Time (`tools/exclusive`)
+
+Sessions in several worktrees share one machine, and a check or a timing is only as good as the machine is quiet:
+the arm64-whole tests' timeouts and the terminal tests fail under load, and times taken under load say nothing.
+So the heavy jobs take turns, on one lock that every worktree shares, `quest-exclusive.lock` in the git common
+directory (beside `quest-release`):
+
+- **`tools/check` and `benchmarks/mlton/run.py time`** take the lock themselves. Each waits for the job holding it,
+  saying whose it is, then waits until the 1-minute load average has stayed under 5 for 3 minutes, and holds the
+  lock until it ends. `--no-exclusive` runs at once, without either wait; it is for results that do not depend on
+  a quiet machine, such as a quick `--scale 0.05` timing while iterating or a narrow rerun of one suite to confirm a
+  fix, and never for the check before a push or for timings recorded in [benchmarks.md](benchmarks.md).
+- **`tools/exclusive COMMAND...`** does the same for any other command (`--no-quiet` without the quiet wait), and
+  `tools/exclusive --status` says who holds the lock and who waits for it, from `quest-exclusive.json` beside it.
+- **Builds and tests outside the lock yield to it:** `./quest`'s stage builds, `run_tests.py`, `run.py`'s other
+  commands, and `allocations.py` wait while another job holds the lock, so that they do not load the machine it is
+  timing. What runs under the lock is marked by `QUEST_EXCLUSIVE_HELD` in its environment, and neither waits on the
+  lock nor yields to it, so a check's own builds and tests run at once.
+- **Load explains some failures,** and `tools/check` runs them again: when the only failures are tests that timed
+  out and the terminal tests, each runs again alone, once, and the check passes if they all pass then. Any other
+  failure is reported as it is, and nothing is run again.
+
+The lock is a `flock`, released when its holder's process ends, however it ends; the status file's entries for
+processes that have ended are dropped when it is next read. `tests/python/test_exclusive.py` tests the lock, the
+status, the nesting, the yield, the quiet wait, and the choice of what to run again.
+
 ---
 
 ## 5. Test Suite Performance

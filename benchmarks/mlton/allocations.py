@@ -97,6 +97,9 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=3600.0, help="seconds a run may take")
     parser.add_argument("--clean", action="store_true", help="remove .build/ first, as run.py --clean does")
     args = parser.parse_args()
+    # Heavy, though counts need no quiet machine: it waits while another job
+    # holds the machine-wide lock (docs/testing.md section 4.2)
+    run.exclusive.yield_to_holder("allocations.py")
     names = run.benchmark_names(args.names)
     if args.clean:
         shutil.rmtree(run.BUILD_DIR, ignore_errors=True)

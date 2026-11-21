@@ -91,6 +91,11 @@ stale() {
 }
 
 if stale; then
+    # A stage build waits while another worktree's check or timing holds the
+    # machine-wide lock (docs/testing.md section 4.2); under it, it does not
+    if [ -z "$QUEST_EXCLUSIVE_HELD" ] && [ -x "$SCRIPT_DIR/tools/exclusive" ]; then
+        "$SCRIPT_DIR/tools/exclusive" --yield "./quest's stage build" || true
+    fi
     VERBOSE=""
     [ -n "$QUEST_VERBOSE" ] && VERBOSE="-v"
     mkdir -p "$BUILD/stage1" "$BUILD/stage2" || exit 1
