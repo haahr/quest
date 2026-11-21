@@ -12,10 +12,9 @@ allocates a two-word closure, `QAdaptClosure { fn, orig }`, each time the conver
 48.9 million of them, 4.6 percent of its allocations, more than one object per closure saved
 ([benchmarks.md](benchmarks.md) §32).
 
-**Where to start.** `benchmarks/mlton/allocations.py --sites` on the compiler's build (or a temporary counter by layout,
-as §32 used) for the conversions that make them; then whether a known function's could be static, as the thunk pass
-already makes a known function's adapter (`ir/thunks`), or whether the conversion could be hoisted out of the code that
-repeats it.
+**Where to start.** The design in [adapter-closures-plan.md](adapter-closures-plan.md): the counts by kind (§1), an
+imported member's adapter static (§2.1, 89 percent of the compiler's), a lambda made at the converted type (§2.3), a
+global's conversion made once (§2.2), and the steps (§3).
 
 **Done when.** The adapters the compiler makes most are static or made once, measured as §32 measures, or the idea is
 dropped with its measurement.
