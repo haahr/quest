@@ -1388,8 +1388,10 @@ export
                 (* var c = start; if c <= stop then loop L { let i = c; body;
                  * if c is stop then break L; c := c + 1 } (downto alike). The
                  * loop tests the bound before it steps, so a loop to maxInt
-                 * (or downto minInt) ends there rather than wrapping. The
-                 * bootstrap's for_loop (ir/lower.py) is the same *)
+                 * (or downto minInt) ends there rather than wrapping. Each
+                 * iteration binds i afresh, immutably, so a closure made in
+                 * the body captures that iteration's value, not the counter.
+                 * The bootstrap's for_loop (ir/lower.py) is the same *)
                 let start = value(l x.start none)
                 let stop = value(l x.stop none)
                 let counter = fresh(x.varName model.intType true)

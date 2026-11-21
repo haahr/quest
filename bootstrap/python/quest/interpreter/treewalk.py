@@ -704,19 +704,19 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             stop_val = eval_expr(stop, env)
             match (start_val, stop_val):
                 case (QInt(value=start_i), QInt(value=stop_i)):
-                    loop_env = env.push_scope()
-                    try:
-                        step = -1 if is_downto else 1
-                        cur = start_i
-                        while (cur <= stop_i) if not is_downto else (cur >= stop_i):
-                            loop_env.define(var_name, QInt(cur))
-                            try:
-                                eval_expr(body, loop_env)
-                            except _LoopExit:
-                                break
-                            cur += step
-                    finally:
-                        env = loop_env.pop_scope()
+                    step = -1 if is_downto else 1
+                    cur = start_i
+                    while (cur <= stop_i) if not is_downto else (cur >= stop_i):
+                        # A scope of its own for each iteration, so that a
+                        # closure made in the body keeps that iteration's
+                        # value, as lowering's Let does
+                        loop_env = env.push_scope()
+                        loop_env.define(var_name, QInt(cur))
+                        try:
+                            eval_expr(body, loop_env)
+                        except _LoopExit:
+                            break
+                        cur += step
                     return OK_VALUE
                 case _:
                     raise QuestRuntimeError("For loop bounds must evaluate to Int", offset=offset)

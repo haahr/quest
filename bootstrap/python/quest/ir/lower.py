@@ -819,8 +819,10 @@ class _Lowerer:
             if c <= stop then loop L { let i = c; body; if c is stop then break L; c := c + 1 } end
 
         The loop tests the bound before it steps, so a loop to maxInt (or
-        downto minInt) ends there rather than wrapping. The self-hosted
-        compiler's lowering (questlang/ir/lower.mod.quest) is the same."""
+        downto minInt) ends there rather than wrapping. Each iteration binds i
+        afresh, immutably, so a closure made in the body captures that
+        iteration's value, not the counter. The self-hosted compiler's
+        lowering (questlang/ir/lower.mod.quest) is the same."""
         start = self.value(e.start)
         stop = self.value(e.stop)
         counter = self.fresh(e.var_name, INT_TYPE, mutable=True)

@@ -203,7 +203,9 @@ Complex expressions (conditionals, loops, records, tuples, options) employ expli
 - `if ... then ... else ... end`
 - `while ... do ... end`
 - `for i = a upto b do ... end` and `for i = a downto b do ... end`: a `for` loop names exactly one direction, and
-  both bounds are inclusive (`ExprFor.is_downto`)
+  both bounds are inclusive (`ExprFor.is_downto`). The variable cannot be assigned, and is bound once per iteration,
+  so a closure made in the body keeps the value of the iteration that made it
+  (`tests/source/language/for_closures.quest`)
 - `try ... when ... else ... end`
 - `record ... end`, `tuple ... end`, `option ... end`
 
