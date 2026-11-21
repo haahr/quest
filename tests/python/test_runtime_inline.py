@@ -41,7 +41,7 @@ double quest_real_add_at(double a, double b, const char *loc);
 uint64_t quest_word_rotate(uint64_t w, int64_t count);
 bool quest_is_proxy(const void *p);
 struct QLayout;
-extern const struct QLayout quest_layout_closure;
+extern const struct QLayout quest_layout_adapt_closure;
 void *quest_alloc(size_t size, const struct QLayout *layout);
 
 int main(void) {
@@ -54,7 +54,7 @@ int main(void) {
     printf("%.1f\n", quest_real_add_at(1.5, 2.0, NULL));
     printf("%llu\n", (unsigned long long)quest_word_rotate(1, 63));
     printf("%d %d\n", (int)quest_is_proxy((const void *)1), (int)quest_is_proxy((const void *)8));
-    int64_t *p = (int64_t *)quest_alloc(16, &quest_layout_closure);
+    int64_t *p = (int64_t *)quest_alloc(16, &quest_layout_adapt_closure);
     printf("%d\n", p != NULL && p[0] == 0 && p[1] == 0);
     return 0;
 }
