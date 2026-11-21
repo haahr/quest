@@ -336,6 +336,9 @@ export
             else ok
         end
 
+    (* mapInOp for a statement's own fields (not its nested bodies): every
+     * variable clone copies there, binders and descriptor variables included,
+     * is renamed by f, so that a pass may rename at any stage *)
     let mapInStmt(s: Stmt f: Rename g: AtomMap): Ok =
         case s
             when sLet with x then
@@ -383,8 +386,35 @@ export
                 begin
                     x.value := g(x.value)
                     x.viewMap := optVar(x.viewMap f)
+                    for i = 0 upto {extent x.cases - 1} do x.cases[i].binder := optVar(x.cases[i].binder f) end
                 end
-            when sInspect with x then x.value := g(x.value)
+            when sInspect with x then
+                (* The variables clone copies: the witness's, and each case's
+                 * binders and descriptors and its arm's *)
+                begin
+                    x.value := g(x.value)
+                    if maybe.isSome(x.witness) then
+                        let w = maybe.unwrap(x.witness)
+                        x.witness := maybe.some(tuple let v = f(w.v) let symbols = w.symbols end)
+                    end
+                    for i = 0 upto {extent x.cases - 1} do
+                        let k = x.cases[i]
+                        k.binders := vars(k.binders f)
+                        k.descriptor := optDescriptor(k.descriptor f)
+                        if maybe.isSome(k.arm) then
+                            let arm = maybe.unwrap(k.arm)
+                            for j = 0 upto {extent arm.descriptors - 1} do
+                                let p = arm.descriptors[j]
+                                if maybe.isSome(p) then
+                                    let dp = maybe.unwrap(p)
+                                    arm.descriptors[j] := maybe.some(tuple
+                                        let source = descriptor(dp.source f) let target = descriptor(dp.target f)
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                end
             when sTry with x then
                 begin
                     x.exc := f(x.exc)
@@ -402,6 +432,7 @@ export
                 begin
                     x.exc := g(x.exc)
                     x.payload := mapOptAtom(x.payload g)
+                    x.descriptor := optDescriptor(x.descriptor f)
                 end
             when sReraise with x then x.exc := f(x.exc)
             else ok

@@ -66,24 +66,6 @@ the stress tier are unchanged.
 
 ---
 
-## The IR's renaming walk misses descriptors that cloning copies
-
-**Problem.** `walk.mapInStmt` (questlang/ir/walk.mod.quest, used by `replaceVarsInStmt`) renames an `sRaise`'s
-exception and payload but not its `descriptor`, and an `sInspect`'s value but not its `witness` or its cases'
-descriptors; `clone.copyStmt` copies all three. Variables inside those are therefore left unrenamed by any pass that
-renames through `walk`. It may be safe only because every such pass runs before descriptors are attached
-(`describe`), but nothing states or checks that. Found by the review in
-[compiler-refactoring-ideas.md](compiler-refactoring-ideas.md) §3.2.
-
-**Where to start.** Which passes call `replaceVarsInStmt` or `mapInStmt`, and at which stages; then either rename the
-missing fields, or have `verify` reject a descriptor at a stage before `describe` and say so at `mapInStmt`. The
-bootstrap's walk, which reflects over fields, is the other compiler to compare.
-
-**Done when.** `mapInStmt` renames every variable `clone` copies, or a check makes the stage argument hold; and
-§3.2's generic visitor, if taken, removes the question.
-
----
-
 ## `selects` reads predecessors after changing terminators
 
 **Problem.** `selectFunction` (questlang/ssa/passes/selects.mod.quest:106–126) computes `cfg.graph(f)` once and
