@@ -359,8 +359,8 @@ own closure (`((T (*)(...))(l_loop->fn))(l_loop->env, ...)`), so clang cannot tu
 
 *Done* in part: the inliner and contification (§7, [ir.md](ir.md) §8.6) turn such local loops into loops (mandelbrot
 0.15 of its time through C), the arm64 backend makes self tail calls jumps ([arm64.md](arm64.md) §3.7), and escape
-analysis (§9) removes allocations that do not leave their function. A closure and its environment are still two
-objects.
+analysis (§9) removes allocations that do not leave their function, and a closure and its environment are one
+object (§32).
 
 ### 3.3. Nothing is inlined across modules
 
@@ -3065,3 +3065,77 @@ and writes its output with `putString`.
 
 `io/lines` (libraries.md §3.3), which reads a line a character at a time through `reader.getChar`, gets the same
 gain.
+
+## 32. One object per closure (2026-11-20)
+
+A closure that captures anything was two objects, a `QClosure { fn, env }` and its environment; it is now one, its
+code pointer first and its descriptors and captures after it, the code taking the closure itself as its first
+argument (`9b9fefc5`, ABI 88; [c-representation.md](c-representation.md) §6.1–6.3). An indirect call loads one word
+instead of two, and a direct call passes the callee instead of loading its `env`. A second change lets escape analysis
+keep a closure on the stack when it is only passed to its own code (`cd257009`, [ssa.md](ssa.md) §4.2). This is the
+"One allocation per closure" of §3.2.
+
+Allocations were counted by layout (a temporary counter in the `allocations` mode: each allocation whose layout is
+`QClosure`, `QAdaptClosure`, `env_` or `closure_`), which needs no idle machine. Times are on arm64, `run.py time
+--clean --scale 0.25`, one run each, once the load average had been under 5 for three minutes (3.4 to 1.8 during the
+runs), each tree's compiler built by its own `./quest`: before (`833bd878`), the representation (`9b9fefc5`), and the
+escape rule (`cd257009`), the last two timed again together in a second session.
+
+**Allocations.**
+
+| Program | before | one object | ratio | closures and environments before | after |
+|---|--:|--:|--:|--:|--:|
+| ratio-regions | 8,626,739 | 5,268,878 | 0.611 | 3,357,861 + 3,358,162 | 3,358,162 |
+| knuth-bendix | 201,320,331 | 128,551,789 | 0.639 | 72,768,542 + 72,876,034 | 72,876,034 |
+| peek | 3,600,000,310 | 2,800,000,230 | 0.778 | 800,000,080 + 800,000,080 | 800,000,080 |
+| logic | 291,679,883 | 230,531,029 | 0.790 | 61,148,854 + 66,696,227 | 66,696,227 |
+| ray | 100,949,735 | 80,763,415 | 0.800 | 20,186,320 + 20,186,320 | 20,186,320 |
+| model-elimination | 1,532,839,215 | 1,238,469,800 | 0.808 | 301,102,375 + 303,266,717 | 303,266,717 |
+| boyer | 216,717,364 | 186,488,832 | 0.861 | 30,228,532 + 30,228,532 | 30,228,532 |
+| hamlet | 109,477,900 | 94,565,213 | 0.864 | 14,912,689 + 15,145,787 | 15,145,787 |
+| All 46, at `--scale 0.05` | 8,410,425,462 | 7,049,065,444 | 0.838 | 1,382,239,428 + 1,425,584,567 | |
+
+The counts are at `--scale 0.05`. A closure's environment and its closure become
+one object, so the count falls by the heap closures that had a heap environment: where environments outnumbered
+closures (count-graphs, tsp, zebra, logic), escape analysis had kept the closure on the stack, its environment
+escaping by being passed to the code, and those stay one heap object each. Bytes fall by the environment's header and
+the `env` word.
+
+**The compiler,** stage 2 building the driver (`compile`, from an empty build directory), the compiler of before
+and the new one compiling the same source: 1,096,954,740 allocations and 50.75 GB before, 1,056,399,005 and
+49.86 GB after (3.7 and 1.75 percent fewer). Of the 40.6M, 28.6M are closures; the rest are the compiler's own
+allocations for the SSA it builds, one load fewer at each indirect call. 48.9M closures remain that merging leaves
+alone: adapt plans' (`QAdaptClosure`, 4.6 percent of the build's allocations), which have no environment of their
+own. The build's time did not move: 65 s before, 64 s after, one run each.
+
+**Times.** The geometric mean of the 46 ratios, after over before, is 0.980. The programs that moved by more than 2
+percent:
+
+| Program | n | before | after | after / before |
+|---|--:|--:|--:|--:|
+| ratio-regions | 384 | 4.21 | 3.62 | 0.860 |
+| zern | 4096 | 4.85 | 4.21 | 0.868 |
+| peek | 48 | 133.06 | 116.58 | 0.876 |
+| logic | 64 | 9.76 | 8.75 | 0.897 |
+| hamlet | 96 | 7.02 | 6.47 | 0.922 |
+| vliw | 256 | 5.79 | 5.45 | 0.941 |
+| model-elimination | 1 | 15.92 | 15.29 | 0.960 |
+| boyer | 3072 | 19.00 | 18.31 | 0.964 |
+| life | 8 | 8.96 | 8.64 | 0.964 |
+| mlyacc | 768 | 6.13 | 5.97 | 0.974 |
+| lexgen | 384 | 5.97 | 5.84 | 0.978 |
+| string-concat | 64 | 2.45 | 2.39 | 0.976 |
+| tsp | 4 | 11.10 | 11.44 | 1.031 |
+
+**The escape rule** (a closure passed to its own code is not an escape, [ssa.md](ssa.md) §4.2) removes 0.054
+percent of the suite's allocations (7,049,065,444 to 7,045,244,634): tsp's 12,664,859 to 10,567,708 (16.6 percent),
+simple's 0.49, count-graphs' 0.36, pidigits' 3.2 (of 626,881). Its geometric mean against the representation alone,
+timed together, is 1.0004; tsp went from 11.45 to 10.95 s (0.956), every other program within 2.5 percent, mlyacc's
+2.5 with its allocations unchanged. The plan had counted on 0.7 percent: the closures whose environments escaped only
+by being passed to the code, but most of them are passed in a tail call, as count-graphs' `outer` tail-calls the
+closure it makes, and a tail call's arguments outlive the caller's frame. A first version that applied the rule in a
+function with a tail call cost that function its tail calls (`tailCalls` makes none where a slot's address is passed
+to a call): life's `nthgen` recursed instead, 8 percent slower, so the rule now leaves such functions, and those that
+call themselves, alone. It is kept, being about 100 lines with a unit test (`ssa_escape`), but tsp is the only program
+it helps.
+
