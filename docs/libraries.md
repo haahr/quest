@@ -1242,7 +1242,7 @@ import
     word: Word
 export
     error: Exception
-    Def Regression = Record slope: Real intercept: Real end
+    Def Regression = Tuple slope: Real intercept: Real end
     fromInts(it: iter.T(Int)): iter.T(Real)
     fsum(it: iter.T(Real)): Real
     mean(it: iter.T(Real)): Real
