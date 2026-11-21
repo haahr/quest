@@ -994,8 +994,7 @@ end
 
 ### 1.16. `util/lazy : util/Lazy`
 
-A value computed the first time it is asked for, and kept, as OCaml's `Lazy` and Rust's `LazyCell`
-([lazy-memo-plan.md](lazy-memo-plan.md)):
+A value computed the first time it is asked for, and kept, as OCaml's `Lazy` and Rust's `LazyCell`:
 
 ```quest
 let table = lazy.make(fun(): Array(Int) buildTable());
@@ -1014,6 +1013,9 @@ let table = lazy.make(fun(): Array(Int) buildTable());
   first time the function it returns is. `isForced` and `peek` look without forcing.
 - **Cost:** `make` allocates the value and its pending state, and the first `force` its forced state; a forced value
   costs a call, a tag test, and a load.
+- **Names:** `fromValue` is OCaml's `from_val` spelled out, naming its source as `hashMap.fromEntries` does; `value`
+  would read as an accessor (Kotlin's `Lazy.value` forces), and a bare `from` as a conversion, inviting `from(f)` for
+  `make(f)`, which type-checks. Lazy streams are left to `util/iter`.
 
 `tests/source/stdlib/lazy_operations.quest` tests that the function runs once and on the first force, each operation,
 a raise and the retry after it, and `cycle`.
@@ -1040,7 +1042,7 @@ end
 ### 1.17. `util/memo : util/Memo`
 
 A function of one argument wrapped with a table of the results it has returned, as Python's `functools.cache` and
-`lru_cache` ([lazy-memo-plan.md](lazy-memo-plan.md)), keyed by an `equal` and a `hash` as `collections/hashMap` is:
+`lru_cache`, keyed by an `equal` and a `hash` as `collections/hashMap` is:
 
 ```quest
 let area = memo.memoize(fun(s: String): Int slowArea(s) stringOp.equal hash.string);
@@ -1062,6 +1064,11 @@ let fib = memo.asFunction(memo.makeRecursive(fun(self: All(n: Int) Int n: Int): 
 - **The bounded caches are a `collections/linkedHashMap` (§2.9) in the order of use:** a hit moves its key to the end,
   a miss at capacity pops the first.
 - **Cost:** a hit is a closure call, the key's hash, and a hash map lookup; bounded, a second lookup and a relinking.
+- **`make`, not `new`,** as `iter.make` and `lazy.make`: a value built from the functions given, where `new` makes an
+  empty container the caller fills.
+- **Left out:** expiry by time (a caller can `forget`), weak keys or values (the collector has none), and detecting a
+  recursive call for the key in progress, which would cost a set of keys per cache on every miss for a mistake the
+  stack overflow already reports.
 
 `tests/source/stdlib/memo_operations.quest` tests each constructor, `fib` of 80 in 81 calls, a raise, the least
 recently used order through hits, `forget`, and `clear`, a key of two values, and the error for a capacity below 1.
@@ -1707,11 +1714,11 @@ end
 
 ### 2.9. `collections/linkedHashMap : collections/LinkedHashMap`
 
-A hash map with an order of its own, as Python's `OrderedDict` and Java's `LinkedHashMap`
-([lazy-memo-plan.md](lazy-memo-plan.md)): keys are kept in the order they were inserted, and any key can be moved to
-either end, and the first or last taken off, in constant time. `hashMap` keeps insertion order too, but cannot reorder
-a key or take the first off cheaply; this is the map for a least recently used cache (`util/memo`'s bounded caches),
-a queue keyed by value, or anything else whose order changes after insertion.
+A hash map with an order of its own, as Python's `OrderedDict` and Java's `LinkedHashMap`: keys are kept in the order
+they were inserted, and any key can be moved to either end, and the first or last taken off, in constant time.
+`hashMap` keeps insertion order too, but cannot reorder a key or take the first off cheaply, since a deleted entry
+stays in its dense arrays until a rebuild; this is the map for a least recently used cache (`util/memo`'s bounded
+caches), a queue keyed by value, or anything else whose order changes after insertion.
 
 - **Only the operations that say so change the order.** `get`, `find`, and `contains` do not, and inserting a key
   already present changes its value and leaves it in place, as in Python's `OrderedDict`; Java's access order, which
