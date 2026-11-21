@@ -84,3 +84,77 @@ fault gone.
 
 ---
 
+
+## A failed subtyping alternative leaves its metavariables solved
+
+**Problem.** `subtyping.solve` assigns a metavariable in place (`x.meta.instance := some(t)`), and nothing records the
+assignment to undo it. `step` tries a type variable's bound first and falls back to the structural rules when that
+fails (`prove(bound sup)`, then `structural(sub sup …)`, types/subtyping.mod.quest:321–326); a metavariable solved
+inside the failed attempt stays solved, so the fallback, and a record's or variant's later fields, are checked against
+a solution that no proof stands behind. Found by reading the code in the review behind
+[compiler-refactoring-ideas.md](compiler-refactoring-ideas.md) (2026-11-20); no program is known to go wrong.
+
+**Where to start.** A program where the bound's proof solves a metavariable and then fails, typechecked by both
+compilers (`./quest --stop-after typecheck`, `./questboot --stop-after typecheck`), and whether the bootstrap's
+subtyping has the same shape. The fix is a trail of assignments with `mark()` and `undoTo(mark)`, undone when an
+alternative fails (OCaml's `Btype.snapshot`/`backtrack`, Lean's `MetavarContext` save and restore); assignments are
+made in two places, `subtyping.solve` and `model`'s path compression (types/model.mod.quest:766).
+
+**Done when.** Such a program typechecks as it should in both compilers, with a test, or the review finds that no
+metavariable can be solved in a failed alternative and says why in a comment at `step`.
+
+---
+
+## The C printer decides where a collection can happen by reading its own C
+
+**Problem.** Whether an emitted line may allocate, and so collect, is decided by scanning its text for an identifier
+right before a parenthesis (`callsFunction`, questlang/codegen/c/printer.mod.quest:330–352), with `sizeof` and lines
+starting `quest_barrier` excepted. `emit` then logs each object under initialization (`quest_barrier`) before such a
+line. The collector's correctness therefore depends on the spelling of generated C: a call that reaches the
+allocator without that shape (a macro used without parentheses, or a call through a cast function pointer, whose `(`
+follows a `)`) misses its barrier, which is a fault; a non-call with the shape (a field macro, `f(` inside a string
+literal) only adds a barrier that costs time.
+
+**Where to start.** Whether any emitted line today calls without the shape, by comparing the lines `callsFunction`
+accepts with the calls the printer makes (`QUEST_COLLECTOR_STRESS` runs, [collector.md](collector.md), would show a
+missed barrier). The structural fix is the printer recording calls as it builds them, the first step of
+[compiler-refactoring-ideas.md](compiler-refactoring-ideas.md) §6.4.
+
+**Done when.** Barriers are placed from what the printer knows it called, not from the text, and the C goldens and
+the stress tier are unchanged.
+
+---
+
+## The IR's renaming walk misses descriptors that cloning copies
+
+**Problem.** `walk.mapInStmt` (questlang/ir/walk.mod.quest, used by `replaceVarsInStmt`) renames an `sRaise`'s
+exception and payload but not its `descriptor`, and an `sInspect`'s value but not its `witness` or its cases'
+descriptors; `clone.copyStmt` copies all three. Variables inside those are therefore left unrenamed by any pass that
+renames through `walk`. It may be safe only because every such pass runs before descriptors are attached
+(`describe`), but nothing states or checks that. Found by the review in
+[compiler-refactoring-ideas.md](compiler-refactoring-ideas.md) §3.2.
+
+**Where to start.** Which passes call `replaceVarsInStmt` or `mapInStmt`, and at which stages; then either rename the
+missing fields, or have `verify` reject a descriptor at a stage before `describe` and say so at `mapInStmt`. The
+bootstrap's walk, which reflects over fields, is the other compiler to compare.
+
+**Done when.** `mapInStmt` renames every variable `clone` copies, or a check makes the stage argument hold; and
+§3.2's generic visitor, if taken, removes the question.
+
+---
+
+## `selects` reads predecessors after changing terminators
+
+**Problem.** `selectFunction` (questlang/ssa/passes/selects.mod.quest:106–126) computes `cfg.graph(f)` once and
+goes on using `g.preds` in `through` after `convert` has rewritten earlier blocks' terminators, so later blocks see a
+graph that is no longer the function's. It is safe only because an arm `through` accepts has exactly one
+predecessor, which a conversion of a different block cannot change; nothing states this.
+
+**Where to start.** Confirm the argument (a conversion rewrites only its own block's terminator, and an arm block's
+only predecessor is that block), then state it in a comment at `selectFunction`, or recompute the graph after each
+conversion. A per-function analysis cache cleared when a pass changes the CFG
+([compiler-refactoring-ideas.md](compiler-refactoring-ideas.md) §5.5) would make the question explicit.
+
+**Done when.** The argument is written down at the loop, or the graph is recomputed, with the ssa goldens unchanged.
+
+---
