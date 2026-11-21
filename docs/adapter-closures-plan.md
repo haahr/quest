@@ -126,8 +126,10 @@ Each step its tests, the compiler's fixed point (`run_tests.py --self-hosting --
 C), the counts of §1 again, and a commit; `tools/check` once at the end, then the push.
 
 1. **Imported members' adapters static** (§2.1): the compiler's build should lose about 43.6 million allocations
-   (4.1 percent). A test converting imported functions of each kind (a library function, one the program's own module
-   exports) at generic types, run on every backend.
+   (4.1 percent). **Done:** 48.6 to 5.2 million adapter closures, the build 1,055.8 to 1,012.2 million allocations,
+   stage 2 rebuilt from an empty `.build/quest-stages` (a stage 2 whose unchanged units were cached from the compiler
+   before counted none fewer). Its test, `language/imported_adapters`, converts library functions at generic types
+   (comparators, hashes, equality) in a loop and in a function called often, on every backend.
 2. **Lambdas made at the converted type** (§2.3): simple's 13.7 million and the compiler's 5.3 million. A test of a
    lambda converted once, at a type parameter and at a supertype of a record, with captures of each kind.
 3. **Globals' conversions made once** (§2.2): model-elimination's 6.7 million. A test of a global closure converted in

@@ -1,0 +1,51 @@
+(* Imported functions converted to generic types (docs/ir.md section 8.4.1):
+ * a library function passed where a generic function takes a function of a
+ * type parameter, which converts it to that type's uniform signature. Its
+ * adapter is the static closure of a function calling the member directly,
+ * so each conversion, in a loop or in a function called often, allocates
+ * nothing; the results are as before. Comparators and hashes of each kind:
+ * sort.intCompare and sort.stringCompare at a type parameter, hash.int and
+ * hash.string with stringOp.equal in hash maps, sort.reverse of an imported
+ * comparator, and a conversion inside a loop. *)
+
+import writer : Writer;
+import conv : Conv;
+import stringOp = string : StringOp;
+import util/sort : util/Sort;
+import util/hash : util/Hash;
+import collections/hashMap : collections/HashMap;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+let intEqual(a: Int b: Int): Bool = a is b;
+
+(* Sorting at a type parameter *)
+let ints = array of 5 3 9 1 7 end;
+sort.sort(ints sort.intCompare);
+let words = array of "pear" "apple" "fig" end;
+sort.sort(words sort.stringCompare);
+print("sorted " <> conv.int(ints[0]) <> " " <> conv.int(ints[4]) <> " " <> words[0] <> " " <> words[2]);
+sort.sort(ints sort.reverse(:Int sort.intCompare));
+print("reversed " <> conv.int(ints[0]) <> " " <> conv.int(ints[4]));
+
+(* Hash maps made in a function called many times, each converting hash.int
+ * or hash.string and stringOp.equal *)
+let counted(n: Int): Int =
+    begin
+        let m = hashMap.new(:Int :Int intEqual hash.int)
+        let names = hashMap.new(:String :Int stringOp.equal hash.string)
+        for i = 0 upto {n - 1} do
+            hashMap.insert(m i % 7 i)
+            hashMap.insert(names "k" <> conv.int(i % 5) i)
+        end
+        hashMap.size(m) + hashMap.size(names)
+    end;
+let var total = 0;
+for i = 1 upto 2000 do total := total + counted(i % 20) end;
+print("maps " <> conv.int(total));
+
+(* A conversion in a loop: a search with an imported comparator at each step *)
+let sortedInts = array of 1 3 5 7 9 11 end;
+let var found = 0;
+for i = 0 upto 999 do found := found + sort.bisectRight(sortedInts i % 12 sort.intCompare) end;
+print("bisected " <> conv.int(found));

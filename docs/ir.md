@@ -587,7 +587,11 @@ printer makes its thunks itself.
   closure of the adapter whose environment is the converted closure. A conversion of a known function (a variable
   bound to a closure without captures or type arguments, or a copy of one) is instead the static closure of an
   adapter of its own, without an environment, which calls the function directly: so a module's exported function
-  (§8.5) whose interface's type differs from its own calls the adapter directly, and the adapter the function.
+  (§8.5) whose interface's type differs from its own calls the adapter directly, and the adapter the function. So is
+  a conversion of an imported module's member of function type (a variable bound by `member` of an import), whose
+  adapter calls the member as any call of an imported member does (through `qv_<module>_<member>`): a member never
+  changes once its module is initialized, which is before its importer's code runs. `hashMap.new(intEqual
+  hash.int)` and `sort.sort(a sort.intCompare)` allocate nothing for their functions (`language/imported_adapters`).
 - **A type application whose instance is a function** is a closure of its thunk (`qa_type_app`), capturing the function
   applied and taking the type arguments, as closure conversion's lifted functions take their enclosing functions' type
   parameters: the thunk's type parameters are the applied function's first ones, supplied by the closure, then the

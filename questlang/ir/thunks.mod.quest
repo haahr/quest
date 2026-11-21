@@ -31,6 +31,8 @@ export
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
     let isOk(t: Type): Bool = shapes.kindIs(shapes.shape(t) shapes.shapeOk)
+    let isFunctionType(t: Type): Bool =
+        shapes.kindIs(shapes.shape(t) shapes.shapeFun) orif shapes.kindIs(shapes.shape(t) shapes.shapeAll)
     let okAtom(): Atom =
         nodes.atomOfConst(tuple let value = option constOk of nodes.ConstValue end let shape = shapes.shape(model.okType) end)
     let descVar(v: Variable): Descriptor = option descVar of Descriptor with let v = v end
@@ -63,6 +65,15 @@ export
      * its adapter *)
     Let Adapted = Tuple fields: Array(maybe.T(Plan)) thunkParams: Array(nodes.DescriptorParam) end
 
+    (* What a variable is known to hold, so that its adapter calls it without
+     * holding it: a closure of a function, without captures or type arguments,
+     * or an imported module's member, which never changes once its module is
+     * initialized, before the importer's code runs *)
+    Def Known = Option
+        knownFunction with f: Function end
+        knownMember with i: nodes.Import member: String type: Type end
+    end
+
     Let Thunker = Tuple
         unit: nodes.Unit
         (* The thunks made so far, by key (typeKey, layoutKey), so that
@@ -72,8 +83,8 @@ export
          * id, and their symbols *)
         externals: hashMap.T(Int String)
         (* The variables bound to closures without captures or type
-         * arguments, by id, and their functions *)
-        known: hashMap.T(Int Function)
+         * arguments, or to imported modules' members, by id *)
+        known: hashMap.T(Int Known)
         (* Each adapt plan's fields and thunk parameters, by plan id, once its
          * adapter is made *)
         adapted: hashMap.T(Int Adapted)
@@ -197,12 +208,17 @@ export
      * takes the target's type parameters (the plan's thunk parameters), passes
      * them on to the closure, converting each argument and the result by the
      * plan's fields. The adapter of a known function, a closure of it without
-     * captures or type arguments, has no environment: it calls the function
-     * directly, and its closure is static. *)
-    let adapter(t: Thunker plan: Plan a: Adapted known: maybe.T(Function)): Function =
+     * captures or type arguments, or of an imported member, has no
+     * environment: it calls the function, or the member as any call of an
+     * imported member does, directly, and its closure is static. *)
+    let adapter(t: Thunker plan: Plan a: Adapted known: maybe.T(Known)): Function =
         begin
-            let knownKey = if maybe.isSome(known) then "\nknown " <> conv.int(maybe.unwrap(known).id)
-                else "" end
+            let knownKey = if maybe.isNone(known) then ""
+                else case maybe.unwrap(known)
+                    when knownFunction with k then "\nknown " <> conv.int(k.f.id)
+                    when knownMember with k then "\nmember " <> k.i.canonicalPath <> "\n" <> k.member
+                end
+            end
             let key = "adapt\n" <> typeKey(plan.source) <> "\n" <> typeKey(plan.target) <> "\n" <> layoutKey(plan.layout)
                 <> knownKey
             let found = hashMap.get(t.thunks key)
@@ -215,13 +231,28 @@ export
                     let orig = nodes.newVar("orig" plan.source false)
                     let params = paramsOf(target)
                     let stmts = vector.new(:Stmt)
-                    if maybe.isSome(known) then
-                        vector.append(stmts nodes.letStmt(orig closureOp(maybe.unwrap(known)
-                            array of :Atom end array of :Type end array of :Descriptor end)))
+                    let member = if maybe.isNone(known) then maybe.none(:Known)
+                        else case maybe.unwrap(known)
+                            when knownFunction with k then
+                                vector.append(stmts nodes.letStmt(orig closureOp(k.f
+                                    array of :Atom end array of :Type end array of :Descriptor end)))
+                                maybe.none(:Known)
+                            when knownMember then known
+                        end
                     end
                     let args = forwarded(stmts params a.fields)
-                    let called = nodes.call(maybe.some(orig) typeVariables(typeParams) args
-                        maybe.none() maybe.none() maybe.none())
+                    let called = if maybe.isSome(member) then
+                        case maybe.unwrap(member)
+                            when knownMember with k then
+                                nodes.call(maybe.none() typeVariables(typeParams) args
+                                    maybe.some(option refImport of nodes.ModuleRef with let i = k.i end)
+                                    maybe.some(k.member) maybe.some(k.type))
+                            else nodes.call(maybe.some(orig) typeVariables(typeParams) args
+                                maybe.none() maybe.none() maybe.none())
+                        end
+                    else
+                        nodes.call(maybe.some(orig) typeVariables(typeParams) args maybe.none() maybe.none() maybe.none())
+                    end
                     case called when opCall with c then c.descriptors := descriptorsOf(a.thunkParams) else ok end
                     let last = if extent a.fields > 0 then a.fields[extent a.fields - 1] else maybe.none(:Plan) end
                     finish(stmts called source.result target.result last)
@@ -361,7 +392,7 @@ export
 
     (* The function a variable is known to be a closure of, without captures or
      * type arguments *)
-    let knownOf(t: Thunker a: Atom): maybe.T(Function) =
+    let knownOf(t: Thunker a: Atom): maybe.T(Known) =
         case a
             when atomVar with x then hashMap.get(t.known x.v.id)
             when atomConst then maybe.none()
@@ -378,7 +409,7 @@ export
                 when planAdapt then
                     if maybe.isNone(p.thunk) then
                         let a = adaptedOf(t p)
-                        p.thunk := maybe.some(adapter(t p a maybe.none(:Function)))
+                        p.thunk := maybe.some(adapter(t p a maybe.none(:Known)))
                         p.fields := array of :maybe.T(Plan) end
                         p.thunkParams := array of :nodes.DescriptorParam end
                     end
@@ -482,12 +513,25 @@ export
                         let known = case x.value
                             when opMakeClosure with c then
                                 if {extent c.captures is 0} andif {extent c.typeArgs is 0} then
-                                    maybe.some(c.code)
+                                    maybe.some(option knownFunction of Known with let f = c.code end)
                                 else
-                                    maybe.none(:Function)
+                                    maybe.none(:Known)
                                 end
                             when opAtom with c then knownOf(t c.atom)
-                            else maybe.none(:Function)
+                            when opModuleMember with m then
+                                (* An imported member of function type; the
+                                 * unit's own module's members are its
+                                 * globals, which may still be unbound *)
+                                case m.moduleRef
+                                    when refImport with r then
+                                        if maybe.isSome(m.member) andif isFunctionType(x.v.type) then
+                                            maybe.some(option knownMember of Known with
+                                                let i = r.i let member = maybe.unwrap(m.member) let type = x.v.type
+                                            end)
+                                        else maybe.none(:Known) end
+                                    when refModule then maybe.none(:Known)
+                                end
+                            else maybe.none(:Known)
                         end
                         if maybe.isSome(known) andif not(x.v.isMutable) then
                             hashMap.insert(t.known x.v.id maybe.unwrap(known))
@@ -533,7 +577,7 @@ export
                 let unit = unit
                 let thunks = hashMap.new(:String :Function stringOp.equal hash.string)
                 let externals = hashMap.new(:Int :String intEqual hash.int)
-                let known = hashMap.new(:Int :Function intEqual hash.int)
+                let known = hashMap.new(:Int :Known intEqual hash.int)
                 let adapted = hashMap.new(:Int :Adapted intEqual hash.int)
             end
             let bodies = vector.new(:Body)
