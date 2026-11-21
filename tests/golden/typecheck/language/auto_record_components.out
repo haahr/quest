@@ -1,0 +1,166 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetType 'W' :kind TYPE)
+    (TypedLetValue 'w' :type W
+      :value (TypedAuto :Int :type W
+        :payload (TypedTuple :type Tuple r: Record p: Int end end
+          :elements (
+            (TypedRecord :type Record p: Int end
+              :fields (
+                (TypedRecordField 'p'
+                  :value (TypedInt 5 :type Int))
+              ))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInspect :type String
+            :target (TypedVar 'w' :type W)
+            :branches (
+              (TypedInspectBranch match=Int exact
+                :body (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedSelect 'p' :type Int
+                      :target (TypedSelect 'r' :type Record p: Int end
+                        :target (TypedVar 'arm' :type Tuple r: Record p: Int end end)))
+                  )))
+            )
+            :else (TypedString 'other' :type String))
+        )))
+    (TypedLetType 'Wide' :kind TYPE)
+    (TypedLetType 'Narrow' :kind TYPE)
+    (TypedLetValue 'show' :type Fun(a: Narrow): String
+      :value (TypedFun :params (('a' : Narrow)) :type Fun(a: Narrow): String
+        :body (TypedInspect :type String
+          :target (TypedVar 'a' :type Narrow)
+          :branches (
+            (TypedInspectBranch match=Int exact
+              :body (TypedInfix '<>' :type String
+                :left (TypedString 'int ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedSelect 'p' :type Int
+                        :target (TypedSelect 'r' :type Record p: Int end
+                          :target (TypedVar 'arm' :type Tuple r: Record p: Int end k: Int end)))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedSelect 'k' :type Int
+                          :target (TypedVar 'arm' :type Tuple r: Record p: Int end k: Int end))
+                      ))))))
+            (TypedInspectBranch match=String exact
+              :body (TypedInfix '<>' :type String
+                :left (TypedString 'string ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedSelect 'p' :type String
+                    :target (TypedSelect 'r' :type Record p: String end
+                      :target (TypedVar 'arm' :type Tuple r: Record p: String end k: Int end)))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedSelect 'k' :type Int
+                          :target (TypedVar 'arm' :type Tuple r: Record p: String end k: Int end))
+                      ))))))
+          )
+          :else (TypedString 'other' :type String))))
+    (TypedLetValue 'x' :type Wide
+      :value (TypedAuto :Int :type Wide
+        :payload (TypedTuple :type Tuple r: Record p: Int q: Int end k: Int end
+          :elements (
+            (TypedRecord :type Record p: Int q: Int end
+              :fields (
+                (TypedRecordField 'p'
+                  :value (TypedInt 6 :type Int))
+                (TypedRecordField 'q'
+                  :value (TypedInt 7 :type Int))
+              ))
+            (TypedInt 8 :type Int)
+          ))))
+    (TypedLetValue 'y' :type Wide
+      :value (TypedAuto :String :type Wide
+        :payload (TypedTuple :type Tuple r: Record p: String q: Int end k: Int end
+          :elements (
+            (TypedRecord :type Record p: String q: Int end
+              :fields (
+                (TypedRecordField 'p'
+                  :value (TypedString 's' :type String))
+                (TypedRecordField 'q'
+                  :value (TypedInt 9 :type Int))
+              ))
+            (TypedInt 10 :type Int)
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'show' :type Fun(a: Narrow): String)
+            :args (
+              (TypedVar 'x' :type Wide)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'show' :type Fun(a: Narrow): String)
+            :args (
+              (TypedVar 'y' :type Wide)
+            ))
+        )))
+    (TypedLetValue 'narrowed' :type Array(Wide)
+      :value (TypedArrayRep :type Array(Wide)
+        :count (TypedInt 2 :type Int)
+        :init (TypedVar 'x' :type Wide)))
+    (TypedExprStmt
+      :expr (TypedIndexAssign
+        :target (TypedVar 'narrowed' :type Array(Wide))
+        :index (TypedInt 1 :type Int)
+        :value (TypedVar 'y' :type Wide)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'show' :type Fun(a: Narrow): String)
+            :args (
+              (TypedIndex :type Wide
+                :target (TypedVar 'narrowed' :type Array(Wide))
+                :index (TypedInt 1 :type Int))
+            ))
+        )))
+  ))

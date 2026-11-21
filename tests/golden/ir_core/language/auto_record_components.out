@@ -1,0 +1,82 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @10:45
+      let %2: String = prim <>(s, "\n") @10:59
+      let %3: Ok = call writer.putString(%1, %2) @10:28
+      return %3
+    }
+  }
+  let r: Record p: Int end = record(p = 5) @13:27
+  let %4: Tuple r: Record p: Int end end = tuple(r) @13:22
+  let w: W = auto[Int](%4) @13:12
+  join k1(r.1: String) {
+    do call print(r.1) @14:1
+    funs {
+      fun show(a: Narrow): String {
+        join k2(r.2: String) {
+          return r.2
+        } in {
+          inspect a { @19:5
+            case Int exact (arm: Tuple r: Record p: Int end k: Int end): {
+              let %5: Record p: Int end = tuple_field(arm, 0) @20:47
+              let %6: Int = record_field(%5, p) @20:47
+              let %7: String = call conv.int(%6) @20:38
+              let %8: Int = tuple_field(arm, 1) @20:75
+              let %9: String = call conv.int(%8) @20:66
+              let %10: String = prim <>(" ", %9) @20:59
+              let %11: String = prim <>(%7, %10) @20:38
+              let %12: String = prim <>("int ", %11) @20:28
+              jump k2(%12) @19:5
+            }
+            case String exact (arm.1: Tuple r: Record p: String end k: Int end): {
+              let %13: Record p: String end = tuple_field(arm.1, 0) @21:44
+              let %14: String = record_field(%13, p) @21:44
+              let %15: Int = tuple_field(arm.1, 1) @21:71
+              let %16: String = call conv.int(%15) @21:62
+              let %17: String = prim <>(" ", %16) @21:55
+              let %18: String = prim <>(%14, %17) @21:44
+              let %19: String = prim <>("string ", %18) @21:31
+              jump k2(%19) @19:5
+            }
+            else: {
+              jump k2("other") @19:5
+            }
+          }
+        }
+      }
+    }
+    let r.3: Record p: Int q: Int end = record(p = 6, q = 7) @24:30
+    let k: Int = 8 @24:53
+    let %20: Tuple r: Record p: Int q: Int end k: Int end = tuple(r.3, k) @24:25
+    let x: Wide = auto[Int](%20) @24:15
+    let r.4: Record p: String q: Int end = record(p = "s", q = 9) @25:33
+    let k.1: Int = 10 @25:58
+    let %21: Tuple r: Record p: String q: Int end k: Int end = tuple(r.4, k.1) @25:28
+    let y: Wide = auto[String](%21) @25:15
+    let %22: String = call show(x) @26:7
+    do call print(%22) @26:1
+    let %23: String = call show(y) @27:7
+    do call print(%23) @27:1
+    let narrowed: Array(Wide) = array_rep(2, x) @28:16
+    store narrowed[1] := y @29:1
+    let %24: Wide = index(narrowed, 1) @30:12
+    let %25: String = call show(%24) @30:7
+    do call print(%25) @30:1
+  } in {
+    inspect w { @14:7
+      case Int exact (arm.2: Tuple r: Record p: Int end end): {
+        let %26: Record p: Int end = tuple_field(arm.2, 0) @14:49
+        let %27: Int = record_field(%26, p) @14:49
+        let %28: String = call conv.int(%27) @14:40
+        jump k1(%28) @14:7
+      }
+      else: {
+        jump k1("other") @14:7
+      }
+    }
+  }
+}
+
