@@ -143,7 +143,9 @@ C), the counts of §1 again, and a commit; `tools/check` once at the end, then t
    function converting a global before it is bound reads an unbound value before and after, and is not tested.
 4. **Repeated conversions** (§2.4): the counts by site and original closure; if a site converts one closure many
    times, the loop hoisting, with a test of a conversion in a loop and in a branch of one; if none does, the counts
-   are recorded and the stage ends there.
+   are recorded and the stage ends there. **Done, without hoisting:** after steps 1–3 the compiler's build makes no
+   adapter closures, and the 46 MLton benchmarks 147,198 in all (mlyacc 99,176, vliw 27,693, lexgen 19,481, simple
+   816) of 7,023 million allocations, too few for hoisting or a cache to matter.
 5. **The measurement:** the MLton benchmarks' times at `--scale 0.25` and the compiler's build, before and after, in
    benchmarks.md as a section of its own; the plan then retires into ir.md §8.4.1 and that section.
 
