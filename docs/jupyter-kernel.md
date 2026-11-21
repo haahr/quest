@@ -9,6 +9,7 @@ compiled by the JIT ([jit.md](jit.md)), with the session's bindings kept from ce
 - **`io/display`** and `io/readline` for a notebook's displays and lines (§4).
 - **Interrupts** that end a cell and keep its session (§5).
 - **A Pygments lexer** for exported notebooks (§6).
+- **Open work** nobody has started: highlighting in the editor, a notebook tried by hand, and later uses (§8).
 
 ---
 
@@ -149,7 +150,7 @@ default meaning there.
 but not setuptools, so `install.py` builds it into a wheel itself (`quest_pygments`, its entry point in
 `pygments.lexers`), and installs it with pip. nbconvert then highlights the Quest cells of a notebook that ran (whose
 `language_info` names the lexer) when it exports one. In the notebook itself, JupyterLab 4's editor, CodeMirror 6,
-would need a JupyterLab extension (tasklist.md).
+would need a JupyterLab extension (§8.1).
 
 ## 7. Testing
 
@@ -161,4 +162,44 @@ Two unit checks of the self-hosted suite (`UNIT_CHECKS`; testing.md §2.3), whic
 - `tests/self-hosted/jupyter_kernel.py` drives the kernel through `jupyter_client` from a kernelspec in a temporary
   `JUPYTER_PATH`, and checks the lexer, under jupyterlab's Python; it is skipped, saying so, without one.
 
-Neither runs JupyterLab's page, which needs its token to sign in to: a notebook by hand is left to its user.
+Neither runs JupyterLab's page, which needs its token to sign in to: a notebook by hand is left to its user (§8.2).
+
+## 8. Open Work
+
+Work nobody has started yet, each item saying what is missing, where to start, and when it is done.
+
+### 8.1. Highlighting in JupyterLab's Editor
+
+**Problem.** The kernel names a Pygments lexer (§6), which nbconvert uses when it exports a notebook, but JupyterLab's
+own editor, CodeMirror 6, highlights a language only through a JupyterLab extension, so Quest cells show as plain text
+while they're edited.
+
+**Reproduce.** `tools/jupyter/install`, then open a Quest notebook in JupyterLab.
+
+**Where to start.** A JupyterLab 4 extension (TypeScript, built with jupyterlab's extension tools) registering a
+CodeMirror 6 language for `text/x-quest`, its tokens those of `tools/jupyter/quest_lexer.py`, installed by
+`tools/jupyter/install` with the lexer.
+
+**Done when.** A Quest cell's keywords, comments, and strings are highlighted as it's typed in JupyterLab.
+
+### 8.2. A Notebook in JupyterLab's Page
+
+**Problem.** The kernel's tests (§7) drive it through `jupyter_client` and nbconvert, as a notebook does, but nobody
+has yet run a notebook in JupyterLab's page itself: binding, printing, a failing cell, Tab completion of `vector.`
+(after importing it), Shift-Tab inspection, `io/display`'s HTML and PNG, a cell reading a line, and the interrupt
+button on an endless loop (the session survives) and on `system.run` of `sleep 30` (it restarts after five seconds).
+
+**Where to start.** `tools/jupyter/install`, then `jupyter lab` in a directory of notebooks.
+
+**Done when.** Each of those works by hand, or this section records what doesn't.
+
+### 8.3. Later Uses
+
+**Problem.** Two uses of the kernel aren't built: connecting a notebook to a program already running (a REPL served
+on a socket, rather than a session the kernel starts), and notebooks as tests (a `.ipynb`'s cells run through the
+protocol, their outputs compared with the notebook's).
+
+**Where to start.** `tools/jupyter/quest_session.py` for both: a session over a socket, and a runner of a notebook's
+cells.
+
+**Done when.** Either is wanted and built; until then, this section records them.
