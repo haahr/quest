@@ -1,0 +1,151 @@
+(* Standard library: collections/linkedHashMap (docs/lazy-memo-plan.md):
+ * insertion order, a key inserted again keeping its place, get not changing
+ * the order, moveToEnd and moveToFront, first, last, and the pops, deletes at
+ * the front, the back, and in the middle, growth past the first arrays, clear,
+ * the iterators, find's error, and the order checked against a list kept by
+ * hand through a thousand operations *)
+
+import collections/linkedHashMap : collections/LinkedHashMap;
+import util/iter : util/Iter;
+import util/maybe : util/Maybe;
+import util/hash : util/Hash;
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let same(a: Int b: Int): Bool = a is b;
+let show(m: linkedHashMap.T(Int String)): String =
+    begin
+        let var text = "["
+        let it = linkedHashMap.entryIter(m)
+        while iter.more(it) do
+            let e = iter.next(it)
+            text := text <> " " <> conv.int(e.key) <> "=" <> e.value
+        end
+        text <> " ] size " <> conv.int(linkedHashMap.size(m))
+    end;
+let entry(e: maybe.T(linkedHashMap.Entry(Int String))): String =
+    if maybe.isSome(e) then conv.int(maybe.unwrap(e).key) <> "=" <> maybe.unwrap(e).value else "none" end;
+
+let m = linkedHashMap.new(:Int :String same hash.int);
+print("empty " <> conv.bool(linkedHashMap.empty(m)) <> " " <> show(m) <> ", first " <> entry(linkedHashMap.first(m))
+    <> ", popFirst " <> entry(linkedHashMap.popFirst(m)));
+print("insert new " <> conv.bool(linkedHashMap.insert(m 3 "c")) <> conv.bool(linkedHashMap.insert(m 1 "a"))
+    <> conv.bool(linkedHashMap.insert(m 2 "b")) <> " " <> show(m));
+print("insert again " <> conv.bool(linkedHashMap.insert(m 3 "C")) <> " " <> show(m));
+print("get 1 " <> maybe.unwrap(linkedHashMap.get(m 1)) <> ", get 9 none "
+    <> conv.bool(maybe.isNone(linkedHashMap.get(m 9)))
+    <> ", contains 2 " <> conv.bool(linkedHashMap.contains(m 2)) <> ", find 2 " <> linkedHashMap.find(m 2) <> " "
+    <> show(m));
+print("moveToEnd 3 " <> conv.bool(linkedHashMap.moveToEnd(m 3)) <> " " <> show(m));
+print("moveToFront 2 " <> conv.bool(linkedHashMap.moveToFront(m 2)) <> " " <> show(m));
+print("move absent " <> conv.bool(linkedHashMap.moveToEnd(m 9)) <> conv.bool(linkedHashMap.moveToFront(m 9))
+    <> ", move the end to the end " <> conv.bool(linkedHashMap.moveToEnd(m 3)) <> " " <> show(m));
+print("first " <> entry(linkedHashMap.first(m)) <> ", last " <> entry(linkedHashMap.last(m)));
+
+for k = 10 upto 19 do let added = linkedHashMap.insert(m k conv.int(k * k)) end;
+print("grown " <> show(m));
+print("delete front " <> maybe.unwrap(linkedHashMap.delete(m 2)) <> ", back "
+    <> maybe.unwrap(linkedHashMap.delete(m 19))
+    <> ", middle " <> maybe.unwrap(linkedHashMap.delete(m 14)) <> ", absent none "
+    <> conv.bool(maybe.isNone(linkedHashMap.delete(m 14))) <> " " <> show(m));
+print("popFirst " <> entry(linkedHashMap.popFirst(m)) <> ", popLast " <> entry(linkedHashMap.popLast(m)) <> " "
+    <> show(m));
+print("after the moves, get 15 " <> linkedHashMap.find(m 15) <> ", 3 " <> linkedHashMap.find(m 3));
+
+let var keys = "";
+let ki = linkedHashMap.keyIter(m);
+while iter.more(ki) do keys := keys <> " " <> conv.int(iter.next(ki)) end;
+let var values = "";
+let vi = linkedHashMap.valueIter(m);
+while iter.more(vi) do values := values <> " " <> iter.next(vi) end;
+let each = tuple let var text = "" end;
+linkedHashMap.forEach(m fun(k: Int v: String): Ok each.text := each.text <> " " <> conv.int(k));
+print("keys" <> keys <> ", values" <> values <> ", forEach" <> each.text);
+let live = linkedHashMap.keyIter(m);
+let a = iter.next(live);
+let added = linkedHashMap.insert(m 99 "z");
+print("live iterator, after " <> conv.int(a) <> ", count " <> conv.int(iter.count(live) + 1) <> " of "
+    <> conv.int(linkedHashMap.size(m)) <> ", next past the end: "
+    <> try conv.int(iter.next(live)) when iter.exhausted then "iter.exhausted" end);
+
+linkedHashMap.clear(m);
+print("clear " <> show(m) <> ", then " <> conv.bool(linkedHashMap.insert(m 5 "e")) <> " " <> show(m));
+print("find absent: " <> try linkedHashMap.find(m 6) when linkedHashMap.error then "linkedHashMap.error" end);
+
+(* The order against a list kept by hand: keys 0 to 49, each step inserting,
+ * moving to either end, deleting, or popping either end, chosen by a simple
+ * generator, inserts three times in eight *)
+let order = linkedHashMap.new(:Int :Int same hash.int);
+let model = tuple let var keys = array of :Int end end;
+let has(k: Int): Bool =
+    begin
+        let var found = false
+        for i = 0 upto {extent model.keys - 1} do if model.keys[i] is k then found := true end end
+        found
+    end;
+let without(k: Int): Array(Int) =
+    begin
+        let result = array of(extent model.keys - 1 0)
+        let var j = 0
+        for i = 0 upto {extent model.keys - 1} do
+            if model.keys[i] isnot k then
+                result[j] := model.keys[i]
+                j := j + 1
+            end
+        end
+        result
+    end;
+let appended(a: Array(Int) k: Int): Array(Int) =
+    begin
+        let result = array of(extent a + 1 k)
+        for i = 0 upto {extent a - 1} do result[i] := a[i] end
+        result
+    end;
+let prepended(a: Array(Int) k: Int): Array(Int) =
+    begin
+        let result = array of(extent a + 1 k)
+        for i = 0 upto {extent a - 1} do result[i + 1] := a[i] end
+        result
+    end;
+let agrees(): Bool =
+    begin
+        let it = linkedHashMap.keyIter(order)
+        let var fine = linkedHashMap.size(order) is extent model.keys
+        for i = 0 upto {extent model.keys - 1} do
+            fine := fine andif iter.more(it) andif {iter.next(it) is model.keys[i]}
+            fine := fine andif {linkedHashMap.find(order model.keys[i]) is model.keys[i] * 7}
+        end
+        fine andif not(iter.more(it))
+    end;
+let var seed = 12345;
+let var all = true;
+let var largest = 0;
+for step = 1 upto 1000 do
+    seed := {seed * 1103515245 + 12345} % 2147483648
+    let k = {seed / 65536} % 50
+    let op = {seed / 16} % 8
+    if op < 3 then
+        if not(has(k)) then model.keys := appended(model.keys k) end
+        let added = linkedHashMap.insert(order k k * 7)
+    elsif op is 3 then
+        if has(k) then model.keys := appended(without(k) k) end
+        let moved = linkedHashMap.moveToEnd(order k)
+    elsif op is 4 then
+        if has(k) then model.keys := prepended(without(k) k) end
+        let moved = linkedHashMap.moveToFront(order k)
+    elsif op is 5 then
+        if has(k) then model.keys := without(k) end
+        let gone = linkedHashMap.delete(order k)
+    elsif op is 6 then
+        if extent model.keys > 0 then model.keys := without(model.keys[0]) end
+        let gone = linkedHashMap.popFirst(order)
+    else
+        if extent model.keys > 0 then model.keys := without(model.keys[extent model.keys - 1]) end
+        let gone = linkedHashMap.popLast(order)
+    end
+    all := all andif agrees()
+    if linkedHashMap.size(order) > largest then largest := linkedHashMap.size(order) end
+end;
+print("a thousand operations agree: " <> conv.bool(all) <> ", size " <> conv.int(linkedHashMap.size(order))
+    <> ", largest " <> conv.int(largest));

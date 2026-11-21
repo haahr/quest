@@ -1,0 +1,76 @@
+(* Memoization (docs/lazy-memo-plan.md): a function of one argument wrapped
+ * with a table of the results it has returned, keyed by equal and hash as
+ * collections/hashMap is, as Python's functools.cache and lru_cache.
+ *
+ *     let area = memo.memoize(fun(s: String): Int slowArea(s) stringOp.equal hash.string);
+ *
+ * A function of several arguments takes them as one, a tuple or record, with
+ * an equal and a hash for it (hash.combine). A result is kept only when the
+ * function returns: one that raises keeps nothing, and is called again the
+ * next time. A recursive function's own calls are memoized only if it calls
+ * the memoized version: makeRecursive passes it in as self.
+ *
+ *     let fib = memo.asFunction(memo.makeRecursive(fun(self: All(n: Int) Int n: Int): Int
+ *         if n < 2 then n else self(n - 1) + self(n - 2) end
+ *         fun(a: Int b: Int): Bool a is b hash.int));
+ *
+ * A bounded cache keeps the capacity most recently used results, dropping
+ * the least recently used one to make room for another. *)
+
+interface Memo
+import
+    word: Word
+export
+    (* A function from K to V, with its table of results *)
+    T::ALL(K::TYPE) ALL(V::TYPE) TYPE
+
+    (* Raised by makeBounded and makeBoundedRecursive for a capacity below 1 *)
+    error: Exception
+
+    (* f, memoized, keeping every result *)
+    make: All(K::TYPE V::TYPE)
+        All(f: All(k: K) V equal: All(k1: K k2: K) Bool hash: All(k: K) word.T) T(K V)
+
+    (* f, memoized, keeping the capacity most recently used results *)
+    makeBounded: All(K::TYPE V::TYPE)
+        All(f: All(k: K) V capacity: Int equal: All(k1: K k2: K) Bool hash: All(k: K) word.T) T(K V)
+
+    (* f, memoized, with the memoized function passed to it as self, so that
+     * its own calls are memoized too *)
+    makeRecursive: All(K::TYPE V::TYPE)
+        All(f: All(self: All(k: K) V k: K) V equal: All(k1: K k2: K) Bool hash: All(k: K) word.T) T(K V)
+
+    (* makeRecursive, keeping the capacity most recently used results *)
+    makeBoundedRecursive: All(K::TYPE V::TYPE)
+        All(f: All(self: All(k: K) V k: K) V capacity: Int equal: All(k1: K k2: K) Bool hash: All(k: K) word.T)
+        T(K V)
+
+    (* The function's result for k: the one kept, if any, else computed and
+     * kept *)
+    apply: All(K::TYPE V::TYPE) All(c: T(K V) k: K) V
+
+    (* apply of c, as a function *)
+    asFunction: All(K::TYPE V::TYPE) All(c: T(K V)) All(k: K) V
+
+    (* asFunction of make, for the common case *)
+    memoize: All(K::TYPE V::TYPE)
+        All(f: All(k: K) V equal: All(k1: K k2: K) Bool hash: All(k: K) word.T) All(k: K) V
+
+    (* Whether a result for k is kept; neither computes it nor counts as a
+     * use *)
+    contains: All(K::TYPE V::TYPE) All(c: T(K V) k: K) Bool
+
+    (* How many results are kept *)
+    size: All(K::TYPE V::TYPE) All(c: T(K V)) Int
+
+    (* Drops the result for k, if one is kept; whether one was *)
+    forget: All(K::TYPE V::TYPE) All(c: T(K V) k: K) Bool
+
+    (* Drops every result kept; hits and misses are left as they are *)
+    clear: All(K::TYPE V::TYPE) All(c: T(K V)) Ok
+
+    (* How many applies found their result kept (hits) and how many computed
+     * it (misses), as Python's cache_info *)
+    hits: All(K::TYPE V::TYPE) All(c: T(K V)) Int
+    misses: All(K::TYPE V::TYPE) All(c: T(K V)) Int
+end

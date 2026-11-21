@@ -1,0 +1,1667 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('linkedHashMap') : 'LinkedHashMap')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('iter') : 'Iter')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('maybe') : 'Maybe')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('hash') : 'Hash')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'same' :type Fun(a: Int b: Int): Bool
+      :value (TypedFun :params (('a' : Int) ('b' : Int)) :type Fun(a: Int b: Int): Bool
+        :body (TypedInfix 'is' :type Bool
+          :left (TypedVar 'a' :type Int)
+          :right (TypedVar 'b' :type Int))))
+    (TypedLetValue 'show' :type Fun(m: linkedHashMap.T(Int String)): String
+      :value (TypedFun :params (('m' : linkedHashMap.T(Int String))) :type Fun(m: linkedHashMap.T(Int String)): String
+        :body (TypedBlock :type String
+          :bindings (
+            (TypedLetValue 'text' :type String
+              :value (TypedString '[' :type String))
+            (TypedLetValue 'it' :type iter.T(Entry(Int String))
+              :value (TypedApp :type iter.T(Entry(Int String))
+                :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String)): iter.T(Entry(Int String))
+                  :func (TypedSelect 'entryIter' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): iter.T(Entry(K V))
+                    :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                :args (
+                  (TypedVar 'm' :type linkedHashMap.T(Int String))
+                )))
+            (TypedExprStmt
+              :expr (TypedWhile
+                :cond (TypedApp :type Bool
+                  :func (TypedTypeApp [Tuple key: Int value: String end] :type Fun(it: iter.T(Tuple key: Int value: String end)): Bool
+                    :func (TypedSelect 'more' :type All(A :: TYPE) Fun(it: iter.T(A)): Bool
+                      :target (TypedVar 'iter' :type Module 'iter')))
+                  :args (
+                    (TypedVar 'it' :type iter.T(Entry(Int String)))
+                  ))
+                :body (TypedBlock :type Ok
+                  :bindings (
+                    (TypedLetValue 'e' :type Tuple key: Int value: String end
+                      :value (TypedApp :type Tuple key: Int value: String end
+                        :func (TypedTypeApp [Tuple key: Int value: String end] :type Fun(it: iter.T(Tuple key: Int value: String end)): Tuple key: Int value: String end
+                          :func (TypedSelect 'next' :type All(A :: TYPE) Fun(it: iter.T(A)): A
+                            :target (TypedVar 'iter' :type Module 'iter')))
+                        :args (
+                          (TypedVar 'it' :type iter.T(Entry(Int String)))
+                        )))
+                  )
+                  :result (TypedAssign
+                    :target (TypedVar 'text' :type Var(String))
+                    :value (TypedInfix '<>' :type String
+                      :left (TypedDerefCell :type String
+                        :target (TypedVar 'text' :type Var(String)))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedSelect 'int' :type Fun(n: Int): String
+                              :target (TypedVar 'conv' :type Module 'conv'))
+                            :args (
+                              (TypedSelect 'key' :type Int
+                                :target (TypedVar 'e' :type Tuple key: Int value: String end))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString '=' :type String)
+                            :right (TypedSelect 'value' :type String
+                              :target (TypedVar 'e' :type Tuple key: Int value: String end))))))))))
+          )
+          :result (TypedInfix '<>' :type String
+            :left (TypedDerefCell :type String
+              :target (TypedVar 'text' :type Var(String)))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ] size ' :type String)
+              :right (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String)): Int
+                      :func (TypedSelect 'size' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): Int
+                        :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                    :args (
+                      (TypedVar 'm' :type linkedHashMap.T(Int String))
+                    ))
+                )))))))
+    (TypedLetValue 'entry' :type Fun(e: maybe.T(linkedHashMap.Entry(Int String))): String
+      :value (TypedFun :params (('e' : maybe.T(linkedHashMap.Entry(Int String)))) :type Fun(e: maybe.T(linkedHashMap.Entry(Int String))): String
+        :body (TypedIf :type String
+          :cond (TypedApp :type Bool
+            :func (TypedTypeApp [Tuple key: Int value: String end] :type Fun(o: maybe.T(Tuple key: Int value: String end)): Bool
+              :func (TypedSelect 'isSome' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                :target (TypedVar 'maybe' :type Module 'maybe')))
+            :args (
+              (TypedVar 'e' :type maybe.T(linkedHashMap.Entry(Int String)))
+            ))
+          :then (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'key' :type Int
+                  :target (TypedApp :type Tuple key: Int value: String end
+                    :func (TypedTypeApp [Tuple key: Int value: String end] :type Fun(o: maybe.T(Tuple key: Int value: String end)): Tuple key: Int value: String end
+                      :func (TypedSelect 'unwrap' :type All(A :: TYPE) Fun(o: maybe.T(A)): A
+                        :target (TypedVar 'maybe' :type Module 'maybe')))
+                    :args (
+                      (TypedVar 'e' :type maybe.T(linkedHashMap.Entry(Int String)))
+                    )))
+              ))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString '=' :type String)
+              :right (TypedSelect 'value' :type String
+                :target (TypedApp :type Tuple key: Int value: String end
+                  :func (TypedTypeApp [Tuple key: Int value: String end] :type Fun(o: maybe.T(Tuple key: Int value: String end)): Tuple key: Int value: String end
+                    :func (TypedSelect 'unwrap' :type All(A :: TYPE) Fun(o: maybe.T(A)): A
+                      :target (TypedVar 'maybe' :type Module 'maybe')))
+                  :args (
+                    (TypedVar 'e' :type maybe.T(linkedHashMap.Entry(Int String)))
+                  )))))
+          :else (TypedString 'none' :type String))))
+    (TypedLetValue 'm' :type linkedHashMap.T(Int String)
+      :value (TypedApp :type linkedHashMap.T(Int String)
+        :func (TypedTypeApp [Int String] :type Fun(equal: Fun(k1: Int k2: Int): Bool hash: Fun(k: Int): word.T): linkedHashMap.T(Int String)
+          :func (TypedSelect 'new' :type All(K :: TYPE V :: TYPE) Fun(equal: Fun(k1: K k2: K): Bool hash: Fun(k: K): word.T): linkedHashMap.T(K V)
+            :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+        :args (
+          (TypedVar 'same' :type Fun(a: Int b: Int): Bool)
+          (TypedSelect 'int' :type Fun(n: Int): word.T
+            :target (TypedVar 'hash' :type Module 'hash'))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'empty ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String)): Bool
+                      :func (TypedSelect 'empty' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): Bool
+                        :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                    :args (
+                      (TypedVar 'm' :type linkedHashMap.T(Int String))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'show' :type Fun(m: linkedHashMap.T(Int String)): String)
+                    :args (
+                      (TypedVar 'm' :type linkedHashMap.T(Int String))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', first ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedVar 'entry' :type Fun(e: maybe.T(linkedHashMap.Entry(Int String))): String)
+                        :args (
+                          (TypedApp :type maybe.T(Entry(Int String))
+                            :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String)): maybe.T(Entry(Int String))
+                              :func (TypedSelect 'first' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): maybe.T(Entry(K V))
+                                :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                            :args (
+                              (TypedVar 'm' :type linkedHashMap.T(Int String))
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ', popFirst ' :type String)
+                        :right (TypedApp :type String
+                          :func (TypedVar 'entry' :type Fun(e: maybe.T(linkedHashMap.Entry(Int String))): String)
+                          :args (
+                            (TypedApp :type maybe.T(Entry(Int String))
+                              :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String)): maybe.T(Entry(Int String))
+                                :func (TypedSelect 'popFirst' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): maybe.T(Entry(K V))
+                                  :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                              :args (
+                                (TypedVar 'm' :type linkedHashMap.T(Int String))
+                              ))
+                          )))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'insert new ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int value: String): Bool
+                      :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K value: V): Bool
+                        :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                    :args (
+                      (TypedVar 'm' :type linkedHashMap.T(Int String))
+                      (TypedInt 3 :type Int)
+                      (TypedString 'c' :type String)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedApp :type String
+                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Bool
+                      :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int value: String): Bool
+                        :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K value: V): Bool
+                          :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                      :args (
+                        (TypedVar 'm' :type linkedHashMap.T(Int String))
+                        (TypedInt 1 :type Int)
+                        (TypedString 'a' :type String)
+                      ))
+                  ))
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Bool
+                        :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int value: String): Bool
+                          :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K value: V): Bool
+                            :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                        :args (
+                          (TypedVar 'm' :type linkedHashMap.T(Int String))
+                          (TypedInt 2 :type Int)
+                          (TypedString 'b' :type String)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'show' :type Fun(m: linkedHashMap.T(Int String)): String)
+                      :args (
+                        (TypedVar 'm' :type linkedHashMap.T(Int String))
+                      )))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'insert again ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int value: String): Bool
+                      :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K value: V): Bool
+                        :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                    :args (
+                      (TypedVar 'm' :type linkedHashMap.T(Int String))
+                      (TypedInt 3 :type Int)
+                      (TypedString 'C' :type String)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedVar 'show' :type Fun(m: linkedHashMap.T(Int String)): String)
+                  :args (
+                    (TypedVar 'm' :type linkedHashMap.T(Int String))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'get 1 ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedTypeApp [String] :type Fun(o: maybe.T(String)): String
+                  :func (TypedSelect 'unwrap' :type All(A :: TYPE) Fun(o: maybe.T(A)): A
+                    :target (TypedVar 'maybe' :type Module 'maybe')))
+                :args (
+                  (TypedApp :type maybe.T(String)
+                    :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): maybe.T(String)
+                      :func (TypedSelect 'get' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): maybe.T(V)
+                        :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                    :args (
+                      (TypedVar 'm' :type linkedHashMap.T(Int String))
+                      (TypedInt 1 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', get 9 none ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Bool
+                        :func (TypedTypeApp [String] :type Fun(o: maybe.T(String)): Bool
+                          :func (TypedSelect 'isNone' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                            :target (TypedVar 'maybe' :type Module 'maybe')))
+                        :args (
+                          (TypedApp :type maybe.T(String)
+                            :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): maybe.T(String)
+                              :func (TypedSelect 'get' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): maybe.T(V)
+                                :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                            :args (
+                              (TypedVar 'm' :type linkedHashMap.T(Int String))
+                              (TypedInt 9 :type Int)
+                            ))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', contains 2 ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                          :target (TypedVar 'conv' :type Module 'conv'))
+                        :args (
+                          (TypedApp :type Bool
+                            :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): Bool
+                              :func (TypedSelect 'contains' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): Bool
+                                :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                            :args (
+                              (TypedVar 'm' :type linkedHashMap.T(Int String))
+                              (TypedInt 2 :type Int)
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ', find 2 ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): String
+                              :func (TypedSelect 'find' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): V
+                                :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                            :args (
+                              (TypedVar 'm' :type linkedHashMap.T(Int String))
+                              (TypedInt 2 :type Int)
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ' ' :type String)
+                            :right (TypedApp :type String
+                              :func (TypedVar 'show' :type Fun(m: linkedHashMap.T(Int String)): String)
+                              :args (
+                                (TypedVar 'm' :type linkedHashMap.T(Int String))
+                              )))))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'moveToEnd 3 ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): Bool
+                      :func (TypedSelect 'moveToEnd' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): Bool
+                        :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                    :args (
+                      (TypedVar 'm' :type linkedHashMap.T(Int String))
+                      (TypedInt 3 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedVar 'show' :type Fun(m: linkedHashMap.T(Int String)): String)
+                  :args (
+                    (TypedVar 'm' :type linkedHashMap.T(Int String))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'moveToFront 2 ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): Bool
+                      :func (TypedSelect 'moveToFront' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): Bool
+                        :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                    :args (
+                      (TypedVar 'm' :type linkedHashMap.T(Int String))
+                      (TypedInt 2 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedVar 'show' :type Fun(m: linkedHashMap.T(Int String)): String)
+                  :args (
+                    (TypedVar 'm' :type linkedHashMap.T(Int String))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'move absent ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): Bool
+                      :func (TypedSelect 'moveToEnd' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): Bool
+                        :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                    :args (
+                      (TypedVar 'm' :type linkedHashMap.T(Int String))
+                      (TypedInt 9 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedApp :type String
+                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Bool
+                      :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): Bool
+                        :func (TypedSelect 'moveToFront' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): Bool
+                          :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                      :args (
+                        (TypedVar 'm' :type linkedHashMap.T(Int String))
+                        (TypedInt 9 :type Int)
+                      ))
+                  ))
+                :right (TypedInfix '<>' :type String
+                  :left (TypedString ', move the end to the end ' :type String)
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedApp :type String
+                      :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedApp :type Bool
+                          :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): Bool
+                            :func (TypedSelect 'moveToEnd' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): Bool
+                              :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                          :args (
+                            (TypedVar 'm' :type linkedHashMap.T(Int String))
+                            (TypedInt 3 :type Int)
+                          ))
+                      ))
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedString ' ' :type String)
+                      :right (TypedApp :type String
+                        :func (TypedVar 'show' :type Fun(m: linkedHashMap.T(Int String)): String)
+                        :args (
+                          (TypedVar 'm' :type linkedHashMap.T(Int String))
+                        ))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'first ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'entry' :type Fun(e: maybe.T(linkedHashMap.Entry(Int String))): String)
+                :args (
+                  (TypedApp :type maybe.T(Entry(Int String))
+                    :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String)): maybe.T(Entry(Int String))
+                      :func (TypedSelect 'first' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): maybe.T(Entry(K V))
+                        :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                    :args (
+                      (TypedVar 'm' :type linkedHashMap.T(Int String))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', last ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedVar 'entry' :type Fun(e: maybe.T(linkedHashMap.Entry(Int String))): String)
+                  :args (
+                    (TypedApp :type maybe.T(Entry(Int String))
+                      :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String)): maybe.T(Entry(Int String))
+                        :func (TypedSelect 'last' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): maybe.T(Entry(K V))
+                          :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                      :args (
+                        (TypedVar 'm' :type linkedHashMap.T(Int String))
+                      ))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedFor 'k' :upto
+        :start (TypedInt 10 :type Int)
+        :stop (TypedInt 19 :type Int)
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'added' :type Bool
+              :value (TypedApp :type Bool
+                :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int value: String): Bool
+                  :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K value: V): Bool
+                    :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                :args (
+                  (TypedVar 'm' :type linkedHashMap.T(Int String))
+                  (TypedVar 'k' :type Int)
+                  (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedInfix '*' :type Int
+                        :left (TypedVar 'k' :type Int)
+                        :right (TypedVar 'k' :type Int))
+                    ))
+                )))
+          )
+          :result (TypedOk))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'grown ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'show' :type Fun(m: linkedHashMap.T(Int String)): String)
+              :args (
+                (TypedVar 'm' :type linkedHashMap.T(Int String))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'delete front ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedTypeApp [String] :type Fun(o: maybe.T(String)): String
+                  :func (TypedSelect 'unwrap' :type All(A :: TYPE) Fun(o: maybe.T(A)): A
+                    :target (TypedVar 'maybe' :type Module 'maybe')))
+                :args (
+                  (TypedApp :type maybe.T(String)
+                    :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): maybe.T(String)
+                      :func (TypedSelect 'delete' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): maybe.T(V)
+                        :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                    :args (
+                      (TypedVar 'm' :type linkedHashMap.T(Int String))
+                      (TypedInt 2 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', back ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedTypeApp [String] :type Fun(o: maybe.T(String)): String
+                      :func (TypedSelect 'unwrap' :type All(A :: TYPE) Fun(o: maybe.T(A)): A
+                        :target (TypedVar 'maybe' :type Module 'maybe')))
+                    :args (
+                      (TypedApp :type maybe.T(String)
+                        :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): maybe.T(String)
+                          :func (TypedSelect 'delete' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): maybe.T(V)
+                            :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                        :args (
+                          (TypedVar 'm' :type linkedHashMap.T(Int String))
+                          (TypedInt 19 :type Int)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', middle ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedTypeApp [String] :type Fun(o: maybe.T(String)): String
+                          :func (TypedSelect 'unwrap' :type All(A :: TYPE) Fun(o: maybe.T(A)): A
+                            :target (TypedVar 'maybe' :type Module 'maybe')))
+                        :args (
+                          (TypedApp :type maybe.T(String)
+                            :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): maybe.T(String)
+                              :func (TypedSelect 'delete' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): maybe.T(V)
+                                :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                            :args (
+                              (TypedVar 'm' :type linkedHashMap.T(Int String))
+                              (TypedInt 14 :type Int)
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ', absent none ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                              :target (TypedVar 'conv' :type Module 'conv'))
+                            :args (
+                              (TypedApp :type Bool
+                                :func (TypedTypeApp [String] :type Fun(o: maybe.T(String)): Bool
+                                  :func (TypedSelect 'isNone' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                                    :target (TypedVar 'maybe' :type Module 'maybe')))
+                                :args (
+                                  (TypedApp :type maybe.T(String)
+                                    :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): maybe.T(String)
+                                      :func (TypedSelect 'delete' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): maybe.T(V)
+                                        :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                                    :args (
+                                      (TypedVar 'm' :type linkedHashMap.T(Int String))
+                                      (TypedInt 14 :type Int)
+                                    ))
+                                ))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ' ' :type String)
+                            :right (TypedApp :type String
+                              :func (TypedVar 'show' :type Fun(m: linkedHashMap.T(Int String)): String)
+                              :args (
+                                (TypedVar 'm' :type linkedHashMap.T(Int String))
+                              )))))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'popFirst ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'entry' :type Fun(e: maybe.T(linkedHashMap.Entry(Int String))): String)
+                :args (
+                  (TypedApp :type maybe.T(Entry(Int String))
+                    :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String)): maybe.T(Entry(Int String))
+                      :func (TypedSelect 'popFirst' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): maybe.T(Entry(K V))
+                        :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                    :args (
+                      (TypedVar 'm' :type linkedHashMap.T(Int String))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', popLast ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'entry' :type Fun(e: maybe.T(linkedHashMap.Entry(Int String))): String)
+                    :args (
+                      (TypedApp :type maybe.T(Entry(Int String))
+                        :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String)): maybe.T(Entry(Int String))
+                          :func (TypedSelect 'popLast' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): maybe.T(Entry(K V))
+                            :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                        :args (
+                          (TypedVar 'm' :type linkedHashMap.T(Int String))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'show' :type Fun(m: linkedHashMap.T(Int String)): String)
+                      :args (
+                        (TypedVar 'm' :type linkedHashMap.T(Int String))
+                      )))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'after the moves, get 15 ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): String
+                  :func (TypedSelect 'find' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): V
+                    :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                :args (
+                  (TypedVar 'm' :type linkedHashMap.T(Int String))
+                  (TypedInt 15 :type Int)
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', 3 ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): String
+                    :func (TypedSelect 'find' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): V
+                      :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                  :args (
+                    (TypedVar 'm' :type linkedHashMap.T(Int String))
+                    (TypedInt 3 :type Int)
+                  )))))
+        )))
+    (TypedLetValue 'keys' :type String
+      :value (TypedString '' :type String))
+    (TypedLetValue 'ki' :type iter.T(Int)
+      :value (TypedApp :type iter.T(Int)
+        :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String)): iter.T(Int)
+          :func (TypedSelect 'keyIter' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): iter.T(K)
+            :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+        :args (
+          (TypedVar 'm' :type linkedHashMap.T(Int String))
+        )))
+    (TypedExprStmt
+      :expr (TypedWhile
+        :cond (TypedApp :type Bool
+          :func (TypedTypeApp [Int] :type Fun(it: iter.T(Int)): Bool
+            :func (TypedSelect 'more' :type All(A :: TYPE) Fun(it: iter.T(A)): Bool
+              :target (TypedVar 'iter' :type Module 'iter')))
+          :args (
+            (TypedVar 'ki' :type iter.T(Int))
+          ))
+        :body (TypedAssign
+          :target (TypedVar 'keys' :type Var(String))
+          :value (TypedInfix '<>' :type String
+            :left (TypedDerefCell :type String
+              :target (TypedVar 'keys' :type Var(String)))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ' :type String)
+              :right (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(it: iter.T(Int)): Int
+                      :func (TypedSelect 'next' :type All(A :: TYPE) Fun(it: iter.T(A)): A
+                        :target (TypedVar 'iter' :type Module 'iter')))
+                    :args (
+                      (TypedVar 'ki' :type iter.T(Int))
+                    ))
+                )))))))
+    (TypedLetValue 'values' :type String
+      :value (TypedString '' :type String))
+    (TypedLetValue 'vi' :type iter.T(String)
+      :value (TypedApp :type iter.T(String)
+        :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String)): iter.T(String)
+          :func (TypedSelect 'valueIter' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): iter.T(V)
+            :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+        :args (
+          (TypedVar 'm' :type linkedHashMap.T(Int String))
+        )))
+    (TypedExprStmt
+      :expr (TypedWhile
+        :cond (TypedApp :type Bool
+          :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): Bool
+            :func (TypedSelect 'more' :type All(A :: TYPE) Fun(it: iter.T(A)): Bool
+              :target (TypedVar 'iter' :type Module 'iter')))
+          :args (
+            (TypedVar 'vi' :type iter.T(String))
+          ))
+        :body (TypedAssign
+          :target (TypedVar 'values' :type Var(String))
+          :value (TypedInfix '<>' :type String
+            :left (TypedDerefCell :type String
+              :target (TypedVar 'values' :type Var(String)))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ' :type String)
+              :right (TypedApp :type String
+                :func (TypedTypeApp [String] :type Fun(it: iter.T(String)): String
+                  :func (TypedSelect 'next' :type All(A :: TYPE) Fun(it: iter.T(A)): A
+                    :target (TypedVar 'iter' :type Module 'iter')))
+                :args (
+                  (TypedVar 'vi' :type iter.T(String))
+                )))))))
+    (TypedLetValue 'each' :type Tuple var text: String end
+      :value (TypedTuple :type Tuple var text: String end
+        :elements (
+          (TypedString '' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) action: Fun(k: Int v: String): Ok): Ok
+          :func (TypedSelect 'forEach' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) action: Fun(k: K v: V): Ok): Ok
+            :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+        :args (
+          (TypedVar 'm' :type linkedHashMap.T(Int String))
+          (TypedFun :params (('k' : Int) ('v' : String)) :type Fun(k: Int v: String): Ok
+            :body (TypedAssign
+              :target (TypedSelect 'text' :type String
+                :target (TypedVar 'each' :type Tuple var text: String end))
+              :value (TypedInfix '<>' :type String
+                :left (TypedSelect 'text' :type String
+                  :target (TypedVar 'each' :type Tuple var text: String end))
+                :right (TypedInfix '<>' :type String
+                  :left (TypedString ' ' :type String)
+                  :right (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedVar 'k' :type Int)
+                    ))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'keys' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedDerefCell :type String
+                :target (TypedVar 'keys' :type Var(String)))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', values' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedDerefCell :type String
+                    :target (TypedVar 'values' :type Var(String)))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', forEach' :type String)
+                    :right (TypedSelect 'text' :type String
+                      :target (TypedVar 'each' :type Tuple var text: String end)))))))
+        )))
+    (TypedLetValue 'live' :type iter.T(Int)
+      :value (TypedApp :type iter.T(Int)
+        :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String)): iter.T(Int)
+          :func (TypedSelect 'keyIter' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): iter.T(K)
+            :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+        :args (
+          (TypedVar 'm' :type linkedHashMap.T(Int String))
+        )))
+    (TypedLetValue 'a' :type Int
+      :value (TypedApp :type Int
+        :func (TypedTypeApp [Int] :type Fun(it: iter.T(Int)): Int
+          :func (TypedSelect 'next' :type All(A :: TYPE) Fun(it: iter.T(A)): A
+            :target (TypedVar 'iter' :type Module 'iter')))
+        :args (
+          (TypedVar 'live' :type iter.T(Int))
+        )))
+    (TypedLetValue 'added' :type Bool
+      :value (TypedApp :type Bool
+        :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int value: String): Bool
+          :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K value: V): Bool
+            :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+        :args (
+          (TypedVar 'm' :type linkedHashMap.T(Int String))
+          (TypedInt 99 :type Int)
+          (TypedString 'z' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'live iterator, after ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedVar 'a' :type Int)
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', count ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedInfix '+' :type Int
+                        :left (TypedApp :type Int
+                          :func (TypedTypeApp [Int] :type Fun(it: iter.T(Int)): Int
+                            :func (TypedSelect 'count' :type All(A :: TYPE) Fun(it: iter.T(A)): Int
+                              :target (TypedVar 'iter' :type Module 'iter')))
+                          :args (
+                            (TypedVar 'live' :type iter.T(Int))
+                          ))
+                        :right (TypedInt 1 :type Int))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' of ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedSelect 'int' :type Fun(n: Int): String
+                          :target (TypedVar 'conv' :type Module 'conv'))
+                        :args (
+                          (TypedApp :type Int
+                            :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String)): Int
+                              :func (TypedSelect 'size' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): Int
+                                :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                            :args (
+                              (TypedVar 'm' :type linkedHashMap.T(Int String))
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ', next past the end: ' :type String)
+                        :right (TypedTry :type String
+                          :body (TypedApp :type String
+                            :func (TypedSelect 'int' :type Fun(n: Int): String
+                              :target (TypedVar 'conv' :type Module 'conv'))
+                            :args (
+                              (TypedApp :type Int
+                                :func (TypedTypeApp [Int] :type Fun(it: iter.T(Int)): Int
+                                  :func (TypedSelect 'next' :type All(A :: TYPE) Fun(it: iter.T(A)): A
+                                    :target (TypedVar 'iter' :type Module 'iter')))
+                                :args (
+                                  (TypedVar 'live' :type iter.T(Int))
+                                ))
+                            ))
+                          :branches (
+                            (TypedTryBranch
+                              :exc_pattern (TypedSelect 'exhausted' :type Exception
+                                :target (TypedVar 'iter' :type Module 'iter'))
+                              :body (TypedString 'iter.exhausted' :type String))
+                          )))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String)): Ok
+          :func (TypedSelect 'clear' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): Ok
+            :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+        :args (
+          (TypedVar 'm' :type linkedHashMap.T(Int String))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'clear ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'show' :type Fun(m: linkedHashMap.T(Int String)): String)
+                :args (
+                  (TypedVar 'm' :type linkedHashMap.T(Int String))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', then ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Bool
+                        :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int value: String): Bool
+                          :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K value: V): Bool
+                            :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                        :args (
+                          (TypedVar 'm' :type linkedHashMap.T(Int String))
+                          (TypedInt 5 :type Int)
+                          (TypedString 'e' :type String)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'show' :type Fun(m: linkedHashMap.T(Int String)): String)
+                      :args (
+                        (TypedVar 'm' :type linkedHashMap.T(Int String))
+                      )))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'find absent: ' :type String)
+            :right (TypedTry :type String
+              :body (TypedApp :type String
+                :func (TypedTypeApp [Int String] :type Fun(m: linkedHashMap.T(Int String) key: Int): String
+                  :func (TypedSelect 'find' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): V
+                    :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                :args (
+                  (TypedVar 'm' :type linkedHashMap.T(Int String))
+                  (TypedInt 6 :type Int)
+                ))
+              :branches (
+                (TypedTryBranch
+                  :exc_pattern (TypedSelect 'error' :type Exception
+                    :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap'))
+                  :body (TypedString 'linkedHashMap.error' :type String))
+              )))
+        )))
+    (TypedLetValue 'order' :type linkedHashMap.T(Int Int)
+      :value (TypedApp :type linkedHashMap.T(Int Int)
+        :func (TypedTypeApp [Int Int] :type Fun(equal: Fun(k1: Int k2: Int): Bool hash: Fun(k: Int): word.T): linkedHashMap.T(Int Int)
+          :func (TypedSelect 'new' :type All(K :: TYPE V :: TYPE) Fun(equal: Fun(k1: K k2: K): Bool hash: Fun(k: K): word.T): linkedHashMap.T(K V)
+            :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+        :args (
+          (TypedVar 'same' :type Fun(a: Int b: Int): Bool)
+          (TypedSelect 'int' :type Fun(n: Int): word.T
+            :target (TypedVar 'hash' :type Module 'hash'))
+        )))
+    (TypedLetValue 'model' :type Tuple var keys: Array(Int) end
+      :value (TypedTuple :type Tuple var keys: Array(Int) end
+        :elements (
+          (TypedArray :type Array(Int)
+            :elements ())
+        )))
+    (TypedLetValue 'has' :type Fun(k: Int): Bool
+      :value (TypedFun :params (('k' : Int)) :type Fun(k: Int): Bool
+        :body (TypedBlock :type Bool
+          :bindings (
+            (TypedLetValue 'found' :type Bool
+              :value (TypedBool false))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedSelect 'keys' :type Array(Int)
+                        :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedIf :type Ok
+                  :cond (TypedInfix 'is' :type Bool
+                    :left (TypedIndex :type Int
+                      :target (TypedSelect 'keys' :type Array(Int)
+                        :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                      :index (TypedVar 'i' :type Int))
+                    :right (TypedVar 'k' :type Int))
+                  :then (TypedBlock :type Ok
+                    :bindings (
+                      (TypedExprStmt
+                        :expr (TypedAssign
+                          :target (TypedVar 'found' :type Var(Bool))
+                          :value (TypedBool true)))
+                    )
+                    :result (TypedOk))
+                  :else (TypedOk))))
+          )
+          :result (TypedDerefCell :type Bool
+            :target (TypedVar 'found' :type Var(Bool))))))
+    (TypedLetValue 'without' :type Fun(k: Int): Array(Int)
+      :value (TypedFun :params (('k' : Int)) :type Fun(k: Int): Array(Int)
+        :body (TypedBlock :type Array(Int)
+          :bindings (
+            (TypedLetValue 'result' :type Array(Int)
+              :value (TypedArrayRep :type Array(Int)
+                :count (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedSelect 'keys' :type Array(Int)
+                        :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :init (TypedInt 0 :type Int)))
+            (TypedLetValue 'j' :type Int
+              :value (TypedInt 0 :type Int))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedSelect 'keys' :type Array(Int)
+                        :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedIf :type Ok
+                  :cond (TypedInfix 'isnot' :type Bool
+                    :left (TypedIndex :type Int
+                      :target (TypedSelect 'keys' :type Array(Int)
+                        :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                      :index (TypedVar 'i' :type Int))
+                    :right (TypedVar 'k' :type Int))
+                  :then (TypedBlock :type Ok
+                    :bindings (
+                      (TypedExprStmt
+                        :expr (TypedBlock :type Ok
+                          :bindings (
+                            (TypedExprStmt
+                              :expr (TypedIndexAssign
+                                :target (TypedVar 'result' :type Array(Int))
+                                :index (TypedDerefCell :type Int
+                                  :target (TypedVar 'j' :type Var(Int)))
+                                :value (TypedIndex :type Int
+                                  :target (TypedSelect 'keys' :type Array(Int)
+                                    :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                                  :index (TypedVar 'i' :type Int))))
+                          )
+                          :result (TypedAssign
+                            :target (TypedVar 'j' :type Var(Int))
+                            :value (TypedInfix '+' :type Int
+                              :left (TypedDerefCell :type Int
+                                :target (TypedVar 'j' :type Var(Int)))
+                              :right (TypedInt 1 :type Int)))))
+                    )
+                    :result (TypedOk))
+                  :else (TypedOk))))
+          )
+          :result (TypedVar 'result' :type Array(Int)))))
+    (TypedLetValue 'appended' :type Fun(a: Array(Int) k: Int): Array(Int)
+      :value (TypedFun :params (('a' : Array(Int)) ('k' : Int)) :type Fun(a: Array(Int) k: Int): Array(Int)
+        :body (TypedBlock :type Array(Int)
+          :bindings (
+            (TypedLetValue 'result' :type Array(Int)
+              :value (TypedArrayRep :type Array(Int)
+                :count (TypedInfix '+' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedVar 'a' :type Array(Int))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :init (TypedVar 'k' :type Int)))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedVar 'a' :type Array(Int))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedIndexAssign
+                  :target (TypedVar 'result' :type Array(Int))
+                  :index (TypedVar 'i' :type Int)
+                  :value (TypedIndex :type Int
+                    :target (TypedVar 'a' :type Array(Int))
+                    :index (TypedVar 'i' :type Int)))))
+          )
+          :result (TypedVar 'result' :type Array(Int)))))
+    (TypedLetValue 'prepended' :type Fun(a: Array(Int) k: Int): Array(Int)
+      :value (TypedFun :params (('a' : Array(Int)) ('k' : Int)) :type Fun(a: Array(Int) k: Int): Array(Int)
+        :body (TypedBlock :type Array(Int)
+          :bindings (
+            (TypedLetValue 'result' :type Array(Int)
+              :value (TypedArrayRep :type Array(Int)
+                :count (TypedInfix '+' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedVar 'a' :type Array(Int))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :init (TypedVar 'k' :type Int)))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedVar 'a' :type Array(Int))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedIndexAssign
+                  :target (TypedVar 'result' :type Array(Int))
+                  :index (TypedInfix '+' :type Int
+                    :left (TypedVar 'i' :type Int)
+                    :right (TypedInt 1 :type Int))
+                  :value (TypedIndex :type Int
+                    :target (TypedVar 'a' :type Array(Int))
+                    :index (TypedVar 'i' :type Int)))))
+          )
+          :result (TypedVar 'result' :type Array(Int)))))
+    (TypedLetValue 'agrees' :type Fun(): Bool
+      :value (TypedFun :params () :type Fun(): Bool
+        :body (TypedBlock :type Bool
+          :bindings (
+            (TypedLetValue 'it' :type iter.T(Int)
+              :value (TypedApp :type iter.T(Int)
+                :func (TypedTypeApp [Int Int] :type Fun(m: linkedHashMap.T(Int Int)): iter.T(Int)
+                  :func (TypedSelect 'keyIter' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): iter.T(K)
+                    :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                :args (
+                  (TypedVar 'order' :type linkedHashMap.T(Int Int))
+                )))
+            (TypedLetValue 'fine' :type Bool
+              :value (TypedInfix 'is' :type Bool
+                :left (TypedApp :type Int
+                  :func (TypedTypeApp [Int Int] :type Fun(m: linkedHashMap.T(Int Int)): Int
+                    :func (TypedSelect 'size' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): Int
+                      :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                  :args (
+                    (TypedVar 'order' :type linkedHashMap.T(Int Int))
+                  ))
+                :right (TypedApp :type Int
+                  :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                    :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                  :args (
+                    (TypedSelect 'keys' :type Array(Int)
+                      :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                  ))))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedSelect 'keys' :type Array(Int)
+                        :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedBlock :type Ok
+                  :bindings (
+                    (TypedExprStmt
+                      :expr (TypedAssign
+                        :target (TypedVar 'fine' :type Var(Bool))
+                        :value (TypedIf :type Bool
+                          :cond (TypedDerefCell :type Bool
+                            :target (TypedVar 'fine' :type Var(Bool)))
+                          :then (TypedIf :type Bool
+                            :cond (TypedApp :type Bool
+                              :func (TypedTypeApp [Int] :type Fun(it: iter.T(Int)): Bool
+                                :func (TypedSelect 'more' :type All(A :: TYPE) Fun(it: iter.T(A)): Bool
+                                  :target (TypedVar 'iter' :type Module 'iter')))
+                              :args (
+                                (TypedVar 'it' :type iter.T(Int))
+                              ))
+                            :then (TypedInfix 'is' :type Bool
+                              :left (TypedApp :type Int
+                                :func (TypedTypeApp [Int] :type Fun(it: iter.T(Int)): Int
+                                  :func (TypedSelect 'next' :type All(A :: TYPE) Fun(it: iter.T(A)): A
+                                    :target (TypedVar 'iter' :type Module 'iter')))
+                                :args (
+                                  (TypedVar 'it' :type iter.T(Int))
+                                ))
+                              :right (TypedIndex :type Int
+                                :target (TypedSelect 'keys' :type Array(Int)
+                                  :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                                :index (TypedVar 'i' :type Int)))
+                            :else (TypedBool false))
+                          :else (TypedBool false))))
+                  )
+                  :result (TypedAssign
+                    :target (TypedVar 'fine' :type Var(Bool))
+                    :value (TypedIf :type Bool
+                      :cond (TypedDerefCell :type Bool
+                        :target (TypedVar 'fine' :type Var(Bool)))
+                      :then (TypedInfix 'is' :type Bool
+                        :left (TypedApp :type Int
+                          :func (TypedTypeApp [Int Int] :type Fun(m: linkedHashMap.T(Int Int) key: Int): Int
+                            :func (TypedSelect 'find' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): V
+                              :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                          :args (
+                            (TypedVar 'order' :type linkedHashMap.T(Int Int))
+                            (TypedIndex :type Int
+                              :target (TypedSelect 'keys' :type Array(Int)
+                                :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                              :index (TypedVar 'i' :type Int))
+                          ))
+                        :right (TypedInfix '*' :type Int
+                          :left (TypedIndex :type Int
+                            :target (TypedSelect 'keys' :type Array(Int)
+                              :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                            :index (TypedVar 'i' :type Int))
+                          :right (TypedInt 7 :type Int)))
+                      :else (TypedBool false))))))
+          )
+          :result (TypedIf :type Bool
+            :cond (TypedDerefCell :type Bool
+              :target (TypedVar 'fine' :type Var(Bool)))
+            :then (TypedApp :type Bool
+              :func (TypedVar 'not' :type Fun(b: Bool): Bool)
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedTypeApp [Int] :type Fun(it: iter.T(Int)): Bool
+                    :func (TypedSelect 'more' :type All(A :: TYPE) Fun(it: iter.T(A)): Bool
+                      :target (TypedVar 'iter' :type Module 'iter')))
+                  :args (
+                    (TypedVar 'it' :type iter.T(Int))
+                  ))
+              ))
+            :else (TypedBool false)))))
+    (TypedLetValue 'seed' :type Int
+      :value (TypedInt 12345 :type Int))
+    (TypedLetValue 'all' :type Bool
+      :value (TypedBool true))
+    (TypedLetValue 'largest' :type Int
+      :value (TypedInt 0 :type Int))
+    (TypedExprStmt
+      :expr (TypedFor 'step' :upto
+        :start (TypedInt 1 :type Int)
+        :stop (TypedInt 1000 :type Int)
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedAssign
+                :target (TypedVar 'seed' :type Var(Int))
+                :value (TypedInfix '%' :type Int
+                  :left (TypedInfix '*' :type Int
+                    :left (TypedDerefCell :type Int
+                      :target (TypedVar 'seed' :type Var(Int)))
+                    :right (TypedInfix '+' :type Int
+                      :left (TypedInt 1103515245 :type Int)
+                      :right (TypedInt 12345 :type Int)))
+                  :right (TypedInt 2147483648 :type Int))))
+            (TypedLetValue 'k' :type Int
+              :value (TypedInfix '%' :type Int
+                :left (TypedInfix '/' :type Int
+                  :left (TypedDerefCell :type Int
+                    :target (TypedVar 'seed' :type Var(Int)))
+                  :right (TypedInt 65536 :type Int))
+                :right (TypedInt 50 :type Int)))
+            (TypedLetValue 'op' :type Int
+              :value (TypedInfix '%' :type Int
+                :left (TypedInfix '/' :type Int
+                  :left (TypedDerefCell :type Int
+                    :target (TypedVar 'seed' :type Var(Int)))
+                  :right (TypedInt 16 :type Int))
+                :right (TypedInt 8 :type Int)))
+            (TypedExprStmt
+              :expr (TypedIf :type Ok
+                :cond (TypedInfix '<' :type Bool
+                  :left (TypedVar 'op' :type Int)
+                  :right (TypedInt 3 :type Int))
+                :then (TypedBlock :type Ok
+                  :bindings (
+                    (TypedExprStmt
+                      :expr (TypedIf :type Ok
+                        :cond (TypedApp :type Bool
+                          :func (TypedVar 'not' :type Fun(b: Bool): Bool)
+                          :args (
+                            (TypedApp :type Bool
+                              :func (TypedVar 'has' :type Fun(k: Int): Bool)
+                              :args (
+                                (TypedVar 'k' :type Int)
+                              ))
+                          ))
+                        :then (TypedBlock :type Ok
+                          :bindings (
+                            (TypedExprStmt
+                              :expr (TypedAssign
+                                :target (TypedSelect 'keys' :type Array(Int)
+                                  :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                                :value (TypedApp :type Array(Int)
+                                  :func (TypedVar 'appended' :type Fun(a: Array(Int) k: Int): Array(Int))
+                                  :args (
+                                    (TypedSelect 'keys' :type Array(Int)
+                                      :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                                    (TypedVar 'k' :type Int)
+                                  ))))
+                          )
+                          :result (TypedOk))
+                        :else (TypedOk)))
+                    (TypedLetValue 'added' :type Bool
+                      :value (TypedApp :type Bool
+                        :func (TypedTypeApp [Int Int] :type Fun(m: linkedHashMap.T(Int Int) key: Int value: Int): Bool
+                          :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K value: V): Bool
+                            :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                        :args (
+                          (TypedVar 'order' :type linkedHashMap.T(Int Int))
+                          (TypedVar 'k' :type Int)
+                          (TypedInfix '*' :type Int
+                            :left (TypedVar 'k' :type Int)
+                            :right (TypedInt 7 :type Int))
+                        )))
+                  )
+                  :result (TypedOk))
+                :else (TypedIf :type Ok
+                  :cond (TypedInfix 'is' :type Bool
+                    :left (TypedVar 'op' :type Int)
+                    :right (TypedInt 3 :type Int))
+                  :then (TypedBlock :type Ok
+                    :bindings (
+                      (TypedExprStmt
+                        :expr (TypedIf :type Ok
+                          :cond (TypedApp :type Bool
+                            :func (TypedVar 'has' :type Fun(k: Int): Bool)
+                            :args (
+                              (TypedVar 'k' :type Int)
+                            ))
+                          :then (TypedBlock :type Ok
+                            :bindings (
+                              (TypedExprStmt
+                                :expr (TypedAssign
+                                  :target (TypedSelect 'keys' :type Array(Int)
+                                    :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                                  :value (TypedApp :type Array(Int)
+                                    :func (TypedVar 'appended' :type Fun(a: Array(Int) k: Int): Array(Int))
+                                    :args (
+                                      (TypedApp :type Array(Int)
+                                        :func (TypedVar 'without' :type Fun(k: Int): Array(Int))
+                                        :args (
+                                          (TypedVar 'k' :type Int)
+                                        ))
+                                      (TypedVar 'k' :type Int)
+                                    ))))
+                            )
+                            :result (TypedOk))
+                          :else (TypedOk)))
+                      (TypedLetValue 'moved' :type Bool
+                        :value (TypedApp :type Bool
+                          :func (TypedTypeApp [Int Int] :type Fun(m: linkedHashMap.T(Int Int) key: Int): Bool
+                            :func (TypedSelect 'moveToEnd' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): Bool
+                              :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                          :args (
+                            (TypedVar 'order' :type linkedHashMap.T(Int Int))
+                            (TypedVar 'k' :type Int)
+                          )))
+                    )
+                    :result (TypedOk))
+                  :else (TypedIf :type Ok
+                    :cond (TypedInfix 'is' :type Bool
+                      :left (TypedVar 'op' :type Int)
+                      :right (TypedInt 4 :type Int))
+                    :then (TypedBlock :type Ok
+                      :bindings (
+                        (TypedExprStmt
+                          :expr (TypedIf :type Ok
+                            :cond (TypedApp :type Bool
+                              :func (TypedVar 'has' :type Fun(k: Int): Bool)
+                              :args (
+                                (TypedVar 'k' :type Int)
+                              ))
+                            :then (TypedBlock :type Ok
+                              :bindings (
+                                (TypedExprStmt
+                                  :expr (TypedAssign
+                                    :target (TypedSelect 'keys' :type Array(Int)
+                                      :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                                    :value (TypedApp :type Array(Int)
+                                      :func (TypedVar 'prepended' :type Fun(a: Array(Int) k: Int): Array(Int))
+                                      :args (
+                                        (TypedApp :type Array(Int)
+                                          :func (TypedVar 'without' :type Fun(k: Int): Array(Int))
+                                          :args (
+                                            (TypedVar 'k' :type Int)
+                                          ))
+                                        (TypedVar 'k' :type Int)
+                                      ))))
+                              )
+                              :result (TypedOk))
+                            :else (TypedOk)))
+                        (TypedLetValue 'moved' :type Bool
+                          :value (TypedApp :type Bool
+                            :func (TypedTypeApp [Int Int] :type Fun(m: linkedHashMap.T(Int Int) key: Int): Bool
+                              :func (TypedSelect 'moveToFront' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): Bool
+                                :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                            :args (
+                              (TypedVar 'order' :type linkedHashMap.T(Int Int))
+                              (TypedVar 'k' :type Int)
+                            )))
+                      )
+                      :result (TypedOk))
+                    :else (TypedIf :type Ok
+                      :cond (TypedInfix 'is' :type Bool
+                        :left (TypedVar 'op' :type Int)
+                        :right (TypedInt 5 :type Int))
+                      :then (TypedBlock :type Ok
+                        :bindings (
+                          (TypedExprStmt
+                            :expr (TypedIf :type Ok
+                              :cond (TypedApp :type Bool
+                                :func (TypedVar 'has' :type Fun(k: Int): Bool)
+                                :args (
+                                  (TypedVar 'k' :type Int)
+                                ))
+                              :then (TypedBlock :type Ok
+                                :bindings (
+                                  (TypedExprStmt
+                                    :expr (TypedAssign
+                                      :target (TypedSelect 'keys' :type Array(Int)
+                                        :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                                      :value (TypedApp :type Array(Int)
+                                        :func (TypedVar 'without' :type Fun(k: Int): Array(Int))
+                                        :args (
+                                          (TypedVar 'k' :type Int)
+                                        ))))
+                                )
+                                :result (TypedOk))
+                              :else (TypedOk)))
+                          (TypedLetValue 'gone' :type maybe.T(Int)
+                            :value (TypedApp :type maybe.T(Int)
+                              :func (TypedTypeApp [Int Int] :type Fun(m: linkedHashMap.T(Int Int) key: Int): maybe.T(Int)
+                                :func (TypedSelect 'delete' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V) key: K): maybe.T(V)
+                                  :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                              :args (
+                                (TypedVar 'order' :type linkedHashMap.T(Int Int))
+                                (TypedVar 'k' :type Int)
+                              )))
+                        )
+                        :result (TypedOk))
+                      :else (TypedIf :type Ok
+                        :cond (TypedInfix 'is' :type Bool
+                          :left (TypedVar 'op' :type Int)
+                          :right (TypedInt 6 :type Int))
+                        :then (TypedBlock :type Ok
+                          :bindings (
+                            (TypedExprStmt
+                              :expr (TypedIf :type Ok
+                                :cond (TypedInfix '>' :type Bool
+                                  :left (TypedApp :type Int
+                                    :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                                    :args (
+                                      (TypedSelect 'keys' :type Array(Int)
+                                        :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                                    ))
+                                  :right (TypedInt 0 :type Int))
+                                :then (TypedBlock :type Ok
+                                  :bindings (
+                                    (TypedExprStmt
+                                      :expr (TypedAssign
+                                        :target (TypedSelect 'keys' :type Array(Int)
+                                          :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                                        :value (TypedApp :type Array(Int)
+                                          :func (TypedVar 'without' :type Fun(k: Int): Array(Int))
+                                          :args (
+                                            (TypedIndex :type Int
+                                              :target (TypedSelect 'keys' :type Array(Int)
+                                                :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                                              :index (TypedInt 0 :type Int))
+                                          ))))
+                                  )
+                                  :result (TypedOk))
+                                :else (TypedOk)))
+                            (TypedLetValue 'gone' :type maybe.T(Entry(Int Int))
+                              :value (TypedApp :type maybe.T(Entry(Int Int))
+                                :func (TypedTypeApp [Int Int] :type Fun(m: linkedHashMap.T(Int Int)): maybe.T(Entry(Int Int))
+                                  :func (TypedSelect 'popFirst' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): maybe.T(Entry(K V))
+                                    :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                                :args (
+                                  (TypedVar 'order' :type linkedHashMap.T(Int Int))
+                                )))
+                          )
+                          :result (TypedOk))
+                        :else (TypedBlock :type Ok
+                          :bindings (
+                            (TypedExprStmt
+                              :expr (TypedIf :type Ok
+                                :cond (TypedInfix '>' :type Bool
+                                  :left (TypedApp :type Int
+                                    :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                                    :args (
+                                      (TypedSelect 'keys' :type Array(Int)
+                                        :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                                    ))
+                                  :right (TypedInt 0 :type Int))
+                                :then (TypedBlock :type Ok
+                                  :bindings (
+                                    (TypedExprStmt
+                                      :expr (TypedAssign
+                                        :target (TypedSelect 'keys' :type Array(Int)
+                                          :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                                        :value (TypedApp :type Array(Int)
+                                          :func (TypedVar 'without' :type Fun(k: Int): Array(Int))
+                                          :args (
+                                            (TypedIndex :type Int
+                                              :target (TypedSelect 'keys' :type Array(Int)
+                                                :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                                              :index (TypedInfix '-' :type Int
+                                                :left (TypedApp :type Int
+                                                  :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                                                    :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                                                  :args (
+                                                    (TypedSelect 'keys' :type Array(Int)
+                                                      :target (TypedVar 'model' :type Tuple var keys: Array(Int) end))
+                                                  ))
+                                                :right (TypedInt 1 :type Int)))
+                                          ))))
+                                  )
+                                  :result (TypedOk))
+                                :else (TypedOk)))
+                            (TypedLetValue 'gone' :type maybe.T(Entry(Int Int))
+                              :value (TypedApp :type maybe.T(Entry(Int Int))
+                                :func (TypedTypeApp [Int Int] :type Fun(m: linkedHashMap.T(Int Int)): maybe.T(Entry(Int Int))
+                                  :func (TypedSelect 'popLast' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): maybe.T(Entry(K V))
+                                    :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                                :args (
+                                  (TypedVar 'order' :type linkedHashMap.T(Int Int))
+                                )))
+                          )
+                          :result (TypedOk))))))))
+            (TypedExprStmt
+              :expr (TypedAssign
+                :target (TypedVar 'all' :type Var(Bool))
+                :value (TypedIf :type Bool
+                  :cond (TypedDerefCell :type Bool
+                    :target (TypedVar 'all' :type Var(Bool)))
+                  :then (TypedApp :type Bool
+                    :func (TypedVar 'agrees' :type Fun(): Bool)
+                    :args ())
+                  :else (TypedBool false))))
+          )
+          :result (TypedIf :type Ok
+            :cond (TypedInfix '>' :type Bool
+              :left (TypedApp :type Int
+                :func (TypedTypeApp [Int Int] :type Fun(m: linkedHashMap.T(Int Int)): Int
+                  :func (TypedSelect 'size' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): Int
+                    :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                :args (
+                  (TypedVar 'order' :type linkedHashMap.T(Int Int))
+                ))
+              :right (TypedDerefCell :type Int
+                :target (TypedVar 'largest' :type Var(Int))))
+            :then (TypedBlock :type Ok
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedVar 'largest' :type Var(Int))
+                    :value (TypedApp :type Int
+                      :func (TypedTypeApp [Int Int] :type Fun(m: linkedHashMap.T(Int Int)): Int
+                        :func (TypedSelect 'size' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): Int
+                          :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                      :args (
+                        (TypedVar 'order' :type linkedHashMap.T(Int Int))
+                      ))))
+              )
+              :result (TypedOk))
+            :else (TypedOk)))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'a thousand operations agree: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedDerefCell :type Bool
+                    :target (TypedVar 'all' :type Var(Bool)))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', size ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Int
+                        :func (TypedTypeApp [Int Int] :type Fun(m: linkedHashMap.T(Int Int)): Int
+                          :func (TypedSelect 'size' :type All(K :: TYPE V :: TYPE) Fun(m: linkedHashMap.T(K V)): Int
+                            :target (TypedVar 'linkedHashMap' :type Module 'linkedHashMap')))
+                        :args (
+                          (TypedVar 'order' :type linkedHashMap.T(Int Int))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', largest ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedDerefCell :type Int
+                          :target (TypedVar 'largest' :type Var(Int)))
+                      )))))))
+        )))
+  ))

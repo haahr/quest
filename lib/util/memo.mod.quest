@@ -1,0 +1,118 @@
+(* Memoization (docs/lazy-memo-plan.md). A cache is a tuple of closures over
+ * its table, one set for each kind: unbounded keeps a hash map from keys to
+ * results; bounded keeps a linked hash map in the order of the results' use,
+ * so that the least recently used is first. Every kind takes its function as
+ * makeRecursive's does, with the memoized function as self; make and
+ * makeBounded pass one that ignores it. *)
+
+module memo : Memo
+import
+    util/maybe : util/Maybe
+    collections/hashMap : collections/HashMap
+    collections/linkedHashMap : collections/LinkedHashMap
+    word: Word
+export
+    Let Counts = Tuple var hits: Int var misses: Int end
+    Let T = Fun(K::TYPE V::TYPE) Tuple
+        apply: All(k: K) V
+        contains: All(k: K) Bool
+        size: All() Int
+        forget: All(k: K) Bool
+        clear: All() Ok
+        counts: Counts
+    end
+
+    let error: Exception = exception error: Ok end
+
+    (* A result is inserted after f returns, so a recursive call for the
+     * same key, which computes its own, may have inserted it first; insert
+     * overwrites it with the same result *)
+    let unbounded(K::TYPE V::TYPE)(f: All(self: All(k: K) V k: K) V equal: All(k1: K k2: K) Bool
+            hash: All(k: K) word.T): T(K V) =
+        begin
+            let table = hashMap.new(:K :V equal hash)
+            let counts = tuple let var hits = 0 let var misses = 0 end
+            let rec apply(k: K): V =
+                begin
+                    let kept = hashMap.get(table k)
+                    if maybe.isSome(kept) then
+                        counts.hits := counts.hits + 1
+                        maybe.unwrap(kept)
+                    else
+                        counts.misses := counts.misses + 1
+                        let v = f(apply k)
+                        let added = hashMap.insert(table k v)
+                        v
+                    end
+                end
+            tuple
+                let apply = apply
+                let contains = fun(k: K): Bool hashMap.contains(table k)
+                let size = fun(): Int hashMap.size(table)
+                let forget = fun(k: K): Bool maybe.isSome(hashMap.delete(table k))
+                let clear = fun(): Ok hashMap.clear(table)
+                let counts = counts
+            end
+        end
+
+    (* The results in a linked hash map in the order of their use, the least
+     * recently used first: a hit moves its key to the end, and a miss at
+     * capacity drops the first *)
+    let lru(K::TYPE V::TYPE)(f: All(self: All(k: K) V k: K) V capacity: Int equal: All(k1: K k2: K) Bool
+            hash: All(k: K) word.T): T(K V) =
+        begin
+            if capacity < 1 then raise error end end
+            let table = linkedHashMap.new(:K :V equal hash)
+            let counts = tuple let var hits = 0 let var misses = 0 end
+            let rec apply(k: K): V =
+                begin
+                    let kept = linkedHashMap.get(table k)
+                    if maybe.isSome(kept) then
+                        counts.hits := counts.hits + 1
+                        let moved = linkedHashMap.moveToEnd(table k)
+                        maybe.unwrap(kept)
+                    else
+                        counts.misses := counts.misses + 1
+                        let v = f(apply k)
+                        if not(linkedHashMap.contains(table k)) then
+                            if linkedHashMap.size(table) >= capacity then let gone = linkedHashMap.popFirst(table) end
+                            let added = linkedHashMap.insert(table k v)
+                        end
+                        v
+                    end
+                end
+            tuple
+                let apply = apply
+                let contains = fun(k: K): Bool linkedHashMap.contains(table k)
+                let size = fun(): Int linkedHashMap.size(table)
+                let forget = fun(k: K): Bool maybe.isSome(linkedHashMap.delete(table k))
+                let clear = fun(): Ok linkedHashMap.clear(table)
+                let counts = counts
+            end
+        end
+
+    let plain(K::TYPE V::TYPE)(f: All(k: K) V): All(self: All(k: K) V k: K) V = fun(self: All(k: K) V k: K): V f(k)
+
+    let make(K::TYPE V::TYPE)(f: All(k: K) V equal: All(k1: K k2: K) Bool hash: All(k: K) word.T): T(K V) =
+        unbounded(plain(f) equal hash)
+    let makeBounded(K::TYPE V::TYPE)(f: All(k: K) V capacity: Int equal: All(k1: K k2: K) Bool
+            hash: All(k: K) word.T): T(K V) =
+        lru(plain(f) capacity equal hash)
+    let makeRecursive(K::TYPE V::TYPE)(f: All(self: All(k: K) V k: K) V equal: All(k1: K k2: K) Bool
+            hash: All(k: K) word.T): T(K V) =
+        unbounded(f equal hash)
+    let makeBoundedRecursive(K::TYPE V::TYPE)(f: All(self: All(k: K) V k: K) V capacity: Int
+            equal: All(k1: K k2: K) Bool hash: All(k: K) word.T): T(K V) =
+        lru(f capacity equal hash)
+
+    let apply(K::TYPE V::TYPE)(c: T(K V) k: K): V = c.apply(k)
+    let asFunction(K::TYPE V::TYPE)(c: T(K V)): All(k: K) V = c.apply
+    let memoize(K::TYPE V::TYPE)(f: All(k: K) V equal: All(k1: K k2: K) Bool hash: All(k: K) word.T): All(k: K) V =
+        make(f equal hash).apply
+    let contains(K::TYPE V::TYPE)(c: T(K V) k: K): Bool = c.contains(k)
+    let size(K::TYPE V::TYPE)(c: T(K V)): Int = c.size()
+    let forget(K::TYPE V::TYPE)(c: T(K V) k: K): Bool = c.forget(k)
+    let clear(K::TYPE V::TYPE)(c: T(K V)): Ok = c.clear()
+    let hits(K::TYPE V::TYPE)(c: T(K V)): Int = c.counts.hits
+    let misses(K::TYPE V::TYPE)(c: T(K V)): Int = c.counts.misses
+end

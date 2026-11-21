@@ -1,0 +1,274 @@
+(* A hash map with an order of its own (docs/lazy-memo-plan.md). The entries
+ * are in slots 0 to count - 1 of four arrays: keys, values, and prev and next,
+ * which link the slots from first to last, ~1 ending the list. A hash map from
+ * keys to slots finds an entry; the links give the order, so moving an entry
+ * is relinking it, and nothing is allocated except when the arrays grow.
+ *
+ * Deleting an entry moves the last slot into its place, so the slots stay
+ * dense, and then overwrites the slot left over with the first entry's key and
+ * value, so that no slot past count keeps a deleted key or value from being
+ * collected. *)
+
+module linkedHashMap : LinkedHashMap
+import
+    util/maybe : util/Maybe
+    iterLib = util/iter : util/Iter
+    collections/hashMap : collections/HashMap
+    word: Word
+export
+    Let Entry = Fun(K::TYPE V::TYPE) Tuple key: K value: V end
+    Let T = Fun(K::TYPE V::TYPE) Tuple
+        index: hashMap.T(K Int)
+        var keys: Array(K)
+        var values: Array(V)
+        var prev: Array(Int)
+        var next: Array(Int)
+        var count: Int
+        var first: Int
+        var last: Int
+    end
+
+    let error: Exception = exception error: Ok end
+
+    let new(K::TYPE V::TYPE)(equal: All(k1: K k2: K) Bool hash: All(k: K) word.T): T(K V) =
+        tuple
+            let index = hashMap.new(:K :Int equal hash)
+            let var keys = array of :K end
+            let var values = array of :V end
+            let var prev = array of :Int end
+            let var next = array of :Int end
+            let var count = 0
+            let var first = ~1
+            let var last = ~1
+        end
+
+    let size(K::TYPE V::TYPE)(m: T(K V)): Int = m.count
+    let empty(K::TYPE V::TYPE)(m: T(K V)): Bool = m.count is 0
+
+    let get(K::TYPE V::TYPE)(m: T(K V) key: K): maybe.T(V) =
+        begin
+            let i = hashMap.get(m.index key)
+            if maybe.isSome(i) then maybe.some(m.values[maybe.unwrap(i)]) else maybe.none() end
+        end
+
+    let contains(K::TYPE V::TYPE)(m: T(K V) key: K): Bool = hashMap.contains(m.index key)
+
+    let find(K::TYPE V::TYPE)(m: T(K V) key: K): V =
+        begin
+            let i = hashMap.get(m.index key)
+            if maybe.isSome(i) then m.values[maybe.unwrap(i)] else raise error end end
+        end
+
+    (* The links *)
+
+    let unlink(K::TYPE V::TYPE)(m: T(K V) i: Int): Ok =
+        begin
+            let p = m.prev[i]
+            let n = m.next[i]
+            if p is ~1 then m.first := n else m.next[p] := n end
+            if n is ~1 then m.last := p else m.prev[n] := p end
+        end
+
+    let linkLast(K::TYPE V::TYPE)(m: T(K V) i: Int): Ok =
+        begin
+            m.prev[i] := m.last
+            m.next[i] := ~1
+            if m.last is ~1 then m.first := i else m.next[m.last] := i end
+            m.last := i
+        end
+
+    let linkFirst(K::TYPE V::TYPE)(m: T(K V) i: Int): Ok =
+        begin
+            m.next[i] := m.first
+            m.prev[i] := ~1
+            if m.first is ~1 then m.last := i else m.prev[m.first] := i end
+            m.first := i
+        end
+
+    (* Room for one more entry: the arrays doubled, at least 8, the new slots
+     * filled with key and value until they are used *)
+    let grow(K::TYPE V::TYPE)(m: T(K V) key: K value: V): Ok =
+        if m.count is extent m.keys then
+            let n = if m.count < 4 then 8 else 2 * m.count end
+            let keys = array of(n key)
+            let values = array of(n value)
+            let prev = array of(n ~1)
+            let next = array of(n ~1)
+            for i = 0 upto {m.count - 1} do
+                keys[i] := m.keys[i]
+                values[i] := m.values[i]
+                prev[i] := m.prev[i]
+                next[i] := m.next[i]
+            end
+            m.keys := keys
+            m.values := values
+            m.prev := prev
+            m.next := next
+        end
+
+    let insert(K::TYPE V::TYPE)(m: T(K V) key: K value: V): Bool =
+        begin
+            let kept = hashMap.get(m.index key)
+            if maybe.isSome(kept) then
+                m.values[maybe.unwrap(kept)] := value
+                false
+            else
+                grow(m key value)
+                let i = m.count
+                m.keys[i] := key
+                m.values[i] := value
+                m.count := i + 1
+                linkLast(m i)
+                hashMap.insert(m.index key i)
+            end
+        end
+
+    let reset(K::TYPE V::TYPE)(m: T(K V)): Ok =
+        begin
+            m.keys := array of :K end
+            m.values := array of :V end
+            m.prev := array of :Int end
+            m.next := array of :Int end
+            m.count := 0
+            m.first := ~1
+            m.last := ~1
+        end
+
+    (* Takes slot i, whose key the caller has deleted from the index, out of
+     * the list, and moves the last slot into it *)
+    let removeSlot(K::TYPE V::TYPE)(m: T(K V) i: Int): Ok =
+        begin
+            unlink(m i)
+            let j = m.count - 1
+            if i isnot j then
+                m.keys[i] := m.keys[j]
+                m.values[i] := m.values[j]
+                m.prev[i] := m.prev[j]
+                m.next[i] := m.next[j]
+                let p = m.prev[i]
+                let n = m.next[i]
+                if p is ~1 then m.first := i else m.next[p] := i end
+                if n is ~1 then m.last := i else m.prev[n] := i end
+                let moved = hashMap.insert(m.index m.keys[i] i)
+            end
+            m.count := j
+            if j is 0 then
+                reset(m)
+            else
+                m.keys[j] := m.keys[m.first]
+                m.values[j] := m.values[m.first]
+            end
+        end
+
+    let delete(K::TYPE V::TYPE)(m: T(K V) key: K): maybe.T(V) =
+        begin
+            let kept = hashMap.delete(m.index key)
+            if maybe.isSome(kept) then
+                let i = maybe.unwrap(kept)
+                let v = m.values[i]
+                removeSlot(m i)
+                maybe.some(v)
+            else
+                maybe.none()
+            end
+        end
+
+    let clear(K::TYPE V::TYPE)(m: T(K V)): Ok =
+        begin
+            hashMap.clear(m.index)
+            reset(m)
+        end
+
+    let moveToEnd(K::TYPE V::TYPE)(m: T(K V) key: K): Bool =
+        begin
+            let kept = hashMap.get(m.index key)
+            if maybe.isSome(kept) then
+                let i = maybe.unwrap(kept)
+                if i isnot m.last then
+                    unlink(m i)
+                    linkLast(m i)
+                end
+                true
+            else
+                false
+            end
+        end
+
+    let moveToFront(K::TYPE V::TYPE)(m: T(K V) key: K): Bool =
+        begin
+            let kept = hashMap.get(m.index key)
+            if maybe.isSome(kept) then
+                let i = maybe.unwrap(kept)
+                if i isnot m.first then
+                    unlink(m i)
+                    linkFirst(m i)
+                end
+                true
+            else
+                false
+            end
+        end
+
+    let entryAt(K::TYPE V::TYPE)(m: T(K V) i: Int): Entry(K V) = tuple let key = m.keys[i] let value = m.values[i] end
+
+    let first(K::TYPE V::TYPE)(m: T(K V)): maybe.T(Entry(K V)) =
+        if m.count is 0 then maybe.none() else maybe.some(entryAt(m m.first)) end
+    let last(K::TYPE V::TYPE)(m: T(K V)): maybe.T(Entry(K V)) =
+        if m.count is 0 then maybe.none() else maybe.some(entryAt(m m.last)) end
+
+    let pop(K::TYPE V::TYPE)(m: T(K V) i: Int): maybe.T(Entry(K V)) =
+        begin
+            let e = entryAt(m i)
+            let gone = hashMap.delete(m.index e.key)
+            removeSlot(m i)
+            maybe.some(e)
+        end
+    let popFirst(K::TYPE V::TYPE)(m: T(K V)): maybe.T(Entry(K V)) =
+        if m.count is 0 then maybe.none() else pop(m m.first) end
+    let popLast(K::TYPE V::TYPE)(m: T(K V)): maybe.T(Entry(K V)) =
+        if m.count is 0 then maybe.none() else pop(m m.last) end
+
+    let forEach(K::TYPE V::TYPE)(m: T(K V) action: All(k: K v: V) Ok): Ok =
+        begin
+            let var i = m.first
+            while i isnot ~1 do
+                action(m.keys[i] m.values[i])
+                i := m.next[i]
+            end
+        end
+
+    (* An iterator of what at each slot: at is the slot it returned last, and
+     * the one after it is next's, or the first before it has returned any. A
+     * slot past count, which a change to m can leave it at, ends it. *)
+    let slots(K::TYPE V::TYPE A::TYPE)(m: T(K V) what: All(i: Int) A): iterLib.T(A) =
+        begin
+            let c = tuple let var started = false let var at = ~1 end
+            let following(): Int =
+                if not(c.started) then
+                    m.first
+                elsif {c.at < 0} orif {c.at >= m.count} then
+                    ~1
+                else
+                    m.next[c.at]
+                end
+            let more(): Bool =
+                begin
+                    let i = following()
+                    {i >= 0} andif {i < m.count}
+                end
+            let next(): A =
+                begin
+                    let i = following()
+                    if {i < 0} orif {i >= m.count} then raise iterLib.exhausted end end
+                    c.started := true
+                    c.at := i
+                    what(i)
+                end
+            iterLib.make(more next)
+        end
+
+    let entryIter(K::TYPE V::TYPE)(m: T(K V)): iterLib.T(Entry(K V)) =
+        slots(m fun(i: Int): Entry(K V) entryAt(m i))
+    let keyIter(K::TYPE V::TYPE)(m: T(K V)): iterLib.T(K) = slots(m fun(i: Int): K m.keys[i])
+    let valueIter(K::TYPE V::TYPE)(m: T(K V)): iterLib.T(V) = slots(m fun(i: Int): V m.values[i])
+end

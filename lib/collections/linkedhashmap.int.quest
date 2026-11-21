@@ -1,0 +1,71 @@
+(* A hash map with an order of its own (docs/lazy-memo-plan.md), as Python's
+ * OrderedDict and Java's LinkedHashMap: keys are kept in the order they were
+ * inserted, and any key can be moved to either end, and the first or last
+ * taken off, in constant time. collections/hashMap keeps insertion order too,
+ * but cannot reorder a key or take the first one off cheaply; this is the map
+ * for a least recently used cache (util/memo's makeBounded), a queue keyed by
+ * value, or anything else whose order changes after insertion.
+ *
+ * Only the operations that say so change the order: get, find, and contains
+ * do not, and inserting a key already present changes its value and leaves it
+ * where it is. A cache that counts a read as a use calls moveToEnd itself. *)
+
+interface LinkedHashMap
+import
+    util/maybe : util/Maybe
+    iterLib = util/iter : util/Iter
+    word: Word
+export
+    T::ALL(K::TYPE) ALL(V::TYPE) TYPE
+
+    (* A key and its value, as first, last, the pops, and entryIter give *)
+    Def Entry = Fun(K::TYPE V::TYPE) Tuple key: K value: V end
+
+    (* Raised by find for a key not present *)
+    error: Exception
+
+    (* An empty map whose keys are equal by equal, hashed by hash *)
+    new: All(K::TYPE V::TYPE) All(equal: All(k1: K k2: K) Bool hash: All(k: K) word.T) T(K V)
+
+    size: All(K::TYPE V::TYPE) All(m: T(K V)) Int
+    empty: All(K::TYPE V::TYPE) All(m: T(K V)) Bool
+
+    (* The value for key, or none; does not change the order *)
+    get: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(V)
+    contains: All(K::TYPE V::TYPE) All(m: T(K V) key: K) Bool
+
+    (* The value for key; raises error if it is not present *)
+    find: All(K::TYPE V::TYPE) All(m: T(K V) key: K) V
+
+    (* Sets key's value: a new key goes last, and one already present keeps
+     * its place. Whether the key was new. *)
+    insert: All(K::TYPE V::TYPE) All(m: T(K V) key: K value: V) Bool
+
+    (* Removes key, and its value if it was present *)
+    delete: All(K::TYPE V::TYPE) All(m: T(K V) key: K) maybe.T(V)
+
+    clear: All(K::TYPE V::TYPE) All(m: T(K V)) Ok
+
+    (* Moves key to the end or the front; whether it was present *)
+    moveToEnd: All(K::TYPE V::TYPE) All(m: T(K V) key: K) Bool
+    moveToFront: All(K::TYPE V::TYPE) All(m: T(K V) key: K) Bool
+
+    (* The first and last entries, or none if m is empty *)
+    first: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+    last: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+
+    (* Removes and returns the first or last entry, or none if m is empty *)
+    popFirst: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+    popLast: All(K::TYPE V::TYPE) All(m: T(K V)) maybe.T(Entry(K V))
+
+    (* Calls action on each key and value, first to last; action must not
+     * change m *)
+    forEach: All(K::TYPE V::TYPE) All(m: T(K V) action: All(k: K v: V) Ok) Ok
+
+    (* Iterators of the entries, keys, and values, first to last; each reads
+     * m as it is at each step, and what one returns after m changes other
+     * than through it is unspecified (docs/iter.md) *)
+    entryIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(Entry(K V))
+    keyIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(K)
+    valueIter: All(K::TYPE V::TYPE) All(m: T(K V)) iterLib.T(V)
+end

@@ -1,0 +1,1215 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('memo') : 'Memo')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('hash') : 'Hash')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('stringOp') : 'StringOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('word') : 'Word')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'same' :type Fun(a: Int b: Int): Bool
+      :value (TypedFun :params (('a' : Int) ('b' : Int)) :type Fun(a: Int b: Int): Bool
+        :body (TypedInfix 'is' :type Bool
+          :left (TypedVar 'a' :type Int)
+          :right (TypedVar 'b' :type Int))))
+    (TypedLetValue 'calls' :type Tuple var n: Int end
+      :value (TypedTuple :type Tuple var n: Int end
+        :elements (
+          (TypedInt 0 :type Int)
+        )))
+    (TypedLetValue 'stats' :type Fun(c: memo.T(Int Int)): String
+      :value (TypedFun :params (('c' : memo.T(Int Int))) :type Fun(c: memo.T(Int Int)): String
+        :body (TypedInfix '<>' :type String
+          :left (TypedString 'size ' :type String)
+          :right (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int)): Int
+                    :func (TypedSelect 'size' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V)): Int
+                      :target (TypedVar 'memo' :type Module 'memo')))
+                  :args (
+                    (TypedVar 'c' :type memo.T(Int Int))
+                  ))
+              ))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' hits ' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Int
+                      :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int)): Int
+                        :func (TypedSelect 'hits' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V)): Int
+                          :target (TypedVar 'memo' :type Module 'memo')))
+                      :args (
+                        (TypedVar 'c' :type memo.T(Int Int))
+                      ))
+                  ))
+                :right (TypedInfix '<>' :type String
+                  :left (TypedString ' misses ' :type String)
+                  :right (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Int
+                        :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int)): Int
+                          :func (TypedSelect 'misses' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V)): Int
+                            :target (TypedVar 'memo' :type Module 'memo')))
+                        :args (
+                          (TypedVar 'c' :type memo.T(Int Int))
+                        ))
+                    )))))))))
+    (TypedLetValue 'square' :type memo.T(Int Int)
+      :value (TypedApp :type memo.T(Int Int)
+        :func (TypedTypeApp [Int Int] :type Fun(f: Fun(k: Int): Int equal: Fun(k1: Int k2: Int): Bool hash: Fun(k: Int): word.T): memo.T(Int Int)
+          :func (TypedSelect 'make' :type All(K :: TYPE V :: TYPE) Fun(f: Fun(k: K): V equal: Fun(k1: K k2: K): Bool hash: Fun(k: K): word.T): memo.T(K V)
+            :target (TypedVar 'memo' :type Module 'memo')))
+        :args (
+          (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedSelect 'n' :type Int
+                      :target (TypedVar 'calls' :type Tuple var n: Int end))
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedSelect 'n' :type Int
+                        :target (TypedVar 'calls' :type Tuple var n: Int end))
+                      :right (TypedInt 1 :type Int))))
+              )
+              :result (TypedInfix '*' :type Int
+                :left (TypedVar 'x' :type Int)
+                :right (TypedVar 'x' :type Int))))
+          (TypedVar 'same' :type Fun(a: Int b: Int): Bool)
+          (TypedSelect 'int' :type Fun(n: Int): word.T
+            :target (TypedVar 'hash' :type Module 'hash'))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'square ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Int
+                      :func (TypedSelect 'apply' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): V
+                        :target (TypedVar 'memo' :type Module 'memo')))
+                    :args (
+                      (TypedVar 'square' :type memo.T(Int Int))
+                      (TypedInt 3 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Int
+                        :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Int
+                          :func (TypedSelect 'apply' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): V
+                            :target (TypedVar 'memo' :type Module 'memo')))
+                        :args (
+                          (TypedVar 'square' :type memo.T(Int Int))
+                          (TypedInt 3 :type Int)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedSelect 'int' :type Fun(n: Int): String
+                          :target (TypedVar 'conv' :type Module 'conv'))
+                        :args (
+                          (TypedApp :type Int
+                            :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Int
+                              :func (TypedSelect 'apply' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): V
+                                :target (TypedVar 'memo' :type Module 'memo')))
+                            :args (
+                              (TypedVar 'square' :type memo.T(Int Int))
+                              (TypedInt 4 :type Int)
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ', calls ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedSelect 'int' :type Fun(n: Int): String
+                              :target (TypedVar 'conv' :type Module 'conv'))
+                            :args (
+                              (TypedSelect 'n' :type Int
+                                :target (TypedVar 'calls' :type Tuple var n: Int end))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ', ' :type String)
+                            :right (TypedApp :type String
+                              :func (TypedVar 'stats' :type Fun(c: memo.T(Int Int)): String)
+                              :args (
+                                (TypedVar 'square' :type memo.T(Int Int))
+                              )))))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'contains 3 ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Bool
+                      :func (TypedSelect 'contains' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): Bool
+                        :target (TypedVar 'memo' :type Module 'memo')))
+                    :args (
+                      (TypedVar 'square' :type memo.T(Int Int))
+                      (TypedInt 3 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' 5 ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Bool
+                        :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Bool
+                          :func (TypedSelect 'contains' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): Bool
+                            :target (TypedVar 'memo' :type Module 'memo')))
+                        :args (
+                          (TypedVar 'square' :type memo.T(Int Int))
+                          (TypedInt 5 :type Int)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'stats' :type Fun(c: memo.T(Int Int)): String)
+                      :args (
+                        (TypedVar 'square' :type memo.T(Int Int))
+                      )))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'forget 3 ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Bool
+                      :func (TypedSelect 'forget' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): Bool
+                        :target (TypedVar 'memo' :type Module 'memo')))
+                    :args (
+                      (TypedVar 'square' :type memo.T(Int Int))
+                      (TypedInt 3 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' again ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Bool
+                        :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Bool
+                          :func (TypedSelect 'forget' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): Bool
+                            :target (TypedVar 'memo' :type Module 'memo')))
+                        :args (
+                          (TypedVar 'square' :type memo.T(Int Int))
+                          (TypedInt 3 :type Int)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', then ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedSelect 'int' :type Fun(n: Int): String
+                          :target (TypedVar 'conv' :type Module 'conv'))
+                        :args (
+                          (TypedApp :type Int
+                            :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Int
+                              :func (TypedSelect 'apply' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): V
+                                :target (TypedVar 'memo' :type Module 'memo')))
+                            :args (
+                              (TypedVar 'square' :type memo.T(Int Int))
+                              (TypedInt 3 :type Int)
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ', calls ' :type String)
+                        :right (TypedApp :type String
+                          :func (TypedSelect 'int' :type Fun(n: Int): String
+                            :target (TypedVar 'conv' :type Module 'conv'))
+                          :args (
+                            (TypedSelect 'n' :type Int
+                              :target (TypedVar 'calls' :type Tuple var n: Int end))
+                          )))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int)): Ok
+          :func (TypedSelect 'clear' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V)): Ok
+            :target (TypedVar 'memo' :type Module 'memo')))
+        :args (
+          (TypedVar 'square' :type memo.T(Int Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'clear: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'stats' :type Fun(c: memo.T(Int Int)): String)
+                :args (
+                  (TypedVar 'square' :type memo.T(Int Int))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', then ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Int
+                        :func (TypedApp :type Fun(k: Int): Int
+                          :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int)): Fun(k: Int): Int
+                            :func (TypedSelect 'asFunction' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V)): Fun(k: K): V
+                              :target (TypedVar 'memo' :type Module 'memo')))
+                          :args (
+                            (TypedVar 'square' :type memo.T(Int Int))
+                          ))
+                        :args (
+                          (TypedInt 4 :type Int)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', calls ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedSelect 'n' :type Int
+                          :target (TypedVar 'calls' :type Tuple var n: Int end))
+                      )))))))
+        )))
+    (TypedLetValue 'lengths' :type Tuple var n: Int end
+      :value (TypedTuple :type Tuple var n: Int end
+        :elements (
+          (TypedInt 0 :type Int)
+        )))
+    (TypedLetValue 'len' :type Fun(k: String): Int
+      :value (TypedApp :type Fun(k: String): Int
+        :func (TypedTypeApp [String Int] :type Fun(f: Fun(k: String): Int equal: Fun(k1: String k2: String): Bool hash: Fun(k: String): word.T): Fun(k: String): Int
+          :func (TypedSelect 'memoize' :type All(K :: TYPE V :: TYPE) Fun(f: Fun(k: K): V equal: Fun(k1: K k2: K): Bool hash: Fun(k: K): word.T): Fun(k: K): V
+            :target (TypedVar 'memo' :type Module 'memo')))
+        :args (
+          (TypedFun :params (('s' : String)) :type Fun(s: String): Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedSelect 'n' :type Int
+                      :target (TypedVar 'lengths' :type Tuple var n: Int end))
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedSelect 'n' :type Int
+                        :target (TypedVar 'lengths' :type Tuple var n: Int end))
+                      :right (TypedInt 1 :type Int))))
+              )
+              :result (TypedApp :type Int
+                :func (TypedSelect 'length' :type Fun(string: String): Int
+                  :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                :args (
+                  (TypedVar 's' :type String)
+                ))))
+          (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+            :target (TypedVar 'stringOp' :type Module 'stringOp'))
+          (TypedSelect 'string' :type Fun(s: String): word.T
+            :target (TypedVar 'hash' :type Module 'hash'))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'memoize ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedVar 'len' :type Fun(k: String): Int)
+                    :args (
+                      (TypedString 'abc' :type String)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Int
+                        :func (TypedVar 'len' :type Fun(k: String): Int)
+                        :args (
+                          (TypedInfix '<>' :type String
+                            :left (TypedString 'ab' :type String)
+                            :right (TypedString 'c' :type String))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', calls ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedSelect 'n' :type Int
+                          :target (TypedVar 'lengths' :type Tuple var n: Int end))
+                      )))))))
+        )))
+    (TypedLetValue 'fibCalls' :type Tuple var n: Int end
+      :value (TypedTuple :type Tuple var n: Int end
+        :elements (
+          (TypedInt 0 :type Int)
+        )))
+    (TypedLetValue 'fib' :type memo.T(Int Int)
+      :value (TypedApp :type memo.T(Int Int)
+        :func (TypedTypeApp [Int Int] :type Fun(f: Fun(self: Fun(k: Int): Int k: Int): Int equal: Fun(k1: Int k2: Int): Bool hash: Fun(k: Int): word.T): memo.T(Int Int)
+          :func (TypedSelect 'makeRecursive' :type All(K :: TYPE V :: TYPE) Fun(f: Fun(self: Fun(k: K): V k: K): V equal: Fun(k1: K k2: K): Bool hash: Fun(k: K): word.T): memo.T(K V)
+            :target (TypedVar 'memo' :type Module 'memo')))
+        :args (
+          (TypedFun :params (('self' : Fun(n: Int): Int) ('n' : Int)) :type Fun(self: Fun(n: Int): Int n: Int): Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedSelect 'n' :type Int
+                      :target (TypedVar 'fibCalls' :type Tuple var n: Int end))
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedSelect 'n' :type Int
+                        :target (TypedVar 'fibCalls' :type Tuple var n: Int end))
+                      :right (TypedInt 1 :type Int))))
+              )
+              :result (TypedIf :type Int
+                :cond (TypedInfix '<' :type Bool
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 2 :type Int))
+                :then (TypedVar 'n' :type Int)
+                :else (TypedInfix '+' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedVar 'self' :type Fun(n: Int): Int)
+                    :args (
+                      (TypedInfix '-' :type Int
+                        :left (TypedVar 'n' :type Int)
+                        :right (TypedInt 1 :type Int))
+                    ))
+                  :right (TypedApp :type Int
+                    :func (TypedVar 'self' :type Fun(n: Int): Int)
+                    :args (
+                      (TypedInfix '-' :type Int
+                        :left (TypedVar 'n' :type Int)
+                        :right (TypedInt 2 :type Int))
+                    ))))))
+          (TypedVar 'same' :type Fun(a: Int b: Int): Bool)
+          (TypedSelect 'int' :type Fun(n: Int): word.T
+            :target (TypedVar 'hash' :type Module 'hash'))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'fib 80 ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Int
+                      :func (TypedSelect 'apply' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): V
+                        :target (TypedVar 'memo' :type Module 'memo')))
+                    :args (
+                      (TypedVar 'fib' :type memo.T(Int Int))
+                      (TypedInt 80 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', calls ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedSelect 'n' :type Int
+                        :target (TypedVar 'fibCalls' :type Tuple var n: Int end))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'stats' :type Fun(c: memo.T(Int Int)): String)
+                      :args (
+                        (TypedVar 'fib' :type memo.T(Int Int))
+                      )))))))
+        )))
+    (TypedLetValue 'failure' :type Exception(Int)
+      :value (TypedException 'failure' :type Exception(Int)))
+    (TypedLetValue 'tries' :type Tuple var n: Int end
+      :value (TypedTuple :type Tuple var n: Int end
+        :elements (
+          (TypedInt 0 :type Int)
+        )))
+    (TypedLetValue 'flaky' :type memo.T(Int Int)
+      :value (TypedApp :type memo.T(Int Int)
+        :func (TypedTypeApp [Int Int] :type Fun(f: Fun(k: Int): Int equal: Fun(k1: Int k2: Int): Bool hash: Fun(k: Int): word.T): memo.T(Int Int)
+          :func (TypedSelect 'make' :type All(K :: TYPE V :: TYPE) Fun(f: Fun(k: K): V equal: Fun(k1: K k2: K): Bool hash: Fun(k: K): word.T): memo.T(K V)
+            :target (TypedVar 'memo' :type Module 'memo')))
+        :args (
+          (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedSelect 'n' :type Int
+                      :target (TypedVar 'tries' :type Tuple var n: Int end))
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedSelect 'n' :type Int
+                        :target (TypedVar 'tries' :type Tuple var n: Int end))
+                      :right (TypedInt 1 :type Int))))
+                (TypedExprStmt
+                  :expr (TypedIf :type Ok
+                    :cond (TypedInfix '<' :type Bool
+                      :left (TypedSelect 'n' :type Int
+                        :target (TypedVar 'tries' :type Tuple var n: Int end))
+                      :right (TypedInt 2 :type Int))
+                    :then (TypedBlock :type Ok
+                      :bindings (
+                        (TypedExprStmt
+                          :expr (TypedRaise :type Ok
+                            :exc (TypedVar 'failure' :type Exception(Int))
+                            :payload (TypedVar 'x' :type Int)))
+                      )
+                      :result (TypedOk))
+                    :else (TypedOk)))
+              )
+              :result (TypedVar 'x' :type Int)))
+          (TypedVar 'same' :type Fun(a: Int b: Int): Bool)
+          (TypedSelect 'int' :type Fun(n: Int): word.T
+            :target (TypedVar 'hash' :type Module 'hash'))
+        )))
+    (TypedLetValue 'attempt' :type Fun(): String
+      :value (TypedFun :params () :type Fun(): String
+        :body (TypedTry :type String
+          :body (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Int
+                  :func (TypedSelect 'apply' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): V
+                    :target (TypedVar 'memo' :type Module 'memo')))
+                :args (
+                  (TypedVar 'flaky' :type memo.T(Int Int))
+                  (TypedInt 5 :type Int)
+                ))
+            ))
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedVar 'failure' :type Exception(Int))
+              :body (TypedInfix '<>' :type String
+                :left (TypedString 'failure ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedVar 'n' :type Int)
+                  ))))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'raises: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'attempt' :type Fun(): String)
+                :args ())
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'attempt' :type Fun(): String)
+                    :args ())
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedVar 'attempt' :type Fun(): String)
+                        :args ())
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ', tries ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedSelect 'int' :type Fun(n: Int): String
+                              :target (TypedVar 'conv' :type Module 'conv'))
+                            :args (
+                              (TypedSelect 'n' :type Int
+                                :target (TypedVar 'tries' :type Tuple var n: Int end))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ', ' :type String)
+                            :right (TypedApp :type String
+                              :func (TypedVar 'stats' :type Fun(c: memo.T(Int Int)): String)
+                              :args (
+                                (TypedVar 'flaky' :type memo.T(Int Int))
+                              )))))))))))
+        )))
+    (TypedLetValue 'seen' :type Tuple var keys: String end
+      :value (TypedTuple :type Tuple var keys: String end
+        :elements (
+          (TypedString '' :type String)
+        )))
+    (TypedLetValue 'lru' :type memo.T(Int Int)
+      :value (TypedApp :type memo.T(Int Int)
+        :func (TypedTypeApp [Int Int] :type Fun(f: Fun(k: Int): Int capacity: Int equal: Fun(k1: Int k2: Int): Bool hash: Fun(k: Int): word.T): memo.T(Int Int)
+          :func (TypedSelect 'makeBounded' :type All(K :: TYPE V :: TYPE) Fun(f: Fun(k: K): V capacity: Int equal: Fun(k1: K k2: K): Bool hash: Fun(k: K): word.T): memo.T(K V)
+            :target (TypedVar 'memo' :type Module 'memo')))
+        :args (
+          (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedSelect 'keys' :type String
+                      :target (TypedVar 'seen' :type Tuple var keys: String end))
+                    :value (TypedInfix '<>' :type String
+                      :left (TypedSelect 'keys' :type String
+                        :target (TypedVar 'seen' :type Tuple var keys: String end))
+                      :right (TypedApp :type String
+                        :func (TypedSelect 'int' :type Fun(n: Int): String
+                          :target (TypedVar 'conv' :type Module 'conv'))
+                        :args (
+                          (TypedVar 'x' :type Int)
+                        )))))
+              )
+              :result (TypedVar 'x' :type Int)))
+          (TypedInt 2 :type Int)
+          (TypedVar 'same' :type Fun(a: Int b: Int): Bool)
+          (TypedSelect 'int' :type Fun(n: Int): word.T
+            :target (TypedVar 'hash' :type Module 'hash'))
+        )))
+    (TypedLetValue 'use' :type Fun(x: Int): Ok
+      :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'v' :type Int
+              :value (TypedApp :type Int
+                :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Int
+                  :func (TypedSelect 'apply' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): V
+                    :target (TypedVar 'memo' :type Module 'memo')))
+                :args (
+                  (TypedVar 'lru' :type memo.T(Int Int))
+                  (TypedVar 'x' :type Int)
+                )))
+          )
+          :result (TypedOk))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'use' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInt 1 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'use' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInt 2 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'use' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInt 1 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'use' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInt 3 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'use' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInt 2 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'use' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInt 1 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'bounded computed ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedSelect 'keys' :type String
+                :target (TypedVar 'seen' :type Tuple var keys: String end))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', holds 1 ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Bool
+                        :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Bool
+                          :func (TypedSelect 'contains' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): Bool
+                            :target (TypedVar 'memo' :type Module 'memo')))
+                        :args (
+                          (TypedVar 'lru' :type memo.T(Int Int))
+                          (TypedInt 1 :type Int)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' 2 ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                          :target (TypedVar 'conv' :type Module 'conv'))
+                        :args (
+                          (TypedApp :type Bool
+                            :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Bool
+                              :func (TypedSelect 'contains' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): Bool
+                                :target (TypedVar 'memo' :type Module 'memo')))
+                            :args (
+                              (TypedVar 'lru' :type memo.T(Int Int))
+                              (TypedInt 2 :type Int)
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' 3 ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                              :target (TypedVar 'conv' :type Module 'conv'))
+                            :args (
+                              (TypedApp :type Bool
+                                :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Bool
+                                  :func (TypedSelect 'contains' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): Bool
+                                    :target (TypedVar 'memo' :type Module 'memo')))
+                                :args (
+                                  (TypedVar 'lru' :type memo.T(Int Int))
+                                  (TypedInt 3 :type Int)
+                                ))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ', ' :type String)
+                            :right (TypedApp :type String
+                              :func (TypedVar 'stats' :type Fun(c: memo.T(Int Int)): String)
+                              :args (
+                                (TypedVar 'lru' :type memo.T(Int Int))
+                              )))))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'forget 2 ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Bool
+                      :func (TypedSelect 'forget' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): Bool
+                        :target (TypedVar 'memo' :type Module 'memo')))
+                    :args (
+                      (TypedVar 'lru' :type memo.T(Int Int))
+                      (TypedInt 2 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedVar 'stats' :type Fun(c: memo.T(Int Int)): String)
+                  :args (
+                    (TypedVar 'lru' :type memo.T(Int Int))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'use' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInt 4 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'use' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInt 1 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'use' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInt 5 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'after forget computed ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedSelect 'keys' :type String
+                :target (TypedVar 'seen' :type Tuple var keys: String end))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', holds 1 ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Bool
+                        :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Bool
+                          :func (TypedSelect 'contains' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): Bool
+                            :target (TypedVar 'memo' :type Module 'memo')))
+                        :args (
+                          (TypedVar 'lru' :type memo.T(Int Int))
+                          (TypedInt 1 :type Int)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' 4 ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                          :target (TypedVar 'conv' :type Module 'conv'))
+                        :args (
+                          (TypedApp :type Bool
+                            :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Bool
+                              :func (TypedSelect 'contains' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): Bool
+                                :target (TypedVar 'memo' :type Module 'memo')))
+                            :args (
+                              (TypedVar 'lru' :type memo.T(Int Int))
+                              (TypedInt 4 :type Int)
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' 5 ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                              :target (TypedVar 'conv' :type Module 'conv'))
+                            :args (
+                              (TypedApp :type Bool
+                                :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Bool
+                                  :func (TypedSelect 'contains' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): Bool
+                                    :target (TypedVar 'memo' :type Module 'memo')))
+                                :args (
+                                  (TypedVar 'lru' :type memo.T(Int Int))
+                                  (TypedInt 5 :type Int)
+                                ))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ', ' :type String)
+                            :right (TypedApp :type String
+                              :func (TypedVar 'stats' :type Fun(c: memo.T(Int Int)): String)
+                              :args (
+                                (TypedVar 'lru' :type memo.T(Int Int))
+                              )))))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int)): Ok
+          :func (TypedSelect 'clear' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V)): Ok
+            :target (TypedVar 'memo' :type Module 'memo')))
+        :args (
+          (TypedVar 'lru' :type memo.T(Int Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'use' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInt 6 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'use' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInt 7 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'use' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInt 6 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'use' :type Fun(x: Int): Ok)
+        :args (
+          (TypedInt 8 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'after clear computed ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedSelect 'keys' :type String
+                :target (TypedVar 'seen' :type Tuple var keys: String end))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', holds 6 ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Bool
+                        :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Bool
+                          :func (TypedSelect 'contains' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): Bool
+                            :target (TypedVar 'memo' :type Module 'memo')))
+                        :args (
+                          (TypedVar 'lru' :type memo.T(Int Int))
+                          (TypedInt 6 :type Int)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' 7 ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                          :target (TypedVar 'conv' :type Module 'conv'))
+                        :args (
+                          (TypedApp :type Bool
+                            :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Bool
+                              :func (TypedSelect 'contains' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): Bool
+                                :target (TypedVar 'memo' :type Module 'memo')))
+                            :args (
+                              (TypedVar 'lru' :type memo.T(Int Int))
+                              (TypedInt 7 :type Int)
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ', ' :type String)
+                        :right (TypedApp :type String
+                          :func (TypedVar 'stats' :type Fun(c: memo.T(Int Int)): String)
+                          :args (
+                            (TypedVar 'lru' :type memo.T(Int Int))
+                          )))))))))
+        )))
+    (TypedLetValue 'pathCalls' :type Tuple var n: Int end
+      :value (TypedTuple :type Tuple var n: Int end
+        :elements (
+          (TypedInt 0 :type Int)
+        )))
+    (TypedLetValue 'paths' :type memo.T(Int Int)
+      :value (TypedApp :type memo.T(Int Int)
+        :func (TypedTypeApp [Int Int] :type Fun(f: Fun(self: Fun(k: Int): Int k: Int): Int capacity: Int equal: Fun(k1: Int k2: Int): Bool hash: Fun(k: Int): word.T): memo.T(Int Int)
+          :func (TypedSelect 'makeBoundedRecursive' :type All(K :: TYPE V :: TYPE) Fun(f: Fun(self: Fun(k: K): V k: K): V capacity: Int equal: Fun(k1: K k2: K): Bool hash: Fun(k: K): word.T): memo.T(K V)
+            :target (TypedVar 'memo' :type Module 'memo')))
+        :args (
+          (TypedFun :params (('self' : Fun(n: Int): Int) ('n' : Int)) :type Fun(self: Fun(n: Int): Int n: Int): Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedSelect 'n' :type Int
+                      :target (TypedVar 'pathCalls' :type Tuple var n: Int end))
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedSelect 'n' :type Int
+                        :target (TypedVar 'pathCalls' :type Tuple var n: Int end))
+                      :right (TypedInt 1 :type Int))))
+              )
+              :result (TypedIf :type Int
+                :cond (TypedInfix '<' :type Bool
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 2 :type Int))
+                :then (TypedInt 1 :type Int)
+                :else (TypedInfix '+' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedVar 'self' :type Fun(n: Int): Int)
+                    :args (
+                      (TypedInfix '-' :type Int
+                        :left (TypedVar 'n' :type Int)
+                        :right (TypedInt 1 :type Int))
+                    ))
+                  :right (TypedApp :type Int
+                    :func (TypedVar 'self' :type Fun(n: Int): Int)
+                    :args (
+                      (TypedInfix '-' :type Int
+                        :left (TypedVar 'n' :type Int)
+                        :right (TypedInt 2 :type Int))
+                    ))))))
+          (TypedInt 3 :type Int)
+          (TypedVar 'same' :type Fun(a: Int b: Int): Bool)
+          (TypedSelect 'int' :type Fun(n: Int): word.T
+            :target (TypedVar 'hash' :type Module 'hash'))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'makeBoundedRecursive ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int) k: Int): Int
+                      :func (TypedSelect 'apply' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V) k: K): V
+                        :target (TypedVar 'memo' :type Module 'memo')))
+                    :args (
+                      (TypedVar 'paths' :type memo.T(Int Int))
+                      (TypedInt 40 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', calls ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedSelect 'n' :type Int
+                        :target (TypedVar 'pathCalls' :type Tuple var n: Int end))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', size ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedApp :type Int
+                          :func (TypedTypeApp [Int Int] :type Fun(c: memo.T(Int Int)): Int
+                            :func (TypedSelect 'size' :type All(K :: TYPE V :: TYPE) Fun(c: memo.T(K V)): Int
+                              :target (TypedVar 'memo' :type Module 'memo')))
+                          :args (
+                            (TypedVar 'paths' :type memo.T(Int Int))
+                          ))
+                      )))))))
+        )))
+    (TypedLetType 'Point' :kind TYPE)
+    (TypedLetValue 'pointCalls' :type Tuple var n: Int end
+      :value (TypedTuple :type Tuple var n: Int end
+        :elements (
+          (TypedInt 0 :type Int)
+        )))
+    (TypedLetValue 'grid' :type Fun(k: Tuple x: Int y: Int end): Int
+      :value (TypedApp :type Fun(k: Tuple x: Int y: Int end): Int
+        :func (TypedTypeApp [Tuple x: Int y: Int end Int] :type Fun(f: Fun(k: Tuple x: Int y: Int end): Int equal: Fun(k1: Tuple x: Int y: Int end k2: Tuple x: Int y: Int end): Bool hash: Fun(k: Tuple x: Int y: Int end): word.T): Fun(k: Tuple x: Int y: Int end): Int
+          :func (TypedSelect 'memoize' :type All(K :: TYPE V :: TYPE) Fun(f: Fun(k: K): V equal: Fun(k1: K k2: K): Bool hash: Fun(k: K): word.T): Fun(k: K): V
+            :target (TypedVar 'memo' :type Module 'memo')))
+        :args (
+          (TypedFun :params (('p' : Point)) :type Fun(p: Point): Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedSelect 'n' :type Int
+                      :target (TypedVar 'pointCalls' :type Tuple var n: Int end))
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedSelect 'n' :type Int
+                        :target (TypedVar 'pointCalls' :type Tuple var n: Int end))
+                      :right (TypedInt 1 :type Int))))
+              )
+              :result (TypedInfix '*' :type Int
+                :left (TypedSelect 'x' :type Int
+                  :target (TypedVar 'p' :type Point))
+                :right (TypedInfix '+' :type Int
+                  :left (TypedInt 10 :type Int)
+                  :right (TypedSelect 'y' :type Int
+                    :target (TypedVar 'p' :type Point))))))
+          (TypedFun :params (('a' : Point) ('b' : Point)) :type Fun(a: Point b: Point): Bool
+            :body (TypedIf :type Bool
+              :cond (TypedInfix 'is' :type Bool
+                :left (TypedSelect 'x' :type Int
+                  :target (TypedVar 'a' :type Point))
+                :right (TypedSelect 'x' :type Int
+                  :target (TypedVar 'b' :type Point)))
+              :then (TypedInfix 'is' :type Bool
+                :left (TypedSelect 'y' :type Int
+                  :target (TypedVar 'a' :type Point))
+                :right (TypedSelect 'y' :type Int
+                  :target (TypedVar 'b' :type Point)))
+              :else (TypedBool false)))
+          (TypedFun :params (('p' : Point)) :type Fun(p: Point): word.T
+            :body (TypedApp :type word.T
+              :func (TypedSelect 'combine' :type Fun(h1: word.T h2: word.T): word.T
+                :target (TypedVar 'hash' :type Module 'hash'))
+              :args (
+                (TypedApp :type word.T
+                  :func (TypedSelect 'int' :type Fun(n: Int): word.T
+                    :target (TypedVar 'hash' :type Module 'hash'))
+                  :args (
+                    (TypedSelect 'x' :type Int
+                      :target (TypedVar 'p' :type Point))
+                  ))
+                (TypedApp :type word.T
+                  :func (TypedSelect 'int' :type Fun(n: Int): word.T
+                    :target (TypedVar 'hash' :type Module 'hash'))
+                  :args (
+                    (TypedSelect 'y' :type Int
+                      :target (TypedVar 'p' :type Point))
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'pairs ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedVar 'grid' :type Fun(k: Tuple x: Int y: Int end): Int)
+                    :args (
+                      (TypedTuple :type Tuple x: Int y: Int end
+                        :elements (
+                          (TypedInt 1 :type Int)
+                          (TypedInt 2 :type Int)
+                        ))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Int
+                        :func (TypedVar 'grid' :type Fun(k: Tuple x: Int y: Int end): Int)
+                        :args (
+                          (TypedTuple :type Tuple x: Int y: Int end
+                            :elements (
+                              (TypedInt 1 :type Int)
+                              (TypedInt 2 :type Int)
+                            ))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedSelect 'int' :type Fun(n: Int): String
+                          :target (TypedVar 'conv' :type Module 'conv'))
+                        :args (
+                          (TypedApp :type Int
+                            :func (TypedVar 'grid' :type Fun(k: Tuple x: Int y: Int end): Int)
+                            :args (
+                              (TypedTuple :type Tuple x: Int y: Int end
+                                :elements (
+                                  (TypedInt 2 :type Int)
+                                  (TypedInt 1 :type Int)
+                                ))
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ', calls ' :type String)
+                        :right (TypedApp :type String
+                          :func (TypedSelect 'int' :type Fun(n: Int): String
+                            :target (TypedVar 'conv' :type Module 'conv'))
+                          :args (
+                            (TypedSelect 'n' :type Int
+                              :target (TypedVar 'pointCalls' :type Tuple var n: Int end))
+                          )))))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'capacity 0: ' :type String)
+            :right (TypedTry :type String
+              :body (TypedBlock :type String
+                :bindings (
+                  (TypedLetValue 'c' :type memo.T(Int Int)
+                    :value (TypedApp :type memo.T(Int Int)
+                      :func (TypedTypeApp [Int Int] :type Fun(f: Fun(k: Int): Int capacity: Int equal: Fun(k1: Int k2: Int): Bool hash: Fun(k: Int): word.T): memo.T(Int Int)
+                        :func (TypedSelect 'makeBounded' :type All(K :: TYPE V :: TYPE) Fun(f: Fun(k: K): V capacity: Int equal: Fun(k1: K k2: K): Bool hash: Fun(k: K): word.T): memo.T(K V)
+                          :target (TypedVar 'memo' :type Module 'memo')))
+                      :args (
+                        (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+                          :body (TypedVar 'x' :type Int))
+                        (TypedInt 0 :type Int)
+                        (TypedVar 'same' :type Fun(a: Int b: Int): Bool)
+                        (TypedSelect 'int' :type Fun(n: Int): word.T
+                          :target (TypedVar 'hash' :type Module 'hash'))
+                      )))
+                )
+                :result (TypedString 'made' :type String))
+              :branches (
+                (TypedTryBranch
+                  :exc_pattern (TypedSelect 'error' :type Exception
+                    :target (TypedVar 'memo' :type Module 'memo'))
+                  :body (TypedString 'memo.error' :type String))
+              )))
+        )))
+  ))

@@ -1,0 +1,95 @@
+(* Standard library: util/memo (docs/lazy-memo-plan.md): a memoized function
+ * calls its function once per key; recursive memoizes its own calls (fib of
+ * 80 in 81 calls); a raise keeps nothing; a bounded cache drops the least
+ * recently used key, a hit counting as a use; forget, clear, contains, size,
+ * hits, and misses; a key of two values; and the error for a capacity below 1 *)
+
+import util/memo : util/Memo;
+import util/hash : util/Hash;
+import stringOp = string : StringOp;
+import word: Word;
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let same(a: Int b: Int): Bool = a is b;
+let calls = tuple let var n = 0 end;
+let stats(c: memo.T(Int Int)): String =
+    "size " <> conv.int(memo.size(c)) <> " hits " <> conv.int(memo.hits(c)) <> " misses " <> conv.int(memo.misses(c));
+
+(* Unbounded *)
+let square = memo.make(fun(x: Int): Int begin calls.n := calls.n + 1 x * x end same hash.int);
+print("square " <> conv.int(memo.apply(square 3)) <> " " <> conv.int(memo.apply(square 3)) <> " "
+    <> conv.int(memo.apply(square 4)) <> ", calls " <> conv.int(calls.n) <> ", " <> stats(square));
+print("contains 3 " <> conv.bool(memo.contains(square 3)) <> " 5 " <> conv.bool(memo.contains(square 5)) <> ", "
+    <> stats(square));
+print("forget 3 " <> conv.bool(memo.forget(square 3)) <> " again " <> conv.bool(memo.forget(square 3)) <> ", then "
+    <> conv.int(memo.apply(square 3)) <> ", calls " <> conv.int(calls.n));
+memo.clear(square);
+print("clear: " <> stats(square) <> ", then " <> conv.int(memo.asFunction(square)(4)) <> ", calls "
+    <> conv.int(calls.n));
+
+let lengths = tuple let var n = 0 end;
+let len = memo.memoize(fun(s: String): Int begin lengths.n := lengths.n + 1 stringOp.length(s) end stringOp.equal
+    hash.string);
+print("memoize " <> conv.int(len("abc")) <> " " <> conv.int(len("ab" <> "c")) <> ", calls " <> conv.int(lengths.n));
+
+(* Recursive *)
+let fibCalls = tuple let var n = 0 end;
+let fib = memo.makeRecursive(fun(self: All(n: Int) Int n: Int): Int
+    begin
+        fibCalls.n := fibCalls.n + 1
+        if n < 2 then n else self(n - 1) + self(n - 2) end
+    end same hash.int);
+print("fib 80 " <> conv.int(memo.apply(fib 80)) <> ", calls " <> conv.int(fibCalls.n) <> ", " <> stats(fib));
+
+(* A raise keeps nothing *)
+let failure = exception failure: Int end;
+let tries = tuple let var n = 0 end;
+let flaky = memo.make(fun(x: Int): Int
+    begin
+        tries.n := tries.n + 1
+        if tries.n < 2 then raise failure with x end end
+        x
+    end same hash.int);
+let attempt(): String = try conv.int(memo.apply(flaky 5)) when failure with n then "failure " <> conv.int(n) end;
+print("raises: " <> attempt() <> ", " <> attempt() <> ", " <> attempt() <> ", tries " <> conv.int(tries.n) <> ", "
+    <> stats(flaky));
+
+(* Bounded *)
+let seen = tuple let var keys = "" end;
+let lru = memo.makeBounded(fun(x: Int): Int begin seen.keys := seen.keys <> conv.int(x) x end 2 same hash.int);
+let use(x: Int): Ok = begin let v = memo.apply(lru x) end;
+use(1); use(2); use(1); use(3); use(2); use(1);
+print("bounded computed " <> seen.keys <> ", holds 1 " <> conv.bool(memo.contains(lru 1)) <> " 2 "
+    <> conv.bool(memo.contains(lru 2)) <> " 3 " <> conv.bool(memo.contains(lru 3)) <> ", " <> stats(lru));
+print("forget 2 " <> conv.bool(memo.forget(lru 2)) <> ", " <> stats(lru));
+use(4); use(1); use(5);
+print("after forget computed " <> seen.keys <> ", holds 1 " <> conv.bool(memo.contains(lru 1)) <> " 4 "
+    <> conv.bool(memo.contains(lru 4)) <> " 5 " <> conv.bool(memo.contains(lru 5)) <> ", " <> stats(lru));
+memo.clear(lru);
+use(6); use(7); use(6); use(8);
+print("after clear computed " <> seen.keys <> ", holds 6 " <> conv.bool(memo.contains(lru 6)) <> " 7 "
+    <> conv.bool(memo.contains(lru 7)) <> ", " <> stats(lru));
+
+let pathCalls = tuple let var n = 0 end;
+let paths = memo.makeBoundedRecursive(fun(self: All(n: Int) Int n: Int): Int
+    begin
+        pathCalls.n := pathCalls.n + 1
+        if n < 2 then 1 else self(n - 1) + self(n - 2) end
+    end 3 same hash.int);
+print("makeBoundedRecursive " <> conv.int(memo.apply(paths 40)) <> ", calls " <> conv.int(pathCalls.n) <> ", size "
+    <> conv.int(memo.size(paths)));
+
+(* A key of two values *)
+Let Point = Tuple x: Int y: Int end;
+let pointCalls = tuple let var n = 0 end;
+let grid = memo.memoize(fun(p: Point): Int begin pointCalls.n := pointCalls.n + 1 p.x * 10 + p.y end
+    fun(a: Point b: Point): Bool {a.x is b.x} andif {a.y is b.y}
+    fun(p: Point): word.T hash.combine(hash.int(p.x) hash.int(p.y)));
+print("pairs " <> conv.int(grid(tuple let x = 1 let y = 2 end)) <> " " <> conv.int(grid(tuple let x = 1 let y = 2 end))
+    <> " " <> conv.int(grid(tuple let x = 2 let y = 1 end)) <> ", calls " <> conv.int(pointCalls.n));
+
+(* Errors *)
+print("capacity 0: " <> try begin let c = memo.makeBounded(fun(x: Int): Int x 0 same hash.int) "made" end
+    when memo.error then "memo.error" end);

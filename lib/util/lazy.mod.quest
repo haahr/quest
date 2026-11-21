@@ -1,0 +1,61 @@
+(* Lazy values (docs/lazy-memo-plan.md). A lazy value is a tuple holding its
+ * state, an option: pending with the function to call, running while that
+ * call is under way, and forced with the value. Forcing a forced value is a
+ * tag test and a load. *)
+
+module lazy : Lazy
+import
+    util/maybe : util/Maybe
+    raised: Raised
+export
+    (* The function goes when the value comes, so that what it captured can
+     * be collected *)
+    Let State = Fun(A::TYPE) Option pending with f: All() A end running forced with value: A end end
+    Let T = Fun(A::TYPE) Tuple var state: State(A) end
+
+    let cycle: Exception = exception cycle: Ok end
+
+    let make(A::TYPE)(f: All() A): T(A) = tuple let var state = option pending of State(A) with let f = f end end
+
+    let fromValue(A::TYPE)(a: A): T(A) = tuple let var state = option forced of State(A) with let value = a end end
+
+    (* A raise from the function puts back the pending state it found, so
+     * that the next force calls the function again; raised.reraise keeps the
+     * raise's own site (docs/raised.md) *)
+    let force(A::TYPE)(l: T(A)): A =
+        begin
+            let s = l.state
+            case s
+                when forced with v then v.value
+                when running then raise cycle end
+                when pending with p then
+                    l.state := option running of State(A) end
+                    let a = try p.f() else with e then
+                        l.state := s
+                        raised.reraise(:A e)
+                    end
+                    l.state := option forced of State(A) with let value = a end
+                    a
+            end
+        end
+
+    let isForced(A::TYPE)(l: T(A)): Bool =
+        case l.state
+            when forced then true
+            else false
+        end
+
+    let peek(A::TYPE)(l: T(A)): maybe.T(A) =
+        case l.state
+            when forced with v then maybe.some(v.value)
+            else maybe.none()
+        end
+
+    let map(A::TYPE B::TYPE)(l: T(A) f: All(a: A) B): T(B) = make(fun(): B f(force(l)))
+
+    let once(A::TYPE)(f: All() A): All() A =
+        begin
+            let l = make(f)
+            fun(): A force(l)
+        end
+end

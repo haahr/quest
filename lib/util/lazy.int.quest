@@ -1,0 +1,47 @@
+(* Lazy values (docs/lazy-memo-plan.md): a value computed the first time it is
+ * asked for, and kept. As OCaml's Lazy and Rust's LazyCell.
+ *
+ *     let table = lazy.make(fun(): Array(Int) buildTable());
+ *     ... lazy.force(table)[i] ...
+ *
+ * The computation runs at most once if it returns: force calls it the first
+ * time, keeps its result, and drops it (and what it captured). If it raises,
+ * nothing is kept, the exception goes on to force's caller, and the next force
+ * calls it again, as Python's functools.cache does not keep an exception
+ * either. Forcing a lazy value from inside its own computation raises cycle. *)
+
+interface Lazy
+import
+    util/maybe : util/Maybe
+export
+    (* A value of type A, computed when it is first forced *)
+    T::ALL(A::TYPE) TYPE
+
+    (* Raised by force when the value is forced again while it is being
+     * computed, which would otherwise never end *)
+    cycle: Exception
+
+    (* A lazy value computed by f, which is not called until it is forced *)
+    make: All(A::TYPE) All(f: All() A) T(A)
+
+    (* A lazy value already computed, as a: for an argument that some
+     * callers have at hand and others compute *)
+    fromValue: All(A::TYPE) All(a: A) T(A)
+
+    (* The value: computed by the function it was made with, the first time,
+     * and the one kept after that *)
+    force: All(A::TYPE) All(l: T(A)) A
+
+    (* Whether l has been computed; neither forces it nor changes it *)
+    isForced: All(A::TYPE) All(l: T(A)) Bool
+
+    (* The value if l has been computed, none if not; does not force it *)
+    peek: All(A::TYPE) All(l: T(A)) maybe.T(A)
+
+    (* A lazy value of f applied to l's value: forcing it forces l *)
+    map: All(A::TYPE B::TYPE) All(l: T(A) f: All(a: A) B) T(B)
+
+    (* A function that returns f's result, calling f the first time only,
+     * as Go's sync.OnceValue: force of a lazy value, as a function *)
+    once: All(A::TYPE) All(f: All() A) All() A
+end

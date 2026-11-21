@@ -1,0 +1,590 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('lazy') : 'Lazy')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('maybe') : 'Maybe')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'calls' :type Tuple var n: Int end
+      :value (TypedTuple :type Tuple var n: Int end
+        :elements (
+          (TypedInt 0 :type Int)
+        )))
+    (TypedLetValue 'l' :type lazy.T(Int)
+      :value (TypedApp :type lazy.T(Int)
+        :func (TypedTypeApp [Int] :type Fun(f: Fun(): Int): lazy.T(Int)
+          :func (TypedSelect 'make' :type All(A :: TYPE) Fun(f: Fun(): A): lazy.T(A)
+            :target (TypedVar 'lazy' :type Module 'lazy')))
+        :args (
+          (TypedFun :params () :type Fun(): Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedSelect 'n' :type Int
+                      :target (TypedVar 'calls' :type Tuple var n: Int end))
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedSelect 'n' :type Int
+                        :target (TypedVar 'calls' :type Tuple var n: Int end))
+                      :right (TypedInt 1 :type Int))))
+              )
+              :result (TypedInt 42 :type Int)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'before: forced ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [Int] :type Fun(l: lazy.T(Int)): Bool
+                      :func (TypedSelect 'isForced' :type All(A :: TYPE) Fun(l: lazy.T(A)): Bool
+                        :target (TypedVar 'lazy' :type Module 'lazy')))
+                    :args (
+                      (TypedVar 'l' :type lazy.T(Int))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', peek none ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Bool
+                        :func (TypedTypeApp [Int] :type Fun(o: maybe.T(Int)): Bool
+                          :func (TypedSelect 'isNone' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                            :target (TypedVar 'maybe' :type Module 'maybe')))
+                        :args (
+                          (TypedApp :type maybe.T(Int)
+                            :func (TypedTypeApp [Int] :type Fun(l: lazy.T(Int)): maybe.T(Int)
+                              :func (TypedSelect 'peek' :type All(A :: TYPE) Fun(l: lazy.T(A)): maybe.T(A)
+                                :target (TypedVar 'lazy' :type Module 'lazy')))
+                            :args (
+                              (TypedVar 'l' :type lazy.T(Int))
+                            ))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', calls ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedSelect 'n' :type Int
+                          :target (TypedVar 'calls' :type Tuple var n: Int end))
+                      )))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'force ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(l: lazy.T(Int)): Int
+                      :func (TypedSelect 'force' :type All(A :: TYPE) Fun(l: lazy.T(A)): A
+                        :target (TypedVar 'lazy' :type Module 'lazy')))
+                    :args (
+                      (TypedVar 'l' :type lazy.T(Int))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Int
+                        :func (TypedTypeApp [Int] :type Fun(l: lazy.T(Int)): Int
+                          :func (TypedSelect 'force' :type All(A :: TYPE) Fun(l: lazy.T(A)): A
+                            :target (TypedVar 'lazy' :type Module 'lazy')))
+                        :args (
+                          (TypedVar 'l' :type lazy.T(Int))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', calls ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedSelect 'n' :type Int
+                          :target (TypedVar 'calls' :type Tuple var n: Int end))
+                      )))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'after: forced ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [Int] :type Fun(l: lazy.T(Int)): Bool
+                      :func (TypedSelect 'isForced' :type All(A :: TYPE) Fun(l: lazy.T(A)): Bool
+                        :target (TypedVar 'lazy' :type Module 'lazy')))
+                    :args (
+                      (TypedVar 'l' :type lazy.T(Int))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', peek ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Int
+                      :func (TypedTypeApp [Int] :type Fun(o: maybe.T(Int)): Int
+                        :func (TypedSelect 'unwrap' :type All(A :: TYPE) Fun(o: maybe.T(A)): A
+                          :target (TypedVar 'maybe' :type Module 'maybe')))
+                      :args (
+                        (TypedApp :type maybe.T(Int)
+                          :func (TypedTypeApp [Int] :type Fun(l: lazy.T(Int)): maybe.T(Int)
+                            :func (TypedSelect 'peek' :type All(A :: TYPE) Fun(l: lazy.T(A)): maybe.T(A)
+                              :target (TypedVar 'lazy' :type Module 'lazy')))
+                          :args (
+                            (TypedVar 'l' :type lazy.T(Int))
+                          ))
+                      ))
+                  )))))
+        )))
+    (TypedLetValue 'r' :type lazy.T(String)
+      :value (TypedApp :type lazy.T(String)
+        :func (TypedTypeApp [String] :type Fun(a: String): lazy.T(String)
+          :func (TypedSelect 'fromValue' :type All(A :: TYPE) Fun(a: A): lazy.T(A)
+            :target (TypedVar 'lazy' :type Module 'lazy')))
+        :args (
+          (TypedString 'here' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'fromValue: forced ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [String] :type Fun(l: lazy.T(String)): Bool
+                      :func (TypedSelect 'isForced' :type All(A :: TYPE) Fun(l: lazy.T(A)): Bool
+                        :target (TypedVar 'lazy' :type Module 'lazy')))
+                    :args (
+                      (TypedVar 'r' :type lazy.T(String))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedTypeApp [String] :type Fun(l: lazy.T(String)): String
+                    :func (TypedSelect 'force' :type All(A :: TYPE) Fun(l: lazy.T(A)): A
+                      :target (TypedVar 'lazy' :type Module 'lazy')))
+                  :args (
+                    (TypedVar 'r' :type lazy.T(String))
+                  )))))
+        )))
+    (TypedLetValue 'doubled' :type lazy.T(Int)
+      :value (TypedApp :type lazy.T(Int)
+        :func (TypedTypeApp [Int Int] :type Fun(l: lazy.T(Int) f: Fun(a: Int): Int): lazy.T(Int)
+          :func (TypedSelect 'map' :type All(A :: TYPE B :: TYPE) Fun(l: lazy.T(A) f: Fun(a: A): B): lazy.T(B)
+            :target (TypedVar 'lazy' :type Module 'lazy')))
+        :args (
+          (TypedVar 'l' :type lazy.T(Int))
+          (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+            :body (TypedInfix '*' :type Int
+              :left (TypedInt 2 :type Int)
+              :right (TypedVar 'x' :type Int)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'map ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(l: lazy.T(Int)): Int
+                      :func (TypedSelect 'force' :type All(A :: TYPE) Fun(l: lazy.T(A)): A
+                        :target (TypedVar 'lazy' :type Module 'lazy')))
+                    :args (
+                      (TypedVar 'doubled' :type lazy.T(Int))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', calls ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedSelect 'n' :type Int
+                      :target (TypedVar 'calls' :type Tuple var n: Int end))
+                  )))))
+        )))
+    (TypedLetValue 'source' :type lazy.T(Int)
+      :value (TypedApp :type lazy.T(Int)
+        :func (TypedTypeApp [Int] :type Fun(f: Fun(): Int): lazy.T(Int)
+          :func (TypedSelect 'make' :type All(A :: TYPE) Fun(f: Fun(): A): lazy.T(A)
+            :target (TypedVar 'lazy' :type Module 'lazy')))
+        :args (
+          (TypedFun :params () :type Fun(): Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedSelect 'n' :type Int
+                      :target (TypedVar 'calls' :type Tuple var n: Int end))
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedSelect 'n' :type Int
+                        :target (TypedVar 'calls' :type Tuple var n: Int end))
+                      :right (TypedInt 1 :type Int))))
+              )
+              :result (TypedInt 7 :type Int)))
+        )))
+    (TypedLetValue 'mapped' :type lazy.T(Int)
+      :value (TypedApp :type lazy.T(Int)
+        :func (TypedTypeApp [Int Int] :type Fun(l: lazy.T(Int) f: Fun(a: Int): Int): lazy.T(Int)
+          :func (TypedSelect 'map' :type All(A :: TYPE B :: TYPE) Fun(l: lazy.T(A) f: Fun(a: A): B): lazy.T(B)
+            :target (TypedVar 'lazy' :type Module 'lazy')))
+        :args (
+          (TypedVar 'source' :type lazy.T(Int))
+          (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int
+            :body (TypedInfix '+' :type Int
+              :left (TypedVar 'x' :type Int)
+              :right (TypedInt 1 :type Int)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'map is lazy: source forced ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedTypeApp [Int] :type Fun(l: lazy.T(Int)): Bool
+                      :func (TypedSelect 'isForced' :type All(A :: TYPE) Fun(l: lazy.T(A)): Bool
+                        :target (TypedVar 'lazy' :type Module 'lazy')))
+                    :args (
+                      (TypedVar 'source' :type lazy.T(Int))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', then ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Int
+                        :func (TypedTypeApp [Int] :type Fun(l: lazy.T(Int)): Int
+                          :func (TypedSelect 'force' :type All(A :: TYPE) Fun(l: lazy.T(A)): A
+                            :target (TypedVar 'lazy' :type Module 'lazy')))
+                        :args (
+                          (TypedVar 'mapped' :type lazy.T(Int))
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', source forced ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedApp :type Bool
+                          :func (TypedTypeApp [Int] :type Fun(l: lazy.T(Int)): Bool
+                            :func (TypedSelect 'isForced' :type All(A :: TYPE) Fun(l: lazy.T(A)): Bool
+                              :target (TypedVar 'lazy' :type Module 'lazy')))
+                          :args (
+                            (TypedVar 'source' :type lazy.T(Int))
+                          ))
+                      )))))))
+        )))
+    (TypedLetValue 'onceCalls' :type Tuple var n: Int end
+      :value (TypedTuple :type Tuple var n: Int end
+        :elements (
+          (TypedInt 0 :type Int)
+        )))
+    (TypedLetValue 'get' :type Fun(): String
+      :value (TypedApp :type Fun(): String
+        :func (TypedTypeApp [String] :type Fun(f: Fun(): String): Fun(): String
+          :func (TypedSelect 'once' :type All(A :: TYPE) Fun(f: Fun(): A): Fun(): A
+            :target (TypedVar 'lazy' :type Module 'lazy')))
+        :args (
+          (TypedFun :params () :type Fun(): String
+            :body (TypedBlock :type String
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedSelect 'n' :type Int
+                      :target (TypedVar 'onceCalls' :type Tuple var n: Int end))
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedSelect 'n' :type Int
+                        :target (TypedVar 'onceCalls' :type Tuple var n: Int end))
+                      :right (TypedInt 1 :type Int))))
+              )
+              :result (TypedString 'once' :type String)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'once ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'get' :type Fun(): String)
+                :args ())
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'get' :type Fun(): String)
+                    :args ())
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', calls ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedSelect 'n' :type Int
+                          :target (TypedVar 'onceCalls' :type Tuple var n: Int end))
+                      )))))))
+        )))
+    (TypedLetValue 'failure' :type Exception(Int)
+      :value (TypedException 'failure' :type Exception(Int)))
+    (TypedLetValue 'tries' :type Tuple var n: Int end
+      :value (TypedTuple :type Tuple var n: Int end
+        :elements (
+          (TypedInt 0 :type Int)
+        )))
+    (TypedLetValue 'flaky' :type lazy.T(Int)
+      :value (TypedApp :type lazy.T(Int)
+        :func (TypedTypeApp [Int] :type Fun(f: Fun(): Int): lazy.T(Int)
+          :func (TypedSelect 'make' :type All(A :: TYPE) Fun(f: Fun(): A): lazy.T(A)
+            :target (TypedVar 'lazy' :type Module 'lazy')))
+        :args (
+          (TypedFun :params () :type Fun(): Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedSelect 'n' :type Int
+                      :target (TypedVar 'tries' :type Tuple var n: Int end))
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedSelect 'n' :type Int
+                        :target (TypedVar 'tries' :type Tuple var n: Int end))
+                      :right (TypedInt 1 :type Int))))
+                (TypedExprStmt
+                  :expr (TypedIf :type Ok
+                    :cond (TypedInfix '<' :type Bool
+                      :left (TypedSelect 'n' :type Int
+                        :target (TypedVar 'tries' :type Tuple var n: Int end))
+                      :right (TypedInt 3 :type Int))
+                    :then (TypedBlock :type Ok
+                      :bindings (
+                        (TypedExprStmt
+                          :expr (TypedRaise :type Ok
+                            :exc (TypedVar 'failure' :type Exception(Int))
+                            :payload (TypedSelect 'n' :type Int
+                              :target (TypedVar 'tries' :type Tuple var n: Int end))))
+                      )
+                      :result (TypedOk))
+                    :else (TypedOk)))
+              )
+              :result (TypedInt 99 :type Int)))
+        )))
+    (TypedLetValue 'attempt' :type Fun(): String
+      :value (TypedFun :params () :type Fun(): String
+        :body (TypedTry :type String
+          :body (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedTypeApp [Int] :type Fun(l: lazy.T(Int)): Int
+                  :func (TypedSelect 'force' :type All(A :: TYPE) Fun(l: lazy.T(A)): A
+                    :target (TypedVar 'lazy' :type Module 'lazy')))
+                :args (
+                  (TypedVar 'flaky' :type lazy.T(Int))
+                ))
+            ))
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedVar 'failure' :type Exception(Int))
+              :body (TypedInfix '<>' :type String
+                :left (TypedString 'failure ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedVar 'n' :type Int)
+                  ))))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'raises: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'attempt' :type Fun(): String)
+                :args ())
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'attempt' :type Fun(): String)
+                    :args ())
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedVar 'attempt' :type Fun(): String)
+                        :args ())
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ', ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedVar 'attempt' :type Fun(): String)
+                            :args ())
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ', tries ' :type String)
+                            :right (TypedApp :type String
+                              :func (TypedSelect 'int' :type Fun(n: Int): String
+                                :target (TypedVar 'conv' :type Module 'conv'))
+                              :args (
+                                (TypedSelect 'n' :type Int
+                                  :target (TypedVar 'tries' :type Tuple var n: Int end))
+                              )))))))))))
+        )))
+    (TypedLetValue 'knot' :type Tuple var self: lazy.T(Int) end
+      :value (TypedTuple :type Tuple var self: lazy.T(Int) end
+        :elements (
+          (TypedApp :type lazy.T(Int)
+            :func (TypedTypeApp [Int] :type Fun(a: Int): lazy.T(Int)
+              :func (TypedSelect 'fromValue' :type All(A :: TYPE) Fun(a: A): lazy.T(A)
+                :target (TypedVar 'lazy' :type Module 'lazy')))
+            :args (
+              (TypedInt 0 :type Int)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedAssign
+        :target (TypedSelect 'self' :type lazy.T(Int)
+          :target (TypedVar 'knot' :type Tuple var self: lazy.T(Int) end))
+        :value (TypedApp :type lazy.T(Int)
+          :func (TypedTypeApp [Int] :type Fun(f: Fun(): Int): lazy.T(Int)
+            :func (TypedSelect 'make' :type All(A :: TYPE) Fun(f: Fun(): A): lazy.T(A)
+              :target (TypedVar 'lazy' :type Module 'lazy')))
+          :args (
+            (TypedFun :params () :type Fun(): Int
+              :body (TypedInfix '+' :type Int
+                :left (TypedApp :type Int
+                  :func (TypedTypeApp [Int] :type Fun(l: lazy.T(Int)): Int
+                    :func (TypedSelect 'force' :type All(A :: TYPE) Fun(l: lazy.T(A)): A
+                      :target (TypedVar 'lazy' :type Module 'lazy')))
+                  :args (
+                    (TypedSelect 'self' :type lazy.T(Int)
+                      :target (TypedVar 'knot' :type Tuple var self: lazy.T(Int) end))
+                  ))
+                :right (TypedInt 1 :type Int)))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'cycle: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedTry :type String
+                :body (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Int
+                      :func (TypedTypeApp [Int] :type Fun(l: lazy.T(Int)): Int
+                        :func (TypedSelect 'force' :type All(A :: TYPE) Fun(l: lazy.T(A)): A
+                          :target (TypedVar 'lazy' :type Module 'lazy')))
+                      :args (
+                        (TypedSelect 'self' :type lazy.T(Int)
+                          :target (TypedVar 'knot' :type Tuple var self: lazy.T(Int) end))
+                      ))
+                  ))
+                :branches (
+                  (TypedTryBranch
+                    :exc_pattern (TypedSelect 'cycle' :type Exception
+                      :target (TypedVar 'lazy' :type Module 'lazy'))
+                    :body (TypedString 'lazy.cycle' :type String))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', again: ' :type String)
+                :right (TypedTry :type String
+                  :body (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Int
+                        :func (TypedTypeApp [Int] :type Fun(l: lazy.T(Int)): Int
+                          :func (TypedSelect 'force' :type All(A :: TYPE) Fun(l: lazy.T(A)): A
+                            :target (TypedVar 'lazy' :type Module 'lazy')))
+                        :args (
+                          (TypedSelect 'self' :type lazy.T(Int)
+                            :target (TypedVar 'knot' :type Tuple var self: lazy.T(Int) end))
+                        ))
+                    ))
+                  :branches (
+                    (TypedTryBranch
+                      :exc_pattern (TypedSelect 'cycle' :type Exception
+                        :target (TypedVar 'lazy' :type Module 'lazy'))
+                      :body (TypedString 'lazy.cycle' :type String))
+                  )))))
+        )))
+  ))

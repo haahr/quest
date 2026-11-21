@@ -1,0 +1,50 @@
+(* Standard library: util/lazy (docs/lazy-memo-plan.md): the computation runs
+ * once, on the first force; fromValue, isForced, peek, map, and once; a raise
+ * keeps nothing, so the next force computes again, and the raise's own
+ * exception reaches the caller; and forcing from inside the computation
+ * raises cycle *)
+
+import util/lazy : util/Lazy;
+import util/maybe : util/Maybe;
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let calls = tuple let var n = 0 end;
+
+let l = lazy.make(fun(): Int begin calls.n := calls.n + 1 42 end);
+print("before: forced " <> conv.bool(lazy.isForced(l)) <> ", peek none " <> conv.bool(maybe.isNone(lazy.peek(l)))
+    <> ", calls " <> conv.int(calls.n));
+print("force " <> conv.int(lazy.force(l)) <> " " <> conv.int(lazy.force(l)) <> ", calls " <> conv.int(calls.n));
+print("after: forced " <> conv.bool(lazy.isForced(l)) <> ", peek " <> conv.int(maybe.unwrap(lazy.peek(l))));
+
+let r = lazy.fromValue("here");
+print("fromValue: forced " <> conv.bool(lazy.isForced(r)) <> ", " <> lazy.force(r));
+
+let doubled = lazy.map(l fun(x: Int): Int 2 * x);
+print("map " <> conv.int(lazy.force(doubled)) <> ", calls " <> conv.int(calls.n));
+let source = lazy.make(fun(): Int begin calls.n := calls.n + 1 7 end);
+let mapped = lazy.map(source fun(x: Int): Int x + 1);
+print("map is lazy: source forced " <> conv.bool(lazy.isForced(source)) <> ", then " <> conv.int(lazy.force(mapped))
+    <> ", source forced " <> conv.bool(lazy.isForced(source)));
+
+let onceCalls = tuple let var n = 0 end;
+let get = lazy.once(fun(): String begin onceCalls.n := onceCalls.n + 1 "once" end);
+print("once " <> get() <> " " <> get() <> ", calls " <> conv.int(onceCalls.n));
+
+let failure = exception failure: Int end;
+let tries = tuple let var n = 0 end;
+let flaky = lazy.make(fun(): Int
+    begin
+        tries.n := tries.n + 1
+        if tries.n < 3 then raise failure with tries.n end end
+        99
+    end);
+let attempt(): String = try conv.int(lazy.force(flaky)) when failure with n then "failure " <> conv.int(n) end;
+print("raises: " <> attempt() <> ", " <> attempt() <> ", " <> attempt() <> ", " <> attempt() <> ", tries "
+    <> conv.int(tries.n));
+
+let knot = tuple let var self = lazy.fromValue(0) end;
+knot.self := lazy.make(fun(): Int lazy.force(knot.self) + 1);
+print("cycle: " <> try conv.int(lazy.force(knot.self)) when lazy.cycle then "lazy.cycle" end <> ", again: "
+    <> try conv.int(lazy.force(knot.self)) when lazy.cycle then "lazy.cycle" end);
