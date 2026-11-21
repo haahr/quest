@@ -402,9 +402,9 @@ export
                                     let fields = sortedFields(a.type)
                                     for j = 0 upto {extent fields - 1} do
                                         add(lines "    " <> layout.slotRepresentation(fields[j].type) <> " qf_"
-                                            <> fields[j].name
+                                            <> symbols.memberIdent(fields[j].name)
                                             <> ";")
-                                        assertAt("qf_" <> fields[j].name layout.recordFieldOffset(a.type fields[j].name))
+                                        assertAt("qf_" <> symbols.memberIdent(fields[j].name) layout.recordFieldOffset(a.type fields[j].name))
                                     end
                                 end
                                 add(asserts "static_assert(sizeof(struct " <> name <> ") == " <> cInt(layout.recordBytes(a.type))
@@ -446,9 +446,9 @@ export
                                                             add(lines "            "
                                                                 <> layout.slotRepresentation(cs.type)
                                                                 <> " qf_"
-                                                                <> maybe.unwrap(sorted[k].name) <> ";")
+                                                                <> symbols.memberIdent(maybe.unwrap(sorted[k].name)) <> ";")
                                                             assertAt("u.qo_" <> c.name <> ".qf_"
-                                                                <> maybe.unwrap(sorted[k].name)
+                                                                <> symbols.memberIdent(maybe.unwrap(sorted[k].name))
                                                                 8 + 8 * k)
                                                         end
                                                     end
@@ -542,8 +542,8 @@ export
                     if extent fields is 0 then
                         add(lines "    size_t _unused;")
                     else
-                        for j = 0 upto {extent fields - 1} do add(lines "    size_t offset_" <> fields[j].name
-                            <> ";") end
+                        for j = 0 upto {extent fields - 1} do add(lines "    size_t offset_"
+                            <> symbols.memberIdent(fields[j].name) <> ";") end
                     end
                     add(lines "    QRecordStoredTypes stored_types;")
                     add(lines "};")

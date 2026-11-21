@@ -18,6 +18,7 @@ from typing import Any, Optional, Union
 
 import quest.syntax.ast as ast
 from quest.common.diagnostics import QuestTypeError
+from quest.typechecker.checks import check_binder
 from quest.types import (
     TYPE_KIND,
     alias_reference,
@@ -335,6 +336,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                             )
 
                         case ast.FieldSig(name=name, type_sig=type_sig, mode=mode):
+                            check_binder(name, f.offset)
                             field_type = elaborate_type(type_sig, env)
                             check_kind(field_type, TYPE_KIND, env)
                             components.append(
@@ -468,6 +470,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                         )
                         quants.append(QQuantifier(name=q.name, symbol_id=symbol_id, bound=bound_kind))
                     elif isinstance(bound_kind, QPowerKind):
+                        check_binder(q.name, q.offset)
                         # Value formal parameter: x : T (represented via
                         # Power(T))
                         val_type = bound_kind.bound

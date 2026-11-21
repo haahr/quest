@@ -5,6 +5,7 @@ import
     questlang/syntax/ast : questlang/syntax/Ast
     questlang/types/model : questlang/types/Model
     questlang/types/symbols : questlang/types/Symbols
+    linked = questlang/repr/symbols : questlang/repr/Symbols
     questlang/modules/paths : questlang/modules/Paths
     questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
     questlang/config/abi : questlang/config/Abi
@@ -145,7 +146,7 @@ export
                             "TYPE"
                         end
                         add(lines "/* Abstract type " <> s.val.name <> "::" <> kindText <> " */")
-                        add(lines "typedef " <> rep <> " quest_type_" <> cName <> "_" <> s.val.name <> ";")
+                        add(lines "typedef " <> rep <> " quest_type_" <> cName <> "_" <> linked.memberIdent(s.val.name) <> ";")
                     when sigTypeBinding with s then
                         if not(s.val.isRec) then
                             hasTypes := true
@@ -159,7 +160,7 @@ export
                             let isRecord = maybe.isSome(concrete)
                                 andif case maybe.unwrap(concrete).form when typeRecord then true else false end
                             if isRecord then
-                                add(lines "typedef struct quest_rec_" <> cName <> "_" <> s.val.name <> " {")
+                                add(lines "typedef struct quest_rec_" <> cName <> "_" <> linked.memberIdent(s.val.name) <> " {")
                                 case maybe.unwrap(concrete).form
                                     when typeRecord with r then
                                         for j = 0 upto {extent r.fields - 1} do
@@ -169,12 +170,12 @@ export
                                         end
                                     else ok
                                 end
-                                add(lines "} quest_rec_" <> cName <> "_" <> s.val.name <> ";")
-                                add(lines "typedef QRecordVal quest_type_" <> cName <> "_" <> s.val.name <> ";")
+                                add(lines "} quest_rec_" <> cName <> "_" <> linked.memberIdent(s.val.name) <> ";")
+                                add(lines "typedef QRecordVal quest_type_" <> cName <> "_" <> linked.memberIdent(s.val.name) <> ";")
                             else
                                 let c = if maybe.isSome(concrete) then
                                     cType(maybe.unwrap(concrete)) else "QVal" end
-                                add(lines "typedef " <> c <> " quest_type_" <> cName <> "_" <> s.val.name <> ";")
+                                add(lines "typedef " <> c <> " quest_type_" <> cName <> "_" <> linked.memberIdent(s.val.name) <> ";")
                             end
                         end
                     else ok
@@ -240,13 +241,13 @@ export
                                     else params
                                 end
                                 add(lines comment)
-                                add(lines "typedef " <> ret <> " (*quest_sig_" <> cName <> "_" <> name <> ")("
+                                add(lines "typedef " <> ret <> " (*quest_sig_" <> cName <> "_" <> linked.memberIdent(name) <> ")("
                                     <> syntax.comma(shown) <> ");")
                             else
                                 let c = if maybe.isSome(valType) then
                                     cType(maybe.unwrap(valType)) else "QVal" end
                                 add(lines comment)
-                                add(lines "typedef " <> c <> " quest_sig_" <> cName <> "_" <> name <> ";")
+                                add(lines "typedef " <> c <> " quest_sig_" <> cName <> "_" <> linked.memberIdent(name) <> ";")
                             end
                         end
                     else ok

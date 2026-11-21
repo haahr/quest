@@ -34,7 +34,7 @@ from quest.repr.layout import (
     tuple_struct_name,
     type_tag,
 )
-from quest.repr.symbols import mangle_ident, mangle_module_ident, mangle_module_name, module_record_ident
+from quest.repr.symbols import mangle_ident, mangle_module_ident, mangle_module_name, member_ident, module_record_ident
 from quest.types import (
     auto_payload_type,
     BOOL_TYPE,
@@ -365,7 +365,7 @@ class CDeclarationEmitter:
                         lines.append("    char _unused;")
                     else:
                         for f in sorted(fields, key=lambda fld: fld.name):
-                            lines.append(f"    {slot_representation(f.type_val)} qf_{f.name};")
+                            lines.append(f"    {slot_representation(f.type_val)} qf_{member_ident(f.name)};")
                 case QOptionType(options=options):
                     lines.append("    int64_t tag;")
                     payload_branches = [o for o in options if o.payload_type is not None]
@@ -383,7 +383,7 @@ class CDeclarationEmitter:
                                         lines.append(f"            {slot_representation(c.shape.type)} _{c_int(i)};")
                                 else:
                                     for c in payload.sorted_components():
-                                        lines.append(f"            {slot_representation(c.shape.type)} qf_{c.name};")
+                                        lines.append(f"            {slot_representation(c.shape.type)} qf_{member_ident(c.name)};")
                                 lines.append(f"        }} qo_{o.name};")
                             else:
                                 slot_c = slot_representation(o.payload_type)
@@ -443,7 +443,7 @@ class CDeclarationEmitter:
                     lines.append("    size_t _unused;")
                 else:
                     for f in sorted(t.fields, key=lambda fld: fld.name):
-                        lines.append(f"    size_t offset_{f.name};")
+                        lines.append(f"    size_t offset_{member_ident(f.name)};")
                 lines.append("    QRecordStoredTypes stored_types;")
                 lines.append("};")
 
@@ -468,7 +468,7 @@ class CDeclarationEmitter:
                     lines.append(f"static const {dict_t} {inst_name} = {{ 0, NULL }};")
                 else:
                     entries = [
-                        f"offsetof({src_sname}, qf_{f.name})"
+                        f"offsetof({src_sname}, qf_{member_ident(f.name)})"
                         for f in sorted(tgt.fields, key=lambda fld: fld.name)
                     ]
                     lines.append(f"static const {dict_t} {inst_name} = {{ {comma(entries)}, NULL }};")
@@ -868,7 +868,7 @@ class CDeclarationEmitter:
                     is_var_str = "true" if f.is_var else "false"
                     lines.append(
                         f"        {{ .name = {c_string(f.name)}, .type = {part_desc(form, f.name, f.type_val)}, "
-                        f".offset = offsetof(struct {struct_name}, qf_{f.name}), .is_var = {is_var_str} }},"
+                        f".offset = offsetof(struct {struct_name}, qf_{member_ident(f.name)}), .is_var = {is_var_str} }},"
                     )
                 lines.append("    }")
                 lines.append("};")

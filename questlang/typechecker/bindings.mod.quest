@@ -132,6 +132,7 @@ export
                     diagnostics.fail(:Type "Parameter '" <> p.name <> "' requires a type annotation in synthesis mode"
                         p.offset)
                 end
+                checks.checkBinder(p.name p.offset)
                 let sym = symbols.newValueSymbol(p.name pType isVar isOut true {c.functionDepth + 1} 0)
                 symbols.declareValue(e.currentScope sym)
                 vector.append(typed tuple
@@ -520,6 +521,7 @@ export
      * the earlier symbol, with a warning if that was a slot. *)
     let declareLet(c: checker.T sym: symbols.ValueSymbol offset: Int e: env.T): symbols.ValueSymbol =
         begin
+            checks.checkBinder(sym.name offset)
             if e.interactive andif {c.functionDepth is 0} andif {e.currentScope is e.globalScope} then
                 let var slot = sym.symbolId
                 let earlier = symbols.lookupValueLocal(e.currentScope sym.name)

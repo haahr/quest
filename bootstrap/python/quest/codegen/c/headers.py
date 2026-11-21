@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import quest.syntax.ast as ast
 from quest.codegen.c.declarations import CDeclarationEmitter, collect_aggregate_types
+from quest.repr.symbols import member_ident
 from quest.repr.syntax import comma, lines_text
 from quest.codegen.c.types import RecordNamingContext, qtype_to_c_type
 from quest.repr.layout import location_representation, slot_representation
@@ -101,7 +102,7 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
             kind = formal_sym.kind if formal_sym is not None else None
             c_rep = qtype_to_c_type(kind.bound) if isinstance(kind, QPowerKind) else "QVal"
             lines.append(f"/* Abstract type {sig.name}::{format_kind_for_qi(kind)} */")
-            lines.append(f"typedef {c_rep} quest_type_{c_name}_{sig.name};")
+            lines.append(f"typedef {c_rep} quest_type_{c_name}_{member_ident(sig.name)};")
         elif isinstance(sig, ast.TypeBinding) and not sig.is_rec:
             has_types = True
             type_sym = iface_scope.lookup_type_local(sig.name)
@@ -109,13 +110,13 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
             c_type_name = qtype_to_c_type(concrete_t) if concrete_t else "QVal"
             lines.append(f"/* Manifest type {sig.name} */")
             if isinstance(concrete_t, QRecordType):
-                lines.append(f"typedef struct quest_rec_{c_name}_{sig.name} {{")
+                lines.append(f"typedef struct quest_rec_{c_name}_{member_ident(sig.name)} {{")
                 for f in concrete_t.fields:
                     lines.append(f"    {slot_representation(f.type_val)} {f.name};")
-                lines.append(f"}} quest_rec_{c_name}_{sig.name};")
-                lines.append(f"typedef QRecordVal quest_type_{c_name}_{sig.name};")
+                lines.append(f"}} quest_rec_{c_name}_{member_ident(sig.name)};")
+                lines.append(f"typedef QRecordVal quest_type_{c_name}_{member_ident(sig.name)};")
             else:
-                lines.append(f"typedef {c_type_name} quest_type_{c_name}_{sig.name};")
+                lines.append(f"typedef {c_type_name} quest_type_{c_name}_{member_ident(sig.name)};")
     if not has_types:
         lines.append("/* (No types declared) */")
     lines.append("")
@@ -150,12 +151,12 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
                 params_decl = comma(param_c_types or ["void"])
                 lines.append(f"/* {sig.name}: {format_type_for_qi(val_t)} */")
                 lines.append(
-                    f"typedef {ret_c_type} (*quest_sig_{c_name}_{sig.name})({params_decl});"
+                    f"typedef {ret_c_type} (*quest_sig_{c_name}_{member_ident(sig.name)})({params_decl});"
                 )
             else:
                 c_val_type = qtype_to_c_type(val_t) if val_t else "QVal"
                 lines.append(f"/* {sig.name}: {format_type_for_qi(val_t)} */")
-                lines.append(f"typedef {c_val_type} quest_sig_{c_name}_{sig.name};")
+                lines.append(f"typedef {c_val_type} quest_sig_{c_name}_{member_ident(sig.name)};")
     if not has_values:
         lines.append("/* (No values declared) */")
     lines.append("")

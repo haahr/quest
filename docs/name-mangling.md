@@ -24,6 +24,9 @@ units, name mangling adheres to the following principles:
    `case`, etc.) and standard library symbols (`open`, `read`, `write`, `exit`, etc.).
 2. **C Struct Keyword Protection:** All Quest record field names inside C structs are prefixed with `qf_`
    (e.g. `qf_default`, `qf_return`) to allow arbitrary Quest field identifiers without colliding with C reserved words.
+   A symbolic field or interface member name is spelled as in §3.2 without its `qv_` (`member_ident`, `memberIdent`
+   in `questlang/repr/symbols`) wherever a C name is built from it: `qf_<+>` is `qf_sym_lt_plus_gt`, and so are the
+   record dictionary's `offset_<name>` and an interface header's `quest_type_<i>_<name>` and `quest_sig_<i>_<name>`.
 3. **Hierarchical Module Separation:** Module paths are flattened using double underscores (`__`), preventing collisions
    between different packages having identically named submodules (e.g. `util/path` $\rightarrow$ `util__path`).
 4. **Deterministic Operator Mapping:** Symbolic operators are mapped to ASCII identifier segments via an unambiguous

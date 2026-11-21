@@ -1,0 +1,202 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('joiner') : 'Joiner')
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue '<+>' :type Fun(a: joiner.T b: joiner.T): joiner.T
+      :value (TypedSelect '<+>' :type Fun(a: joiner.T b: joiner.T): joiner.T
+        :target (TypedVar 'joiner' :type Module 'joiner')))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'show' :type Fun(t: joiner.T): String
+              :target (TypedVar 'joiner' :type Module 'joiner'))
+            :args (
+              (TypedApp :type joiner.T
+                :func (TypedVar '<+>' :type Fun(a: joiner.T b: joiner.T): joiner.T)
+                :args (
+                  (TypedApp :type joiner.T
+                    :func (TypedSelect 'text' :type Fun(s: String): joiner.T
+                      :target (TypedVar 'joiner' :type Module 'joiner'))
+                    :args (
+                      (TypedString 'a' :type String)
+                    ))
+                  (TypedApp :type joiner.T
+                    :func (TypedVar '<+>' :type Fun(a: joiner.T b: joiner.T): joiner.T)
+                    :args (
+                      (TypedApp :type joiner.T
+                        :func (TypedSelect 'text' :type Fun(s: String): joiner.T
+                          :target (TypedVar 'joiner' :type Module 'joiner'))
+                        :args (
+                          (TypedString 'b' :type String)
+                        ))
+                      (TypedApp :type joiner.T
+                        :func (TypedSelect 'text' :type Fun(s: String): joiner.T
+                          :target (TypedVar 'joiner' :type Module 'joiner'))
+                        :args (
+                          (TypedString 'c' :type String)
+                        ))
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'show' :type Fun(t: joiner.T): String
+              :target (TypedVar 'joiner' :type Module 'joiner'))
+            :args (
+              (TypedApp :type joiner.T
+                :func (TypedSelect '<+>' :type Fun(a: joiner.T b: joiner.T): joiner.T
+                  :target (TypedVar 'joiner' :type Module 'joiner'))
+                :args (
+                  (TypedApp :type joiner.T
+                    :func (TypedSelect 'text' :type Fun(s: String): joiner.T
+                      :target (TypedVar 'joiner' :type Module 'joiner'))
+                    :args (
+                      (TypedString 'd' :type String)
+                    ))
+                  (TypedApp :type joiner.T
+                    :func (TypedSelect 'text' :type Fun(s: String): joiner.T
+                      :target (TypedVar 'joiner' :type Module 'joiner'))
+                    :args (
+                      (TypedString 'e' :type String)
+                    ))
+                ))
+            ))
+        )))
+    (TypedLetValue 'fold' :type Fun(parts: Array(joiner.T) join: Fun(a: joiner.T b: joiner.T): joiner.T): joiner.T
+      :value (TypedFun :params (('parts' : Array(joiner.T)) ('join' : Fun(a: joiner.T b: joiner.T): joiner.T)) :type Fun(parts: Array(joiner.T) join: Fun(a: joiner.T b: joiner.T): joiner.T): joiner.T
+        :body (TypedBlock :type joiner.T
+          :bindings (
+            (TypedLetValue 'result' :type joiner.T
+              :value (TypedApp :type joiner.T
+                :func (TypedSelect 'text' :type Fun(s: String): joiner.T
+                  :target (TypedVar 'joiner' :type Module 'joiner'))
+                :args (
+                  (TypedString '' :type String)
+                )))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [joiner.T] :type Fun(a: Array(joiner.T)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedVar 'parts' :type Array(joiner.T))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedAssign
+                  :target (TypedVar 'result' :type Var(joiner.T))
+                  :value (TypedApp :type joiner.T
+                    :func (TypedVar 'join' :type Fun(a: joiner.T b: joiner.T): joiner.T)
+                    :args (
+                      (TypedDerefCell :type joiner.T
+                        :target (TypedVar 'result' :type Var(joiner.T)))
+                      (TypedIndex :type joiner.T
+                        :target (TypedVar 'parts' :type Array(joiner.T))
+                        :index (TypedVar 'i' :type Int))
+                    )))))
+          )
+          :result (TypedDerefCell :type joiner.T
+            :target (TypedVar 'result' :type Var(joiner.T))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'show' :type Fun(t: joiner.T): String
+              :target (TypedVar 'joiner' :type Module 'joiner'))
+            :args (
+              (TypedApp :type joiner.T
+                :func (TypedVar 'fold' :type Fun(parts: Array(joiner.T) join: Fun(a: joiner.T b: joiner.T): joiner.T): joiner.T)
+                :args (
+                  (TypedArray :type Array(joiner.T)
+                    :elements (
+                      (TypedApp :type joiner.T
+                        :func (TypedSelect 'text' :type Fun(s: String): joiner.T
+                          :target (TypedVar 'joiner' :type Module 'joiner'))
+                        :args (
+                          (TypedString 'f' :type String)
+                        ))
+                      (TypedApp :type joiner.T
+                        :func (TypedSelect 'text' :type Fun(s: String): joiner.T
+                          :target (TypedVar 'joiner' :type Module 'joiner'))
+                        :args (
+                          (TypedString 'g' :type String)
+                        ))
+                      (TypedApp :type joiner.T
+                        :func (TypedSelect 'text' :type Fun(s: String): joiner.T
+                          :target (TypedVar 'joiner' :type Module 'joiner'))
+                        :args (
+                          (TypedString 'h' :type String)
+                        ))
+                    ))
+                  (TypedSelect '<+>' :type Fun(a: joiner.T b: joiner.T): joiner.T
+                    :target (TypedVar 'joiner' :type Module 'joiner'))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'show' :type Fun(t: joiner.T): String
+              :target (TypedVar 'joiner' :type Module 'joiner'))
+            :args (
+              (TypedApp :type joiner.T
+                :func (TypedVar 'fold' :type Fun(parts: Array(joiner.T) join: Fun(a: joiner.T b: joiner.T): joiner.T): joiner.T)
+                :args (
+                  (TypedArray :type Array(joiner.T)
+                    :elements (
+                      (TypedApp :type joiner.T
+                        :func (TypedSelect 'text' :type Fun(s: String): joiner.T
+                          :target (TypedVar 'joiner' :type Module 'joiner'))
+                        :args (
+                          (TypedString 'i' :type String)
+                        ))
+                      (TypedApp :type joiner.T
+                        :func (TypedSelect 'text' :type Fun(s: String): joiner.T
+                          :target (TypedVar 'joiner' :type Module 'joiner'))
+                        :args (
+                          (TypedString 'j' :type String)
+                        ))
+                    ))
+                  (TypedVar '<+>' :type Fun(a: joiner.T b: joiner.T): joiner.T)
+                ))
+            ))
+        )))
+    (TypedLetValue 'p' :type joiner.#(Int String)
+      :value (TypedTuple :type Tuple fst: Int snd: String end
+        :elements (
+          (TypedInt 1 :type Int)
+          (TypedString 'k' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedSelect 'snd' :type String
+            :target (TypedVar 'p' :type joiner.#(Int String)))
+        )))
+  ))

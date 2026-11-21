@@ -25,6 +25,21 @@ from quest.types import (
 )
 
 
+def check_binder(name: Optional[str], offset: int) -> None:
+    """Raises a type error if name, a value being bound (a let, a parameter, a
+    tuple's component, a signature's field or quantifier), is a built-in infix
+    operator's: the type checker elaborates those itself wherever they are
+    written infix, so a binding of one would never be used there. mod, on the
+    list but never infix, is a function's name (word.mod, bignum.mod)."""
+    from quest.syntax.desugar import BUILTIN_INFIX_OPERATORS
+
+    if name is not None and name in BUILTIN_INFIX_OPERATORS and not name[0].isalpha():
+        raise QuestTypeError(
+            f"'{name}' is a built-in operator and cannot be bound; give the operator a name of its own, such as <+>",
+            offset=offset,
+        )
+
+
 def check_distinct_names(members: Any) -> None:
     """Rejects a simultaneous declaration (members joined by and) that declares
     one name twice."""

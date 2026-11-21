@@ -68,6 +68,14 @@ def mangle_symbolic_ident(name: str) -> str:
     return "qv_sym_" + joined("_", parts)
 
 
+def member_ident(name: str) -> str:
+    """A field's or interface member's name as a C identifier fragment, for the
+    names built from it (qf_<name>, offset_<name>, quest_type_<i>_<name>): an
+    alphanumeric name as it is, a symbolic one as sym_ and its parts, as
+    mangle_symbolic_ident spells them (<+> is sym_lt_plus_gt)."""
+    return mangle_symbolic_ident(name)[3:] if is_symbolic_name(name) else name
+
+
 def mangle_ident(name: str) -> str:
     """Mangles a Quest identifier into a C-safe identifier prefixed with qv_."""
     if is_symbolic_name(name):
@@ -101,7 +109,6 @@ def mangle_module_ident(module_name: str, name: str) -> str:
     prefixed with qv_<mod>_."""
     clean_mod = mangle_module_name(module_name)
     if is_symbolic_name(name):
-        sym_suffix = mangle_symbolic_ident(name)[3:]  # strip leading 'qv_'
-        return f"qv_{clean_mod}_{sym_suffix}"
+        return f"qv_{clean_mod}_{member_ident(name)}"
     clean_name = name.replace(".", "_")
     return f"qv_{clean_mod}_{clean_name}"

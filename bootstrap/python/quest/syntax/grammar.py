@@ -603,8 +603,8 @@ def build_quest_grammar() -> None:
 
     POSTFIX_TYPE.add_rule((PRIMARY_TYPE, Rep(POSTFIX_TYPE_OP)), _apply_postfix)
 
-    # . ide
-    POSTFIX_TYPE_OP.add_rule((P(TK.DOT), T(TK.IDENT)), lambda ident_token: _select_type(ident_token.lexeme))
+    # . ide: an alphanumeric or a symbolic name (m.T, m.#)
+    POSTFIX_TYPE_OP.add_rule((P(TK.DOT), IDE), lambda ident_token: _select_type(ident_token.lexeme))
     # ( TypeBinding )
     POSTFIX_TYPE_OP.add_rule(
         (P(TK.LPAREN), Opt(TYPE_BINDING), P(TK.RPAREN)),
@@ -825,7 +825,8 @@ def build_quest_grammar() -> None:
 
     POSTFIX_VALUE.add_rule((PRIMARY_VALUE, Rep(POSTFIX_OP)), _apply_postfix)
 
-    # . ide, ? ide, ! ide
+    # . ide, ? ide, ! ide: a selection's name may be symbolic (m.<+>), a tag's
+    # may not
     for punctuation, node_class in (
         (TK.DOT, ast.ExprSelect),
         (TK.QUESTION, ast.ExprVariantCheck),
@@ -833,7 +834,7 @@ def build_quest_grammar() -> None:
     ):
         field = "field" if node_class is ast.ExprSelect else "tag"
         POSTFIX_OP.add_rule(
-            (P(punctuation), T(TK.IDENT)),
+            (P(punctuation), IDE if punctuation is TK.DOT else T(TK.IDENT)),
             lambda ident_token, node_class=node_class, field=field: lambda target: node_class(
                 target=target, **{field: ident_token.lexeme}, offset=target.offset
             ),

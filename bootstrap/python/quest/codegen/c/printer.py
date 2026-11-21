@@ -88,7 +88,7 @@ from quest.codegen.c.types import (
 from quest.repr.layout import layout_of, resolved_shape, shape_location_representation, shape_representation, shape_slot_representation, shape_tag, tuple_struct_name, type_tag
 from quest.repr.digests import type_identity_key
 from quest.repr.generic_layout import qtype_to_name_str
-from quest.repr.symbols import mangle_ident, mangle_module_ident, mangle_module_name, module_record_ident
+from quest.repr.symbols import mangle_ident, mangle_module_ident, mangle_module_name, member_ident, module_record_ident
 from quest.common.diagnostics import MAIN_FRAME, init_frame
 from quest.ir import nodes as ir
 from quest.ir.describe import echo_value_kind
@@ -1136,7 +1136,7 @@ class CPrinter:
         self.emit(f"{payload} = ({struct} *)({box} + 1);")
         self.emit(f"{payload}->header.descriptor = {self.descriptor(o.descriptor)};")
         for (_, n, _), value in zip(stored, self.fill_embedded(values)):
-            self.emit(f"{payload}->qf_{n} = {value};")
+            self.emit(f"{payload}->qf_{member_ident(n)} = {value};")
         if o.runtime_offsets:
             dict_expr = f"quest_record_dict({self.descriptor(o.view_descriptor)}, {self.descriptor(o.descriptor)})"
         else:
@@ -1157,7 +1157,7 @@ class CPrinter:
             slot = call("quest_view_record_slot", [rec, self.name(view_map), c_int(k)])
             return f"(({self.slot_c_type(field)} *){slot})", field
         dict_t = self.ctx.offset_dict_struct_name(rs.structure)
-        return f"(({self.slot_c_type(field)} *)((char *){rec}.val + ((const {dict_t} *){rec}.dict)->offset_{name}))", field
+        return f"(({self.slot_c_type(field)} *)((char *){rec}.val + ((const {dict_t} *){rec}.dict)->offset_{member_ident(name)}))", field
 
     def record_field(self, rec: str, rs: Shape, name: str, o: ir.RecordField) -> str:
         """A field of a record of shape rs, through its offset table: its slot
@@ -1477,7 +1477,7 @@ class CPrinter:
         c_fld = self.slot_c_type(field_s)
         dict_t = self.ctx.offset_dict_struct_name(rec_t)
         # In its slot form (a record or variant, for a boxed variable)
-        return f"(*(({c_fld} *)((char *){record}.val + ((const {dict_t} *){record}.dict)->offset_{member})))"
+        return f"(*(({c_fld} *)((char *){record}.val + ((const {dict_t} *){record}.dict)->offset_{member_ident(member)})))"
 
     def make_closure(self, o: ir.MakeClosure, result: Optional[ir.Var]) -> str:
         code = self.code_name(o.code)

@@ -3,6 +3,7 @@
 module checks : Checks
 import
     questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/syntax/desugar : questlang/syntax/Desugar
     questlang/types/model : questlang/types/Model
     questlang/types/subtyping : questlang/types/Subtyping
     questlang/types/env : questlang/types/Env
@@ -15,6 +16,14 @@ import
     stringOp = string : StringOp
 export
     Let Named = Tuple name: String offset: Int end
+
+    let checkBinder(name: String offset: Int): Ok =
+        (* mod, on the list but never infix, is a function's name (word.mod,
+         * bignum.mod) *)
+        if desugar.isBuiltinInfix(name) andif not(stringOp.equal(name "mod")) then
+            diagnostics.fail(:Ok "'" <> name <> "' is a built-in operator and cannot be bound; give the operator a name "
+                <> "of its own, such as <+>" offset)
+        end
 
     let checkDistinctNames(members: Array(Named)): Ok =
         begin

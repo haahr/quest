@@ -60,7 +60,7 @@ from quest.typechecker.typed_ast import (
     TypedVar,
     TypedApp,
 )
-from quest.typechecker.checks import check_distinct_names, not_desugared
+from quest.typechecker.checks import check_binder, check_distinct_names, not_desugared
 from quest.typechecker.escape import check_no_escaping_path_types
 
 # Internal convenience alias for typechecking error raises
@@ -136,6 +136,7 @@ class BindingMixin(Checker):
                     f"Parameter '{p.name}' requires a type annotation in synthesis mode",
                     offset=p.offset,
                 )
+            check_binder(p.name, p.offset)
             p_sym = ValueSymbol(
                 name=p.name,
                 type_val=p_type,
@@ -483,6 +484,7 @@ class BindingMixin(Checker):
         the name's earlier symbol, which it redefines, if that is a slot of an
         equal type and the same var-ness, and otherwise a new one, which
         shadows the earlier symbol, with a warning if that was a slot."""
+        check_binder(sym.name, offset)
         if env.interactive and self.function_depth == 0 and env.current_scope is env.global_scope:
             slot = sym.symbol_id
             earlier = env.current_scope.lookup_value_local(sym.name)

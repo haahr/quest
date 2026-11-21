@@ -19,6 +19,7 @@ The self-hosted counterpart is questlang/repr/layout."""
 from __future__ import annotations
 
 import hashlib
+from quest.repr.symbols import member_ident
 from quest.repr.syntax import c_int, joined
 from quest.repr.shapes import Shape, shape
 from quest.types.canonical import is_rec_self_symbol, rec_self_level, rec_self_var
@@ -367,7 +368,7 @@ def _shape_tag(s: Shape) -> str:
         tags = [_element_tag(c.shape) for c in s.components]
         return "QTuple_" + (joined("_", tags) if tags else "empty")
     if kind == "record":
-        tags = [f"{c.name}_{_element_tag(c.shape)}" for c in s.sorted_components()]
+        tags = [f"{member_ident(c.name)}_{_element_tag(c.shape)}" for c in s.sorted_components()]
         return "QRecord_" + (joined("_", tags) if tags else "empty")
     if kind in ("fun", "all"):
         return "QClosure"

@@ -1,0 +1,70 @@
+import joiner = "joiner" : Joiner
+import writer = "writer" : Writer
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @10:45
+      let %2: String = prim <>(s, "\n") @10:59
+      let %3: Ok = call writer.putString(%1, %2) @10:28
+      return %3
+    }
+  }
+  let <+>: Fun(a: joiner.T b: joiner.T): joiner.T = member joiner.<+> @11:11
+  let %4: joiner.T = call joiner.text("a") @12:19
+  let %5: joiner.T = call joiner.text("b") @12:40
+  let %6: joiner.T = call joiner.text("c") @12:61
+  let %7: joiner.T = call <+>(%5, %6) @12:40
+  let %8: joiner.T = call <+>(%4, %7) @12:19
+  let %9: String = call joiner.show(%8) @12:7
+  do call print(%9) @12:1
+  let %10: joiner.T = call joiner.text("d") @13:30
+  let %11: joiner.T = call joiner.text("e") @13:47
+  let %12: joiner.T = call joiner.<+>(%10, %11) @13:19
+  let %13: String = call joiner.show(%12) @13:7
+  do call print(%13) @13:1
+  funs {
+    fun fold(parts: Array(joiner.T), join: Fun(a: joiner.T b: joiner.T): joiner.T): joiner.T {
+      let %14: joiner.T = call joiner.text("") @16:26
+      var result: joiner.T = %14 @16:9
+      let %15: Int = prim extent(parts) @17:24
+      let %16: Int = prim -(%15, 1) @17:24
+      var i: Int = 0 @17:9
+      let %17: Bool = prim <=(i, %16) @17:9
+      if %17 { @17:9
+        loop L1 {
+          let i.1: Int = i @17:9
+          let %18: joiner.T = index(parts, i.1) @17:67
+          let %19: joiner.T = call join(result, %18) @17:55
+          result := %19 @17:45
+          let %20: Bool = prim is(i, %16) @17:9
+          if %20 { @17:9
+            break L1 @17:9
+          }
+          let %21: Int = prim +(i, 1) @17:9
+          i := %21 @17:9
+        }
+      }
+      return result
+    }
+  }
+  let %22: joiner.T = call joiner.text("f") @20:33
+  let %23: joiner.T = call joiner.text("g") @20:50
+  let %24: joiner.T = call joiner.text("h") @20:67
+  let %25: Array(joiner.T) = array(%22, %23, %24) @20:24
+  let %26: Fun(a: joiner.T b: joiner.T): joiner.T = member joiner.<+> @20:88
+  let %27: joiner.T = call fold(%25, %26) @20:19
+  let %28: String = call joiner.show(%27) @20:7
+  do call print(%28) @20:1
+  let %29: joiner.T = call joiner.text("i") @21:33
+  let %30: joiner.T = call joiner.text("j") @21:50
+  let %31: Array(joiner.T) = array(%29, %30) @21:24
+  let %32: joiner.T = call fold(%31, <+>) @21:19
+  let %33: String = call joiner.show(%32) @21:7
+  do call print(%33) @21:1
+  let fst: Int = 1 @22:37
+  let snd: String = "k" @22:39
+  let p: joiner.#(Int String) = tuple(fst, snd) @22:31
+  let %34: String = tuple_field(p, 1) @23:7
+  do call print(%34) @23:1
+}
+

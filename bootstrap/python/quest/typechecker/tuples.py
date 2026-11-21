@@ -43,6 +43,7 @@ from quest.typechecker.typed_ast import (
     TypedTypeWitness,
 )
 from quest.typechecker.checks import (
+    check_binder,
     check_distinct_names,
 )
 
@@ -362,6 +363,7 @@ class TupleMixin(Checker):
                     if not checking and id(b) in simultaneous_members and b is simultaneous_members[id(b)][0]:
                         check_distinct_names(simultaneous_members[id(b)])
                     assert isinstance(b, ast.TupleBinding)
+                    check_binder(b.name, b.offset)
                     if exp_f is None:
                         val_typed = self._synth_tuple_component(b, env, loop_depth)
                         q_fields.append(QTupleField(name=b.name, type_val=val_typed.type_val, is_var=b.is_var))

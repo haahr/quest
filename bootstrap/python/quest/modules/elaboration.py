@@ -19,6 +19,7 @@ from typing import Callable, Optional
 import quest.syntax.ast as ast
 from quest.common.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at_import, diagnostic_of
 from quest.common.location import read_source
+from quest.typechecker.checks import check_binder
 from quest.typechecker.elaborate_types import (
     elaborate_kind,
     elaborate_kind_binding,
@@ -247,6 +248,7 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
                 case ast.FieldSig(name=field_name, type_sig=type_sig, mode=mode):
                     if field_name:
                         declare_once("Value", field_name, sig.offset)
+                        check_binder(field_name, sig.offset)
                         val_type = elaborate_type(type_sig, env)
                         val_symbol = ValueSymbol(
                             name=field_name,

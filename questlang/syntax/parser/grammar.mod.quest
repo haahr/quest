@@ -226,8 +226,8 @@ export
              * right with one precedence, as on values (valueRules) *)
             rule(x.type actions.typeInfix) of x.postfixType opt of t(symbolicInfix) x.type end end
             rule(x.postfixType actions.typePostfix) of x.primaryType rep of x.postfixTypeOp end end
-            (* . ide *)
-            rule(x.postfixTypeOp actions.selectTypeOp) of p(dot) t(ident) end
+            (* . ide: an alphanumeric or a symbolic name (m.T, m.#) *)
+            rule(x.postfixTypeOp actions.selectTypeOp) of p(dot) x.ide end
             (* ( TypeBinding ) *)
             rule(x.postfixTypeOp actions.typeAppOp) of p(lparen) opt of x.typeBinding end p(rparen) end
             (* _ ide *)
@@ -318,8 +318,9 @@ export
              * a - (b - c) (docs/syntax.md §3.2) *)
             rule(x.value actions.valueInfix) of x.postfixValue opt of x.infixOp x.value end end
             rule(x.postfixValue actions.valuePostfix) of x.primaryValue rep of x.postfixOp end end
-            (* . ide, ? ide, ! ide *)
-            rule(x.postfixOp actions.selectOp) of p(dot) t(ident) end
+            (* . ide, ? ide, ! ide: a selection's name may be symbolic (m.<+>),
+             * a tag's may not *)
+            rule(x.postfixOp actions.selectOp) of p(dot) x.ide end
             rule(x.postfixOp actions.variantCheckOp) of p(question) t(ident) end
             rule(x.postfixOp actions.variantAssertOp) of p(bang) t(ident) end
             (* ( Binding ) *)

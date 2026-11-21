@@ -2,6 +2,7 @@
 
 module elaborateTypes : ElaborateTypes
 import
+    questlang/typechecker/checks : questlang/typechecker/Checks
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/syntax/ast : questlang/syntax/Ast
     questlang/types/model : questlang/types/Model
@@ -557,6 +558,7 @@ export
                         when sigValue with x then
                             begin
                                 let f = x.val
+                                if maybe.isSome(f.name) then checks.checkBinder(maybe.unwrap(f.name) f.offset) end
                                 let fieldType = elaborateType(maybe.unwrap(f.typeSig) e)
                                 checkKind(fieldType model.typeKind e)
                                 let isVar = case f.mode when modeVar then true else false end
@@ -625,6 +627,7 @@ export
                     let q = vector.get(quantifiers i)
                     let bound = elaborateKind(q.bound e)
                     if not(q.isType) andif model.isPower(bound) then
+                        checks.checkBinder(q.name q.offset)
                         (* Value formal parameter: x : T (represented via
                          * Power(T)) *)
                         let valType = model.powerBound(bound)

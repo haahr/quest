@@ -1,0 +1,349 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('joiner') 'Joiner')
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (LetValueBinding
+      :name 'print'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name '<+>'
+      :value (ExprSelect
+        :target (ExprId 'joiner')
+        :field '<+>'
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'joiner')
+              :field 'show'
+            )
+            :args (
+              (ExprInfix
+                :left (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'joiner')
+                    :field 'text'
+                  )
+                  :args (
+                    (ExprString 'a' '"a"')
+                  )
+                )
+                :op '<+>'
+                :right (ExprInfix
+                  :left (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'joiner')
+                      :field 'text'
+                    )
+                    :args (
+                      (ExprString 'b' '"b"')
+                    )
+                  )
+                  :op '<+>'
+                  :right (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'joiner')
+                      :field 'text'
+                    )
+                    :args (
+                      (ExprString 'c' '"c"')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'joiner')
+              :field 'show'
+            )
+            :args (
+              (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'joiner')
+                  :field '<+>'
+                )
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'joiner')
+                      :field 'text'
+                    )
+                    :args (
+                      (ExprString 'd' '"d"')
+                    )
+                  )
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'joiner')
+                      :field 'text'
+                    )
+                    :args (
+                      (ExprString 'e' '"e"')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'fold'
+      :value (ExprBlock
+        :bindings (
+          (LetValueBinding
+            :name 'result'
+            :value (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'joiner')
+                :field 'text'
+              )
+              :args (
+                (ExprString '' '""')
+              )
+            )
+            :is_var True
+          )
+          (ExprStmt
+            :expr (ExprFor
+              :var_name 'i'
+              :start (ExprInt 0 '0')
+              :stop (ExprInfix
+                :left (ExprApp
+                  :func (ExprId 'extent')
+                  :args (
+                    (ExprId 'parts')
+                  )
+                )
+                :op '-'
+                :right (ExprInt 1 '1')
+              )
+              :body (ExprInfix
+                :left (ExprId 'result')
+                :op ':='
+                :right (ExprApp
+                  :func (ExprId 'join')
+                  :args (
+                    (ExprId 'result')
+                    (ExprIndex
+                      :target (ExprId 'parts')
+                      :index (ExprId 'i')
+                    )
+                  )
+                )
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprId 'result')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'parts'
+          :type_annot (TypeArray
+            :element_type (TypePath ('joiner' 'T'))
+          )
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'join'
+          :type_annot (TypeAll
+            :quantifiers (
+              (Quantifier
+                :name 'a'
+                :bound (KindPower
+                  :bound (TypePath ('joiner' 'T'))
+                )
+                :mode VALUE
+              )
+              (Quantifier
+                :name 'b'
+                :bound (KindPower
+                  :bound (TypePath ('joiner' 'T'))
+                )
+                :mode VALUE
+              )
+            )
+            :result_type (TypePath ('joiner' 'T'))
+          )
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('joiner' 'T'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'joiner')
+              :field 'show'
+            )
+            :args (
+              (ExprApp
+                :func (ExprId 'fold')
+                :args (
+                  (ExprArray
+                    :elements (
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'joiner')
+                          :field 'text'
+                        )
+                        :args (
+                          (ExprString 'f' '"f"')
+                        )
+                      )
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'joiner')
+                          :field 'text'
+                        )
+                        :args (
+                          (ExprString 'g' '"g"')
+                        )
+                      )
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'joiner')
+                          :field 'text'
+                        )
+                        :args (
+                          (ExprString 'h' '"h"')
+                        )
+                      )
+                    )
+                  )
+                  (ExprSelect
+                    :target (ExprId 'joiner')
+                    :field '<+>'
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'joiner')
+              :field 'show'
+            )
+            :args (
+              (ExprApp
+                :func (ExprId 'fold')
+                :args (
+                  (ExprArray
+                    :elements (
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'joiner')
+                          :field 'text'
+                        )
+                        :args (
+                          (ExprString 'i' '"i"')
+                        )
+                      )
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'joiner')
+                          :field 'text'
+                        )
+                        :args (
+                          (ExprString 'j' '"j"')
+                        )
+                      )
+                    )
+                  )
+                  (ExprId '<+>')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'p'
+      :value (ExprTuple
+        :fields (
+          (TupleBinding
+            :value (ExprInt 1 '1')
+          )
+          (TupleBinding
+            :value (ExprString 'k' '"k"')
+          )
+        )
+      )
+      :type_annot (TypeApp
+        :constructor (TypePath ('joiner' '#'))
+        :arguments (
+          (TypePath ('Int'))
+          (TypePath ('String'))
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprSelect
+            :target (ExprId 'p')
+            :field 'snd'
+          )
+        )
+      )
+    )
+  )
+)

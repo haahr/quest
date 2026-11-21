@@ -71,6 +71,15 @@ export
             "qv_sym_" <> strutil.join("_" parts)
         end
 
+    let memberIdent(name: String): String =
+        if isSymbolicName(name) then
+            (* The symbolic mangling without its leading qv_ *)
+            let sym = mangleSymbolicIdent(name)
+            stringOp.getSub(sym 3 {stringOp.length(sym) - 3})
+        else
+            name
+        end
+
     let mangleIdent(name: String): String =
         if isSymbolicName(name) then mangleSymbolicIdent(name) else "qv_" <> strutil.replace(name "." "_") end
 
@@ -99,9 +108,7 @@ export
         begin
             let cleanMod = mangleModuleName(moduleName)
             if isSymbolicName(name) then
-                (* The symbolic mangling without its leading qv_ *)
-                let sym = mangleSymbolicIdent(name)
-                "qv_" <> cleanMod <> "_" <> stringOp.getSub(sym 3 {stringOp.length(sym) - 3})
+                "qv_" <> cleanMod <> "_" <> memberIdent(name)
             else
                 "qv_" <> cleanMod <> "_" <> strutil.replace(name "." "_")
             end

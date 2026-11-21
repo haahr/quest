@@ -137,6 +137,18 @@ Quest does not overload operators across types; distinct operators exist for dif
 - **Boolean logic:** `/\` (and), `\/` (or)
 - **Identity / Equality:** `is`, `isnot`
 
+A program declares its own operators as it declares any value (`let <+>(a: T b: T): T = ...`), and an interface may
+export one. A selection's name may be symbolic, as in Typeful Programming's grammar (`Value "." ide`, an `ide`
+alphanumeric or symbolic): `m.<+>` is module m's `<+>`, and `m.#` a type operator's name. An importer binds it to use
+it infix (`let <+> = m.<+>;`), or calls it prefix (`m.<+>(a b)`) or passes it as a value. A variant's or option's tag,
+after `?` or `!`, stays alphanumeric.
+
+A built-in operator's name is not a value's to take: the type checker elaborates `+`, `++`, `<>`, and the rest of the
+list above itself wherever they are written infix, so a binding of one would never be used there. Binding one is an
+error, whether by a `let`, a parameter, a tuple's component, a module's or interface's member, or a field or
+quantifier of a signature (`checks.check_binder`, `checks.checkBinder`). `{+}` is still the built-in operator as a
+value.
+
 ### 3.3. Monadic Operators
 The monadic operators `not`, `extent`, and `ordinal` are keyword operators that bind tighter than dyadic infix
 operators:
