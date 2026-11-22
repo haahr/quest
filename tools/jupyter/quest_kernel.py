@@ -3,7 +3,7 @@ that runs each cell in a session of the self-hosted driver's kernel mode
 (quest_session.py), started when the kernel starts and again after it ends.
 
 The driver is QUEST_KERNEL_DRIVER, which tools/jupyter/install sets to the
-checkout's ./quest. It runs under jupyterlab's own Python, which has ipykernel:
+installed release (~/.local/bin/quest) or its --driver. It runs under jupyterlab's own Python, which has ipykernel:
 
     python quest_kernel.py -f CONNECTION_FILE
 """

@@ -2,9 +2,17 @@
 section 3): a kernelspec named quest whose kernel is this checkout's
 tools/jupyter/quest_kernel.py, run by --python (the Python running this, by the
 path it was started with, so that Homebrew's opt link survives an upgrade), with
-this checkout's ./quest as its driver; and the Quest lexer (quest_lexer.py), as
-a Pygments plugin in that Python, for nbconvert. --uninstall removes both.
+the release tools/release --install installed (~/.local/bin/quest) as its
+driver, or --driver's; and the Quest lexer (quest_lexer.py), as a Pygments
+plugin in that Python, for nbconvert. --uninstall removes both.
 tools/jupyter/install runs this with jupyterlab's Python.
+
+The installed release, not this checkout's ./quest, is the default because
+./quest rebuilds its stages whenever the compiler's sources change, and a stage
+build waits while any worktree's check or timing holds the machine-wide lock,
+so a notebook's cell could wait for half an hour. The installed release changes
+only when tools/release --install installs another, which a restarted kernel
+then runs. --driver ./quest gives a kernel this checkout's compiler instead.
 
     python install.py [--uninstall] [--name NAME] [--driver DRIVER] [--python PYTHON] [--prefix DIR]
 """
@@ -25,6 +33,8 @@ from jupyter_client.kernelspec import KernelSpecManager, NoSuchKernel
 
 HERE = Path(__file__).resolve().parent
 ROOT_DIR = HERE.parent.parent
+# Where tools/release --install writes its command, by default
+INSTALLED_DRIVER = Path.home() / ".local" / "bin" / "quest"
 
 
 def kernelspec(driver: str, python: str = sys.executable) -> dict:
@@ -76,7 +86,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Install the Quest kernel for Jupyter")
     parser.add_argument("--uninstall", action="store_true", help="remove the kernel")
     parser.add_argument("--name", default="quest", help="the kernelspec's name (default quest)")
-    parser.add_argument("--driver", default=str(ROOT_DIR / "quest"), help="the Quest driver (default ./quest)")
+    parser.add_argument("--driver", help=f"the Quest driver (default {INSTALLED_DRIVER}, the installed release; "
+                        "./quest for this checkout's compiler)")
     parser.add_argument("--python", default=sys.executable, help="the Python to run the kernel (default this one)")
     parser.add_argument("--prefix", help="install under DIR: DIR/share/jupyter, and the lexer by pip --prefix")
     args = parser.parse_args()
@@ -92,6 +103,14 @@ def main() -> int:
             print("could not remove the Quest lexer")
             return 1
         return 0
+    if args.driver is None:
+        if not INSTALLED_DRIVER.is_file():
+            print(f"no installed release at {INSTALLED_DRIVER}: run tools/release --install, or name a driver "
+                  "with --driver (--driver ./quest for this checkout's compiler)")
+            return 1
+        args.driver = str(INSTALLED_DRIVER)
+    else:
+        args.driver = str(Path(args.driver).absolute())
     with tempfile.TemporaryDirectory() as d:
         (Path(d) / "kernel.json").write_text(json.dumps(kernelspec(args.driver, args.python), indent=2) + "\n")
         where = manager.install_kernel_spec(d, args.name, user=args.prefix is None, prefix=args.prefix)

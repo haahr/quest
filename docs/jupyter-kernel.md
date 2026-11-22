@@ -98,9 +98,17 @@ runtime.
 
 **Installing.** `tools/jupyter/install` runs `install.py` with jupyterlab's Python (or `QUEST_JUPYTER_PYTHON`). It
 installs a kernelspec named `quest` for the user, its `kernel.json` naming that Python by the path it was started with,
-this checkout's `quest_kernel.py`, and its `./quest` as the driver (`--driver`); and the lexer (§6). `--prefix DIR`
-installs under `DIR` instead, `--name` names the kernelspec, and `--uninstall` removes both. The first cell after the
-compiler's sources change shows `./quest` rebuilding its stages, as its output.
+this checkout's `quest_kernel.py`, and the release `tools/release --install` installed, `~/.local/bin/quest`, as the
+driver; and the lexer (§6). `--prefix DIR` installs under `DIR` instead, `--name` names the kernelspec, and
+`--uninstall` removes both.
+
+- **The installed release, not `./quest`, by default.** `./quest` rebuilds its stages whenever the compiler's sources
+  change, and a stage build waits while any worktree's check or timing holds the machine-wide lock (testing.md §4.2),
+  so a notebook's first cell after another session's commit could wait for half an hour. The installed release
+  changes only when `tools/release --install` installs another (release-compiler.md §1); a kernel restarted after
+  that runs it. A notebook therefore sees the compiler's and the library's changes once they are released.
+- **`--driver ./quest`** gives a kernel this checkout's compiler, for trying a change to the driver or the library in
+  a notebook. The first cell after the sources change then shows `./quest` rebuilding its stages, as its output.
 
 ## 4. Displays and Lines
 
@@ -174,7 +182,7 @@ Work nobody has started yet, each item saying what is missing, where to start, a
 own editor, CodeMirror 6, highlights a language only through a JupyterLab extension, so Quest cells show as plain text
 while they're edited.
 
-**Reproduce.** `tools/jupyter/install`, then open a Quest notebook in JupyterLab.
+**Reproduce.** `tools/release --install` and `tools/jupyter/install`, then open a Quest notebook in JupyterLab.
 
 **Where to start.** A JupyterLab 4 extension (TypeScript, built with jupyterlab's extension tools) registering a
 CodeMirror 6 language for `text/x-quest`, its tokens those of `tools/jupyter/quest_lexer.py`, installed by
@@ -189,7 +197,8 @@ has yet run a notebook in JupyterLab's page itself: binding, printing, a failing
 (after importing it), Shift-Tab inspection, `io/display`'s HTML and PNG, a cell reading a line, and the interrupt
 button on an endless loop (the session survives) and on `system.run` of `sleep 30` (it restarts after five seconds).
 
-**Where to start.** `tools/jupyter/install`, then `jupyter lab` in a directory of notebooks.
+**Where to start.** `tools/release --install` and `tools/jupyter/install`, then `jupyter lab` in a directory of
+notebooks.
 
 **Done when.** Each of those works by hand, or this section records what doesn't.
 
