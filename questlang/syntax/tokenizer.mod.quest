@@ -29,6 +29,8 @@ export
         textLen: Int
         var cursor: Int
         var peeked: maybe.T(tokens.Token)
+        (* The span of each comment skipped, in order, for the formatter *)
+        commentSpans: vector.T(location.Span)
     end
 
     (* ======================================================================
@@ -123,6 +125,7 @@ export
                 let textLen = stringOp.length(txt)
                 var cursor = 0
                 var peeked = maybe.none()
+                let commentSpans = vector.new(:location.Span)
             end
         end
 
@@ -211,6 +214,7 @@ export
                         tok.cursor := tok.cursor + 1
                     end
                 end
+                vector.append(tok.commentSpans location.span(tok.file start tok.cursor))
                 if depth > 0 then
                     error(tok start "Unclosed comment")
                     exit
@@ -490,6 +494,8 @@ export
             end
             v
         end
+
+    let comments(tok: T): vector.T(location.Span) = tok.commentSpans
 
     let formatDump(tokensList: vector.T(tokens.Token) sm: location.SourceMap showValues: Bool): String =
         begin

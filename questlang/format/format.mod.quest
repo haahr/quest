@@ -1,0 +1,899 @@
+(* Quest Self-Hosted Compiler: quest fmt, the Formatter
+ *
+ * The source is tokenized and parsed by the compiler's own front end; the
+ * tokenizer also records the comments it skips. Tokens and comments become
+ * one sequence of elements, each with the number of line breaks before it in
+ * the source. The sequence is rearranged (semicolons removed, imports sorted,
+ * then and do moved), cut into lines where the breaks are, and each line is
+ * indented by the rules questlang/format/structure reads from the AST and
+ * spaced by the rules of docs/formatter.md section 2.1. *)
+
+module format : Format
+import
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/common/files : questlang/common/Files
+    questlang/common/location : questlang/common/Location
+    questlang/format/structure : questlang/format/Structure
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/astprint : questlang/syntax/AstPrint
+    questlang/syntax/parser : questlang/syntax/Parser
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    osFiles = os/files : os/Files
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    sb = util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    reader : Reader
+    system : System
+    writer : Writer
+export
+    Let Result = Option
+        formatted with text: String end
+        invalid with bag: diagbag.T sm: location.SourceMap end
+        failed with message: String end
+    end
+
+    let intEqual(a: Int b: Int): Bool = a is b
+
+    (* ======================================================================
+     * 1. Reading the source
+     * ====================================================================== *)
+
+    Let Parsed = Tuple
+        sm: location.SourceMap
+        bag: diagbag.T
+        toks: vector.T(tokens.Token)
+        comments: vector.T(location.Span)
+        program: maybe.T(ast.Program)
+    end
+
+    let parseTokens(toks: vector.T(tokens.Token) sm: location.SourceMap bag: diagbag.T): maybe.T(ast.Program) =
+        try maybe.some(parser.parseProgram(toks sm bag)) when diagbag.fatalError then maybe.none(:ast.Program) end
+
+    let parse(file: String text: String): Parsed =
+        begin
+            let sm = location.newSourceMap(file text)
+            let bag = diagbag.new()
+            let tok = tokenizer.new(sm bag)
+            let toks = tokenizer.tokenizeAll(tok)
+            let program = if diagbag.hasErrors(bag) then maybe.none(:ast.Program) else parseTokens(toks sm bag) end
+            tuple
+                let sm = sm
+                let bag = bag
+                let toks = toks
+                let comments = tokenizer.comments(tok)
+                let program = program
+            end
+        end
+
+    (* A token or a comment, and the line breaks before it in the output: 0,
+     * 1, or 2 for a blank line *)
+    Let Elem = Tuple
+        comment: Bool
+        (* The token's kind's name (tokens.tokenKindName); COMMENT for a
+         * comment *)
+        kind: String
+        text: String
+        start: Int
+        stop: Int
+        (* The source column of a comment's start, from 0 *)
+        col: Int
+        var breaks: Int
+    end
+
+    let newlines(text: String from: Int to: Int): Int =
+        begin
+            let var n = 0
+            for i = from upto {to - 1} do if stringOp.getChar(text i) is '\n' then n := n + 1 end end
+            n
+        end
+
+    (* The tokens (but EOF) and comments of the source, in order *)
+    let elements(text: String p: Parsed): vector.T(Elem) =
+        begin
+            let result = vector.new(:Elem)
+            let n = vector.length(p.toks) - 1
+            let m = vector.length(p.comments)
+            let var i = 0
+            let var j = 0
+            let var prevStop = 0
+            while {i < n} orif {j < m} do
+                let isComment = {j < m}
+                    andif {{i >= n} orif {vector.get(p.comments j).startOffset < vector.get(p.toks i).span.startOffset}}
+                let start = if isComment then vector.get(p.comments j).startOffset else vector.get(p.toks i).span.startOffset end
+                let stop = if isComment then vector.get(p.comments j).endOffset else vector.get(p.toks i).span.endOffset end
+                let kind = if isComment then "COMMENT" else tokens.tokenKindName(vector.get(p.toks i).kind) end
+                let b = newlines(text prevStop start)
+                vector.append(result tuple
+                    let comment = isComment
+                    let kind = kind
+                    let text = stringOp.getSub(text start stop - start)
+                    let start = start
+                    let stop = stop
+                    let col = location.locate(p.sm start).col - 1
+                    var breaks = if vector.empty(result) then 0 elsif b > 2 then 2 else b end
+                end)
+                if isComment then j := j + 1 else i := i + 1 end
+                prevStop := stop
+            end
+            result
+        end
+
+    let isA(e: Elem kind: String): Bool = not(e.comment) andif stringOp.equal(e.kind kind)
+    let isOneOf(kind: String kinds: Array(String)): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent(kinds) - 1} do if stringOp.equal(kinds[i] kind) then found := true end end
+            found
+        end
+
+    (* ======================================================================
+     * 2. Rearranging
+     * ====================================================================== *)
+
+    (* Whether the program means the same without its semicolons *)
+    let semicolonsOptional(p: Parsed): Bool =
+        begin
+            let kept = vector.filter(p.toks fun(t: tokens.Token): Bool
+                case t.kind when semicolon then false else true end)
+            if vector.length(kept) is vector.length(p.toks) then
+                true
+            else
+                let other = parseTokens(kept p.sm diagbag.new())
+                maybe.isSome(other)
+                    andif stringOp.equal(astprint.dump(maybe.unwrap(other)) astprint.dump(maybe.unwrap(p.program)))
+            end
+        end
+
+    (* The elements without their semicolons; an element after a semicolon
+     * takes the semicolon's line breaks if it has none of its own *)
+    let withoutSemicolons(elems: vector.T(Elem)): vector.T(Elem) =
+        begin
+            let result = vector.new(:Elem)
+            let var carried = 0
+            for i = 0 upto {vector.length(elems) - 1} do
+                let e = vector.get(elems i)
+                if isA(e "SEMICOLON") then
+                    if e.breaks > carried then carried := e.breaks end
+                else
+                    if {carried > 0} andif {e.breaks is 0} andif not(e.comment) then e.breaks := carried end
+                    carried := 0
+                    vector.append(result e)
+                end
+            end
+            result
+        end
+
+    Let Range = Tuple first: Int last: Int end
+
+    (* The elements of each sortable import list sorted, if each item's
+     * elements can be told apart: an item takes the comments on lines of
+     * their own just before it, and one at the end of its last line *)
+    let sortImports(elems: vector.T(Elem) lists: vector.T(structure.ImportList)): vector.T(Elem) =
+        begin
+            let var current = elems
+            for l = 0 upto {vector.length(lists) - 1} do
+                let importList = vector.get(lists l)
+                let byStart = hashMap.new(:Int :Int intEqual hash.int)
+                let byStop = hashMap.new(:Int :Int intEqual hash.int)
+                for i = 0 upto {vector.length(current) - 1} do
+                    let e = vector.get(current i)
+                    if not(e.comment) then
+                        hashMap.insert(byStart e.start i)
+                        hashMap.insert(byStop e.stop i)
+                    end
+                end
+                let k = vector.length(importList.items)
+                let ranges = array of(k tuple let first = ~1 let last = ~1 end)
+                let var fine = true
+                for i = 0 upto {k - 1} do
+                    let item = vector.get(importList.items i)
+                    let var a = maybe.unwrapOr(hashMap.get(byStart item.start) ~1)
+                    let var b = maybe.unwrapOr(hashMap.get(byStop item.stop) ~1)
+                    if {a < 0} orif {b < a} then
+                        fine := false
+                    else
+                        let n = vector.length(current)
+                        while {{b + 1} < n} andif {vector.get(current b + 1).breaks is 0}
+                            andif {vector.get(current b + 1).comment orif isA(vector.get(current b + 1) "SEMICOLON")} do
+                            b := b + 1
+                        end
+                        let floor = if i is 0 then ~1 else ranges[i - 1].last end
+                        while {{a - 1} > floor} andif vector.get(current a - 1).comment
+                            andif {vector.get(current a).breaks is 1} andif {vector.get(current a - 1).breaks >= 1} do
+                            a := a - 1
+                        end
+                        if {i > 0} andif {a isnot {ranges[i - 1].last + 1}} then fine := false end
+                        ranges[i] := tuple let first = a let last = b end
+                    end
+                end
+                if fine then
+                    let order = array of(k 0)
+                    for i = 0 upto {k - 1} do order[i] := i end
+                    let items = vector.toArray(importList.items)
+                    sort.sort(order fun(x: Int y: Int): Int
+                        if items[x].group isnot items[y].group then
+                            sort.intCompare(items[x].group items[y].group)
+                        elsif not(stringOp.equal(items[x].path items[y].path)) then
+                            sort.stringCompare(items[x].path items[y].path)
+                        else
+                            sort.intCompare(x y)
+                        end)
+                    let var moved = false
+                    for i = 0 upto {k - 1} do if order[i] isnot i then moved := true end end
+                    if moved then
+                        let slots = array of(k 0)
+                        for i = 0 upto {k - 1} do slots[i] := vector.get(current ranges[i].first).breaks end
+                        let result = vector.new(:Elem)
+                        for i = 0 upto {ranges[0].first - 1} do vector.append(result vector.get(current i)) end
+                        for i = 0 upto {k - 1} do
+                            let r = ranges[order[i]]
+                            vector.get(current r.first).breaks := slots[i]
+                            for j = r.first upto r.last do vector.append(result vector.get(current j)) end
+                        end
+                        for i = {ranges[k - 1].last + 1} upto {vector.length(current) - 1} do
+                            vector.append(result vector.get(current i))
+                        end
+                        current := result
+                    end
+                end
+            end
+            current
+        end
+
+    (* A then or do that starts a line goes to the end of the line before,
+     * ahead of a comment that ends that line; what followed it on its line
+     * starts a line of its own *)
+    let moveThenDo(elems: vector.T(Elem)): vector.T(Elem) =
+        begin
+            let result = vector.copy(elems)
+            let n = vector.length(result)
+            for i = 1 upto {n - 1} do
+                let e = vector.get(result i)
+                if {isA(e "KW_THEN") orif isA(e "KW_DO")} andif {e.breaks > 0} then
+                    let p = vector.get(result i - 1)
+                    let var moved = false
+                    if not(p.comment) then
+                        moved := true
+                    elsif {p.breaks is 0} andif {i >= 2} andif not(vector.get(result i - 2).comment) then
+                        (* Ahead of the comment that ends the line before *)
+                        vector.set(result i - 1 e)
+                        vector.set(result i p)
+                        moved := true
+                    end
+                    if moved then
+                        e.breaks := 0
+                        if {{i + 1} < n} andif {vector.get(result i + 1).breaks is 0}
+                            andif {p.comment orif not(vector.get(result i + 1).comment)} then
+                            vector.get(result i + 1).breaks := 1
+                        end
+                    end
+                end
+            end
+            result
+        end
+
+    (* ======================================================================
+     * 3. Lines and their indentation
+     * ====================================================================== *)
+
+    (* A line, and whether it continues a phrase begun on an earlier line *)
+    Let Line = Tuple elems: vector.T(Elem) var blank: Bool var indent: Int var continues: Bool end
+
+    (* Whether a blank line may come between lines a and b: not after the
+     * start of a body nor before an end *)
+    let blankAllowed(a: Line b: Line): Bool =
+        begin
+            let var lastKind = ""
+            for i = 0 upto {vector.length(a.elems) - 1} do
+                let e = vector.get(a.elems i)
+                if not(e.comment) then lastKind := e.kind end
+            end
+            let firstElem = vector.get(b.elems 0)
+            not(isOneOf(lastKind array of "KW_BEGIN" "KW_THEN" "KW_DO" "KW_ELSE" "KW_EXPORT" "KW_IMPORT" end))
+                andif not(isA(firstElem "KW_END"))
+        end
+
+    let lines(elems: vector.T(Elem)): vector.T(Line) =
+        begin
+            let result = vector.new(:Line)
+            for i = 0 upto {vector.length(elems) - 1} do
+                let e = vector.get(elems i)
+                if vector.empty(result) orif {e.breaks > 0} then
+                    vector.append(result tuple
+                        let elems = vector.new(:Elem)
+                        var blank = e.breaks > 1
+                        var indent = 0
+                        var continues = false
+                    end)
+                end
+                vector.append(vector.last(result).elems e)
+            end
+            for i = 1 upto {vector.length(result) - 1} do
+                let l = vector.get(result i)
+                if l.blank andif not(blankAllowed(vector.get(result i - 1) l)) then l.blank := false end
+            end
+            if not(vector.empty(result)) then vector.get(result 0).blank := false end
+            result
+        end
+
+    (* The indentation of each line, from the rules: a line starting with a
+     * token is indented by its rule or as a continuation of its phrase, 8 past
+     * the line the phrase starts on, or as far as that line if it is itself a
+     * continuation and the phrase starts after its first token (so that a
+     * phrase nested in a continued one, as a field of a tuple type in a
+     * field's type, does not step further right on each line); a line starting
+     * with a comment as the token after the comment would be, or 4 past an
+     * end's *)
+    let indent(ls: vector.T(Line) st: structure.T): Ok =
+        begin
+            let lineOf = hashMap.new(:Int :Int intEqual hash.int)
+            let startsLine = hashMap.new(:Int :Bool intEqual hash.int)
+            for i = 0 upto {vector.length(ls) - 1} do
+                let l = vector.get(ls i)
+                let var firstToken = true
+                for j = 0 upto {vector.length(l.elems) - 1} do
+                    let e = vector.get(l.elems j)
+                    if not(e.comment) then
+                        hashMap.insert(lineOf e.start i)
+                        if firstToken then hashMap.insert(startsLine e.start true) end
+                        firstToken := false
+                    end
+                end
+            end
+            let at = fun(anchor: Int here: Int): maybe.T(Int)
+                begin
+                    let line = maybe.unwrapOr(hashMap.get(lineOf anchor) ~1)
+                    if {line >= 0} andif {line < here} then maybe.some(vector.get(ls line).indent) else maybe.none(:Int) end
+                end
+            let tokenIndent = fun(e: Elem here: Int): Int
+                begin
+                    let r = hashMap.get(st.rules e.start)
+                    let byRule = if maybe.isNone(r) then
+                        maybe.none(:Int)
+                    else
+                        let x = maybe.unwrap(r)
+                        (* An if's parts depend on whether it is compact here *)
+                        let compact = {x.ifToken >= 0} andif not(hashMap.contains(startsLine x.ifToken))
+                            andif {maybe.unwrapOr(hashMap.get(lineOf x.ifToken) ~1) is maybe.unwrapOr(hashMap.get(lineOf x.armToken) ~2)}
+                        let anchor = if compact then x.compactAnchor else x.anchor end
+                        let delta = if compact then x.compactDelta else x.delta end
+                        if anchor < 0 then
+                            maybe.some(delta)
+                        else
+                            let base = at(anchor here)
+                            if maybe.isSome(base) then maybe.some(maybe.unwrap(base) + delta) else maybe.none(:Int) end
+                        end
+                    end
+                    if maybe.isSome(byRule) then
+                        maybe.unwrap(byRule)
+                    else
+                        vector.get(ls here).continues := true
+                        let c = hashMap.get(st.continuations e.start)
+                        let base = if maybe.isSome(c) then at(maybe.unwrap(c) here) else maybe.none(:Int) end
+                        if maybe.isNone(base) then
+                            0
+                        else
+                            let line = vector.get(ls maybe.unwrapOr(hashMap.get(lineOf maybe.unwrap(c)) 0))
+                            if line.continues andif not(hashMap.contains(startsLine maybe.unwrap(c))) then
+                                maybe.unwrap(base)
+                            else
+                                maybe.unwrap(base) + 8
+                            end
+                        end
+                    end
+                end
+            for i = 0 upto {vector.length(ls) - 1} do
+                let l = vector.get(ls i)
+                let f = vector.get(l.elems 0)
+                if not(f.comment) then
+                    l.indent := tokenIndent(f i)
+                else
+                    (* The first token after the comment, on this line or a later
+                     * one *)
+                    let var found = maybe.none(:Elem)
+                    let var k = i
+                    while maybe.isNone(found) andif {k < vector.length(ls)} do
+                        let es = vector.get(ls k).elems
+                        for j = 0 upto {vector.length(es) - 1} do
+                            if maybe.isNone(found) andif not(vector.get(es j).comment) then found := maybe.some(vector.get(es j)) end
+                        end
+                        k := k + 1
+                    end
+                    l.indent := if maybe.isNone(found) then
+                        0
+                    else
+                        let t = maybe.unwrap(found)
+                        let n = tokenIndent(t i)
+                        let r = hashMap.get(st.rules t.start)
+                        if isA(t "KW_END") andif maybe.isSome(r) andif {maybe.unwrap(r).delta is 0} then n + 4 else n end
+                    end
+                end
+            end
+        end
+
+    (* ======================================================================
+     * 4. Spacing and rendering
+     * ====================================================================== *)
+
+    let isSymbolicChar(c: Char): Bool = strutil.contains("!#$%&*+-/:<=>?@\\^_`|~" stringOp.new(1 c))
+
+    (* Whether a and b would lex as other tokens if written together *)
+    let mustSeparate(a: Elem b: Elem): Bool =
+        begin
+            let x = stringOp.getChar(a.text stringOp.length(a.text) - 1)
+            let y = stringOp.getChar(b.text 0)
+            {strutil.isAlnum(x) andif strutil.isAlnum(y)} orif {isSymbolicChar(x) andif isSymbolicChar(y)}
+                orif {{x is '('} andif {y is '*'}} orif {isA(a "INT_LIT") andif {y is '.'}}
+                orif {{x is '.'} andif isA(b "INT_LIT")}
+        end
+
+    let marked(m: hashMap.T(Int Bool) e: Elem): Bool = not(e.comment) andif hashMap.contains(m e.start)
+
+    (* Whether the colon b after a is a type annotation's (x: T), which is
+     * written against what it follows: one after a name or a bracket, unless
+     * it is written against the type after it and not against what it
+     * follows (f(x :Int), a type argument) *)
+    let annotation(a: Elem colon: Elem next: maybe.T(Elem)): Bool =
+        isOneOf(a.kind array of "IDENT" "RPAREN" "RBRACKET" "UNDERSCORE" end)
+            andif {{colon.start is a.stop} orif maybe.isNone(next) orif {maybe.unwrap(next).start isnot colon.stop}}
+
+    (* Whether a space comes between a and b; before is the kind of the
+     * element before a, if any, and after the element after b; annotationColon
+     * is whether a, if a colon, is an annotation's *)
+    let spaced(a: Elem b: Elem before: String after: maybe.T(Elem) annotationColon: Bool st: structure.T): Bool =
+        begin
+            let glued = b.start is a.stop
+            let names = array of "IDENT" "RPAREN" "RBRACKET" "UNDERSCORE" end
+            let wanted = if a.comment orif b.comment then
+                true
+            elsif marked(st.pathSlashes a) orif marked(st.pathSlashes b) then
+                false
+            elsif isOneOf(b.kind array of "RPAREN" "RBRACKET" "RBRACE" "COMMA" "SEMICOLON" end) then
+                false
+            elsif isOneOf(a.kind array of "LPAREN" "LBRACKET" "LBRACE" end) then
+                false
+            elsif isA(a "DOT") orif isA(b "DOT") then
+                false
+            elsif isA(a "COMMA") then
+                not(glued)
+            elsif isA(b "LPAREN") then
+                if isOneOf(a.kind array of "IDENT" "RPAREN" "RBRACKET" "RBRACE" "UNDERSCORE" end)
+                    orif strutil.startsWith(a.kind "KW_") then false else not(glued) end
+            elsif isA(b "LBRACKET") then
+                if isOneOf(a.kind array of "IDENT" "RPAREN" "RBRACKET" "RBRACE" end) then false else not(glued) end
+            elsif isA(b "COLON") then
+                if marked(st.spacedColons b) then true elsif annotation(a b after) then false else not(glued) end
+            elsif isA(a "COLON") then
+                if marked(st.spacedColons a) orif {isOneOf(before names) andif annotationColon} then true else not(glued) end
+            elsif isA(b "COLON_COLON") then
+                if isOneOf(a.kind array of "IDENT" "UNDERSCORE" end) then false else not(glued) end
+            elsif isA(a "COLON_COLON") then
+                false
+            elsif isOneOf(a.kind array of "QUESTION" "BANG" "AT" end) orif isOneOf(b.kind array of "QUESTION" "BANG" end) then
+                false
+            else
+                true
+            end
+            wanted orif mustSeparate(a b)
+        end
+
+    (* A comment's text with its lines after the first moved delta columns
+     * (no further left than their spaces allow), none ending in spaces *)
+    let reindent(text: String delta: Int): String =
+        if not(strutil.contains(text "\n")) then
+            text
+        else
+            let parts = strutil.split(text "\n")
+            let b = sb.new()
+            for i = 0 upto {vector.length(parts) - 1} do
+                let s = vector.get(parts i)
+                if i is 0 then
+                    sb.str(b strutil.stripTrailing(s))
+                else
+                    sb.char(b '\n')
+                    let var lead = 0
+                    while {lead < stringOp.length(s)} andif {stringOp.getChar(s lead) is ' '} do lead := lead + 1 end
+                    let newLead = if {lead + delta} < 0 then 0 else lead + delta end
+                    let rest = strutil.stripTrailing(stringOp.getSub(s lead stringOp.length(s) - lead))
+                    if not(stringOp.isEmpty(rest)) then
+                        sb.repeat(b ' ' newLead)
+                        sb.str(b rest)
+                    end
+                end
+            end
+            sb.toString(b)
+        end
+
+    (* The column after s, written at column col: its length past its last
+     * newline *)
+    let columnAfter(col: Int s: String): Int =
+        begin
+            let nl = strutil.rfind(s "\n")
+            if nl < 0 then col + stringOp.length(s) else stringOp.length(s) - nl - 1 end
+        end
+
+    (* A line's text before a comment that ends it, and that comment *)
+    Let Rendered = Tuple code: String trailing: maybe.T(Elem) end
+
+    let renderLine(l: Line st: structure.T): Rendered =
+        begin
+            let b = sb.new()
+            sb.repeat(b ' ' l.indent)
+            let var col = l.indent
+            let n = vector.length(l.elems)
+            let lastElem = vector.get(l.elems n - 1)
+            let trailing = {n > 1} andif lastElem.comment andif not(strutil.contains(lastElem.text "\n"))
+            let lastCode = if trailing then n - 2 else n - 1 end
+            let var before = ""
+            let var colonIsAnnotation = false
+            for i = 0 upto lastCode do
+                let e = vector.get(l.elems i)
+                let after = if {i + 1} < n then maybe.some(vector.get(l.elems i + 1)) else maybe.none(:Elem) end
+                if i > 0 then
+                    let p = vector.get(l.elems i - 1)
+                    if spaced(p e before after colonIsAnnotation st) then
+                        sb.char(b ' ')
+                        col := col + 1
+                    end
+                    before := p.kind
+                    colonIsAnnotation := isA(e "COLON") andif annotation(p e after)
+                end
+                let s = if e.comment then reindent(e.text col - e.col) else e.text end
+                sb.str(b s)
+                col := columnAfter(col s)
+            end
+            tuple let code = sb.toString(b) let trailing = if trailing then maybe.some(lastElem) else maybe.none(:Elem) end end
+        end
+
+    (* The lines' text: runs of lines on consecutive lines that end with
+     * comments have the comments in one column, two spaces past the longest
+     * line's code; no line ends in spaces *)
+    let render(ls: vector.T(Line) st: structure.T): String =
+        begin
+            let n = vector.length(ls)
+            let rendered = vector.map(ls fun(l: Line): Rendered renderLine(l st))
+            let columns = array of(n 0)
+            let var i = 0
+            while i < n do
+                if maybe.isSome(vector.get(rendered i).trailing) then
+                    let var j = i
+                    let var width = 0
+                    while {j < n} andif maybe.isSome(vector.get(rendered j).trailing)
+                        andif {{j is i} orif not(vector.get(ls j).blank)} do
+                        let w = columnAfter(0 vector.get(rendered j).code)
+                        if w > width then width := w end
+                        j := j + 1
+                    end
+                    for k = i upto {j - 1} do columns[k] := width + 2 end
+                    i := j
+                else
+                    i := i + 1
+                end
+            end
+            let b = sb.new()
+            for k = 0 upto {n - 1} do
+                if vector.get(ls k).blank then sb.char(b '\n') end
+                let r = vector.get(rendered k)
+                let code = strutil.stripTrailing(r.code)
+                sb.str(b code)
+                if maybe.isSome(r.trailing) then
+                    let pad = columns[k] - columnAfter(0 code)
+                    sb.repeat(b ' ' if pad < 1 then 1 else pad end)
+                    sb.str(b maybe.unwrap(r.trailing).text)
+                end
+                sb.char(b '\n')
+            end
+            sb.toString(b)
+        end
+
+    (* ======================================================================
+     * 5. Breaking long lines
+     * ====================================================================== *)
+
+    let maxWidth = 120
+
+    (* The column each of a line's elements starts at, and after them the
+     * column after the line's code (the line without a comment that ends it);
+     * empty for a line holding a comment of several lines *)
+    let starts(l: Line st: structure.T): Array(Int) =
+        begin
+            let n = vector.length(l.elems)
+            let result = array of(n + 1 0)
+            let var col = l.indent
+            let var before = ""
+            let var colonIsAnnotation = false
+            let var multiline = false
+            for i = 0 upto {n - 1} do
+                let e = vector.get(l.elems i)
+                let after = if {i + 1} < n then maybe.some(vector.get(l.elems i + 1)) else maybe.none(:Elem) end
+                if strutil.contains(e.text "\n") then multiline := true end
+                if i > 0 then
+                    let p = vector.get(l.elems i - 1)
+                    if spaced(p e before after colonIsAnnotation st) then col := col + 1 end
+                    before := p.kind
+                    colonIsAnnotation := isA(e "COLON") andif annotation(p e after)
+                end
+                result[i] := col
+                col := col + stringOp.length(e.text)
+                if not(e.comment) then result[n] := col end
+            end
+            if multiline then array of :Int end else result end
+        end
+
+    let isOperator(e: Elem): Bool = isOneOf(e.kind array of "SYMBOLIC_INFIX" "KW_ANDIF" "KW_ORIF" "KW_IS" "KW_ISNOT" end)
+
+
+    (* Where to break a line over the width, or at ~1 for none. Of the places a
+     * break may go, those inside the fewest brackets; of those, the token that
+     * starts a body or a phrase whose anchor comes first (the first of those
+     * if several share it), so that a declaration breaks after its = first, an
+     * arm after its then, a tuple between its fields before inside one; else
+     * the last infix operator, else the last place, that leaves what comes
+     * before it within the width (or the first, if none does). A break
+     * before a body or phrase comes with one before each later token on the
+     * line with the same anchor (the other arms of an if and its end, the
+     * other fields of a tuple, the other phrases of a block), so that the
+     * construct is broken throughout. Returns the elements to break before *)
+    let breakAt(l: Line st: structure.T): vector.T(Int) =
+        begin
+            let none = vector.new(:Int)
+            let cols = starts(l st)
+            let n = vector.length(l.elems)
+            if {extent(cols) is 0} orif {cols[n] <= maxWidth} then
+                none
+            else
+                let depth = array of(n 0)
+                let var d = 0
+                for k = 0 upto {n - 1} do
+                    depth[k] := d
+                    let e = vector.get(l.elems k)
+                    if isOneOf(e.kind array of "LPAREN" "LBRACKET" "LBRACE" end) then d := d + 1 end
+                    if isOneOf(e.kind array of "RPAREN" "RBRACKET" "RBRACE" end) then d := d - 1 end
+                end
+                let never = array of
+                    "LPAREN" "LBRACKET" "RPAREN" "RBRACKET" "RBRACE" "COMMA" "DOT" "COLON" "COLON_COLON" "SEMICOLON"
+                    "EQUAL" "ASSIGN" "KW_THEN" "KW_DO" "KW_END" "KW_OF" "KW_WITH"
+                end
+                let neverAfter = array of "LPAREN" "LBRACKET" "LBRACE" "DOT" "COLON" "COLON_COLON" "AT" "QUESTION" "BANG" end
+                (* After a keyword only where a body follows *)
+                let keywordsBefore = array of "KW_THEN" "KW_DO" "KW_ELSE" "KW_BEGIN" "KW_WITH" end
+                let allowed = fun(k: Int): Bool
+                    begin
+                        let e = vector.get(l.elems k)
+                        let p = vector.get(l.elems k - 1)
+                        not(e.comment) andif not(p.comment) andif not(isOneOf(e.kind never))
+                            andif not(isOneOf(p.kind neverAfter)) andif not(isOperator(p))
+                            andif {not(strutil.startsWith(p.kind "KW_")) orif isOneOf(p.kind keywordsBefore)}
+                            andif not(marked(st.pathSlashes e)) andif not(marked(st.pathSlashes p))
+                            andif {cols[k] > l.indent}
+                    end
+                let var least = 1000000
+                for k = 1 upto {n - 1} do if allowed(k) andif {depth[k] < least} then least := depth[k] end end
+                let var body = ~1
+                let var bodyAnchor = 0
+                let var operator = ~1
+                let var other = ~1
+                let var firstOperator = ~1
+                let var firstOther = ~1
+                for k = 1 upto {n - 1} do
+                    if allowed(k) andif {depth[k] is least} then
+                        let e = vector.get(l.elems k)
+                        let fits = {cols[k] - 1} <= maxWidth
+                        let r = hashMap.get(st.rules e.start)
+                        if isOperator(e) andif {k is {n - 1}} then
+                            (* An operator that ends the line stays there *)
+                            ok
+                        elsif maybe.isSome(r) then
+                            let a = maybe.unwrap(r).anchor
+                            if {body < 0} orif {a < bodyAnchor} then
+                                body := k
+                                bodyAnchor := a
+                            end
+                        elsif isOperator(e) then
+                            if firstOperator < 0 then firstOperator := k end
+                            if fits then operator := k end
+                        else
+                            if firstOther < 0 then firstOther := k end
+                            if fits then other := k end
+                        end
+                    end
+                end
+                let at = if body >= 0 then body
+                    elsif operator >= 0 then operator
+                    elsif firstOperator >= 0 then firstOperator
+                    elsif other >= 0 then other
+                    else firstOther end
+                let result = vector.new(:Int)
+                if at > 0 then vector.append(result at) end
+                if {body >= 0} andif {at is body} then
+                    for k = {at + 1} upto {n - 1} do
+                        let e = vector.get(l.elems k)
+                        let r = hashMap.get(st.rules e.start)
+                        if not(e.comment) andif maybe.isSome(r) andif {maybe.unwrap(r).anchor is bodyAnchor}
+                            andif {{k < {n - 1}} orif not(isOperator(e))} then
+                            vector.append(result k)
+                        end
+                    end
+                end
+                result
+            end
+        end
+
+    (* The elements with breaks added until no line is over the width that a
+     * break can shorten; each break's line is indented by the rules *)
+    let breakLines(elems: vector.T(Elem) st: structure.T): Ok =
+        begin
+            let var changed = true
+            let var rounds = 0
+            while changed andif {rounds < 100} do
+                changed := false
+                rounds := rounds + 1
+                let ls = lines(elems)
+                indent(ls st)
+                for i = 0 upto {vector.length(ls) - 1} do
+                    let l = vector.get(ls i)
+                    let ks = breakAt(l st)
+                    for j = 0 upto {vector.length(ks) - 1} do
+                        vector.get(l.elems vector.get(ks j)).breaks := 1
+                        changed := true
+                    end
+                end
+            end
+        end
+
+    (* ======================================================================
+     * 6. Checking and the whole
+     * ====================================================================== *)
+
+    (* Why text2 is not the elements' tokens, parsed, if it isn't *)
+    let check(file: String text2: String elems: vector.T(Elem)): maybe.T(String) =
+        begin
+            let p = parse(file text2)
+            let expected = vector.filter(elems fun(e: Elem): Bool not(e.comment))
+            if diagbag.hasErrors(p.bag) orif maybe.isNone(p.program) then
+                maybe.some("the output does not parse")
+            elsif {vector.length(p.toks) - 1} isnot vector.length(expected) then
+                maybe.some("the output has other tokens")
+            elsif vector.length(p.comments) isnot {vector.length(elems) - vector.length(expected)} then
+                maybe.some("the output has other comments")
+            else
+                let var bad = maybe.none(:String)
+                for i = 0 upto {vector.length(expected) - 1} do
+                    if maybe.isNone(bad) andif not(stringOp.equal(vector.get(p.toks i).lexeme vector.get(expected i).text)) then
+                        bad := maybe.some("the output's token " <> vector.get(p.toks i).lexeme <> " should be "
+                            <> vector.get(expected i).text)
+                    end
+                end
+                bad
+            end
+        end
+
+    (* Whether a comment says to leave the file as it is: a test of the
+     * syntax's own forms, whose layout is what it tests *)
+    let optedOut(text: String p: Parsed): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {vector.length(p.comments) - 1} do
+                let c = vector.get(p.comments i)
+                if strutil.contains(stringOp.getSub(text c.startOffset c.endOffset - c.startOffset) "@no-format") then
+                    found := true
+                end
+            end
+            found
+        end
+
+    let source(file: String text: String): Result =
+        begin
+            let p = parse(file text)
+            if diagbag.hasErrors(p.bag) orif maybe.isNone(p.program) then
+                option invalid of Result with let bag = p.bag let sm = p.sm end
+            elsif optedOut(text p) then
+                option formatted of Result with let text = text end
+            else
+                let st = structure.read(p.toks maybe.unwrap(p.program) p.sm)
+                let var elems = elements(text p)
+                elems := sortImports(elems st.imports)
+                if semicolonsOptional(p) then elems := withoutSemicolons(elems) end
+                elems := moveThenDo(elems)
+                breakLines(elems st)
+                let ls = lines(elems)
+                indent(ls st)
+                let text2 = if vector.empty(ls) then "" else render(ls st) end
+                let problem = check(file text2 elems)
+                if maybe.isSome(problem) then
+                    option failed of Result with let message = maybe.unwrap(problem) end
+                else
+                    option formatted of Result with let text = text2 end
+                end
+            end
+        end
+
+    (* ======================================================================
+     * 7. The command line
+     * ====================================================================== *)
+
+    let readAll(r: reader.T): String =
+        begin
+            let b = sb.new()
+            while reader.more(r) do sb.char(b reader.getChar(r)) end
+            sb.toString(b)
+        end
+
+    let usage(message: String): Ok =
+        begin
+            writer.putString(writer.err "quest fmt: " <> message <> "\nusage: quest fmt [-w | --check] [FILE|DIRECTORY...]\n")
+            system.sysexit(2)
+        end
+
+    (* The .quest files a path stands for *)
+    let expand(path: String into: vector.T(String)): Ok =
+        if files.isFile(path) then
+            vector.append(into path)
+        else
+            let found = try osFiles.allFiles(path) when osFiles.error then vector.new(:String) end
+            if vector.empty(found) then usage("no such file or directory: " <> path) end
+            for i = 0 upto {vector.length(found) - 1} do
+                let f = vector.get(found i)
+                if strutil.endsWith(f ".quest") then vector.append(into f) end
+            end
+        end
+
+    let main(args: Array(String)): Ok =
+        begin
+            let var write = false
+            let var checking = false
+            let paths = vector.new(:String)
+            for i = 0 upto {extent(args) - 1} do
+                if stringOp.equal(args[i] "-w") then
+                    write := true
+                elsif stringOp.equal(args[i] "--check") then
+                    checking := true
+                elsif strutil.startsWith(args[i] "-") andif {stringOp.length(args[i]) > 1} then
+                    usage("unknown option " <> args[i])
+                else
+                    expand(args[i] paths)
+                end
+            end
+            let var status = 0
+            let report = fun(file: String text: String r: Result): maybe.T(String)
+                case r
+                    when formatted with x then maybe.some(x.text)
+                    when invalid with x then
+                        diagbag.renderAll(x.bag x.sm writer.err)
+                        maybe.none(:String)
+                    when failed with x then
+                        writer.putString(writer.err "quest fmt: " <> file <> ": internal error: " <> x.message <> "\n")
+                        maybe.none(:String)
+                end
+            if vector.empty(paths) then
+                let text = readAll(reader.input)
+                let text2 = report("<stdin>" text source("<stdin>" text))
+                if maybe.isSome(text2) then writer.putString(writer.output maybe.unwrap(text2)) else status := 1 end
+            else
+                for i = 0 upto {vector.length(paths) - 1} do
+                    let file = vector.get(paths i)
+                    let text = maybe.unwrapOr(files.readText(file) "")
+                    let text2 = report(file text source(file text))
+                    if maybe.isNone(text2) then
+                        status := 1
+                    elsif checking then
+                        if not(stringOp.equal(maybe.unwrap(text2) text)) then
+                            writer.putString(writer.output file <> "\n")
+                            status := 1
+                        end
+                    elsif write then
+                        if not(stringOp.equal(maybe.unwrap(text2) text)) then files.writeAtomically(file maybe.unwrap(text2)) end
+                    else
+                        writer.putString(writer.output maybe.unwrap(text2))
+                    end
+                end
+            end
+            system.sysexit(status)
+        end
+end

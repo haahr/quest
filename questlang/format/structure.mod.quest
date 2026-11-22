@@ -1,0 +1,863 @@
+(* Quest Self-Hosted Compiler: The Formatter's Reading of a Program's Structure
+ *
+ * One walk over the AST. A node's own tokens are found from its span: its
+ * first token starts at the span's start, its last ends at the span's end.
+ * The parts of a node that are not nodes (a field of a tuple type, a case's
+ * branch, an import item) are found between the nodes around them: an item
+ * starts at the token after the one before it ends, and a branch's when, an
+ * elsif, or an else is the token after the previous body (past any braces
+ * that body was written in). Where a part's tokens can't be found, as a span
+ * that is not a token's, the part simply gets no rule, and its lines are
+ * indented as continuations. *)
+
+module structure : Structure
+import
+    questlang/common/location : questlang/common/Location
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+export
+    Let Rule = Tuple
+        anchor: Int
+        delta: Int
+        ifToken: Int
+        armToken: Int
+        compactAnchor: Int
+        compactDelta: Int
+    end
+    Let ImportItem = Tuple start: Int stop: Int group: Int path: String end
+    Let ImportList = Tuple items: vector.T(ImportItem) phrases: Bool end
+    Let T = Tuple
+        rules: hashMap.T(Int Rule)
+        continuations: hashMap.T(Int Int)
+        spacedColons: hashMap.T(Int Bool)
+        pathSlashes: hashMap.T(Int Bool)
+        imports: vector.T(ImportList)
+    end
+
+    Let Range = Tuple start: Int stop: Int end
+
+    (* The walk's state: the tokens, their kinds' names, and the tables being
+     * filled *)
+    Let St = Tuple
+        toks: vector.T(tokens.Token)
+        kinds: Array(String)
+        (* The source line of each token *)
+        lineNumbers: Array(Int)
+        byStart: hashMap.T(Int Int)
+        byEnd: hashMap.T(Int Int)
+        rules: hashMap.T(Int Rule)
+        phrases: vector.T(Range)
+        spacedColons: hashMap.T(Int Bool)
+        pathSlashes: hashMap.T(Int Bool)
+        imports: vector.T(ImportList)
+    end
+
+    let intEqual(a: Int b: Int): Bool = a is b
+
+    (* ======================================================================
+     * Tokens
+     * ====================================================================== *)
+
+    let count(st: St): Int = vector.length(st.toks)
+    let offset(st: St i: Int): Int = vector.get(st.toks i).span.startOffset
+    let stopOf(st: St i: Int): Int = vector.get(st.toks i).span.endOffset
+    let isKind(st: St i: Int name: String): Bool =
+        {i >= 0} andif {i < extent(st.kinds)} andif stringOp.equal(st.kinds[i] name)
+
+    (* Whether token i is the first on its source line *)
+    let startsLine(st: St i: Int): Bool = {i <= 0} orif {st.lineNumbers[i - 1] < st.lineNumbers[i]}
+    let sameLine(st: St i: Int j: Int): Bool = {i >= 0} andif {j >= 0} andif {st.lineNumbers[i] is st.lineNumbers[j]}
+
+    (* The index of the token starting at a span's start, or ending at its end;
+     * ~1 if there is none *)
+    let first(st: St sp: location.Span): Int =
+        maybe.unwrapOr(hashMap.get(st.byStart sp.startOffset) ~1)
+    let last(st: St sp: location.Span): Int =
+        maybe.unwrapOr(hashMap.get(st.byEnd sp.endOffset) ~1)
+
+    (* The token after i, past any closing braces: where the keyword that
+     * follows a body is *)
+    let after(st: St i: Int): Int =
+        if i < 0 then
+            ~1
+        else
+            let var j = i + 1
+            while isKind(st j "RBRACE") do j := j + 1 end
+            if j < count(st) then j else ~1 end
+        end
+
+    (* The first token of kind name at or after i, before limit; ~1 if none *)
+    let find(st: St i: Int limit: Int name: String): Int =
+        begin
+            let var j = i
+            let var found = ~1
+            while {found < 0} andif {j >= 0} andif {j < limit} do
+                if isKind(st j name) then found := j end
+                j := j + 1
+            end
+            found
+        end
+
+    (* ======================================================================
+     * Rules and phrases
+     * ====================================================================== *)
+
+    (* A line starting with token i is indented delta past the line holding
+     * token anchor; so is one starting with the braces just before i, which
+     * a node's span leaves out when the node is written in them *)
+    let ruleAt(st: St i: Int r: Rule): Ok =
+        begin
+            let var j = i
+            hashMap.insert(st.rules offset(st j) r)
+            while isKind(st j - 1 "LBRACE") do
+                j := j - 1
+                hashMap.insert(st.rules offset(st j) r)
+            end
+        end
+
+    let plain(anchor: Int delta: Int): Rule =
+        tuple
+            let anchor = anchor
+            let delta = delta
+            let ifToken = ~1
+            let armToken = ~1
+            let compactAnchor = anchor
+            let compactDelta = delta
+        end
+
+    let rule(st: St i: Int anchor: Int delta: Int): Ok =
+        if {i >= 0} andif {anchor >= 0} then ruleAt(st i plain(offset(st anchor) delta)) end
+
+    let topLevel(st: St i: Int): Ok = if i >= 0 then ruleAt(st i plain(~1 0)) end
+
+    (* A rule for a part of the if at token f whose first arm starts at token
+     * arm: anchor and delta, or compactAnchor and compactDelta if the if is
+     * compact *)
+    let ifRule(st: St i: Int f: Int arm: Int anchor: Int delta: Int compactAnchor: Int compactDelta: Int): Ok =
+        if {i >= 0} andif {f >= 0} andif {arm >= 0} andif {anchor >= 0} andif {compactAnchor >= 0} then
+            ruleAt(st i tuple
+                let anchor = offset(st anchor)
+                let delta = delta
+                let ifToken = offset(st f)
+                let armToken = offset(st arm)
+                let compactAnchor = offset(st compactAnchor)
+                let compactDelta = compactDelta
+            end)
+        end
+
+    (* Tokens i to j (inclusive) are a phrase *)
+    let phrase(st: St i: Int j: Int): Ok =
+        if {i >= 0} andif {j >= i} then
+            vector.append(st.phrases tuple let start = offset(st i) let stop = stopOf(st j) end)
+        end
+
+    (* A construct ending in end: the end lines up with the construct's first
+     * token. Called before a node's parts are walked, so that the rule of an
+     * inner node that ends at the same end (the case of let x = case ... end)
+     * replaces it *)
+    let closer(st: St sp: location.Span): Ok =
+        begin
+            let j = last(st sp)
+            if isKind(st j "KW_END") then rule(st j first(st sp) 0) end
+        end
+
+    (* ======================================================================
+     * Import lists
+     * ====================================================================== *)
+
+    (* The last token of the import item starting at i, before limit: the
+     * item runs to the path after its colon, or after its second colon when
+     * an = follows the first's path (r : Rnd = util/rnd : util/Rnd) *)
+    let importItemEnd(st: St i: Int limit: Int): Int =
+        begin
+            let var j = i
+            let var lastTok = i
+            let var done = false
+            while not(done) do
+                while {j < limit} andif not(isKind(st j "COLON")) do j := j + 1 end
+                if j >= limit then
+                    lastTok := limit - 1
+                    done := true
+                else
+                    hashMap.insert(st.spacedColons offset(st j) true)
+                    j := j + 1
+                    if isKind(st j "IDENT") then
+                        j := j + 1
+                        while {{j + 1} < limit} andif isKind(st j "SYMBOLIC_INFIX")
+                            andif stringOp.equal(vector.get(st.toks j).lexeme "/") andif isKind(st j + 1 "IDENT") do
+                            j := j + 2
+                        end
+                    end
+                    lastTok := j - 1
+                    if {j < limit} andif isKind(st j "EQUAL") then j := j + 1 else done := true end
+                end
+            end
+            lastTok
+        end
+
+    (* The group and path an item sorts by *)
+    let sortKey(item: ast.ImportItem): Tuple group: Int path: String end =
+        begin
+            let paths = ast.effectiveModulePaths(item)
+            let path = if vector.empty(paths) then ast.effectiveInterfacePath(item) else vector.get(paths 0) end
+            let group = if strutil.startsWith(path "questlang/") then 0 elsif strutil.contains(path "/") then 1 else 2 end
+            tuple let group = group let path = path end
+        end
+
+    (* The items of an import list, from token i to before limit, with the
+     * AST's items for their keys: each is a phrase indented 4 past anchor.
+     * Returns them for sorting, or none if the tokens and the AST's items
+     * disagree *)
+    let importItems(st: St i: Int limit: Int anchor: Int items: vector.T(ast.ImportItem)): vector.T(ImportItem) =
+        begin
+            let found = vector.new(:ImportItem)
+            let var j = i
+            let var k = 0
+            while {j < limit} andif {k < vector.length(items)} do
+                let e = importItemEnd(st j limit)
+                for s = j upto e do
+                    if isKind(st s "SYMBOLIC_INFIX") andif stringOp.equal(vector.get(st.toks s).lexeme "/") then
+                        hashMap.insert(st.pathSlashes offset(st s) true)
+                    end
+                end
+                rule(st j anchor 4)
+                phrase(st j e)
+                let key = sortKey(vector.get(items k))
+                vector.append(found tuple
+                    let start = offset(st j)
+                    let stop = stopOf(st e)
+                    let group = key.group
+                    let path = key.path
+                end)
+                j := e + 1
+                k := k + 1
+            end
+            if {k is vector.length(items)} andif {j is limit} then found else vector.new(:ImportItem) end
+        end
+
+    (* A module's or an interface's header, from its first token f to its
+     * import or export: its colons keep their spaces, and its import list's
+     * items are indented and recorded. Returns the export's index *)
+    let header(st: St f: Int limit: Int items: vector.T(ast.ImportItem)): Int =
+        begin
+            let imp = find(st f limit "KW_IMPORT")
+            let exp = find(st f limit "KW_EXPORT")
+            let headerEnd = if {imp >= 0} andif {{exp < 0} orif {imp < exp}} then imp else exp end
+            for j = f upto {headerEnd - 1} do
+                if isKind(st j "COLON") then hashMap.insert(st.spacedColons offset(st j) true) end
+            end
+            if {imp >= 0} andif {exp > imp} then
+                rule(st imp f 0)
+                let found = importItems(st imp + 1 exp imp items)
+                if vector.length(found) > 1 then
+                    vector.append(st.imports tuple let items = found let phrases = false end)
+                end
+            end
+            rule(st exp f 0)
+            exp
+        end
+
+    (* ======================================================================
+     * The walk
+     * ====================================================================== *)
+
+    let isBlock(st: St e: ast.Expr): Bool =
+        case e.form when exprBlock then isKind(st first(st e.span) "KW_BEGIN") else false end
+
+    (* The index of a body's last token: a block of phrases the parser made
+     * from a then, when, or else (not a begin) has the span of the construct
+     * around it, so its last phrase's is used *)
+    let lastOf(st: St e: ast.Expr): Int =
+        case e.form
+            when exprBlock with x then
+                if isBlock(st e) orif vector.empty(x.bindings) then last(st e.span)
+                else last(st vector.get(x.bindings vector.length(x.bindings) - 1).span) end
+            else last(st e.span)
+        end
+
+    (* The index of a body's first token, for the same reason *)
+    let firstOf(st: St e: ast.Expr): Int =
+        case e.form
+            when exprBlock with x then
+                if isBlock(st e) orif vector.empty(x.bindings) then first(st e.span)
+                else first(st vector.get(x.bindings 0).span) end
+            else first(st e.span)
+        end
+
+    (* The index of the last token of a signature component, or ~1 *)
+    let sigLast(st: St s: ast.Signature): Int =
+        case s
+            when sigValue with x then if maybe.isSome(x.val.typeSig) then last(st maybe.unwrap(x.val.typeSig).span) else ~1 end
+            when sigType with x then last(st x.val.bound.span)
+            when sigTypeBinding with x then last(st x.val.typeVal.span)
+            when sigTypeBindingGroup with x then
+                if vector.empty(x.val) then ~1 else last(st vector.get(x.val vector.length(x.val) - 1).typeVal.span) end
+            when sigKindBinding with x then last(st x.val.kindVal.span)
+        end
+
+    let rec expr(st: St e: ast.Expr): Ok =
+        begin
+            closer(st e.span)
+            let f = first(st e.span)
+            case e.form
+                when exprBlock with x then
+                    if isKind(st f "KW_BEGIN") then
+                        for i = 0 upto {vector.length(x.bindings) - 1} do item(st f vector.get(x.bindings i)) end
+                    else
+                        for i = 0 upto {vector.length(x.bindings) - 1} do expr(st vector.get(x.bindings i)) end
+                    end
+                when exprIf with x then
+                    (* An if in the middle of a line, its first arm on the same
+                     * line (let x = if c then a), continues: its elsif, else,
+                     * and end are indented 4 past it, and an arm's body on the
+                     * next line 4 past its elsif or else. Otherwise these line
+                     * up with the if's line and the bodies are 4 past it.
+                     * Which it is depends on the output's lines *)
+                    let arm = firstOf(st x.thenBranch)
+                    if isKind(st last(st e.span) "KW_END") then ifRule(st last(st e.span) f arm f 0 f 4) end
+                    expr(st x.cond)
+                    body(st f x.thenBranch)
+                    let var prev = lastOf(st x.thenBranch)
+                    for i = 0 upto {vector.length(x.elsifs) - 1} do
+                        let b = vector.get(x.elsifs i)
+                        let k = after(st prev)
+                        ifRule(st k f arm f 0 f 4)
+                        expr(st b.cond)
+                        ifBody(st f arm k b.thenBranch)
+                        prev := lastOf(st b.thenBranch)
+                    end
+                    if maybe.isSome(x.elseBranch) then
+                        let k = after(st prev)
+                        ifRule(st k f arm f 0 f 4)
+                        ifBody(st f arm k maybe.unwrap(x.elseBranch))
+                    end
+                when exprWhile with x then
+                    expr(st x.cond)
+                    body(st f x.body)
+                when exprLoop with x then body(st f x.body)
+                when exprFor with x then
+                    expr(st x.start)
+                    expr(st x.stop)
+                    body(st f x.body)
+                when exprFun with x then
+                    params(st x.params)
+                    if maybe.isSome(x.returnType) then type(st maybe.unwrap(x.returnType)) end
+                    body(st f x.body)
+                when exprApp with x then
+                    expr(st x.func)
+                    for i = 0 upto {vector.length(x.args) - 1} do expr(st vector.get(x.args i)) end
+                when exprInfix with x then
+                    expr(st x.left)
+                    expr(st x.right)
+                when exprTuple with x then
+                    for i = 0 upto {vector.length(x.fields) - 1} do
+                        case vector.get(x.fields i)
+                            when fieldVal with v then binding(st f v.val)
+                            when fieldGroup with g then
+                                for k = 0 upto {vector.length(g.val) - 1} do
+                                    let b = vector.get(g.val k)
+                                    if k is 0 then binding(st f b) else andBinding(st b) end
+                                end
+                            when fieldDecl with d then item(st f d.val)
+                        end
+                    end
+                when exprRecord with x then
+                    for i = 0 upto {vector.length(x.fields) - 1} do
+                        let b = vector.get(x.fields i)
+                        let k = maybe.unwrapOr(hashMap.get(st.byStart b.offset) ~1)
+                        rule(st k f 4)
+                        phrase(st k last(st b.value.span))
+                        expr(st b.value)
+                    end
+                when exprArray with x then
+                    if maybe.isSome(x.elementType) then type(st maybe.unwrap(x.elementType)) end
+                    for i = 0 upto {vector.length(x.elements) - 1} do item(st f vector.get(x.elements i)) end
+                when exprArrayRep with x then
+                    expr(st x.count)
+                    expr(st x.initVal)
+                when exprOption with x then
+                    type(st x.optionType)
+                    if maybe.isSome(x.payload) then payload(st f maybe.unwrap(x.payload)) end
+                    if maybe.isSome(x.ordinalExpr) then expr(st maybe.unwrap(x.ordinalExpr)) end
+                when exprVariant with x then
+                    type(st x.variantType)
+                    if maybe.isSome(x.payload) then payload(st f maybe.unwrap(x.payload)) end
+                when exprAuto with x then
+                    type(st x.witnessType)
+                    expr(st x.payload)
+                when exprSelect with x then expr(st x.target)
+                when exprIndex with x then
+                    expr(st x.target)
+                    expr(st x.index)
+                when exprIndexAssign with x then
+                    expr(st x.target)
+                    expr(st x.index)
+                    expr(st x.value)
+                when exprVarCell with x then expr(st x.value)
+                when exprDerefCell with x then expr(st x.target)
+                when exprVariantCheck with x then expr(st x.target)
+                when exprVariantAssert with x then expr(st x.target)
+                when exprCase with x then
+                    expr(st x.target)
+                    let var prev = last(st x.target.span)
+                    for i = 0 upto {vector.length(x.branches) - 1} do
+                        let b = vector.get(x.branches i)
+                        if maybe.isSome(b.binderType) then type(st maybe.unwrap(b.binderType)) end
+                        prev := branch(st f prev b.body 4)
+                    end
+                    elseBranch(st f prev x.elseBranch 4)
+                when exprInspect with x then
+                    expr(st x.target)
+                    let var prev = last(st x.target.span)
+                    for i = 0 upto {vector.length(x.branches) - 1} do
+                        let b = vector.get(x.branches i)
+                        type(st b.matchType)
+                        prev := branch(st f prev b.body 4)
+                    end
+                    elseBranch(st f prev x.elseBranch 4)
+                when exprTry with x then
+                    body(st f x.body)
+                    let var prev = lastOf(st x.body)
+                    for i = 0 upto {vector.length(x.branches) - 1} do
+                        let b = vector.get(x.branches i)
+                        expr(st b.excPattern)
+                        if maybe.isSome(b.binderType) then type(st maybe.unwrap(b.binderType)) end
+                        prev := branch(st f prev b.body 0)
+                    end
+                    elseBranch(st f prev x.elseBranch 0)
+                when exprException with x then if maybe.isSome(x.typeAnnot) then type(st maybe.unwrap(x.typeAnnot)) end
+                when exprRaise with x then
+                    expr(st x.exc)
+                    if maybe.isSome(x.payload) then payload(st f maybe.unwrap(x.payload)) end
+                    if maybe.isSome(x.asType) then type(st maybe.unwrap(x.asType)) end
+                when typeArg with x then type(st x.typeVal)
+                when kindArg with x then type(st x.kindVal)
+                when declLetVal with x then
+                    params(st x.params)
+                    if maybe.isSome(x.typeAnnot) then type(st maybe.unwrap(x.typeAnnot)) end
+                    value(st f x.value)
+                when declLetValGroup with x then group(st x.bindings)
+                when declTypeBinding with x then
+                    for i = 0 upto {vector.length(x.params) - 1} do type(st vector.get(x.params i).bound) end
+                    if maybe.isSome(x.bound) then type(st maybe.unwrap(x.bound)) end
+                    let v = first(st x.typeVal.span)
+                    rule(st v f 4)
+                    phrase(st v last(st x.typeVal.span))
+                    type(st x.typeVal)
+                when declTypeBindingGroup with x then group(st x.bindings)
+                when declDefKind with x then type(st x.kindVal)
+                when declExprStmt with x then expr(st x.expr)
+                when declImport with x then
+                    let limit = last(st e.span) + 1
+                    importItems(st f + 1 limit f x.phrase.items)
+                    ok
+                else ok
+            end
+        end
+
+    (* A phrase of a body or a block, indented 4 past anchor *)
+    and item(st: St anchor: Int e: ast.Expr): Ok =
+        begin
+            let i = first(st e.span)
+            rule(st i anchor 4)
+            phrase(st i last(st e.span))
+            expr(st e)
+        end
+
+    (* The body of an elsif or else (at token k) of the if at token f, whose
+     * first arm starts at arm: indented 4 past the if, or past k if the if is
+     * compact *)
+    and ifBody(st: St f: Int arm: Int k: Int e: ast.Expr): Ok =
+        begin
+            let phrases = case e.form
+                when exprBlock with x then if isBlock(st e) then vector.fromArray(array of e end) else x.bindings end
+                else vector.fromArray(array of e end)
+            end
+            for i = 0 upto {vector.length(phrases) - 1} do
+                let p = vector.get(phrases i)
+                let j = first(st p.span)
+                ifRule(st j f arm f 4 k 4)
+                phrase(st j last(st p.span))
+                expr(st p)
+            end
+        end
+
+    (* A body: a begin block, or the phrases of a then, do, or when, each
+     * indented 4 past anchor *)
+    and body(st: St anchor: Int e: ast.Expr): Ok =
+        case e.form
+            when exprBlock with x then
+                if isBlock(st e) then
+                    item(st anchor e)
+                else
+                    for i = 0 upto {vector.length(x.bindings) - 1} do item(st anchor vector.get(x.bindings i)) end
+                end
+            else item(st anchor e)
+        end
+
+    (* The payload after a with (of an option, a variant, or a raise): a body
+     * if it is not a tuple, whose fields are indented by the tuple's rules *)
+    and payload(st: St anchor: Int e: ast.Expr): Ok =
+        case e.form
+            when exprTuple then if isKind(st first(st e.span) "KW_TUPLE") then item(st anchor e) else expr(st e) end
+            else item(st anchor e)
+        end
+
+    (* A declaration's value after its =, indented 4 past the declaration *)
+    and value(st: St anchor: Int e: ast.Expr): Ok = item(st anchor e)
+
+    (* A tuple's binding, indented 4 past the tuple *)
+    and binding(st: St anchor: Int b: ast.TupleFieldBinding): Ok =
+        begin
+            let i = maybe.unwrapOr(hashMap.get(st.byStart b.offset) ~1)
+            rule(st i anchor 4)
+            phrase(st i last(st b.value.span))
+            if maybe.isSome(b.typeAnnot) then type(st maybe.unwrap(b.typeAnnot)) end
+            if i is first(st b.value.span) then expr(st b.value) else value(st i b.value) end
+        end
+
+    (* A binding after and, which lines up with the first *)
+    and andBinding(st: St b: ast.TupleFieldBinding): Ok =
+        begin
+            let i = maybe.unwrapOr(hashMap.get(st.byStart b.offset) ~1)
+            if maybe.isSome(b.typeAnnot) then type(st maybe.unwrap(b.typeAnnot)) end
+            value(st i b.value)
+        end
+
+    (* let ... and ... or Let ... and ...: each and lines up with the first
+     * let *)
+    and group(st: St bindings: vector.T(ast.Expr)): Ok =
+        if not(vector.empty(bindings)) then
+            let f = first(st vector.get(bindings 0).span)
+            for i = 0 upto {vector.length(bindings) - 1} do
+                let b = vector.get(bindings i)
+                let k = first(st b.span)
+                if i > 0 then
+                    let a = if isKind(st k "KW_AND") then k elsif isKind(st k - 1 "KW_AND") then k - 1 else ~1 end
+                    rule(st a f 0)
+                end
+                expr(st b)
+            end
+        end
+
+    (* A branch of a case, inspect, or try after token prev: its when is
+     * indented delta past the construct's first token f (4 for a case, 0 for
+     * a try, as for an if's else), its body 4 past the when. Returns the
+     * body's last token *)
+    and branch(st: St f: Int prev: Int b: ast.Expr delta: Int): Int =
+        begin
+            let w = after(st prev)
+            rule(st w f delta)
+            phrase(st w lastOf(st b))
+            body(st w b)
+            lastOf(st b)
+        end
+
+    and elseBranch(st: St f: Int prev: Int e: maybe.T(ast.Expr) delta: Int): Ok =
+        if maybe.isSome(e) then
+            let w = after(st prev)
+            rule(st w f delta)
+            body(st w maybe.unwrap(e))
+        end
+
+    and params(st: St ps: vector.T(ast.FormalParam)): Ok =
+        for i = 0 upto {vector.length(ps) - 1} do
+            let p = vector.get(ps i)
+            if maybe.isSome(p.typeAnnot) then type(st maybe.unwrap(p.typeAnnot)) end
+        end
+
+    (* The components of a signature (a tuple type's, an interface's, an
+     * option's payload's), starting at token i: each indented 4 past anchor.
+     * Returns the index of the token after the last *)
+    and signature(st: St anchor: Int i: Int sigs: vector.T(ast.Signature)): Int =
+        begin
+            let var j = i
+            let var fine = true
+            for k = 0 upto {vector.length(sigs) - 1} do
+                let s = vector.get(sigs k)
+                let e = sigLast(st s)
+                if fine andif {e >= j} then
+                    rule(st j anchor 4)
+                    phrase(st j e)
+                    sigAnds(st j s)
+                    j := e + 1
+                else
+                    fine := false
+                end
+                sigTypes(st s)
+            end
+            if fine then j else ~1 end
+        end
+
+    (* The ands of a group of type bindings starting at token i, which line up
+     * with its first Let *)
+    and sigAnds(st: St i: Int s: ast.Signature): Ok =
+        case s
+            when sigTypeBindingGroup with x then
+                for k = 1 upto {vector.length(x.val) - 1} do
+                    let b = maybe.unwrapOr(hashMap.get(st.byStart vector.get(x.val k).offset) ~1)
+                    let a = if isKind(st b "KW_AND") then b elsif isKind(st b - 1 "KW_AND") then b - 1 else ~1 end
+                    rule(st a i 0)
+                end
+            else ok
+        end
+
+    and sigTypes(st: St s: ast.Signature): Ok =
+        case s
+            when sigValue with x then if maybe.isSome(x.val.typeSig) then type(st maybe.unwrap(x.val.typeSig)) end
+            when sigType with x then type(st x.val.bound)
+            when sigTypeBinding with x then typeBinding(st x.val)
+            when sigTypeBindingGroup with x then
+                for i = 0 upto {vector.length(x.val) - 1} do typeBinding(st vector.get(x.val i)) end
+            when sigKindBinding with x then type(st x.val.kindVal)
+        end
+
+    and typeBinding(st: St b: ast.TypeBinding): Ok =
+        begin
+            for i = 0 upto {vector.length(b.params) - 1} do type(st vector.get(b.params i).bound) end
+            type(st b.typeVal)
+        end
+
+    (* Fields (record and variant types, an auto type's signature) starting at
+     * token i, each ending with its type *)
+    and fields(st: St anchor: Int i: Int lasts: vector.T(Int)): Ok =
+        begin
+            let var j = i
+            for k = 0 upto {vector.length(lasts) - 1} do
+                let e = vector.get(lasts k)
+                if {j >= 0} andif {e >= j} then
+                    rule(st j anchor 4)
+                    phrase(st j e)
+                    j := e + 1
+                else
+                    j := ~1
+                end
+            end
+        end
+
+    and type(st: St t: ast.TypeExpr): Ok =
+        begin
+            closer(st t.span)
+            let f = first(st t.span)
+            case t.form
+                when kindPower with x then type(st x.bound)
+                when kindAll with x then
+                    type(st x.paramKind)
+                    type(st x.bodyKind)
+                when typeAll with x then
+                    for i = 0 upto {vector.length(x.quantifiers) - 1} do type(st vector.get(x.quantifiers i).bound) end
+                    type(st x.resultType)
+                when typeTuple with x then
+                    if f >= 0 then
+                        signature(st f f + 1 x.fields)
+                        ok
+                    end
+                when typeRecord with x then
+                    let lasts = vector.new(:Int)
+                    for i = 0 upto {vector.length(x.fields) - 1} do
+                        let s = vector.get(x.fields i)
+                        vector.append(lasts last(st s.typeSig.span))
+                        type(st s.typeSig)
+                    end
+                    if f >= 0 then fields(st f f + 1 lasts) end
+                when typeVariant with x then
+                    let lasts = vector.new(:Int)
+                    for i = 0 upto {vector.length(x.fields) - 1} do
+                        let s = vector.get(x.fields i)
+                        vector.append(lasts last(st s.typeSig.span))
+                        type(st s.typeSig)
+                    end
+                    if f >= 0 then fields(st f f + 1 lasts) end
+                when typeOption with x then
+                    let var j = if f >= 0 then f + 1 else ~1 end
+                    for i = 0 upto {vector.length(x.variants) - 1} do
+                        let v = vector.get(x.variants i)
+                        if j >= 0 then
+                            rule(st j f 4)
+                            if isKind(st j + 1 "KW_WITH") then
+                                let e = signature(st j j + 2 v.payloadSig)
+                                if isKind(st e "KW_END") then
+                                    rule(st e j 0)
+                                    phrase(st j e)
+                                    j := e + 1
+                                else
+                                    j := ~1
+                                end
+                            else
+                                for k = 0 upto {vector.length(v.payloadSig) - 1} do sigTypes(st vector.get(v.payloadSig k)) end
+                                j := j + 1
+                            end
+                        else
+                            for k = 0 upto {vector.length(v.payloadSig) - 1} do sigTypes(st vector.get(v.payloadSig k)) end
+                        end
+                    end
+                when typeAuto with x then
+                    type(st x.kindBound)
+                    let lasts = vector.new(:Int)
+                    for i = 0 upto {vector.length(x.signature) - 1} do
+                        let s = vector.get(x.signature i)
+                        if maybe.isSome(s.typeSig) then
+                            vector.append(lasts last(st maybe.unwrap(s.typeSig).span))
+                            type(st maybe.unwrap(s.typeSig))
+                        end
+                    end
+                    let w = find(st f last(st t.span) "KW_WITH")
+                    if w >= 0 then fields(st f w + 1 lasts) end
+                when typeFun with x then
+                    for i = 0 upto {vector.length(x.params) - 1} do type(st vector.get(x.params i).bound) end
+                    if maybe.isSome(x.resultKind) then type(st maybe.unwrap(x.resultKind)) end
+                    type(st x.body)
+                when typeRec with x then
+                    type(st x.bound)
+                    type(st x.body)
+                when typeApp with x then
+                    type(st x.constructor)
+                    for i = 0 upto {vector.length(x.arguments) - 1} do type(st vector.get(x.arguments i)) end
+                when typeInfix with x then
+                    type(st x.left)
+                    type(st x.right)
+                when typeArray with x then type(st x.elementType)
+                when typeVar with x then type(st x.elementType)
+                when typeOut with x then type(st x.elementType)
+                else ok
+            end
+        end
+
+    (* ======================================================================
+     * Phrases of the program
+     * ====================================================================== *)
+
+    let programPhrase(st: St p: ast.Phrase): Ok =
+        begin
+            let f = first(st p.span)
+            let l = last(st p.span)
+            topLevel(st f)
+            phrase(st f l)
+            case p.form
+                when phraseImport with x then
+                    let limit = if isKind(st l "SEMICOLON") then l else l + 1 end
+                    importItems(st f + 1 limit f x.phrase.items)
+                    ok
+                when phraseInterface with x then
+                    let exp = header(st f l x.iface.imports)
+                    if exp >= 0 then
+                        signature(st exp exp + 1 x.iface.signatures)
+                        ok
+                    end
+                    rule(st l f 0)
+                when phraseModule with x then
+                    let exp = header(st f l x.modDecl.imports)
+                    for i = 0 upto {vector.length(x.modDecl.bindings) - 1} do item(st exp vector.get(x.modDecl.bindings i)) end
+                    rule(st l f 0)
+                when phraseDecl with x then expr(st x.decl)
+                when phraseExpr with x then expr(st x.expr)
+            end
+        end
+
+    (* The runs of consecutive top-level import phrases, each phrase an item
+     * keyed by its first import *)
+    let importRuns(st: St program: ast.Program): Ok =
+        begin
+            let var run = vector.new(:ImportItem)
+            let flush = fun(items: vector.T(ImportItem)): Ok
+                if vector.length(items) > 1 then
+                    vector.append(st.imports tuple let items = items let phrases = true end)
+                end
+            let phrases = program.form.phrases
+            for i = 0 upto {vector.length(phrases) - 1} do
+                let p = vector.get(phrases i)
+                let isImport = case p.form
+                    when phraseImport with x then not(vector.empty(x.phrase.items))
+                    else false
+                end
+                if isImport then
+                    let items = case p.form when phraseImport with x then x.phrase.items else vector.new(:ast.ImportItem) end
+                    let key = sortKey(vector.get(items 0))
+                    let f = first(st p.span)
+                    let l = last(st p.span)
+                    if {f >= 0} andif {l >= 0} then
+                        vector.append(run tuple
+                            let start = offset(st f)
+                            let stop = stopOf(st l)
+                            let group = key.group
+                            let path = key.path
+                        end)
+                    end
+                else
+                    flush(run)
+                    run := vector.new(:ImportItem)
+                end
+            end
+            flush(run)
+        end
+
+    (* The innermost phrase holding each token that begins after the phrase
+     * does *)
+    let continuations(st: St): hashMap.T(Int Int) =
+        begin
+            let result = hashMap.new(:Int :Int intEqual hash.int)
+            let ps = vector.copy(st.phrases)
+            sort.sortVector(ps fun(a: Range b: Range): Int
+                if a.start isnot b.start then sort.intCompare(a.start b.start) else sort.intCompare(b.stop a.stop) end)
+            let stack = vector.new(:Range)
+            let var j = 0
+            for i = 0 upto {count(st) - 1} do
+                let o = offset(st i)
+                while not(vector.empty(stack)) andif {vector.last(stack).stop <= o} do vector.pop(stack) end
+                if not(vector.empty(stack)) then hashMap.insert(result o vector.last(stack).start) end
+                while {j < vector.length(ps)} andif {vector.get(ps j).start <= o} do
+                    let p = vector.get(ps j)
+                    if p.stop > o then vector.append(stack p) end
+                    j := j + 1
+                end
+            end
+            result
+        end
+
+    let read(toks: vector.T(tokens.Token) program: ast.Program sm: location.SourceMap): T =
+        begin
+            let n = vector.length(toks)
+            let kinds = array of(n "")
+            let lineNumbers = array of(n 0)
+            let byStart = hashMap.new(:Int :Int intEqual hash.int)
+            let byEnd = hashMap.new(:Int :Int intEqual hash.int)
+            for i = 0 upto {n - 1} do
+                let t = vector.get(toks i)
+                kinds[i] := tokens.tokenKindName(t.kind)
+                lineNumbers[i] := location.locate(sm t.span.startOffset).line
+                if not(stringOp.equal(kinds[i] "EOF")) then
+                    hashMap.insert(byStart t.span.startOffset i)
+                    hashMap.insert(byEnd t.span.endOffset i)
+                end
+            end
+            let st = tuple
+                let toks = toks
+                let kinds = kinds
+                let lineNumbers = lineNumbers
+                let byStart = byStart
+                let byEnd = byEnd
+                let rules = hashMap.new(:Int :Rule intEqual hash.int)
+                let phrases = vector.new(:Range)
+                let spacedColons = hashMap.new(:Int :Bool intEqual hash.int)
+                let pathSlashes = hashMap.new(:Int :Bool intEqual hash.int)
+                let imports = vector.new(:ImportList)
+            end
+            let phrases = program.form.phrases
+            for i = 0 upto {vector.length(phrases) - 1} do programPhrase(st vector.get(phrases i)) end
+            importRuns(st program)
+            tuple
+                let rules = st.rules
+                let continuations = continuations(st)
+                let spacedColons = st.spacedColons
+                let pathSlashes = st.pathSlashes
+                let imports = st.imports
+            end
+        end
+end

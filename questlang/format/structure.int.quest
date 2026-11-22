@@ -1,0 +1,77 @@
+(* Quest Self-Hosted Compiler: The Formatter's Reading of a Program's Structure
+ *
+ * What quest fmt (questlang/format/format) needs to know of a parsed program to
+ * indent its lines, read from the AST and the tokens it was parsed from
+ * (docs/formatter.md section 4). The formatter keeps the source's line
+ * breaks, so it asks only how a line that starts with a given token is
+ * indented:
+ *
+ *   - A rule, for a token that starts a body, closes or continues a construct
+ *     (the phrases of a begin, then, or do; end, else, elsif, when, and; a
+ *     field of a tuple type): the indentation of the line holding another,
+ *     earlier token (its anchor), plus a delta (0 or 4), or the delta alone at
+ *     the top level.
+ *   - Otherwise a continuation: the line is part of a phrase begun on an
+ *     earlier line, and is indented 8 past that line.
+ *
+ * Offsets are the tokens' start offsets. The phrases are the AST's: the
+ * program's phrases, a module's bindings, a block's, the items of a tuple, an
+ * array, a signature, or an import list, the branches of a case or try, and
+ * every body. *)
+
+interface Structure
+import
+    questlang/common/location : questlang/common/Location
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+export
+    (* A line starting with the token is indented as the line holding the
+     * token at anchor, plus delta; at delta itself if anchor is ~1. For the
+     * parts of an if (an elsif, an else, their bodies, the end), ifToken and
+     * armToken are the offsets of the if and of its first arm's first token,
+     * and compactAnchor and compactDelta are used instead of anchor and delta
+     * when the if is compact in the output: not first on its line, with its
+     * first arm on the same line (let x = if c then a). ifToken is ~1
+     * otherwise *)
+    Def Rule = Tuple
+        anchor: Int
+        delta: Int
+        ifToken: Int
+        armToken: Int
+        compactAnchor: Int
+        compactDelta: Int
+    end
+
+    (* One item of an import list: the offsets of its first token and past its
+     * last, and the key it sorts by: its group (0 for a path under
+     * questlang/, 1 for another path, 2 for an unqualified name), then its
+     * module path *)
+    Def ImportItem = Tuple start: Int stop: Int group: Int path: String end
+
+    (* An import list whose items can be sorted: a module's or an interface's
+     * (items holds one list's items), or a run of a program's top-level
+     * import phrases, each one item (phrases) *)
+    Def ImportList = Tuple items: vector.T(ImportItem) phrases: Bool end
+
+    Def T = Tuple
+        (* By the offset of a token that may start a line *)
+        rules: hashMap.T(Int Rule)
+        (* By a token's offset: the start of the innermost phrase that holds
+         * it and begins before it, for a token with no rule *)
+        continuations: hashMap.T(Int Int)
+        (* The offsets of the colons that keep a space before them: those of
+         * a module's or an interface's header and of import items
+         * (module m : M, sb = util/stringBuilder : util/StringBuilder) *)
+        spacedColons: hashMap.T(Int Bool)
+        (* The offsets of the slashes of import paths, which have no spaces
+         * around them (util/stringBuilder) *)
+        pathSlashes: hashMap.T(Int Bool)
+        imports: vector.T(ImportList)
+    end
+
+    (* The structure of program, parsed from toks (which end with EOF) of the
+     * source sm maps *)
+    read(toks: vector.T(tokens.Token) program: ast.Program sm: location.SourceMap): T
+end

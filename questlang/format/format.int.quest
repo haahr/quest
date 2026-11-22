@@ -1,0 +1,35 @@
+(* Quest Self-Hosted Compiler: quest fmt, the Formatter
+ *
+ * Lays Quest source out in one style (docs/formatter.md): the same
+ * tokens in the same order, with the source's line breaks, its spacing and
+ * indentation normalized, its optional semicolons removed, its imports sorted,
+ * and a then or do that starts a line moved to the end of the line before.
+ * The output is checked before it is returned: it must tokenize to the tokens
+ * intended and parse. *)
+
+interface Format
+import
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/common/location : questlang/common/Location
+export
+    Def Result = Option
+        formatted with text: String end
+        (* The source does not tokenize or parse; the errors are in bag *)
+        invalid with bag: diagbag.T sm: location.SourceMap end
+        (* The output would not mean what the source does, which is a bug in
+         * the formatter; the source is left as it is *)
+        failed with message: String end
+    end
+
+    (* The formatted text of a source file; the text itself if a comment in it
+     * holds @no-format, as a test of the syntax's own forms does *)
+    source(file: String text: String): Result
+
+    (* quest fmt [-w | --check] [FILE|DIRECTORY...]: args are the arguments
+     * after fmt. With no file, formats standard input to standard output;
+     * otherwise prints each file formatted, or with -w rewrites each file that
+     * changes, or with --check prints the names of the files that would change
+     * and fails if there are any. A directory stands for the .quest files
+     * under it. Exits with the status *)
+    main(args: Array(String)): Ok
+end
