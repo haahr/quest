@@ -23,7 +23,8 @@ the arm64 performance review (§24), measures the compiler compiled to WebAssemb
 measures the collections tuned on the compiler (§28), the compiler on `util/json` (§29), scalar replacement
 through a loop's parameters (§30), character I/O without a lock per character (§31), one object per closure (§32),
 ssac's `volatile` locals (§33) and adapter closures made once (§34), times every backend again, arm64 whole
-program included (§35), and measures what inlining three library modules into their importers would gain (§36).
+program included (§35), measures what inlining three library modules into their importers would gain (§36), and
+makes whole program as fast as unit by unit (§37).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -3273,7 +3274,7 @@ ssac time of it was a failure). arm64 takes 1.04 of C's time (0.95 without §27.
 - **The WebAssembly backend is unchanged**, no program moving by more than 15%.
 - **Whole program is slower than unit by unit for a few programs:** checksum takes 2.18 times arm64's unit-by-unit
   time, string-concat 1.77, md5 1.29, count-graphs 1.19, and mpuz 1.15; it is faster for ratio-regions (0.66), peek
-  (0.75), and zebra (0.77). Unexplained.
+  (0.75), and zebra (0.77). §37 finds and fixes the causes.
 
 ### 35.3. Each program
 
@@ -3363,3 +3364,68 @@ A whole program saves 22.98 G; with the three apart it saves 10.15 G, so the thr
 gain, or 2.5% of the separate compiler's instructions. That is measured inside a whole program, where the rest of the
 program is inlined too; inlining only the three into separately compiled units may gain somewhat less, since their
 callers' own calls stay calls. The seconds were not measured on a quiet machine and are not given.
+
+## 37. Whole program as fast as unit by unit (2026-11-22)
+
+§35 found arm64's whole-program times 1.03 of its unit-by-unit ones, some programs much slower. Two causes, each
+fixed:
+
+- **The string, ascii, and shift expansions were missed.** The SSA expands a call of `string.length`,
+  `string.get`, `string.set`, `ascii.char`, and a shift by a variable count inline, but recognized them only as members
+  of an imported module. In a whole program the modules are the unit's own, and a call of a member goes through its
+  closure and then its code's external, which the expansions never saw. They are now keyed on the external symbol, on
+  both paths (`externalOperation` in `questlang/ssa/build/calls`).
+- **A function that entered a `try` kept every stack slot** (ssa.md §4.1), though its handler needs only those that
+  the blocks it reaches use. Inlining brings loops and allocations into such functions: count-graphs' `f_6`, with a
+  `try` around its folder, kept the variables of an inlined `fold` loop in memory, and, as a whole program, the
+  payload of an inlined `lists.cons` too, which it stored and loaded back around the allocation. Only the slots that
+  a handler's blocks use are kept now; this helps unit by unit as well.
+
+With both, whole program takes 0.977 of unit by unit's time, by geometric mean over all 46.
+
+### 37.1. Inlining bounds tried and not kept
+
+Inlining stops when a unit has grown by three quarters of its size or by 1000, whichever is more (ir.md §8.6). Units
+compiled alone each get at least 1000, which a small one, a program's main or a support module, spends on its few hot
+calls; a whole program gets 1000 for all of them. Before the second fix, other bounds looked better as a whole
+program; after it, none is:
+
+- **A bound per function**, three quarters of each body's size or 200, instead of the unit's: unit by unit 1.029 of
+  the time (string-concat 1.45, md5 1.22, matrix-multiply 1.17), since a small unit's one hot function no longer had
+  the unit's 1000 to spend; as a whole program, 0.996. Both bounds at once: 0.983 as a whole program, but zebra 1.13.
+- **The unit's minimum, 1000 for each of its modules and main program**: 0.985 as a whole program with the first fix
+  alone (simple 0.86, logic 0.93). But all of it could be spent in one function: the `arm64_select` test's main grew
+  from 6,300 lines of SSA to 99,000, and the test took 56 s to build and run, from 8 s.
+- **A bound for each module and the main program**, three quarters of that part's size or 1000, each spending only
+  its own, as it would compiled alone: with both fixes, 1.010 of the time of the unit's one bound as a whole program,
+  simple 1.085 and vliw 1.04 at their best of three runs, ratio-regions 0.98 the only one faster.
+
+### 37.2. How they were taken
+
+`run.py time --clean --scale 0.25 --backend arm64`, one run each, unit by unit and with `--whole-program`, each run
+taking the lock and waiting for the load to stay under 5 for 180 s. The first fix and the bounds were timed at
+`e5f9af04` with the first fix, the bounds chosen by a temporary `QUEST_INLINE` setting; the second against
+`dd59b84c`, without the first; both together, and the last bound against them, at `87f06c9c` (and again for the
+programs it slowed by more than 5%, alternating with `87f06c9c`, twice). The same unit-by-unit code timed 1.024 of
+its earlier times in the last session.
+
+### 37.3. Programs
+
+Seconds; "unit" is unit by unit, "whole" whole program.
+
+| Benchmark | §35 unit | §35 whole | first fix, whole | before the second, unit | after, unit | before the second, whole | after, whole | both, unit | both, whole |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| checksum | 13.33 | 29.04 | 13.81 | 13.54 | 13.36 | 29.12 | 29.06 | 13.59 | 13.57 |
+| string-concat | 2.42 | 4.28 | 2.45 | 2.54 | 2.50 | 4.32 | 4.33 | 2.64 | 2.51 |
+| md5 | 14.82 | 19.10 | 15.33 | 14.91 | 14.89 | 19.17 | 19.15 | 15.08 | 15.04 |
+| mpuz | 7.06 | 8.11 | 7.30 | 6.97 | 7.06 | 8.11 | 8.15 | 7.07 | 7.22 |
+| count-graphs | 9.35 | 11.09 | 11.39 | 9.58 | 8.95 | 11.33 | 9.05 | 9.30 | 9.14 |
+| vliw | 5.51 | 5.94 | 5.97 | 5.55 | 5.18 | 6.06 | 5.03 | 5.39 | 5.08 |
+| simple | 7.94 | 7.48 | 7.52 | 8.00 | 7.92 | 7.52 | 7.40 | 8.12 | 7.62 |
+| logic | 8.76 | 8.55 | 8.88 | 8.95 | 8.80 | 8.59 | 8.54 | 9.00 | 8.81 |
+
+Over all 46, by geometric mean: the first fix's whole-program times are 1.007 of unit by unit's. The second takes
+0.988 of the time unit by unit (count-graphs 0.93, vliw 0.93, barnes-hut 0.94, vector64-concat 0.93) and 0.987 as a
+whole program (count-graphs 0.80, vliw 0.83). With both, whole program takes 0.977 of unit by unit's time, no program
+more than 1.06 (DLXSimulator; boyer 1.04), and is faster for ratio-regions (0.67), peek (0.75), and zebra (0.76), for
+the inlining across modules that units cannot do.
