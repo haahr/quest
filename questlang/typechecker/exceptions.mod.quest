@@ -24,7 +24,11 @@ export
     let exceptionPayload(t: Type): maybe.T(Type) =
         case t.form when typeException with x then maybe.some(x.payload) else maybe.none() end
 
-    let synthException(c: checker.T expr: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
+    (* An exception constructor, exception Name [: PayloadType] end. A phrase
+     * that is one (declares) binds Name in the scope; in any other expression,
+     * as in Cardelli's Quest, the name only labels the exception, for its
+     * messages (docs/type-system.md section 6.15) *)
+    let synthException(c: checker.T expr: ast.Expr e: env.T loopDepth: Int declares: Bool): typedAst.Expr =
         case expr.form
             when exprException with x then
                 begin
@@ -34,12 +38,17 @@ export
                         model.okType
                     end
                     let excType = model.exceptionOf(payloadType)
-                    let sym = symbols.newValueSymbol(x.name excType false false false c.functionDepth 0)
-                    symbols.declareValue(e.currentScope sym)
+                    let sym = if declares then
+                        let s = symbols.newValueSymbol(x.name excType false false false c.functionDepth 0)
+                        symbols.declareValue(e.currentScope s)
+                        maybe.some(s)
+                    else
+                        maybe.none(:symbols.ValueSymbol)
+                    end
                     typedAst.expr(expr.span.startOffset excType option exprException of typedAst.ExprForm with
                         let name = x.name
                         let payloadType = maybe.some(payloadType)
-                        let symbol = maybe.some(sym)
+                        let symbol = sym
                     end)
                 end
             else internal("an exception" expr)

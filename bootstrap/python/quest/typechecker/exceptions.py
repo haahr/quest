@@ -42,18 +42,24 @@ class ExceptionMixin(Checker):
     `self`.
     """
 
-    def _synth_exception_expr(self, expr: ast.ExprException, env: Environment, loop_depth: int) -> TypedException:
+    def _synth_exception_expr(
+        self, expr: ast.ExprException, env: Environment, loop_depth: int, declares: bool = False
+    ) -> TypedException:
         """Synthesizes an exception constructor: exception Name [: PayloadType]
-        end."""
+        end. A phrase that is one (declares) binds Name in the scope; in any
+        other expression, as in Cardelli's Quest, the name only labels the
+        exception, for its messages (docs/type-system.md §6.15)."""
         payload_type = elaborate_type(expr.type_annot, env) if expr.type_annot else OK_TYPE
         exc_type = QExceptionType(payload_type=payload_type)
-        sym = ValueSymbol(
-            name=expr.name,
-            type_val=exc_type,
-            is_var=False,
-            function_depth=self.function_depth,
-        )
-        env.current_scope.declare_value(sym)
+        sym = None
+        if declares:
+            sym = ValueSymbol(
+                name=expr.name,
+                type_val=exc_type,
+                is_var=False,
+                function_depth=self.function_depth,
+            )
+            env.current_scope.declare_value(sym)
         return TypedException(
             name=expr.name,
             payload_type=payload_type,

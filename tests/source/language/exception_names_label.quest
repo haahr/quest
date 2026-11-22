@@ -1,0 +1,16 @@
+(* A named exception made inside an expression binds nothing: its name only labels it, for its messages. The
+   expression makes a new exception each time it runs, which the let's name holds. *)
+let pick(c: Bool): Exception = if c then exception I end else exception J end end;
+let f(c: Bool): Int = begin
+  let e = pick(c)
+  try raise e as Int end when e then 1 end
+end;
+(* Two evaluations are two exceptions, though they have one label, and a handler for one does not catch the other *)
+let first = pick(false);
+let second = pick(false);
+let distinct = not(first is second);
+let caught = try raise second as String end when first then "first" when second then "second" end;
+(* A phrase that is an exception declares its name *)
+exception K: Int end;
+let k = try raise K with 4 as Int end when K with n then n + 1 end;
+tuple let fTrue = f(true) let fFalse = f(false) let distinct = distinct let caught = caught let k = k end

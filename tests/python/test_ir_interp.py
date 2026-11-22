@@ -58,12 +58,12 @@ class TestInterpreter(unittest.TestCase):
         )
         self.assertEqual(out, "7 : Int\n")
 
-    def test_an_exception_made_on_a_branch_that_does_not_run_exists(self) -> None:
-        # Made where its scope begins (docs/type-system.md §6.15)
+    def test_an_exception_named_on_a_branch_is_a_fresh_value(self) -> None:
+        # Its name only labels it (docs/type-system.md §6.15): the let names it
         out = run(
             "let f(c: Bool): Int = begin "
             "let e: Exception = if c then exception I end else exception J end end "
-            "try raise I end when I then 1 when J then 2 end end; f(false)"
+            "try raise e end when e then 1 end end; f(false)"
         )
         self.assertEqual(out, "1 : Int\n")
 

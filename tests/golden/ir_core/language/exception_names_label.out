@@ -1,0 +1,81 @@
+main {
+  funs {
+    fun pick(c: Bool): Exception {
+      join k1(r: Exception) {
+        return r
+      } in {
+        if c { @3:32
+          let %1: Exception = exception I @3:42
+          jump k1(%1) @3:32
+        } else {
+          let %2: Exception = exception J @3:63
+          jump k1(%2) @3:32
+        }
+      }
+    }
+  }
+  funs {
+    fun f(c.1: Bool): Int {
+      let e: Exception = call pick(c.1) @5:11
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        try catching (e) {
+          raise e @6:7
+        } handle (e.1: Exception) {
+          let %3: Bool = prim is(e.1, e) @6:3
+          if %3 { @6:3
+            jump k2(1) @6:3
+          } else {
+            reraise e.1 @6:3
+          }
+        }
+      }
+    }
+  }
+  let first: Exception = call pick(false) @9:13
+  let second: Exception = call pick(false) @10:14
+  let %4: Bool = prim is(first, second) @11:20
+  let distinct: Bool = prim not(%4) @11:16
+  join k3(caught: String) {
+    let K: Exception(Int) = exception K: Int @14:1
+    join k4(k: Int) {
+      let fTrue: Int = call f(true) @16:19
+      let fFalse: Int = call f(false) @16:40
+      let distinct.1: Bool = distinct @16:64
+      let caught.1: String = caught @16:86
+      let k.1: Int = k @16:101
+      let %5: Tuple fTrue: Int fFalse: Int distinct: Bool caught: String k: Int end = tuple(fTrue, fFalse, distinct.1, caught.1, k.1) @16:1
+    } in {
+      try catching (K) {
+        raise K with 4 : "Int" @15:13
+      } handle (e.2: Exception) {
+        let %6: Bool = prim is(e.2, K) @15:9
+        if %6 { @15:9
+          let n: Int = exception_payload(e.2) @15:9
+          let %7: Int = prim +(n, 1) @15:58
+          jump k4(%7) @15:9
+        } else {
+          reraise e.2 @15:9
+        }
+      }
+    }
+  } in {
+    try catching (first, second) {
+      raise second @12:18
+    } handle (e.3: Exception) {
+      let %8: Bool = prim is(e.3, first) @12:14
+      if %8 { @12:14
+        jump k3("first") @12:14
+      } else {
+        let %9: Bool = prim is(e.3, second) @12:14
+        if %9 { @12:14
+          jump k3("second") @12:14
+        } else {
+          reraise e.3 @12:14
+        }
+      }
+    }
+  }
+}
+

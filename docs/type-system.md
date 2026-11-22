@@ -872,21 +872,21 @@ The `StringOp` interface and `string` module provide substring comparison:
 
 ### 6.15. Named Exceptions and Their Scope
 
-`exception E [: T] end` generates a new exception each time it is evaluated (Cardelli §4.9), and when it is named,
-the name `E` binds for the rest of the enclosing scope (a block, a function's body, a module, or the program), even
-when the exception is made inside a larger expression: `let e = if c then exception I end else exception J end end`
-names both `I` and `J`. Such an exception is made where its scope begins, before the binding (or phrase) that makes
-it, so every exception a scope names exists throughout it, whether or not the expression that makes it runs; the
-expression gives that same exception. Making an exception has no other effect, so the difference shows only in which
-exception a name holds: after `if false then exception I end else ... end`, `raise I` raises the scope's `I`, and a
-handler `when I` catches it. Each time a scope begins, it makes its exceptions anew (a function's call, a block's
-evaluation). An exception that a binding is, or binds directly (`exception E end`, `let e = exception E end`), is
-made by the binding as it runs.
+`exception E [: T] end` generates a new exception each time it is evaluated (Cardelli §4.9). Only a phrase that *is*
+one, a declaration in a program, module, or block, binds `E` for the rest of that scope, as `let E = exception E
+end` would. Anywhere else, as in Cardelli's Quest, the identifier only labels the exception for its messages: `let
+failed = exception error: Int end` binds `failed` alone, so `raise failed with 3 end` reports `error with 3:Int`,
+and `error` is not a name in scope; nor does `let e = if c then exception I end else exception J end end` bind `I` or
+`J`.
 
-`scope_exceptions` in `typechecker/typed_ast.py` finds the exceptions a binding makes in advance. The lowering makes
-them with `let`s before the binding (`make_scope_exceptions` in `ir/lower.py`), and the source interpreter defines
-them in the binding's frame (`make_scope_exceptions` in `interpreter/treewalk.py`), where the expression that makes
-one finds it.
+The typechecker gives the declared exception a symbol (`declares` in `synthException`), which the nested one lacks,
+and `declared_exception` in `typechecker/typed_ast.py` (`declaredException` in the self-hosted typed AST) finds the
+exception a phrase declares, which a module's record exports and an interactive input's record keeps for later
+inputs.
+
+Before 2026-11-22 every named exception bound its name in the enclosing scope, wherever it appeared, and was made
+when the scope began so that it existed throughout. That surprised: `let failed = exception error: Int end` silently
+rebound `error`.
 
 ### 6.16. Catching and Raising Again an Exception of Any Type (`else with`)
 

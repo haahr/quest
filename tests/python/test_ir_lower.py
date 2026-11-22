@@ -66,19 +66,16 @@ class TestLowering(unittest.TestCase):
         self.assertIn("exception_payload(e)", text)
         self.assertIn("raise e", text)
 
-    def test_an_exception_made_inside_an_expression_is_visible_to_its_scope(self) -> None:
-        _, text = lower("let g(x: Int): Int = try raise exception I: Int end with x end when I with n then n end; g(2)")
-        # Made before the binding that makes it, outside the try, whose pattern
-        # is then computed before it
-        self.assertIn("let I: Exception(Int) = exception I: Int\n", text)
-        self.assertLess(text.index("let I: Exception(Int)"), text.index("try catching (I)"))
-        # A nested function may use it: it is a value, not a mutable variable
+    def test_an_exception_declared_in_a_block_is_visible_to_its_scope(self) -> None:
+        # A bare exception phrase binds its name (docs/type-system.md §6.15),
+        # and a nested function may use it: it is a value, not a mutable variable
         _, text = lower(
-            "let f(x: Int): Int = begin "
-            "let a: Int = try raise exception I: Int end with x end when I with n then n end "
+            "let f(x: Int): Int = begin exception I: Int end "
+            "let a: Int = try raise I with x end when I with n then n end "
             "let h(): Int = try raise I with 2 end when I with n then n end "
             "a + h() end; f(1)"
         )
+        self.assertIn("exception I: Int", text)
         self.assertIn("raise I with 2", text)
 
     def test_tuple_labels_bind_for_later_components(self) -> None:

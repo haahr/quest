@@ -42,8 +42,7 @@ from quest.typechecker.typed_ast import (
     TypedDefKind,
     TypedDerefCell,
     TypedException,
-    named_exceptions_in,
-    scope_exceptions,
+    declared_exception,
     TypedExit,
     TypedExpr,
     TypedExprStmt,
@@ -192,8 +191,7 @@ class _Lowerer:
       expression leaves the innermost;
     - imports and module_refs, the modules the unit imports and defines;
     - frame, the name of the code being lowered as exception tracebacks show
-      it, and made, the exceptions created ahead of the bindings that declare
-      them (make_scope_exceptions).
+      it.
 
     value and effect, the entry points for expressions, are described in the
     module's docstring."""
@@ -219,10 +217,6 @@ class _Lowerer:
         # The modules the unit defines and imports, by the symbols their names
         # bind
         self.module_refs: dict[int, ir.ModuleRef] = {}
-        # Exceptions made inside an expression, whose names the enclosing scope
-        # sees: made before the binding containing them (make_scope_exceptions),
-        # and not yet reached where they are written
-        self.made: set[int] = set()
         # The local var variables that closures capture (captured_mutables),
         # and the boxes that hold those bound so far: a tuple of one var
         # component, which the frame and the closures share
@@ -396,11 +390,6 @@ class _Lowerer:
             case TypedAuto(witness_type=witness, auto_type=auto_type, payload=payload):
                 return self.let(ir.MakeAuto(witness, auto_type, self.value(payload)), e.type_val, into)
             case TypedException(name=name, payload_type=payload_type, symbol=symbol):
-                if symbol is not None and (made := self.vars.get(symbol.symbol_id)) is not None:
-                    if id(made) not in self.made:
-                        raise LoweringError(f"exception '{name}' is bound twice")
-                    self.made.discard(id(made))
-                    return self.copy_into(made, into)
                 if symbol is not None:
                     bound = self.bind_symbol(symbol, e.type_val)
                     self.emit(ir.Let(bound, ir.MakeException(name, payload_type)))
@@ -992,9 +981,6 @@ class _Lowerer:
             if isinstance(e.body, TypedExternal):
                 result = self.external_call(e.body, t, params, result_t)
             else:
-                # The body is a scope of its own: exceptions made inside it are
-                # visible throughout it
-                self.make_scope_exceptions(e.body)
                 result = self.value(e.body)
             if not self.body.terminated:
                 # The return has no position of its own: it is at the last of
@@ -1019,17 +1005,6 @@ class _Lowerer:
         return self.let(ir.CallExternal(ext.symbol, type_args, tuple(args)), result_t)
 
     # Bindings
-
-    def make_scope_exceptions(self, b: TypedNode) -> None:
-        """Makes, before b, the named exceptions b makes for its scope
-        (scope_exceptions), which the expressions that make them then refer
-        to."""
-        for exc in scope_exceptions(b):
-            if exc.symbol.symbol_id in self.vars:
-                continue
-            var = self.bind_symbol(exc.symbol, exc.type_val)
-            self.made.add(id(var))
-            self.emit(ir.Let(var, ir.MakeException(exc.name, exc.payload_type)))
 
     def binding(self, b: TypedNode, show: bool = False) -> None:
         """Lowers one declaration of a block or a unit's top level, emitting
@@ -1061,14 +1036,10 @@ class _Lowerer:
           lower to nothing, but for their echoed text.
         - An expression statement goes to phrase_expr: lowered for its effect
           alone if its type is Ok, and otherwise for its value, which --echo
-          prints. An import adds the imported modules to the unit.
-
-        The named exceptions b makes for its scope are made before it
-        (make_scope_exceptions)."""
+          prints. An import adds the imported modules to the unit."""
         self.at(b.offset, lambda: self.binding_form(b, show))
 
     def binding_form(self, b: TypedNode, show: bool) -> None:
-        self.make_scope_exceptions(b)
         match b:
             case TypedLetValue(value=value, is_rec=True) if not isinstance(value, TypedFun):
                 self.rec_values((b,), show)
@@ -1222,9 +1193,8 @@ class _Lowerer:
                         self.add_imports(items)
                     case _:
                         self.binding(b)
-                        for exc in named_exceptions_in(b):
-                            if exc.symbol is not None:
-                                members[exc.name] = self.vars[exc.symbol.symbol_id]
+                        if (exc := declared_exception(b)) is not None:
+                            members[exc.name] = self.vars[exc.symbol.symbol_id]
                         for member in (b.members if isinstance(b, (TypedLetValueGroup, TypedLetTypeGroup)) else (b,)):
                             if isinstance(member, TypedLetValue):
                                 members[member.name] = self.vars[member.symbol.symbol_id]

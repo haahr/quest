@@ -611,11 +611,11 @@ class BindingMixin(Checker):
                 return elaborate_module(binding, env, self._elaborate_binding)
 
             case ast.ExprException():
-                typed_exc = self._synth_exception_expr(binding, env, loop_depth)
+                typed_exc = self._synth_exception_expr(binding, env, loop_depth, declares=True)
                 return TypedExprStmt(expr=typed_exc, offset=binding.offset)
 
             case ast.ExprStmt(expr=ast.ExprException() as exc):
-                typed_exc = self._synth_exception_expr(exc, env, loop_depth)
+                typed_exc = self._synth_exception_expr(exc, env, loop_depth, declares=True)
                 return TypedExprStmt(expr=typed_exc, offset=binding.offset)
 
             case ast.ExprStmt(expr=expr):

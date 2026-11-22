@@ -1,0 +1,171 @@
+(Program
+  :phrases (
+    (LetValueBinding
+      :name 'pick'
+      :value (ExprIf
+        :cond (ExprId 'c')
+        :then_branch (ExprException 'I')
+        :else_branch (ExprException 'J')
+      )
+      :params (
+        (FormalParam
+          :name 'c'
+          :type_annot (TypePath ('Bool'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Exception'))
+    )
+    (LetValueBinding
+      :name 'f'
+      :value (ExprBlock
+        :bindings (
+          (LetValueBinding
+            :name 'e'
+            :value (ExprApp
+              :func (ExprId 'pick')
+              :args (
+                (ExprId 'c')
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprTry
+              :body (ExprRaise
+                :exc (ExprId 'e')
+                :as_type (TypePath ('Int'))
+              )
+              :branches (
+                (TryBranch
+                  :exc_pattern (ExprId 'e')
+                  :body (ExprInt 1 '1')
+                )
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'c'
+          :type_annot (TypePath ('Bool'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+    )
+    (LetValueBinding
+      :name 'first'
+      :value (ExprApp
+        :func (ExprId 'pick')
+        :args (
+          (ExprBool False)
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'second'
+      :value (ExprApp
+        :func (ExprId 'pick')
+        :args (
+          (ExprBool False)
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'distinct'
+      :value (ExprApp
+        :func (ExprId 'not')
+        :args (
+          (ExprInfix
+            :left (ExprId 'first')
+            :op 'is'
+            :right (ExprId 'second')
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'caught'
+      :value (ExprTry
+        :body (ExprRaise
+          :exc (ExprId 'second')
+          :as_type (TypePath ('String'))
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprId 'first')
+            :body (ExprString 'first' '"first"')
+          )
+          (TryBranch
+            :exc_pattern (ExprId 'second')
+            :body (ExprString 'second' '"second"')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprException
+        :name 'K'
+        :type_annot (TypePath ('Int'))
+      )
+    )
+    (LetValueBinding
+      :name 'k'
+      :value (ExprTry
+        :body (ExprRaise
+          :exc (ExprId 'K')
+          :payload (ExprInt 4 '4')
+          :as_type (TypePath ('Int'))
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprId 'K')
+            :binder 'n'
+            :body (ExprInfix
+              :left (ExprId 'n')
+              :op '+'
+              :right (ExprInt 1 '1')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprTuple
+        :fields (
+          (TupleBinding
+            :name 'fTrue'
+            :value (ExprApp
+              :func (ExprId 'f')
+              :args (
+                (ExprBool True)
+              )
+            )
+          )
+          (TupleBinding
+            :name 'fFalse'
+            :value (ExprApp
+              :func (ExprId 'f')
+              :args (
+                (ExprBool False)
+              )
+            )
+          )
+          (TupleBinding
+            :name 'distinct'
+            :value (ExprId 'distinct')
+          )
+          (TupleBinding
+            :name 'caught'
+            :value (ExprId 'caught')
+          )
+          (TupleBinding
+            :name 'k'
+            :value (ExprId 'k')
+          )
+        )
+      )
+    )
+  )
+)

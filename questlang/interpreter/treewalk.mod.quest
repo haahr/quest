@@ -65,7 +65,6 @@ export
             let parent = parent
             let var bindings = model.newFields()
             let typeBindings = hashMap.new(intEqual hash.int)
-            let madeExceptions = hashMap.new(intEqual hash.int)
             let var currentDir = currentDir
             let var sourceMap = sourceMap
             let root = root
@@ -75,16 +74,6 @@ export
 
     let define(f: Frame name: String v: Value): Ok =
         begin hashMap.insert(f.bindings name v) ok end
-
-    let rec madeException(f: Frame symbolId: Int): maybe.T(model.ExceptionValue) =
-        begin
-            let found = hashMap.get(f.madeExceptions symbolId)
-            if maybe.isSome(found) orif maybe.isNone(f.parent) then
-                found
-            else
-                madeException(maybe.unwrap(f.parent) symbolId)
-            end
-        end
 
     let bindTypes(f: Frame bindings: hashMap.T(Int tm.Type)): Ok =
         begin
@@ -140,7 +129,7 @@ export
             found
         end
 
-    (* Set by section 5: loads and runs a module
+    (* Set by section 4: loads and runs a module
      * (load_module_for_interpreter) *)
     let hooks = tuple
         let var loadModule = fun(name: String expectedInterface: String f: Frame canonicalName: maybe.T(String)): Value
@@ -379,40 +368,7 @@ export
     let popStack(f: Frame): Ok = begin vector.pop(f.root.callStack) ok end
 
     (* ======================================================================
-     * 3. Named exceptions made in advance
-     * ====================================================================== *)
-
-    (* Makes, before code runs, the named exceptions it makes for its scope,
-     * defining their names, and returns the frame it runs in: one of its own if
-     * a name rebinds one of f's frame *)
-    let makeScopeExceptions(exceptions: Array(Expr) f: Frame): Frame =
-        begin
-            let var g = f
-            let var rebinds = false
-            for i = 0 upto {extent exceptions - 1} do
-                case exceptions[i].form
-                    when exprException with x then
-                        if hashMap.contains(f.bindings x.name) then rebinds := true end
-                    else ok
-                end
-            end
-            if rebinds then g := pushScope(f) end
-            for i = 0 upto {extent exceptions - 1} do
-                case exceptions[i].form
-                    when exprException with x then
-                        let excVal = model.exceptionValue(x.name)
-                        define(g x.name option vException of Value with let e = excVal end)
-                        hashMap.insert(g.madeExceptions
-                            maybe.unwrap(x.symbol).symbolId excVal)
-                        ok
-                    else ok
-                end
-            end
-            g
-        end
-
-    (* ======================================================================
-     * 4. Expressions
+     * 3. Expressions
      * ====================================================================== *)
 
     let rec unwrapRefs(v: Value): Value =
@@ -937,15 +893,9 @@ export
 
                 (* Exceptions *)
                 when exprException with x then
-                    let made = if maybe.isSome(x.symbol) then
-                        madeException(f maybe.unwrap(x.symbol).symbolId)
-                    else
-                        maybe.none(:model.ExceptionValue)
-                    end
-                    let excVal = option vException of Value with
-                        let e = maybe.unwrapOr(made model.exceptionValue(x.name))
-                    end
-                    if stringOp.length(x.name) > 0 then define(f x.name excVal) end
+                    let excVal = option vException of Value with let e = model.exceptionValue(x.name) end
+                    (* Only an exception phrase binds its name (§6.15) *)
+                    if maybe.isSome(x.symbol) then define(f x.name excVal) end
                     excVal
                 when exprRaise with x then
                     case evalExpr(x.exc f)
@@ -1124,7 +1074,7 @@ export
                         for i = 0 upto {extent c.params - 1} do
                             if i < extent args then define(callEnv c.params[i] args[i]) end
                         end
-                        evalExpr(c.body makeScopeExceptions(typedAst.exprScopeExceptions(c.body) callEnv))
+                        evalExpr(c.body callEnv)
                 end
             when model.runError with err then
                 leaving(err env)
@@ -1136,7 +1086,7 @@ export
         end
 
     (* ======================================================================
-     * 5. Bindings and programs
+     * 4. Bindings and programs
      * ====================================================================== *)
 
     (* The value of a let binding of name: a function's closure is bound to the
@@ -1250,7 +1200,7 @@ export
      * in, so that each closure sees the others *)
     and evalScopedBinding(b: Binding f0: Frame): Scoped =
         begin
-            let var f = makeScopeExceptions(typedAst.scopeExceptions(b) f0)
+            let var f = f0
             case b.form
                 when bindLetValueGroup with x then
                     if {extent x.members > 0} andif not(x.members[0].isRec) then
@@ -1339,7 +1289,7 @@ export
     (* Fills in hooks.loadModule when this module initializes; the name is
      * never read. lookup (section 1) loads a standard module the first time
      * its name is used, and loading it runs the module's bindings, which call
-     * lookup again. Rather than make sections 1 to 5 one recursive group, the
+     * lookup again. Rather than make sections 1 to 4 one recursive group, the
      * early code calls the loader through the mutable hooks.loadModule,
      * assigned here once loadModuleForInterpreter exists *)
     let installed = begin hooks.loadModule := loadModuleForInterpreter ok end

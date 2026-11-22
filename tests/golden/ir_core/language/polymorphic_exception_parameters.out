@@ -2,20 +2,19 @@ main {
   funs {
     fun sub [A::TYPE](f: Fun(s: A e: Exception(A)): A, s: A): A {
       let e: Exception(A) = exception e: A @12:31
-      let e.1: Exception(A) = e @12:31
       join k1(r: A) {
         return r
       } in {
-        try catching (e.1) {
-          let %1: A = call f(s, e.1) @13:13
+        try catching (e) {
+          let %1: A = call f(s, e) @13:13
           jump k1(%1) @13:9
-        } handle (e.2: Exception) {
-          let %2: Bool = prim is(e.2, e.1) @13:9
+        } handle (e.1: Exception) {
+          let %2: Bool = prim is(e.1, e) @13:9
           if %2 { @13:9
-            let v: A = exception_payload(e.2) @13:9
+            let v: A = exception_payload(e.1) @13:9
             jump k1(v) @13:9
           } else {
-            reraise e.2 @13:9
+            reraise e.1 @13:9
           }
         }
       }
@@ -24,8 +23,8 @@ main {
   funs {
     fun g [B::TYPE](x: B): B {
       funs {
-        fun h(s.1: B, e.3: Exception(B)): B {
-          raise e.3 with s.1 : "B" @17:42
+        fun h(s.1: B, e.2: Exception(B)): B {
+          raise e.2 with s.1 : "B" @17:42
         }
       }
       let %3: B = call sub [B](h, x) @18:9
@@ -36,22 +35,21 @@ main {
   let z: String = call g [String]("five") @21:9
   funs {
     fun pair [A::TYPE](f.1: Fun(e: Exception(Tuple a: A n: Int end)): A, x.1: A): Int {
-      let e.4: Exception(Tuple a: A n: Int end) = exception e: Tuple a: A n: Int end @26:51
-      let e.5: Exception(Tuple a: A n: Int end) = e.4 @26:51
+      let e.3: Exception(Tuple a: A n: Int end) = exception e: Tuple a: A n: Int end @26:51
       join k2(r.1: Int) {
         return r.1
       } in {
-        try catching (e.5) {
-          let ignored: A = call f.1(e.5) @27:27
+        try catching (e.3) {
+          let ignored: A = call f.1(e.3) @27:27
           jump k2(0) @27:9
-        } handle (e.6: Exception) {
-          let %4: Bool = prim is(e.6, e.5) @27:9
+        } handle (e.4: Exception) {
+          let %4: Bool = prim is(e.4, e.3) @27:9
           if %4 { @27:9
-            let v.1: Tuple a: A n: Int end = exception_payload(e.6) @27:9
+            let v.1: Tuple a: A n: Int end = exception_payload(e.4) @27:9
             let %5: Int = tuple_field(v.1, 1) @27:53
             jump k2(%5) @27:9
           } else {
-            reraise e.6 @27:9
+            reraise e.4 @27:9
           }
         }
       }
@@ -60,11 +58,11 @@ main {
   funs {
     fun k [B::TYPE](x.2: B): Int {
       funs {
-        fun h.1(e.7: Exception(Tuple a: B n: Int end)): B {
+        fun h.1(e.5: Exception(Tuple a: B n: Int end)): B {
           let a: B = x.2 @31:76
           let n: Int = 7 @31:78
           let %6: Tuple a: B n: Int end = tuple(a, n) @31:70
-          raise e.7 with %6 : "Tuple a: B n: Int end" @31:57
+          raise e.5 with %6 : "Tuple a: B n: Int end" @31:57
         }
       }
       let %7: Int = call pair [B](h.1, x.2) @32:9

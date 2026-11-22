@@ -160,8 +160,7 @@ export
      *   expression leaves the innermost; labelCounts numbers the labels made;
      * - imports and moduleRefs, the modules the unit imports and defines;
      * - frame, the name of the code being lowered as exception tracebacks
-     *   show it, and made, the exceptions created ahead of the bindings that
-     *   declare them (makeScopeExceptions);
+     *   show it;
      * - echo and printResult, whether every phrase's result is printed
      *   (--echo) or only the last one's (--print-result), and sourceMap, the
      *   file in which the offsets of nodes that can raise are.
@@ -195,10 +194,6 @@ export
         (* The modules the unit defines and imports, by the symbols their names
          * bind *)
         moduleRefs: hashMap.T(Int nodes.ModuleRef)
-        (* Exceptions made inside an expression, whose names the enclosing scope
-         * sees: made before the binding containing them, and not yet reached
-         * where they are written (by variable id) *)
-        made: hashMap.T(Int Bool)
         (* The local var variables that closures capture (capturedMutables),
          * and the boxes that hold those bound so far: a tuple of one var
          * component, which the frame and the closures share *)
@@ -240,7 +235,6 @@ export
                 let labelCounts = hashMap.new(stringOp.equal hash.string)
                 let imports = vector.new()
                 let moduleRefs = hashMap.new(intEqual hash.int)
-                let made = hashMap.new(intEqual hash.int)
                 let captured = hashMap.new(intEqual hash.int)
                 let boxes = hashMap.new(intEqual hash.int)
                 let earlier = hashMap.new(intEqual hash.int)
@@ -635,18 +629,8 @@ export
                     let var descriptor = maybe.none()
                 end e.type into)
             when exprException with x then
-                let existing = if maybe.isSome(x.symbol) then
-                    hashMap.get(l.vars maybe.unwrap(x.symbol).symbolId)
-                else
-                    maybe.none(:Variable)
-                end
                 let made = option opMakeException of Op with let name = x.name let payloadType = x.payloadType end
-                if maybe.isSome(existing) then
-                    let v = maybe.unwrap(existing)
-                    if not(hashMap.contains(l.made v.id)) then fail(:Ok "exception '" <> x.name <> "' is bound twice") end
-                    hashMap.delete(l.made v.id)
-                    copyInto(l va(v) into)
-                elsif maybe.isSome(x.symbol) then
+                if maybe.isSome(x.symbol) then
                     let bound = bindSymbol(l maybe.unwrap(x.symbol) maybe.some(e.type) false)
                     emit(l nodes.letStmt(bound made))
                     copyInto(l va(bound) into)
@@ -1640,11 +1624,7 @@ export
                     begin
                         let result = case x.body.form
                             when exprExternal with ext then externalCall(l ext.symbol t paramArray resultType)
-                            else
-                                (* The body is a scope of its own: exceptions
-                                 * made inside it are visible throughout it *)
-                                makeScopeExceptions(l typedAst.exprScopeExceptions(x.body))
-                                value(l x.body none)
+                            else value(l x.body none)
                         end
                         (* The return has no position of its own: it is at the
                          * last of the body's *)
@@ -1691,22 +1671,6 @@ export
         end
 
     (* Bindings *)
-
-    (* Makes, before a binding, the named exceptions it makes for its scope,
-     * which the expressions that make them then refer to *)
-    and makeScopeExceptions(l: Lowerer excs: Array(Expr)): Ok =
-        for i = 0 upto {extent excs - 1} do
-            case excs[i].form
-                when exprException with x then
-                    let symbol = maybe.unwrap(x.symbol)
-                    if not(hashMap.contains(l.vars symbol.symbolId)) then
-                        let v = bindSymbol(l symbol maybe.some(excs[i].type) false)
-                        hashMap.insert(l.made v.id true)
-                        emit(l nodes.letStmt(v option opMakeException of Op with let name = x.name let payloadType = x.payloadType end))
-                    end
-                else ok
-            end
-        end
 
     and funText(name: String t: Type): Stmt =
         option sEchoText of Stmt with let text = "let " <> name <> ":" <> model.show(t) <> " = <fun>" end
@@ -1891,14 +1855,10 @@ export
      *   lower to nothing, but for their echoed text.
      * - An expression statement goes to phraseExpr: lowered for its effect
      *   alone if its type is Ok, and otherwise for its value, which --echo
-     *   prints. An import adds the imported modules to the unit.
-     *
-     * The named exceptions b makes for its scope are made before it
-     * (makeScopeExceptions). *)
+     *   prints. An import adds the imported modules to the unit. *)
     and binding(l: Lowerer b: Binding show: Bool): Ok = at(l b.offset fun(): Ok bindingForm(l b show))
     and bindingForm(l: Lowerer b: Binding show: Bool): Ok =
         begin
-            makeScopeExceptions(l typedAst.scopeExceptions(b))
             case b.form
                 when bindLetValue with x then
                     if x.value.isRec andif not(x.value.value.form?exprFun) then
@@ -2116,14 +2076,12 @@ export
                             when bindImport with x then addImports(l x.items)
                             else
                                 binding(l mb false)
-                                let excs = typedAst.namedExceptionsIn(mb)
-                                for j = 0 upto {extent excs - 1} do
-                                    case excs[j].form
+                                let exc = typedAst.declaredException(mb)
+                                if maybe.isSome(exc) then
+                                    case maybe.unwrap(exc).form
                                         when exprException with x then
-                                            if maybe.isSome(x.symbol) then
-                                                nodes.addMember(members x.name
-                                                    hashMap.find(l.vars maybe.unwrap(x.symbol).symbolId))
-                                            end
+                                            nodes.addMember(members x.name
+                                                hashMap.find(l.vars maybe.unwrap(x.symbol).symbolId))
                                         else ok
                                     end
                                 end
@@ -2316,18 +2274,12 @@ export
                                 for j = 0 upto {extent x.members - 1} do bound(x.members[j].symbol) end
                             else binding(l phrase show)
                         end
-                        (* The exceptions it names, which later inputs may
-                         * raise and catch: a let's value's binds its own name
-                         * too (let e2 = exception error end binds error). A
-                         * module's are its own, in its record *)
-                        let excs = case phrase.form
-                            when bindModule then array of :typedAst.Expr end
-                            else typedAst.namedExceptionsIn(phrase)
-                        end
-                        for j = 0 upto {extent excs - 1} do
-                            case excs[j].form
-                                when exprException with y then
-                                    if maybe.isSome(y.symbol) then bound(maybe.unwrap(y.symbol)) end
+                        (* An exception it declares, which later inputs may
+                         * raise and catch *)
+                        let exc = typedAst.declaredException(phrase)
+                        if maybe.isSome(exc) then
+                            case maybe.unwrap(exc).form
+                                when exprException with y then bound(maybe.unwrap(y.symbol))
                                 else ok
                             end
                         end

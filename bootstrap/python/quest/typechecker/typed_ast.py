@@ -981,37 +981,11 @@ class TypedProgram(TypedNode):
 # 10. Canonical S-Expression Pretty Printer (typed_ast_dump)
 # ============================================================================
 
-def named_exceptions_in(node: Any) -> list[TypedException]:
-    """The named exceptions made in node whose names bind in node's scope: not
-    inside functions or blocks, which are scopes of their own."""
-    found: list[TypedException] = []
-
-    def scan(n: Any) -> None:
-        if n is None or isinstance(n, (QType, str, int, float, bool, TypedFun, TypedBlock, Symbol)):
-            return
-        if isinstance(n, TypedException):
-            if n.name:
-                found.append(n)
-            return
-        if isinstance(n, (list, tuple)):
-            for item in n:
-                scan(item)
-        else:
-            for part in typed_fields(n) or ():
-                scan(part)
-
-    scan(node)
-    return found
-
-
-def scope_exceptions(node: Any) -> list[TypedException]:
-    """The named exceptions that a binding, a phrase, or a function's body makes
-    for its scope before it runs, so that each one exists throughout the scope
-    whether or not the expression that makes it runs (docs/type-system.md
-    §6.15): those named_exceptions_in finds, except the exception node is itself
-    or binds directly, which it makes as it runs."""
-    direct = node.expr if isinstance(node, TypedExprStmt) else node.value if isinstance(node, TypedLetValue) else node
-    return [exc for exc in named_exceptions_in(node) if exc is not direct and exc.symbol is not None]
+def declared_exception(node: Any) -> Optional[TypedException]:
+    """The exception a phrase declares, if it is one that binds its name
+    (exception E end, docs/type-system.md §6.15)."""
+    exc = node.expr if isinstance(node, TypedExprStmt) else node
+    return exc if isinstance(exc, TypedException) and exc.symbol is not None else None
 
 
 # The explicit traversal: a case for each class of typed node
