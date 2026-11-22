@@ -1275,7 +1275,9 @@ end
 ### 1.20. `util/format : util/Format`
 
 Values formatted to a width, an alignment, and a precision, as Python 3.11's `format(value, spec)` and `str.format`
-write them, so that a table, a report, or a benchmark summary reads as Python's would:
+write them, so that a table, a report, or a benchmark summary reads as Python's would. Here, in `util/text`, and in
+`util/prettyPrint`, widths count bytes, as `string.size` does; whether they should count UTF-8 code points is open
+for Quest as a whole:
 
 ```quest
 import fmt = util/format : util/Format;

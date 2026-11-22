@@ -7,12 +7,6 @@ and a wasm counterpart (marked "runtime" below).
 
 ## Text
 
-- **Formatting, `util/format`** (Python's `str.format`, Go's `fmt`, Rust's `format!`). `conv` and `strutil` turn
-  values into strings, but nothing pads, aligns, or sets a width or precision, which tables, reports, and benchmark
-  output need. Padding and width/precision functions may be enough, without a format-string language.
-- **Layout, `util/text`** (Python's `textwrap`). Wrap to a width, indent, and dedent.
-- **Pretty printing, `util/pretty`** (OCaml's `Format`, Wadler's "prettier printer"). Layout that fits a width, for
-  printing trees, IR, or JSON.
 - **Diffs, `util/diff`** (Python's `difflib`). Longest-common-subsequence diffs of sequences of lines; a failed
   golden comparison in `util/test` would want one.
 
