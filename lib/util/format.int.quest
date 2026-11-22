@@ -1,0 +1,92 @@
+(* Values formatted to a width, an alignment, and a precision, as Python 3.11's
+ * format(value, spec) and str.format write them: one value at a time to a
+ * spec in Python's format-spec mini-language,
+ *
+ *     [[fill]align][sign][z][#][0][width][grouping][.precision][type]
+ *
+ * (fmt.real(x ">10.3f") is Python's format(x, ">10.3f")); templates of
+ * positional fields (fmt.template("{:<8} {:.2%}" args)); and tables of cells
+ * in columns. Widths count bytes. Negative numbers are written with -, as
+ * Python writes them, not with conv's ~, since this output is for people to
+ * read. Python's c and n types are left out, as are a template's named
+ * fields, conversions (!r), and nested specs. *)
+
+interface Format
+import
+    bignumLib = util/bignum : util/Bignum
+    wordLib = word : Word
+export
+    (* Raised for a spec that is not one, or a part of it that does not apply
+     * to the value (where Python's format raises ValueError); for a template,
+     * a field that is not one, an index past the arguments, or automatic and
+     * explicit indexes mixed *)
+    error: Exception
+
+    (* =========================================================================
+     * Alignment: s padded with spaces to width, or s itself if it is that
+     * wide already; alignCenter puts an odd space on the right, as Python's
+     * ^ does
+     * ====================================================================== *)
+
+    alignLeft(s: String width: Int): String
+    alignRight(s: String width: Int): String
+    alignCenter(s: String width: Int): String
+
+    (* =========================================================================
+     * One value, as Python's format(value, spec) writes it
+     *
+     * An integer takes the types d (the default), b, o, x, and X, or a real's
+     * type, which formats it as the real nearest it (error if there is none).
+     * A real takes e, E, f, F, g, G, and %, or none: the shortest digits that
+     * read back (Python's repr), or with a precision, g's form keeping a
+     * digit after the point. A string takes s (the default), its precision
+     * the most bytes kept. Precisions are at most 100.
+     * ====================================================================== *)
+
+    int(n: Int spec: String): String
+    word(w: wordLib.T spec: String): String
+    bignum(n: bignumLib.T spec: String): String
+    real(r: Real spec: String): String
+    string(s: String spec: String): String
+    (* "true" or "false", formatted as a string (Python's bool would be
+     * True, or 1 for a spec that is not empty) *)
+    bool(b: Bool spec: String): String
+
+    (* =========================================================================
+     * Templates, as Python's str.format with positional fields: {} formats
+     * the next argument, {i} the i-th (from 0; the two may not be mixed),
+     * {:spec} and {i:spec} format it to spec, and {{ and }} are braces
+     * ====================================================================== *)
+
+    Arg::TYPE
+    ofInt(n: Int): Arg
+    ofWord(w: wordLib.T): Arg
+    ofBignum(n: bignumLib.T): Arg
+    ofReal(r: Real): Arg
+    ofString(s: String): Arg
+    ofBool(b: Bool): Arg
+    template(t: String args: Array(Arg)): String
+
+    (* =========================================================================
+     * Tables: cells already formatted, laid out in columns
+     * ====================================================================== *)
+
+    (* How a table's columns are laid out *)
+    Def Layout = Tuple
+        (* '<' (left), '>' (right), or '^' (center) for each column, in order;
+         * a column past its end is left aligned *)
+        aligns: String
+        (* Put between two columns *)
+        separator: String
+        (* Whether the first row is a header, underlined by dashes as wide as
+         * each column, joined by the separator *)
+        header: Bool
+    end
+    (* aligns, with a separator of two spaces and no header *)
+    layout(aligns: String): Layout
+    (* The rows in columns, each column as wide as its widest cell, each line
+     * ending in a newline, its trailing spaces removed; a row shorter than
+     * the longest has empty cells at its end; raises error for an align that
+     * is not one *)
+    table(rows: Array(Array(String)) layout: Layout): String
+end

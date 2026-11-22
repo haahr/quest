@@ -1272,6 +1272,84 @@ export
 end
 ```
 
+### 1.20. `util/format : util/Format`
+
+Values formatted to a width, an alignment, and a precision, as Python 3.11's `format(value, spec)` and `str.format`
+write them, so that a table, a report, or a benchmark summary reads as Python's would:
+
+```quest
+import fmt = util/format : util/Format;
+fmt.real(x ">10.3f")                       (* Python's format(x, ">10.3f") *)
+fmt.template("{:<20} {:>10,} {:>8.2%}" array of fmt.ofString(name) fmt.ofInt(n) fmt.ofReal(share) end)
+```
+
+- **A spec is Python's mini-language,** `[[fill]align][sign][z][#][0][width][grouping][.precision][type]`, parsed on
+  every call as CPython's `parse_internal_render_format_spec` parses it. `int`, `word`, `bignum`, `real`, and
+  `string` take one; `bool` formats `"true"` or `"false"` as a string. An integer takes `d b o x X`, or a real's
+  type, which formats the real nearest it; a real takes `e E f F g G %`, or none (Python's `repr`, or with a
+  precision `g`'s form keeping a digit after the point); a string takes `s`, its precision the most bytes kept.
+  Python's `c` and `n` are left out, and precisions are at most 100.
+- **Numbers are assembled as CPython's `calc_number_widths` assembles them:** a sign, a prefix (`0x`), the
+  magnitude's text, and a suffix (`%`). The leading digits are grouped (every three, or four for `_` on `b o x X`)
+  and padded by `InsertThousandsGrouping`'s rule, so zero padding takes the separators too: `fmt.int(1234 "010,")` is
+  `00,001,234`. Every integer kind is formatted from its bignum, so Int's least value needs no case of its own.
+- **Real digits are exact:** `e`, `f`, and `%` are `real.format`'s (C's `%e` and `%f`, correctly rounded, as Python's
+  are), `g` is built from `%e`'s rounded digits by CPython's `format_float_short` rules (including the empty type's
+  threshold one place earlier), and the empty type is `conv.real` of the magnitude, the shortest digits that read
+  back. Negatives are written with `-`, not `conv`'s `~`, since this is output for people; `z` drops the sign of a
+  zero after rounding (not of an infinity). NaN cannot arise in Quest's arithmetic, which raises instead, so its
+  `nan` is untested.
+- **Templates** are `str.format` with positional fields: `{}` takes the next argument and `{i}` the i-th (the two not
+  mixed), `{:spec}` formats it, `{{` and `}}` are braces. Arguments are `Arg`s made by `ofInt`, `ofWord`,
+  `ofBignum`, `ofReal`, `ofString`, and `ofBool`, since Quest has no variadic functions. Named fields, conversions
+  (`!r`), and nested specs (`{:>{}}`) are left out, and are errors.
+- **Tables** lay out cells already formatted: `table(rows layout)` sizes each column to its widest cell, aligns it by
+  `layout.aligns` (`<`, `>`, or `^` per column), joins columns with `layout.separator`, underlines a header row with
+  dashes when `layout.header` (joined by the same separator, so the rule lines up), gives a short row empty cells,
+  and drops each line's trailing spaces. `layout(aligns)` has a two-space separator and no header.
+- **Alignment** alone is `alignLeft`, `alignRight`, and `alignCenter` (an odd space on the right, as `^` puts it).
+- **Errors are one exception, `error`,** where Python raises `ValueError`, `IndexError`, or `KeyError`: a spec that
+  is not one or a part that does not apply to the value, a real type on a bignum too large for a real, and a
+  template's malformed field, missing argument, or mixed indexes.
+
+`tests/source/stdlib/format_operations.quest` formats six integers (Int's least among them), a word, two bignums, a
+bignum beyond a real, seventeen reals (both zeros, ties, a subnormal, the infinities, a negative that rounds to
+zero), and three strings, each with every spec of its list, the errors among them; bools; templates and their errors;
+alignment; and tables. Every line but the tables' was checked against Python 3.11, error where it raises; the two
+template features left out are errors here where Python succeeds.
+
+#### Interface Summary
+
+```quest
+interface Format
+import
+    bignumLib = util/bignum : util/Bignum
+    wordLib = word : Word
+export
+    error: Exception
+    alignLeft(s: String width: Int): String
+    alignRight(s: String width: Int): String
+    alignCenter(s: String width: Int): String
+    int(n: Int spec: String): String
+    word(w: wordLib.T spec: String): String
+    bignum(n: bignumLib.T spec: String): String
+    real(r: Real spec: String): String
+    string(s: String spec: String): String
+    bool(b: Bool spec: String): String
+    Arg::TYPE
+    ofInt(n: Int): Arg
+    ofWord(w: wordLib.T): Arg
+    ofBignum(n: bignumLib.T): Arg
+    ofReal(r: Real): Arg
+    ofString(s: String): Arg
+    ofBool(b: Bool): Arg
+    template(t: String args: Array(Arg)): String
+    Def Layout = Tuple aligns: String separator: String header: Bool end
+    layout(aligns: String): Layout
+    table(rows: Array(Array(String)) layout: Layout): String
+end
+```
+
 ---
 
 ## 2. Collections (`lib/collections/`)

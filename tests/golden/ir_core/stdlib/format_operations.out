@@ -1,0 +1,400 @@
+import fmt = "util/format" : util/Format
+import bignum = "util/bignum" : util/Bignum
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import word = "word" : Word
+import real = "real" : RealOp
+import string = "string" : StringOp
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @17:45
+      let %2: String = prim <>(s, "\n") @17:59
+      let %3: Ok = call writer.putString(%1, %2) @17:28
+      return %3
+    }
+  }
+  funs {
+    fun results(f: Fun(spec: String): String, specs: Array(String)): String {
+      var line: String = "" @22:9
+      let %4: Int = prim extent(specs) @23:25
+      let %5: Int = prim -(%4, 1) @23:25
+      var i: Int = 0 @23:9
+      let %6: Bool = prim <=(i, %5) @23:9
+      if %6 { @23:9
+        loop L1 {
+          let i.1: Int = i @23:9
+          join k1(r: String) {
+            let %7: String = prim <>(" ", r) @24:29
+            let %8: String = prim <>(line, %7) @24:21
+            line := %8 @24:13
+            let %9: Bool = prim is(i, %5) @23:9
+            if %9 { @23:9
+              break L1 @23:9
+            }
+            let %10: Int = prim +(i, 1) @23:9
+            i := %10 @23:9
+          } in {
+            let %11: Exception = member fmt.error @24:71
+            try catching (%11) {
+              let %12: String = index(specs, i.1) @24:49
+              let %13: String = call f(%12) @24:47
+              let %14: String = prim <>(%13, "]") @24:47
+              let %15: String = prim <>("[", %14) @24:40
+              jump k1(%15) @24:36
+            } handle (e: Exception) {
+              let %16: Bool = prim is(e, %11) @24:36
+              if %16 { @24:36
+                jump k1("error") @24:36
+              } else {
+                reraise e @24:36
+              }
+            }
+          }
+        }
+      }
+      return line
+    }
+  }
+  let intSpecs: Array(String) = array("", "d", "+", " ", "-", "5", "<5", "^6", "*>8", "=+8", "08", "+08", ",", "_", "010,", "08,", "07,", "_b", "#b", "o", "#o", "x", "#X", "#010x", "_x", "#_x", ",x", ".2", "s", "e", ".2f", "%", "z", "zd", "z.1f", ",,", "_,", ".", "5.x", "dd") @29:16
+  let %17: Int = prim -(-9223372036854775807, 1) @33:38
+  let ints: Array(Int) = array(0, 7, -42, 1234567, %17, 255) @33:12
+  let %18: Int = prim extent(ints) @34:17
+  let %19: Int = prim -(%18, 1) @34:17
+  var i.2: Int = 0 @34:1
+  let %20: Bool = prim <=(i.2, %19) @34:1
+  if %20 { @34:1
+    loop L2 {
+      let i.3: Int = i.2 @34:1
+      let %21: Int = index(ints, i.3) @35:30
+      let %22: String = call conv.int(%21) @35:21
+      funs {
+        fun f.1(spec: String): String {
+          let %23: Int = index(ints, i.3) @35:84
+          let %24: String = call fmt.int(%23, spec) @35:76
+          return %24
+        }
+      }
+      let %25: String = call results(f.1, intSpecs) @35:42
+      let %26: String = prim <>(%22, %25) @35:21
+      let %27: String = prim <>("int ", %26) @35:11
+      do call print(%27) @35:5
+      let %28: Bool = prim is(i.2, %19) @34:1
+      if %28 { @34:1
+        break L2 @34:1
+      }
+      let %29: Int = prim +(i.2, 1) @34:1
+      i.2 := %29 @34:1
+    }
+  }
+  let realSpecs: Array(String) = array("", ".3", ".1", ".0", "e", ".2e", "E", "#.0e", "f", ".2f", ".0f", "#.0f", "F", "g", ".3g", "#g", "G", ".10g", "#.3", "%", ".1%", "+", " ", "10.2f", "<10.2f", "^10.2f", "*^12.3e", "=+12.2f", "012.2f", ",.2f", "_.3f", "015,.2f", "z.1f", "+z.1f", "z", ",", "d", "x", "s") @38:17
+  let %30: Real = member real.infinity @43:99
+  let %31: Real = member real.infinity @44:13
+  let %32: Real = prim --(0.0, %31) @44:6
+  let reals: Array(Real) = array(0.0, -0.0, 1.5, -1.5, 3.14159, 1234567.891, 1e+16, 1e-05, 0.000123, 2.5, 0.125, 1e+300, 5e-324, 123.0, %30, %32, -0.04) @42:13
+  let %33: Int = prim extent(reals) @46:17
+  let %34: Int = prim -(%33, 1) @46:17
+  var i.4: Int = 0 @46:1
+  let %35: Bool = prim <=(i.4, %34) @46:1
+  if %35 { @46:1
+    loop L3 {
+      let i.5: Int = i.4 @46:1
+      let %36: Real = index(reals, i.5) @47:32
+      let %37: String = call conv.real(%36) @47:22
+      funs {
+        fun f.2(spec.1: String): String {
+          let %38: Real = index(reals, i.5) @47:88
+          let %39: String = call fmt.real(%38, spec.1) @47:79
+          return %39
+        }
+      }
+      let %40: String = call results(f.2, realSpecs) @47:45
+      let %41: String = prim <>(%37, %40) @47:22
+      let %42: String = prim <>("real ", %41) @47:11
+      do call print(%42) @47:5
+      let %43: Bool = prim is(i.4, %34) @46:1
+      if %43 { @46:1
+        break L3 @46:1
+      }
+      let %44: Int = prim +(i.4, 1) @46:1
+      i.4 := %44 @46:1
+    }
+  }
+  let stringSpecs: Array(String) = array("", "s", "10", "<10", ">10", "^10", "^9", "*^11", ".2", "10.3", "05", "=5", "+", "-", "#", ",", "d", "z", "x<4") @50:19
+  let strings: Array(String) = array("", "ab", "hello") @53:15
+  let %45: Int = prim extent(strings) @54:17
+  let %46: Int = prim -(%45, 1) @54:17
+  var i.6: Int = 0 @54:1
+  let %47: Bool = prim <=(i.6, %46) @54:1
+  if %47 { @54:1
+    loop L4 {
+      let i.7: Int = i.6 @54:1
+      let %48: String = index(strings, i.7) @55:25
+      funs {
+        fun f.3(spec.2: String): String {
+          let %49: String = index(strings, i.7) @55:91
+          let %50: String = call fmt.string(%49, spec.2) @55:80
+          return %50
+        }
+      }
+      let %51: String = call results(f.3, stringSpecs) @55:46
+      let %52: String = prim <>("'", %51) @55:39
+      let %53: String = prim <>(%48, %52) @55:25
+      let %54: String = prim <>("string '", %53) @55:11
+      do call print(%54) @55:5
+      let %55: Bool = prim is(i.6, %46) @54:1
+      if %55 { @54:1
+        break L4 @54:1
+      }
+      let %56: Int = prim +(i.6, 1) @54:1
+      i.6 := %56 @54:1
+    }
+  }
+  let maxWord: word.T = call word.fromInt(-1) @58:15
+  funs {
+    fun f.4(spec.3: String): String {
+      let %57: String = call fmt.word(maxWord, spec.3) @59:51
+      return %57
+    }
+  }
+  let %58: Array(String) = array("", ",", "#x", "_X", "o", ".3e", "+") @59:74
+  let %59: String = call results(f.4, %58) @59:17
+  let %60: String = prim <>("word", %59) @59:7
+  do call print(%60) @59:1
+  let bigSpecs: Array(String) = array("", ",", "x", "#_b", ".3e", "g", "+.2%") @60:16
+  let %61: bignum.T = call bignum.fromInt(2) @61:22
+  let big: bignum.T = call bignum.pow(%61, 100) @61:11
+  funs {
+    fun f.5(spec.4: String): String {
+      let %62: String = call fmt.bignum(big, spec.4) @62:53
+      return %62
+    }
+  }
+  let %63: String = call results(f.5, bigSpecs) @62:19
+  let %64: String = prim <>("bignum", %63) @62:7
+  do call print(%64) @62:1
+  let %65: bignum.T = call bignum.fromInt(3) @63:38
+  let %66: bignum.T = call bignum.pow(%65, 70) @63:27
+  let negative: bignum.T = call bignum.neg(%66) @63:16
+  funs {
+    fun f.6(spec.5: String): String {
+      let %67: String = call fmt.bignum(negative, spec.5) @64:53
+      return %67
+    }
+  }
+  let %68: String = call results(f.6, bigSpecs) @64:19
+  let %69: String = prim <>("bignum", %68) @64:7
+  do call print(%69) @64:1
+  let %70: bignum.T = call bignum.fromInt(10) @65:23
+  let huge: bignum.T = call bignum.pow(%70, 400) @65:12
+  funs {
+    fun f.7(spec.6: String): String {
+      let %71: String = call fmt.bignum(huge, spec.6) @66:58
+      return %71
+    }
+  }
+  let %72: Array(String) = array(".2f", "e") @66:80
+  let %73: String = call results(f.7, %72) @66:24
+  let %74: String = call fmt.bignum(huge, "d") @67:31
+  let %75: Int = call string.length(%74) @67:17
+  let %76: String = call conv.int(%75) @67:8
+  let %77: String = prim <>(" ", %76) @66:107
+  let %78: String = prim <>(%73, %77) @66:24
+  let %79: String = prim <>("bignum huge", %78) @66:7
+  do call print(%79) @66:1
+  funs {
+    fun f.8(spec.7: String): String {
+      let %80: String = call fmt.bool(true, spec.7) @69:51
+      return %80
+    }
+  }
+  let %81: Array(String) = array("", "^8") @69:71
+  let %82: String = call results(f.8, %81) @69:17
+  funs {
+    fun f.9(spec.8: String): String {
+      let %83: String = call fmt.bool(false, spec.8) @70:42
+      return %83
+    }
+  }
+  let %84: Array(String) = array(">7", "d") @70:63
+  let %85: String = call results(f.9, %84) @70:8
+  let %86: String = prim <>(%82, %85) @69:17
+  let %87: String = prim <>("bool", %86) @69:7
+  do call print(%87) @69:1
+  funs {
+    fun filled(t: String, args: Array(format.Arg)): String {
+      join k2(r.1: String) {
+        return r.1
+      } in {
+        let %88: Exception = member fmt.error @73:98
+        try catching (%88) {
+          let %89: String = call fmt.template(t, args) @73:65
+          let %90: String = prim <>(%89, "]") @73:65
+          let %91: String = prim <>("[", %90) @73:58
+          jump k2(%91) @73:54
+        } handle (e.1: Exception) {
+          let %92: Bool = prim is(e.1, %88) @73:54
+          if %92 { @73:54
+            jump k2("error") @73:54
+          } else {
+            reraise e.1 @73:54
+          }
+        }
+      }
+    }
+  }
+  let %93: format.Arg = call fmt.ofString("a") @75:36
+  let %94: format.Arg = call fmt.ofInt(2) @75:54
+  let %95: Array(format.Arg) = array(%93, %94) @75:27
+  let %96: String = call filled("{} and {}", %95) @75:8
+  let %97: format.Arg = call fmt.ofString("x") @76:33
+  let %98: format.Arg = call fmt.ofString("y") @76:51
+  let %99: Array(format.Arg) = array(%97, %98) @76:24
+  let %100: String = call filled("{1}{0}", %99) @76:8
+  let %101: format.Arg = call fmt.ofInt(12) @77:39
+  let %102: format.Arg = call fmt.ofString("ab") @77:53
+  let %103: Array(format.Arg) = array(%101, %102) @77:30
+  let %104: String = call filled("{:>6}|{:<6}|", %103) @77:8
+  let %105: format.Arg = call fmt.ofReal(3.14159) @78:40
+  let %106: Array(format.Arg) = array(%105) @78:31
+  let %107: String = call filled("{0:.2f} {0:e}", %106) @78:8
+  let %108: format.Arg = call fmt.ofInt(5) @79:38
+  let %109: Array(format.Arg) = array(%108) @79:29
+  let %110: String = call filled("{{}} {{{}}}", %109) @79:8
+  let %111: format.Arg = call fmt.ofInt(1234567) @80:31
+  let %112: Array(format.Arg) = array(%111) @80:22
+  let %113: String = call filled("{:,}", %112) @80:8
+  let %114: format.Arg = call fmt.ofInt(1) @81:27
+  let %115: Array(format.Arg) = array(%114) @81:18
+  let %116: String = call filled("", %115) @81:8
+  let %117: format.Arg = call fmt.ofBool(true) @82:31
+  let %118: Array(format.Arg) = array(%117) @82:22
+  let %119: String = call filled("x{}y", %118) @82:8
+  let %120: String = prim <>(" ", %119) @81:48
+  let %121: String = prim <>(%116, %120) @81:8
+  let %122: String = prim <>(" ", %121) @80:58
+  let %123: String = prim <>(%113, %122) @80:8
+  let %124: String = prim <>(" ", %123) @79:59
+  let %125: String = prim <>(%110, %124) @79:8
+  let %126: String = prim <>(" ", %125) @78:68
+  let %127: String = prim <>(%107, %126) @78:8
+  let %128: String = prim <>(" ", %127) @77:80
+  let %129: String = prim <>(%104, %128) @77:8
+  let %130: String = prim <>(" ", %129) @76:77
+  let %131: String = prim <>(%100, %130) @76:8
+  let %132: String = prim <>(" ", %131) @75:75
+  let %133: String = prim <>(%96, %132) @75:8
+  let %134: String = prim <>("templates ", %133) @74:7
+  do call print(%134) @74:1
+  let %135: format.Arg = call fmt.ofInt(1) @83:20
+  let one: Array(format.Arg) = array(%135) @83:11
+  let %136: format.Arg = call fmt.ofInt(1) @84:20
+  let %137: format.Arg = call fmt.ofInt(2) @84:33
+  let two: Array(format.Arg) = array(%136, %137) @84:11
+  let %138: String = call filled("{0}{}", two) @86:8
+  let %139: String = call filled("{}{0}", two) @86:38
+  let %140: String = call filled("{", one) @86:68
+  let %141: String = call filled("}", one) @86:94
+  let %142: String = call filled("{2}", one) @87:8
+  let %143: String = call filled("{x}", one) @87:36
+  let %144: String = call filled("{:q}", one) @87:64
+  let %145: format.Arg = call fmt.ofString("s") @88:31
+  let %146: Array(format.Arg) = array(%145) @88:22
+  let %147: String = call filled("{:d}", %146) @88:8
+  let %148: String = call filled("{:>{}}", two) @88:64
+  let %149: String = call filled("{0!r}", one) @88:95
+  let %150: String = prim <>(" ", %149) @88:88
+  let %151: String = prim <>(%148, %150) @88:64
+  let %152: String = prim <>(" ", %151) @88:57
+  let %153: String = prim <>(%147, %152) @88:8
+  let %154: String = prim <>(" ", %153) @87:86
+  let %155: String = prim <>(%144, %154) @87:64
+  let %156: String = prim <>(" ", %155) @87:57
+  let %157: String = prim <>(%143, %156) @87:36
+  let %158: String = prim <>(" ", %157) @87:29
+  let %159: String = prim <>(%142, %158) @87:8
+  let %160: String = prim <>(" ", %159) @86:113
+  let %161: String = prim <>(%141, %160) @86:94
+  let %162: String = prim <>(" ", %161) @86:87
+  let %163: String = prim <>(%140, %162) @86:68
+  let %164: String = prim <>(" ", %163) @86:61
+  let %165: String = prim <>(%139, %164) @86:38
+  let %166: String = prim <>(" ", %165) @86:31
+  let %167: String = prim <>(%138, %166) @86:8
+  let %168: String = prim <>("template errors ", %167) @85:7
+  do call print(%168) @85:1
+  let %169: String = call fmt.alignLeft("ab", 5) @90:20
+  let %170: String = call fmt.alignRight("ab", 5) @90:54
+  let %171: String = call fmt.alignCenter("ab", 5) @90:89
+  let %172: String = call fmt.alignCenter("abc", 6) @91:17
+  let %173: String = call fmt.alignLeft("abcdef", 3) @91:54
+  let %174: String = call fmt.alignCenter("abcdef", 3) @91:92
+  let %175: String = prim <>(%174, "]") @91:92
+  let %176: String = prim <>("] [", %175) @91:83
+  let %177: String = prim <>(%173, %176) @91:54
+  let %178: String = prim <>("] [", %177) @91:45
+  let %179: String = prim <>(%172, %178) @91:17
+  let %180: String = prim <>("] [", %179) @91:8
+  let %181: String = prim <>(%171, %180) @90:89
+  let %182: String = prim <>("] [", %181) @90:80
+  let %183: String = prim <>(%170, %182) @90:54
+  let %184: String = prim <>("] [", %183) @90:45
+  let %185: String = prim <>(%169, %184) @90:20
+  let %186: String = prim <>("align [", %185) @90:7
+  do call print(%186) @90:1
+  let %187: Array(String) = array("benchmark", "seconds", "ratio") @98:5
+  let %188: String = call fmt.real(1.234, ".3f") @99:20
+  let %189: String = call fmt.real(0.98, ".2f") @99:42
+  let %190: Array(String) = array("fib", %188, %189) @99:5
+  let %191: String = call fmt.real(12.5, ".3f") @100:22
+  let %192: String = call fmt.real(1.05, ".2f") @100:43
+  let %193: Array(String) = array("nbody", %191, %192) @100:5
+  let rows: Array(Array(String)) = array(%187, %190, %193) @97:12
+  let %194: writer.T = member writer.output @102:18
+  let aligns: String = "<>>" @102:66
+  let separator: String = "  " @102:88
+  let header: Bool = true @102:106
+  let %195: Tuple aligns: String separator: String header: Bool end = tuple(aligns, separator, header) @102:47
+  let %196: String = call fmt.table(rows, %195) @102:32
+  do call writer.putString(%194, %196) @102:1
+  let %197: writer.T = member writer.output @103:18
+  let aligns.1: String = "<>>" @103:66
+  let separator.1: String = " | " @103:88
+  let header.1: Bool = true @103:107
+  let %198: Tuple aligns: String separator: String header: Bool end = tuple(aligns.1, separator.1, header.1) @103:47
+  let %199: String = call fmt.table(rows, %198) @103:32
+  do call writer.putString(%197, %199) @103:1
+  let %200: Array(String) = array("a", "centered", "x") @105:5
+  let %201: Array(String) = array("bbb", "c") @106:5
+  let %202: Array(String) = array("cc") @107:5
+  let ragged: Array(Array(String)) = array(%200, %201, %202) @104:14
+  let %203: writer.T = member writer.output @109:18
+  let %204: Layout = call fmt.layout("<^") @109:49
+  let %205: String = call fmt.table(ragged, %204) @109:32
+  do call writer.putString(%203, %205) @109:1
+  let %206: Array(Array(String)) = array() @110:30
+  let %207: Layout = call fmt.layout("") @110:58
+  let %208: String = call fmt.table(%206, %207) @110:20
+  let %209: String = prim <>(%208, "]") @110:20
+  let %210: String = prim <>("empty [", %209) @110:7
+  do call print(%210) @110:1
+  join k3(r.2: String) {
+    let %211: String = prim <>("bad align ", r.2) @111:7
+    do call print(%211) @111:1
+  } in {
+    let %212: Exception = member fmt.error @111:65
+    try catching (%212) {
+      let %213: Layout = call fmt.layout("<?") @111:42
+      let %214: String = call fmt.table(rows, %213) @111:27
+      jump k3(%214) @111:23
+    } handle (e.2: Exception) {
+      let %215: Bool = prim is(e.2, %212) @111:23
+      if %215 { @111:23
+        jump k3("error") @111:23
+      } else {
+        reraise e.2 @111:23
+      }
+    }
+  }
+}
+

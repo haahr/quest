@@ -1,0 +1,111 @@
+(* Standard library: util/format (docs/libraries.md section 1.20): every part
+ * of a spec on integers (Int's extremes, a word, bignums), reals (zeros of
+ * both signs, ties, the extremes, a subnormal, the infinities, a negative
+ * that rounds to zero), and strings, each with specs that are errors; bools;
+ * templates and their errors; alignment; and tables. Each line but the
+ * tables' is what Python 3.11's format and str.format give, error where they
+ * raise; the two template features left out (nested specs and conversions)
+ * are errors here. *)
+
+import
+    fmt = util/format : util/Format
+    util/bignum : util/Bignum
+    writer : Writer
+    conv : Conv
+    word : Word
+;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+(* Each spec's result in brackets, or error *)
+let results(f(spec: String): String specs: Array(String)): String =
+    begin
+        let var line = ""
+        for i = 0 upto {extent(specs) - 1} do
+            line := line <> " " <> try "[" <> f(specs[i]) <> "]" when fmt.error then "error" end
+        end
+        line
+    end;
+
+let intSpecs = array of
+    "" "d" "+" " " "-" "5" "<5" "^6" "*>8" "=+8" "08" "+08" "," "_" "010," "08," "07," "_b" "#b" "o" "#o" "x" "#X"
+    "#010x" "_x" "#_x" ",x" ".2" "s" "e" ".2f" "%" "z" "zd" "z.1f" ",," "_," "." "5.x" "dd"
+end;
+let ints = array of 0 7 ~42 1234567 {~9223372036854775807 - 1} 255 end;
+for i = 0 upto {extent(ints) - 1} do
+    print("int " <> conv.int(ints[i]) <> results(fun(spec: String): String fmt.int(ints[i] spec) intSpecs))
+end;
+
+let realSpecs = array of
+    "" ".3" ".1" ".0" "e" ".2e" "E" "#.0e" "f" ".2f" ".0f" "#.0f" "F" "g" ".3g" "#g" "G" ".10g" "#.3" "%" ".1%" "+" " "
+    "10.2f" "<10.2f" "^10.2f" "*^12.3e" "=+12.2f" "012.2f" ",.2f" "_.3f" "015,.2f" "z.1f" "+z.1f" "z" "," "d" "x" "s"
+end;
+let reals = array of
+    0.0 ~0.0 1.5 ~1.5 3.14159 1234567.891 1.0e16 1.0e~5 0.000123 2.5 0.125 1.0e300 5.0e~324 123.0 real.infinity
+    {0.0 -- real.infinity} ~0.04
+end;
+for i = 0 upto {extent(reals) - 1} do
+    print("real " <> conv.real(reals[i]) <> results(fun(spec: String): String fmt.real(reals[i] spec) realSpecs))
+end;
+
+let stringSpecs = array of
+    "" "s" "10" "<10" ">10" "^10" "^9" "*^11" ".2" "10.3" "05" "=5" "+" "-" "#" "," "d" "z" "x<4"
+end;
+let strings = array of "" "ab" "hello" end;
+for i = 0 upto {extent(strings) - 1} do
+    print("string '" <> strings[i] <> "'" <> results(fun(spec: String): String fmt.string(strings[i] spec) stringSpecs))
+end;
+
+let maxWord = word.fromInt(~1);
+print("word" <> results(fun(spec: String): String fmt.word(maxWord spec) array of "" "," "#x" "_X" "o" ".3e" "+" end));
+let bigSpecs = array of "" "," "x" "#_b" ".3e" "g" "+.2%" end;
+let big = bignum.pow(bignum.fromInt(2) 100);
+print("bignum" <> results(fun(spec: String): String fmt.bignum(big spec) bigSpecs));
+let negative = bignum.neg(bignum.pow(bignum.fromInt(3) 70));
+print("bignum" <> results(fun(spec: String): String fmt.bignum(negative spec) bigSpecs));
+let huge = bignum.pow(bignum.fromInt(10) 400);
+print("bignum huge" <> results(fun(spec: String): String fmt.bignum(huge spec) array of ".2f" "e" end) <> " "
+    <> conv.int(string.length(fmt.bignum(huge "d"))));
+
+print("bool" <> results(fun(spec: String): String fmt.bool(true spec) array of "" "^8" end)
+    <> results(fun(spec: String): String fmt.bool(false spec) array of ">7" "d" end));
+
+(* A template's result in brackets, or error *)
+let filled(t: String args: Array(fmt.Arg)): String = try "[" <> fmt.template(t args) <> "]" when fmt.error then "error" end;
+print("templates "
+    <> filled("{} and {}" array of fmt.ofString("a") fmt.ofInt(2) end) <> " "
+    <> filled("{1}{0}" array of fmt.ofString("x") fmt.ofString("y") end) <> " "
+    <> filled("{:>6}|{:<6}|" array of fmt.ofInt(12) fmt.ofString("ab") end) <> " "
+    <> filled("{0:.2f} {0:e}" array of fmt.ofReal(3.14159) end) <> " "
+    <> filled("{{}} {{{}}}" array of fmt.ofInt(5) end) <> " "
+    <> filled("{:,}" array of fmt.ofInt(1234567) end) <> " "
+    <> filled("" array of fmt.ofInt(1) end) <> " "
+    <> filled("x{}y" array of fmt.ofBool(true) end));
+let one = array of fmt.ofInt(1) end;
+let two = array of fmt.ofInt(1) fmt.ofInt(2) end;
+print("template errors "
+    <> filled("{0}{}" two) <> " " <> filled("{}{0}" two) <> " " <> filled("{" one) <> " " <> filled("}" one) <> " "
+    <> filled("{2}" one) <> " " <> filled("{x}" one) <> " " <> filled("{:q}" one) <> " "
+    <> filled("{:d}" array of fmt.ofString("s") end) <> " " <> filled("{:>{}}" two) <> " " <> filled("{0!r}" one));
+
+print("align [" <> fmt.alignLeft("ab" 5) <> "] [" <> fmt.alignRight("ab" 5) <> "] [" <> fmt.alignCenter("ab" 5)
+    <> "] [" <> fmt.alignCenter("abc" 6) <> "] [" <> fmt.alignLeft("abcdef" 3) <> "] [" <> fmt.alignCenter("abcdef" 3)
+    <> "]");
+
+(* Tables: a header, rule, and right-aligned numbers; the default layout with
+ * a ragged row and a centered column; an empty table; and an align that is
+ * not one *)
+let rows = array of
+    array of "benchmark" "seconds" "ratio" end
+    array of "fib" fmt.real(1.234 ".3f") fmt.real(0.98 ".2f") end
+    array of "nbody" fmt.real(12.5 ".3f") fmt.real(1.05 ".2f") end
+end;
+writer.putString(writer.output fmt.table(rows tuple let aligns = "<>>" let separator = "  " let header = true end));
+writer.putString(writer.output fmt.table(rows tuple let aligns = "<>>" let separator = " | " let header = true end));
+let ragged = array of
+    array of "a" "centered" "x" end
+    array of "bbb" "c" end
+    array of "cc" end
+end;
+writer.putString(writer.output fmt.table(ragged fmt.layout("<^")));
+print("empty [" <> fmt.table(array of :Array(String) end fmt.layout("")) <> "]");
+print("bad align " <> try fmt.table(rows fmt.layout("<?")) when fmt.error then "error" end);
