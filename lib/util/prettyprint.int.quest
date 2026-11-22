@@ -1,0 +1,75 @@
+(* Documents laid out to fit a width: Wadler's "prettier printer", with
+ * Leijen's align, hang, and fill (Haskell's wl-pprint), rendered strictly
+ * (Lindig's "Strictly Pretty"). A document is text with breaks; render
+ * chooses, group by group, whether a group's breaks are flat (a space, or
+ * what breakOr gives) or newlines, so that lines fit the width when they can.
+ *
+ *     import pp = util/prettyPrint : util/PrettyPrint;
+ *     let <+> = pp.<+>;
+ *     pp.render(pp.bracket("f(" "," ")" 2 args) 80)
+ *
+ * Widths count bytes. A line never ends in spaces. *)
+
+interface PrettyPrint
+import
+    writer : Writer
+export
+    (* A document: immutable, shared freely, built in time linear in its
+     * size *)
+    T::TYPE
+
+    (* Raised by text for a string holding a newline, and by render for a
+     * width less than 1 *)
+    error: Exception
+
+    (* ---- Atoms *)
+    empty: T
+    (* s, which has no newline *)
+    text(s: String): T
+    (* A break: a space when its group is flat, else a newline and the
+     * indentation *)
+    line: T
+    (* A break that is nothing when flat *)
+    softBreak: T
+    (* A break that is flat when flat, else a newline: the general form of
+     * line and softBreak *)
+    breakOr(flat: String): T
+    (* Always a newline; a group holding one is never flat *)
+    hardLine: T
+
+    (* ---- Combining *)
+    (* a, then b: the infix form of cat *)
+    <+>(a: T b: T): T
+    cat(a: T b: T): T
+    concat(ds: Array(T)): T
+    (* d, its breaks indented by i more than the enclosing nesting *)
+    nest(i: Int d: T): T
+    (* d, its breaks indented to the column d starts at (Leijen's align) *)
+    align(d: T): T
+    (* align, with breaks indented i past that column (Leijen's hang) *)
+    hang(i: Int d: T): T
+    (* d flat if it fits in the rest of the line (up to the next break that
+     * is a newline), else broken; a group's breaks are decided together, and
+     * groups inside a broken one again *)
+    group(d: T): T
+
+    (* ---- Lists *)
+    (* ds with separator then a line between each pair, in one group: all on
+     * one line, or each on its own *)
+    sep(separator: String ds: Array(T)): T
+    (* ds with separator then a break between each pair, as many on each line
+     * as fit (Leijen's fillSep), each break decided alone: paragraph
+     * layout *)
+    fill(separator: String ds: Array(T)): T
+    (* open, ds with separator then a line between each pair, and close, in
+     * one group; broken, each of ds on a line of its own indented by i, and
+     * close on a line of its own: the shape of a call, array, or record *)
+    bracket(open: String separator: String close: String i: Int ds: Array(T)): T
+
+    (* ---- Rendering *)
+    (* d laid out for lines of width *)
+    render(d: T width: Int): String
+    write(wr: writer.T d: T width: Int): Ok
+    (* d with every group flat (hardLines still break) *)
+    renderFlat(d: T): String
+end

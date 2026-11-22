@@ -1,0 +1,2093 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('pp') 'PrettyPrint' ('util/prettyPrint') 'util/PrettyPrint')
+        (ImportItem ('writer') 'Writer')
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (LetValueBinding
+      :name '<+>'
+      :value (ExprSelect
+        :target (ExprId 'pp')
+        :field '<+>'
+      )
+    )
+    (LetValueBinding
+      :name 'print'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 't'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'pp')
+          :field 'text'
+        )
+        :args (
+          (ExprId 's')
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('pp' 'T'))
+    )
+    (LetValueBinding
+      :name 'show'
+      :value (ExprFor
+        :var_name 'i'
+        :start (ExprInt 0 '0')
+        :stop (ExprInfix
+          :left (ExprApp
+            :func (ExprId 'extent')
+            :args (
+              (ExprId 'widths')
+            )
+          )
+          :op '-'
+          :right (ExprInt 1 '1')
+        )
+        :body (ExprBlock
+          :bindings (
+            (ExprStmt
+              :expr (ExprApp
+                :func (ExprId 'print')
+                :args (
+                  (ExprInfix
+                    :left (ExprString '-- ' '"-- "')
+                    :op '<>'
+                    :right (ExprInfix
+                      :left (ExprId 'name')
+                      :op '<>'
+                      :right (ExprInfix
+                        :left (ExprString ' at ' '" at "')
+                        :op '<>'
+                        :right (ExprApp
+                          :func (ExprSelect
+                            :target (ExprId 'conv')
+                            :field 'int'
+                          )
+                          :args (
+                            (ExprIndex
+                              :target (ExprId 'widths')
+                              :index (ExprId 'i')
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprApp
+                :func (ExprId 'print')
+                :args (
+                  (ExprInfix
+                    :left (ExprString '|' '"|"')
+                    :op '<>'
+                    :right (ExprInfix
+                      :left (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'pp')
+                          :field 'render'
+                        )
+                        :args (
+                          (ExprId 'd')
+                          (ExprIndex
+                            :target (ExprId 'widths')
+                            :index (ExprId 'i')
+                          )
+                        )
+                      )
+                      :op '<>'
+                      :right (ExprString '|' '"|"')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'name'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'd'
+          :type_annot (TypePath ('pp' 'T'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'widths'
+          :type_annot (TypeArray
+            :element_type (TypePath ('Int'))
+          )
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (TypeBinding
+      :name 'Tree'
+      :type_val (TypeTuple
+        :fields (
+          (FieldSig
+            :name 'name'
+            :type_sig (TypePath ('String'))
+            :mode VALUE
+          )
+          (FieldSig
+            :name 'children'
+            :type_sig (TypeArray
+              :element_type (TypePath ('Tree'))
+            )
+            :mode VALUE
+          )
+        )
+      )
+      :is_rec True
+    )
+    (LetValueBinding
+      :name 'leaf'
+      :value (ExprTuple
+        :fields (
+          (TupleBinding
+            :name 'name'
+            :value (ExprId 'name')
+          )
+          (TupleBinding
+            :name 'children'
+            :value (ExprArray
+              :element_type (TypePath ('Tree'))
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'name'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Tree'))
+    )
+    (LetValueBinding
+      :name 'node'
+      :value (ExprTuple
+        :fields (
+          (TupleBinding
+            :name 'name'
+            :value (ExprId 'name')
+          )
+          (TupleBinding
+            :name 'children'
+            :value (ExprId 'children')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'name'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'children'
+          :type_annot (TypeArray
+            :element_type (TypePath ('Tree'))
+          )
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Tree'))
+    )
+    (LetValueBinding
+      :name 'showTree'
+      :value (ExprIf
+        :cond (ExprInfix
+          :left (ExprApp
+            :func (ExprId 'extent')
+            :args (
+              (ExprSelect
+                :target (ExprId 'tree')
+                :field 'children'
+              )
+            )
+          )
+          :op 'is'
+          :right (ExprInt 0 '0')
+        )
+        :then_branch (ExprApp
+          :func (ExprId 't')
+          :args (
+            (ExprSelect
+              :target (ExprId 'tree')
+              :field 'name'
+            )
+          )
+        )
+        :else_branch (ExprBlock
+          :bindings (
+            (LetValueBinding
+              :name 'docs'
+              :value (ExprArrayRep
+                :count (ExprApp
+                  :func (ExprId 'extent')
+                  :args (
+                    (ExprSelect
+                      :target (ExprId 'tree')
+                      :field 'children'
+                    )
+                  )
+                )
+                :init_val (ExprSelect
+                  :target (ExprId 'pp')
+                  :field 'empty'
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprFor
+                :var_name 'i'
+                :start (ExprInt 0 '0')
+                :stop (ExprInfix
+                  :left (ExprApp
+                    :func (ExprId 'extent')
+                    :args (
+                      (ExprSelect
+                        :target (ExprId 'tree')
+                        :field 'children'
+                      )
+                    )
+                  )
+                  :op '-'
+                  :right (ExprInt 1 '1')
+                )
+                :body (ExprInfix
+                  :left (ExprIndex
+                    :target (ExprId 'docs')
+                    :index (ExprId 'i')
+                  )
+                  :op ':='
+                  :right (ExprApp
+                    :func (ExprId 'showTree')
+                    :args (
+                      (ExprIndex
+                        :target (ExprSelect
+                          :target (ExprId 'tree')
+                          :field 'children'
+                        )
+                        :index (ExprId 'i')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprInfix
+                :left (ExprApp
+                  :func (ExprId 't')
+                  :args (
+                    (ExprSelect
+                      :target (ExprId 'tree')
+                      :field 'name'
+                    )
+                  )
+                )
+                :op '<+>'
+                :right (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'pp')
+                    :field 'bracket'
+                  )
+                  :args (
+                    (ExprString '[' '"["')
+                    (ExprString ',' '","')
+                    (ExprString ']' '"]"')
+                    (ExprInt 2 '2')
+                    (ExprId 'docs')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'tree'
+          :type_annot (TypePath ('Tree'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('pp' 'T'))
+      :is_rec True
+    )
+    (LetValueBinding
+      :name 'tree'
+      :value (ExprApp
+        :func (ExprId 'showTree')
+        :args (
+          (ExprApp
+            :func (ExprId 'node')
+            :args (
+              (ExprString 'aaa' '"aaa"')
+              (ExprArray
+                :elements (
+                  (ExprApp
+                    :func (ExprId 'node')
+                    :args (
+                      (ExprString 'bbbbb' '"bbbbb"')
+                      (ExprArray
+                        :elements (
+                          (ExprApp
+                            :func (ExprId 'leaf')
+                            :args (
+                              (ExprString 'ccc' '"ccc"')
+                            )
+                          )
+                          (ExprApp
+                            :func (ExprId 'leaf')
+                            :args (
+                              (ExprString 'dd' '"dd"')
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                  (ExprApp
+                    :func (ExprId 'leaf')
+                    :args (
+                      (ExprString 'eee' '"eee"')
+                    )
+                  )
+                  (ExprApp
+                    :func (ExprId 'node')
+                    :args (
+                      (ExprString 'ffff' '"ffff"')
+                      (ExprArray
+                        :elements (
+                          (ExprApp
+                            :func (ExprId 'leaf')
+                            :args (
+                              (ExprString 'gg' '"gg"')
+                            )
+                          )
+                          (ExprApp
+                            :func (ExprId 'leaf')
+                            :args (
+                              (ExprString 'hhh' '"hhh"')
+                            )
+                          )
+                          (ExprApp
+                            :func (ExprId 'leaf')
+                            :args (
+                              (ExprString 'ii' '"ii"')
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprString 'tree' '"tree"')
+          (ExprId 'tree')
+          (ExprArray
+            :elements (
+              (ExprInt 80 '80')
+              (ExprInt 30 '30')
+              (ExprInt 20 '20')
+              (ExprInt 10 '10')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'member'
+      :value (ExprInfix
+        :left (ExprApp
+          :func (ExprId 't')
+          :args (
+            (ExprInfix
+              :left (ExprString '"' '"\\""')
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprId 'name')
+                :op '<>'
+                :right (ExprString '": ' '"\\": "')
+              )
+            )
+          )
+        )
+        :op '<+>'
+        :right (ExprId 'value')
+      )
+      :params (
+        (FormalParam
+          :name 'name'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'value'
+          :type_annot (TypePath ('pp' 'T'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('pp' 'T'))
+    )
+    (LetValueBinding
+      :name 'json'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'pp')
+          :field 'bracket'
+        )
+        :args (
+          (ExprString '{' '"{"')
+          (ExprString ',' '","')
+          (ExprString '}' '"}"')
+          (ExprInt 2 '2')
+          (ExprArray
+            :elements (
+              (ExprApp
+                :func (ExprId 'member')
+                :args (
+                  (ExprString 'name' '"name"')
+                  (ExprApp
+                    :func (ExprId 't')
+                    :args (
+                      (ExprString '"quest"' '"\\"quest\\""')
+                    )
+                  )
+                )
+              )
+              (ExprApp
+                :func (ExprId 'member')
+                :args (
+                  (ExprString 'versions' '"versions"')
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'pp')
+                      :field 'bracket'
+                    )
+                    :args (
+                      (ExprString '[' '"["')
+                      (ExprString ',' '","')
+                      (ExprString ']' '"]"')
+                      (ExprInt 2 '2')
+                      (ExprArray
+                        :elements (
+                          (ExprApp
+                            :func (ExprId 't')
+                            :args (
+                              (ExprString '1' '"1"')
+                            )
+                          )
+                          (ExprApp
+                            :func (ExprId 't')
+                            :args (
+                              (ExprString '2' '"2"')
+                            )
+                          )
+                          (ExprApp
+                            :func (ExprId 't')
+                            :args (
+                              (ExprString '3' '"3"')
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+              (ExprApp
+                :func (ExprId 'member')
+                :args (
+                  (ExprString 'authors' '"authors"')
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'pp')
+                      :field 'bracket'
+                    )
+                    :args (
+                      (ExprString '[' '"["')
+                      (ExprString ',' '","')
+                      (ExprString ']' '"]"')
+                      (ExprInt 2 '2')
+                      (ExprArray
+                        :elements (
+                          (ExprApp
+                            :func (ExprId 't')
+                            :args (
+                              (ExprString '"Cardelli"' '"\\"Cardelli\\""')
+                            )
+                          )
+                          (ExprApp
+                            :func (ExprId 't')
+                            :args (
+                              (ExprString '"Wadler"' '"\\"Wadler\\""')
+                            )
+                          )
+                          (ExprApp
+                            :func (ExprId 't')
+                            :args (
+                              (ExprString '"Leijen"' '"\\"Leijen\\""')
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+              (ExprApp
+                :func (ExprId 'member')
+                :args (
+                  (ExprString 'empty' '"empty"')
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'pp')
+                      :field 'bracket'
+                    )
+                    :args (
+                      (ExprString '[' '"["')
+                      (ExprString ',' '","')
+                      (ExprString ']' '"]"')
+                      (ExprInt 2 '2')
+                      (ExprArray
+                        :element_type (TypePath ('pp' 'T'))
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprString 'json' '"json"')
+          (ExprId 'json')
+          (ExprArray
+            :elements (
+              (ExprInt 100 '100')
+              (ExprInt 60 '60')
+              (ExprInt 40 '40')
+              (ExprInt 20 '20')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'call'
+      :value (ExprInfix
+        :left (ExprApp
+          :func (ExprId 't')
+          :args (
+            (ExprId 'f')
+          )
+        )
+        :op '<+>'
+        :right (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'pp')
+            :field 'bracket'
+          )
+          :args (
+            (ExprString '(' '"("')
+            (ExprString ',' '","')
+            (ExprString ')' '")"')
+            (ExprInt 4 '4')
+            (ExprId 'args')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'f'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'args'
+          :type_annot (TypeArray
+            :element_type (TypePath ('pp' 'T'))
+          )
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('pp' 'T'))
+    )
+    (LetValueBinding
+      :name 'calls'
+      :value (ExprApp
+        :func (ExprId 'call')
+        :args (
+          (ExprString 'outer' '"outer"')
+          (ExprArray
+            :elements (
+              (ExprApp
+                :func (ExprId 'call')
+                :args (
+                  (ExprString 'inner' '"inner"')
+                  (ExprArray
+                    :elements (
+                      (ExprApp
+                        :func (ExprId 't')
+                        :args (
+                          (ExprString 'alpha' '"alpha"')
+                        )
+                      )
+                      (ExprApp
+                        :func (ExprId 't')
+                        :args (
+                          (ExprString 'beta' '"beta"')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+              (ExprApp
+                :func (ExprId 't')
+                :args (
+                  (ExprString 'gamma' '"gamma"')
+                )
+              )
+              (ExprApp
+                :func (ExprId 'call')
+                :args (
+                  (ExprString 'other' '"other"')
+                  (ExprArray
+                    :elements (
+                      (ExprApp
+                        :func (ExprId 'call')
+                        :args (
+                          (ExprString 'deep' '"deep"')
+                          (ExprArray
+                            :elements (
+                              (ExprApp
+                                :func (ExprId 't')
+                                :args (
+                                  (ExprString 'x' '"x"')
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                      (ExprApp
+                        :func (ExprId 't')
+                        :args (
+                          (ExprString 'delta' '"delta"')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprString 'calls' '"calls"')
+          (ExprId 'calls')
+          (ExprArray
+            :elements (
+              (ExprInt 80 '80')
+              (ExprInt 40 '40')
+              (ExprInt 25 '25')
+              (ExprInt 12 '12')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'words'
+      :value (ExprArray
+        :elements (
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString "Wadler's" '"Wadler\'s"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'printer' '"printer"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'lays' '"lays"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'out' '"out"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'text' '"text"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'in' '"in"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'lines' '"lines"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'that' '"that"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'fit' '"fit"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'a' '"a"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'width,' '"width,"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'choosing' '"choosing"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'for' '"for"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'each' '"each"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'group' '"group"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'whether' '"whether"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'its' '"its"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'breaks' '"breaks"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'are' '"are"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 't')
+            :args (
+              (ExprString 'spaces.' '"spaces."')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprString 'fill' '"fill"')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'pp')
+              :field 'fill'
+            )
+            :args (
+              (ExprString '' '""')
+              (ExprId 'words')
+            )
+          )
+          (ExprArray
+            :elements (
+              (ExprInt 40 '40')
+              (ExprInt 25 '25')
+              (ExprInt 12 '12')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprString 'fill with commas' '"fill with commas"')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'pp')
+              :field 'fill'
+            )
+            :args (
+              (ExprString ',' '","')
+              (ExprArray
+                :elements (
+                  (ExprApp
+                    :func (ExprId 't')
+                    :args (
+                      (ExprString 'one' '"one"')
+                    )
+                  )
+                  (ExprApp
+                    :func (ExprId 't')
+                    :args (
+                      (ExprString 'two' '"two"')
+                    )
+                  )
+                  (ExprApp
+                    :func (ExprId 't')
+                    :args (
+                      (ExprString 'three' '"three"')
+                    )
+                  )
+                  (ExprApp
+                    :func (ExprId 't')
+                    :args (
+                      (ExprString 'four' '"four"')
+                    )
+                  )
+                  (ExprApp
+                    :func (ExprId 't')
+                    :args (
+                      (ExprString 'five' '"five"')
+                    )
+                  )
+                  (ExprApp
+                    :func (ExprId 't')
+                    :args (
+                      (ExprString 'six' '"six"')
+                    )
+                  )
+                )
+              )
+            )
+          )
+          (ExprArray
+            :elements (
+              (ExprInt 20 '20')
+              (ExprInt 12 '12')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'block'
+      :value (ExprInfix
+        :left (ExprApp
+          :func (ExprId 't')
+          :args (
+            (ExprString 'let ' '"let "')
+          )
+        )
+        :op '<+>'
+        :right (ExprInfix
+          :left (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'pp')
+              :field 'align'
+            )
+            :args (
+              (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'pp')
+                  :field 'concat'
+                )
+                :args (
+                  (ExprArray
+                    :elements (
+                      (ExprApp
+                        :func (ExprId 't')
+                        :args (
+                          (ExprString 'x = 1' '"x = 1"')
+                        )
+                      )
+                      (ExprSelect
+                        :target (ExprId 'pp')
+                        :field 'hardLine'
+                      )
+                      (ExprApp
+                        :func (ExprId 't')
+                        :args (
+                          (ExprString 'y = 2' '"y = 2"')
+                        )
+                      )
+                      (ExprSelect
+                        :target (ExprId 'pp')
+                        :field 'hardLine'
+                      )
+                      (ExprApp
+                        :func (ExprId 't')
+                        :args (
+                          (ExprString 'z = 3' '"z = 3"')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+          :op '<+>'
+          :right (ExprInfix
+            :left (ExprSelect
+              :target (ExprId 'pp')
+              :field 'hardLine'
+            )
+            :op '<+>'
+            :right (ExprApp
+              :func (ExprId 't')
+              :args (
+                (ExprString 'in x + y + z' '"in x + y + z"')
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprString 'aligned' '"aligned"')
+          (ExprId 'block')
+          (ExprArray
+            :elements (
+              (ExprInt 40 '40')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'hung'
+      :value (ExprInfix
+        :left (ExprApp
+          :func (ExprId 't')
+          :args (
+            (ExprString 'result: ' '"result: "')
+          )
+        )
+        :op '<+>'
+        :right (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'pp')
+            :field 'hang'
+          )
+          :args (
+            (ExprInt 2 '2')
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'pp')
+                :field 'sep'
+              )
+              :args (
+                (ExprString '' '""')
+                (ExprArray
+                  :elements (
+                    (ExprApp
+                      :func (ExprId 't')
+                      :args (
+                        (ExprString 'first' '"first"')
+                      )
+                    )
+                    (ExprApp
+                      :func (ExprId 't')
+                      :args (
+                        (ExprString 'second' '"second"')
+                      )
+                    )
+                    (ExprApp
+                      :func (ExprId 't')
+                      :args (
+                        (ExprString 'third' '"third"')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprString 'hung' '"hung"')
+          (ExprId 'hung')
+          (ExprArray
+            :elements (
+              (ExprInt 40 '40')
+              (ExprInt 20 '20')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'hard'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'pp')
+          :field 'group'
+        )
+        :args (
+          (ExprInfix
+            :left (ExprApp
+              :func (ExprId 't')
+              :args (
+                (ExprString 'a' '"a"')
+              )
+            )
+            :op '<+>'
+            :right (ExprInfix
+              :left (ExprSelect
+                :target (ExprId 'pp')
+                :field 'line'
+              )
+              :op '<+>'
+              :right (ExprInfix
+                :left (ExprApp
+                  :func (ExprId 't')
+                  :args (
+                    (ExprString 'b' '"b"')
+                  )
+                )
+                :op '<+>'
+                :right (ExprInfix
+                  :left (ExprSelect
+                    :target (ExprId 'pp')
+                    :field 'hardLine'
+                  )
+                  :op '<+>'
+                  :right (ExprInfix
+                    :left (ExprApp
+                      :func (ExprId 't')
+                      :args (
+                        (ExprString 'c' '"c"')
+                      )
+                    )
+                    :op '<+>'
+                    :right (ExprInfix
+                      :left (ExprSelect
+                        :target (ExprId 'pp')
+                        :field 'line'
+                      )
+                      :op '<+>'
+                      :right (ExprApp
+                        :func (ExprId 't')
+                        :args (
+                          (ExprString 'd' '"d"')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprString 'hard' '"hard"')
+          (ExprId 'hard')
+          (ExprArray
+            :elements (
+              (ExprInt 80 '80')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'followed'
+      :value (ExprInfix
+        :left (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'pp')
+            :field 'group'
+          )
+          :args (
+            (ExprInfix
+              :left (ExprApp
+                :func (ExprId 't')
+                :args (
+                  (ExprString 'f(' '"f("')
+                )
+              )
+              :op '<+>'
+              :right (ExprInfix
+                :left (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'pp')
+                    :field 'nest'
+                  )
+                  :args (
+                    (ExprInt 2 '2')
+                    (ExprInfix
+                      :left (ExprSelect
+                        :target (ExprId 'pp')
+                        :field 'softBreak'
+                      )
+                      :op '<+>'
+                      :right (ExprApp
+                        :func (ExprId 't')
+                        :args (
+                          (ExprString 'x' '"x"')
+                        )
+                      )
+                    )
+                  )
+                )
+                :op '<+>'
+                :right (ExprInfix
+                  :left (ExprSelect
+                    :target (ExprId 'pp')
+                    :field 'softBreak'
+                  )
+                  :op '<+>'
+                  :right (ExprApp
+                    :func (ExprId 't')
+                    :args (
+                      (ExprString ')' '")"')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+        :op '<+>'
+        :right (ExprApp
+          :func (ExprId 't')
+          :args (
+            (ExprString ' + something long' '" + something long"')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprString 'followed' '"followed"')
+          (ExprId 'followed')
+          (ExprArray
+            :elements (
+              (ExprInt 40 '40')
+              (ExprInt 12 '12')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'alternative'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'pp')
+          :field 'group'
+        )
+        :args (
+          (ExprInfix
+            :left (ExprApp
+              :func (ExprId 't')
+              :args (
+                (ExprString 'a' '"a"')
+              )
+            )
+            :op '<+>'
+            :right (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'pp')
+                  :field 'breakOr'
+                )
+                :args (
+                  (ExprString ' | ' '" | "')
+                )
+              )
+              :op '<+>'
+              :right (ExprInfix
+                :left (ExprApp
+                  :func (ExprId 't')
+                  :args (
+                    (ExprString 'b' '"b"')
+                  )
+                )
+                :op '<+>'
+                :right (ExprInfix
+                  :left (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'pp')
+                      :field 'breakOr'
+                    )
+                    :args (
+                      (ExprString ' | ' '" | "')
+                    )
+                  )
+                  :op '<+>'
+                  :right (ExprApp
+                    :func (ExprId 't')
+                    :args (
+                      (ExprString 'c' '"c"')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprString 'breakOr' '"breakOr"')
+          (ExprId 'alternative')
+          (ExprArray
+            :elements (
+              (ExprInt 20 '20')
+              (ExprInt 5 '5')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'flat [' '"flat ["')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'pp')
+                  :field 'renderFlat'
+                )
+                :args (
+                  (ExprId 'json')
+                )
+              )
+              :op '<>'
+              :right (ExprString ']' '"]"')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'flat hard [' '"flat hard ["')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'pp')
+                  :field 'renderFlat'
+                )
+                :args (
+                  (ExprId 'hard')
+                )
+              )
+              :op '<>'
+              :right (ExprString ']' '"]"')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'cat ' '"cat "')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'pp')
+                  :field 'render'
+                )
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'pp')
+                      :field 'cat'
+                    )
+                    :args (
+                      (ExprApp
+                        :func (ExprId 't')
+                        :args (
+                          (ExprString 'x' '"x"')
+                        )
+                      )
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'pp')
+                          :field 'cat'
+                        )
+                        :args (
+                          (ExprSelect
+                            :target (ExprId 'pp')
+                            :field 'empty'
+                          )
+                          (ExprApp
+                            :func (ExprId 't')
+                            :args (
+                              (ExprString 'y' '"y"')
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                  (ExprInt 10 '10')
+                )
+              )
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprString ' ' '" "')
+                :op '<>'
+                :right (ExprInfix
+                  :left (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'pp')
+                      :field 'render'
+                    )
+                    :args (
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'pp')
+                          :field 'concat'
+                        )
+                        :args (
+                          (ExprArray
+                            :elements (
+                              (ExprApp
+                                :func (ExprId 't')
+                                :args (
+                                  (ExprString 'p' '"p"')
+                                )
+                              )
+                              (ExprApp
+                                :func (ExprId 't')
+                                :args (
+                                  (ExprString 'q' '"q"')
+                                )
+                              )
+                              (ExprApp
+                                :func (ExprId 't')
+                                :args (
+                                  (ExprString 'r' '"r"')
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                      (ExprInt 10 '10')
+                    )
+                  )
+                  :op '<>'
+                  :right (ExprInfix
+                    :left (ExprString ' [' '" ["')
+                    :op '<>'
+                    :right (ExprInfix
+                      :left (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'pp')
+                          :field 'render'
+                        )
+                        :args (
+                          (ExprSelect
+                            :target (ExprId 'pp')
+                            :field 'empty'
+                          )
+                          (ExprInt 10 '10')
+                        )
+                      )
+                      :op '<>'
+                      :right (ExprString ']' '"]"')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'text with a newline ' '"text with a newline "')
+            :op '<>'
+            :right (ExprTry
+              :body (ExprBlock
+                :bindings (
+                  (LetValueBinding
+                    :name 'd'
+                    :value (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'pp')
+                        :field 'text'
+                      )
+                      :args (
+                        (ExprString 'a\nb' '"a\\nb"')
+                      )
+                    )
+                  )
+                  (ExprStmt
+                    :expr (ExprString 'none' '"none"')
+                  )
+                )
+              )
+              :branches (
+                (TryBranch
+                  :exc_pattern (ExprSelect
+                    :target (ExprId 'pp')
+                    :field 'error'
+                  )
+                  :body (ExprString 'error' '"error"')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'width 0 ' '"width 0 "')
+            :op '<>'
+            :right (ExprTry
+              :body (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'pp')
+                  :field 'render'
+                )
+                :args (
+                  (ExprId 'tree')
+                  (ExprInt 0 '0')
+                )
+              )
+              :branches (
+                (TryBranch
+                  :exc_pattern (ExprSelect
+                    :target (ExprId 'pp')
+                    :field 'error'
+                  )
+                  :body (ExprString 'error' '"error"')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'lines'
+      :value (ExprBlock
+        :bindings (
+          (LetValueBinding
+            :name 'count'
+            :value (ExprInt 1 '1')
+            :is_var True
+          )
+          (ExprStmt
+            :expr (ExprFor
+              :var_name 'i'
+              :start (ExprInt 0 '0')
+              :stop (ExprInfix
+                :left (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'string')
+                    :field 'length'
+                  )
+                  :args (
+                    (ExprId 's')
+                  )
+                )
+                :op '-'
+                :right (ExprInt 1 '1')
+              )
+              :body (ExprIf
+                :cond (ExprInfix
+                  :left (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'string')
+                      :field 'getChar'
+                    )
+                    :args (
+                      (ExprId 's')
+                      (ExprId 'i')
+                    )
+                  )
+                  :op 'is'
+                  :right (ExprChar '\n' "'\\n'")
+                )
+                :then_branch (ExprInfix
+                  :left (ExprId 'count')
+                  :op ':='
+                  :right (ExprInfix
+                    :left (ExprId 'count')
+                    :op '+'
+                    :right (ExprInt 1 '1')
+                  )
+                )
+              )
+            )
+          )
+          (LetValueBinding
+            :name 'result'
+            :value (ExprArrayRep
+              :count (ExprId 'count')
+              :init_val (ExprString '' '""')
+            )
+          )
+          (LetValueBinding
+            :name 'k'
+            :value (ExprInt 0 '0')
+            :is_var True
+          )
+          (LetValueBinding
+            :name 'start'
+            :value (ExprInt 0 '0')
+            :is_var True
+          )
+          (ExprStmt
+            :expr (ExprFor
+              :var_name 'i'
+              :start (ExprInt 0 '0')
+              :stop (ExprInfix
+                :left (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'string')
+                    :field 'length'
+                  )
+                  :args (
+                    (ExprId 's')
+                  )
+                )
+                :op '-'
+                :right (ExprInt 1 '1')
+              )
+              :body (ExprIf
+                :cond (ExprInfix
+                  :left (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'string')
+                      :field 'getChar'
+                    )
+                    :args (
+                      (ExprId 's')
+                      (ExprId 'i')
+                    )
+                  )
+                  :op 'is'
+                  :right (ExprChar '\n' "'\\n'")
+                )
+                :then_branch (ExprBlock
+                  :bindings (
+                    (ExprStmt
+                      :expr (ExprInfix
+                        :left (ExprIndex
+                          :target (ExprId 'result')
+                          :index (ExprId 'k')
+                        )
+                        :op ':='
+                        :right (ExprApp
+                          :func (ExprSelect
+                            :target (ExprId 'string')
+                            :field 'getSub'
+                          )
+                          :args (
+                            (ExprId 's')
+                            (ExprId 'start')
+                            (ExprInfix
+                              :left (ExprId 'i')
+                              :op '-'
+                              :right (ExprId 'start')
+                            )
+                          )
+                        )
+                      )
+                    )
+                    (ExprStmt
+                      :expr (ExprInfix
+                        :left (ExprId 'k')
+                        :op ':='
+                        :right (ExprInfix
+                          :left (ExprId 'k')
+                          :op '+'
+                          :right (ExprInt 1 '1')
+                        )
+                      )
+                    )
+                    (ExprStmt
+                      :expr (ExprInfix
+                        :left (ExprId 'start')
+                        :op ':='
+                        :right (ExprInfix
+                          :left (ExprId 'i')
+                          :op '+'
+                          :right (ExprInt 1 '1')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprInfix
+              :left (ExprIndex
+                :target (ExprId 'result')
+                :index (ExprId 'k')
+              )
+              :op ':='
+              :right (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'string')
+                  :field 'getSub'
+                )
+                :args (
+                  (ExprId 's')
+                  (ExprId 'start')
+                  (ExprInfix
+                    :left (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'string')
+                        :field 'length'
+                      )
+                      :args (
+                        (ExprId 's')
+                      )
+                    )
+                    :op '-'
+                    :right (ExprId 'start')
+                  )
+                )
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprId 'result')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypeArray
+        :element_type (TypePath ('String'))
+      )
+    )
+    (LetValueBinding
+      :name 'documents'
+      :value (ExprArray
+        :elements (
+          (ExprId 'tree')
+          (ExprId 'json')
+          (ExprId 'calls')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'pp')
+              :field 'fill'
+            )
+            :args (
+              (ExprString '' '""')
+              (ExprId 'words')
+            )
+          )
+          (ExprId 'block')
+          (ExprId 'hung')
+          (ExprId 'hard')
+          (ExprId 'followed')
+          (ExprId 'alternative')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'flatOnes'
+      :value (ExprArray
+        :elements (
+          (ExprBool True)
+          (ExprBool True)
+          (ExprBool True)
+          (ExprBool True)
+          (ExprBool False)
+          (ExprBool True)
+          (ExprBool False)
+          (ExprBool True)
+          (ExprBool True)
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'trailing'
+      :value (ExprInt 0 '0')
+      :is_var True
+    )
+    (LetValueBinding
+      :name 'flatDiffers'
+      :value (ExprInt 0 '0')
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprFor
+        :var_name 'i'
+        :start (ExprInt 0 '0')
+        :stop (ExprInfix
+          :left (ExprApp
+            :func (ExprId 'extent')
+            :args (
+              (ExprId 'documents')
+            )
+          )
+          :op '-'
+          :right (ExprInt 1 '1')
+        )
+        :body (ExprBlock
+          :bindings (
+            (ExprStmt
+              :expr (ExprFor
+                :var_name 'width'
+                :start (ExprInt 1 '1')
+                :stop (ExprInt 60 '60')
+                :body (ExprBlock
+                  :bindings (
+                    (LetValueBinding
+                      :name 'ls'
+                      :value (ExprApp
+                        :func (ExprId 'lines')
+                        :args (
+                          (ExprApp
+                            :func (ExprSelect
+                              :target (ExprId 'pp')
+                              :field 'render'
+                            )
+                            :args (
+                              (ExprIndex
+                                :target (ExprId 'documents')
+                                :index (ExprId 'i')
+                              )
+                              (ExprId 'width')
+                            )
+                          )
+                        )
+                      )
+                    )
+                    (ExprStmt
+                      :expr (ExprFor
+                        :var_name 'j'
+                        :start (ExprInt 0 '0')
+                        :stop (ExprInfix
+                          :left (ExprApp
+                            :func (ExprId 'extent')
+                            :args (
+                              (ExprId 'ls')
+                            )
+                          )
+                          :op '-'
+                          :right (ExprInt 1 '1')
+                        )
+                        :body (ExprBlock
+                          :bindings (
+                            (LetValueBinding
+                              :name 'n'
+                              :value (ExprApp
+                                :func (ExprSelect
+                                  :target (ExprId 'string')
+                                  :field 'length'
+                                )
+                                :args (
+                                  (ExprIndex
+                                    :target (ExprId 'ls')
+                                    :index (ExprId 'j')
+                                  )
+                                )
+                              )
+                            )
+                            (ExprStmt
+                              :expr (ExprIf
+                                :cond (ExprInfix
+                                  :left (ExprInfix
+                                    :left (ExprId 'n')
+                                    :op '>'
+                                    :right (ExprInt 0 '0')
+                                  )
+                                  :op 'andif'
+                                  :right (ExprInfix
+                                    :left (ExprApp
+                                      :func (ExprSelect
+                                        :target (ExprId 'string')
+                                        :field 'getChar'
+                                      )
+                                      :args (
+                                        (ExprIndex
+                                          :target (ExprId 'ls')
+                                          :index (ExprId 'j')
+                                        )
+                                        (ExprInfix
+                                          :left (ExprId 'n')
+                                          :op '-'
+                                          :right (ExprInt 1 '1')
+                                        )
+                                      )
+                                    )
+                                    :op 'is'
+                                    :right (ExprChar ' ' "' '")
+                                  )
+                                )
+                                :then_branch (ExprInfix
+                                  :left (ExprId 'trailing')
+                                  :op ':='
+                                  :right (ExprInfix
+                                    :left (ExprId 'trailing')
+                                    :op '+'
+                                    :right (ExprInt 1 '1')
+                                  )
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprIf
+                :cond (ExprInfix
+                  :left (ExprIndex
+                    :target (ExprId 'flatOnes')
+                    :index (ExprId 'i')
+                  )
+                  :op 'andif'
+                  :right (ExprApp
+                    :func (ExprId 'not')
+                    :args (
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'string')
+                          :field 'equal'
+                        )
+                        :args (
+                          (ExprApp
+                            :func (ExprSelect
+                              :target (ExprId 'pp')
+                              :field 'renderFlat'
+                            )
+                            :args (
+                              (ExprIndex
+                                :target (ExprId 'documents')
+                                :index (ExprId 'i')
+                              )
+                            )
+                          )
+                          (ExprApp
+                            :func (ExprSelect
+                              :target (ExprId 'pp')
+                              :field 'render'
+                            )
+                            :args (
+                              (ExprIndex
+                                :target (ExprId 'documents')
+                                :index (ExprId 'i')
+                              )
+                              (ExprInt 1000 '1000')
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+                :then_branch (ExprInfix
+                  :left (ExprId 'flatDiffers')
+                  :op ':='
+                  :right (ExprInfix
+                    :left (ExprId 'flatDiffers')
+                    :op '+'
+                    :right (ExprInt 1 '1')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'properties: trailing spaces ' '"properties: trailing spaces "')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'int'
+                )
+                :args (
+                  (ExprId 'trailing')
+                )
+              )
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprString ', flat differs ' '", flat differs "')
+                :op '<>'
+                :right (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'int'
+                  )
+                  :args (
+                    (ExprId 'flatDiffers')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

@@ -1409,6 +1409,71 @@ export
 end
 ```
 
+### 1.22. `util/prettyPrint : util/PrettyPrint`
+
+Documents laid out to fit a width: Wadler's "prettier printer" with Leijen's `align`, `hang`, and `fill`, for printing
+trees, IR, values, and argument lists:
+
+```quest
+import pp = util/prettyPrint : util/PrettyPrint;
+let <+> = pp.<+>;
+pp.render(pp.text("f") <+> pp.bracket("(" "," ")" 4 args) 80)
+```
+
+- **A document is text with breaks:** `text`, `line` (a space when flat), `softBreak` (nothing when flat),
+  `breakOr(flat)`, and `hardLine` (always a newline), combined by `cat` or its infix form `<+>`, `concat`, `nest`
+  (indent by i more), `align` and `hang` (indent to the column the document starts at, plus i), and `group`, whose
+  breaks are flat together if they fit and broken otherwise. `sep`, `fill` (as many items on a line as fit, each break
+  decided alone), and `bracket` (the shape of a call, array, or record) are built from those.
+- **`<+>` is an exported operator:** an importer binds it once, `let <+> = pp.<+>;`, and writes it infix; it is
+  associative, so a chain needs no braces. Leijen's printer spells concatenation `<>`, but that is Quest's built-in
+  string concatenation, which no module can bind (docs/syntax.md section 3.2).
+- **Rendering is strict and iterative,** Lindig's "Strictly Pretty": a stack of (indentation, mode, document)
+  entries. A group met in broken mode is flat if `fits` says so, measuring its contents flat and then what follows it
+  on the stack in that stack's own modes, as Wadler's printer measures, until the line ends or the width is passed;
+  so a group followed by text on its line is broken when the two do not fit together. A group not yet decided that
+  follows is measured in the mode of where it is, as Prettier's printer measures. `fits` stops at the width, so a
+  render costs at most the document's size times the width, and close to its size in practice.
+- **No line ends in spaces:** lines are buffered and their trailing spaces dropped, so a flat break or an
+  indentation never ends one. `renderFlat` lays every group flat (a `hardLine` still breaks); `write` renders to a
+  writer. Widths count bytes; `error` is raised for text holding a newline and a width below 1.
+
+`tests/source/stdlib/prettyprint_operations.quest` renders Wadler's tree, a JSON-shaped value, nested calls, `fill`
+paragraphs, `align` and `hang`, a group holding a `hardLine`, a group followed by text on its line, and `breakOr`, each
+at several widths; `<+>` is bound from the module. It then checks, for each document at every width from 1 to 60,
+that no line ends in a space, and that without a `hardLine`, `renderFlat` is `render` at a width no line reaches.
+
+#### Interface Summary
+
+```quest
+interface PrettyPrint
+import
+    writer : Writer
+export
+    T::TYPE
+    error: Exception
+    empty: T
+    text(s: String): T
+    line: T
+    softBreak: T
+    breakOr(flat: String): T
+    hardLine: T
+    <+>(a: T b: T): T
+    cat(a: T b: T): T
+    concat(ds: Array(T)): T
+    nest(i: Int d: T): T
+    align(d: T): T
+    hang(i: Int d: T): T
+    group(d: T): T
+    sep(separator: String ds: Array(T)): T
+    fill(separator: String ds: Array(T)): T
+    bracket(open: String separator: String close: String i: Int ds: Array(T)): T
+    render(d: T width: Int): String
+    write(wr: writer.T d: T width: Int): Ok
+    renderFlat(d: T): String
+end
+```
+
 ---
 
 ## 2. Collections (`lib/collections/`)

@@ -1,0 +1,192 @@
+(* Documents laid result to a width (docs/libraries.md section 1.22), rendered as
+ * Lindig's "Strictly Pretty" renders Wadler's documents: a stack of
+ * (indentation, mode, document) entries, each mode flat or broken. A group met
+ * in broken mode is flat if fits says it fits: its contents flat, then what
+ * follows it on the stack in that stack's own modes, as Wadler's printer
+ * measures, until the line ends (a break in broken mode) or the width is
+ * passed. A group not yet decided that follows is measured in the mode of
+ * where it is (as Prettier's printer measures), so its breaks end the line
+ * when it is in a broken part. fill is built from groups of single breaks
+ * (Leijen's softline), each decided on its own. Lines are buffered and their
+ * trailing spaces dropped, so a break's flat space or an indentation never
+ * ends a line. *)
+
+module prettyPrint : PrettyPrint
+import
+    collections/vector : collections/Vector
+    sb = util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    writer : Writer
+export
+    Let Rec T = Option
+        dEmpty
+        dText with s: String end
+        (* A break: flat when its group is flat, else a newline *)
+        dBreak with flat: String end
+        dHard
+        dCat with a: T b: T end
+        dNest with indent: Int d: T end
+        (* Breaks indented to the column where d starts, plus indent *)
+        dAlign with indent: Int d: T end
+        dGroup with d: T end
+    end
+
+    let error: Exception = exception error: Ok end
+
+    let empty: T = option dEmpty of T end
+    let text(s: String): T =
+        begin
+            for i = 0 upto {stringOp.length(s) - 1} do if stringOp.getChar(s i) is '\n' then raise error end end end
+            if stringOp.isEmpty(s) then empty else option dText of T with let s = s end end
+        end
+    let breakOr(flat: String): T = option dBreak of T with let flat = flat end
+    let line: T = breakOr(" ")
+    let softBreak: T = breakOr("")
+    let hardLine: T = option dHard of T end
+
+    let isEmpty(d: T): Bool = case d when dEmpty then true else false end
+    let cat(a: T b: T): T =
+        if isEmpty(a) then b elsif isEmpty(b) then a else option dCat of T with let a = a let b = b end end
+    let <+>(a: T b: T): T = cat(a b)
+    let concat(ds: Array(T)): T =
+        begin
+            let var d = empty
+            for i = extent(ds) - 1 downto 0 do d := cat(ds[i] d) end
+            d
+        end
+    let nest(i: Int d: T): T = option dNest of T with let indent = i let d = d end
+    let hang(i: Int d: T): T = option dAlign of T with let indent = i let d = d end
+    let align(d: T): T = hang(0 d)
+    let group(d: T): T = option dGroup of T with let d = d end
+
+    (* ds with between before each but the first *)
+    let joined(ds: Array(T) between: T): T =
+        begin
+            let var d = empty
+            for i = extent(ds) - 1 downto 0 do
+                d := if i is {extent(ds) - 1} then ds[i] else cat(ds[i] cat(between d)) end
+            end
+            d
+        end
+    let sep(separator: String ds: Array(T)): T = group(joined(ds cat(text(separator) line)))
+    let fill(separator: String ds: Array(T)): T = joined(ds cat(text(separator) group(line)))
+    let bracket(open: String separator: String close: String i: Int ds: Array(T)): T =
+        if extent(ds) is 0 then text(open <> close)
+        else
+            group(cat(text(open) cat(nest(i cat(softBreak joined(ds cat(text(separator) line))))
+                cat(softBreak text(close)))))
+        end
+
+    (* =========================================================================
+     * Rendering
+     * ====================================================================== *)
+
+    Let Entry = Tuple indent: Int flat: Bool d: T end
+    let entry(indent: Int flat: Bool d: T): Entry = tuple let indent = indent let flat = flat let d = d end
+
+    (* Whether first, then the entries of rest from its top (index top) down,
+     * fit in room before the line ends *)
+    let fits(room: Int first: Entry rest: vector.T(Entry) top: Int): Bool =
+        begin
+            let local = vector.new(:Entry)
+            vector.append(local first)
+            let var left = room
+            let var next = top
+            let var answer = 0
+            while answer is 0 do
+                if left < 0 then
+                    answer := 2
+                elsif vector.empty(local) then
+                    if next < 0 then
+                        answer := 1
+                    else
+                        vector.append(local vector.get(rest next))
+                        next := next - 1
+                    end
+                else
+                    let x = vector.pop(local)
+                    case x.d
+                        when dEmpty then ok
+                        when dText with t then left := left - stringOp.length(t.s)
+                        when dBreak with b then
+                            if x.flat then left := left - stringOp.length(b.flat) else answer := 1 end
+                        when dHard then answer := if x.flat then 2 else 1 end
+                        when dCat with c then
+                            vector.append(local entry(x.indent x.flat c.b))
+                            vector.append(local entry(x.indent x.flat c.a))
+                        when dNest with n then vector.append(local entry(x.indent x.flat n.d))
+                        when dAlign with n then vector.append(local entry(x.indent x.flat n.d))
+                        when dGroup with g then vector.append(local entry(x.indent x.flat g.d))
+                    end
+                end
+            end
+            answer is 1
+        end
+
+    (* d's lines, each added to result without its trailing spaces *)
+    let layout(d: T width: Int allFlat: Bool result: sb.T): Ok =
+        begin
+            if width < 1 then raise error end end
+            let stack = vector.new(:Entry)
+            vector.append(stack entry(0 allFlat d))
+            let current = sb.new()
+            let var column = 0
+            let endLine(): Ok =
+                begin
+                    let s = sb.toString(current)
+                    let var k = stringOp.length(s)
+                    while {k > 0} andif {stringOp.getChar(s k - 1) is ' '} do k := k - 1 end
+                    sb.sub(result s 0 k)
+                end
+            while not(vector.empty(stack)) do
+                let x = vector.pop(stack)
+                case x.d
+                    when dEmpty then ok
+                    when dText with t then
+                        sb.str(current t.s)
+                        column := column + stringOp.length(t.s)
+                    when dBreak with b then
+                        if x.flat then
+                            sb.str(current b.flat)
+                            column := column + stringOp.length(b.flat)
+                        else
+                            endLine()
+                            sb.char(result '\n')
+                            sb.repeat(current ' ' x.indent)
+                            column := x.indent
+                        end
+                    when dHard then
+                        endLine()
+                        sb.char(result '\n')
+                        sb.repeat(current ' ' x.indent)
+                        column := x.indent
+                    when dCat with c then
+                        vector.append(stack entry(x.indent x.flat c.b))
+                        vector.append(stack entry(x.indent x.flat c.a))
+                    when dNest with n then vector.append(stack entry(x.indent + n.indent x.flat n.d))
+                    when dAlign with n then vector.append(stack entry(column + n.indent x.flat n.d))
+                    when dGroup with g then
+                        let flat = x.flat orif fits(width - column entry(x.indent true g.d) stack
+                            vector.length(stack) - 1)
+                        vector.append(stack entry(x.indent flat g.d))
+                end
+            end
+            endLine()
+        end
+
+    let render(d: T width: Int): String =
+        begin
+            let result = sb.new()
+            layout(d width false result)
+            sb.toString(result)
+        end
+
+    let renderFlat(d: T): String =
+        begin
+            let result = sb.new()
+            layout(d 1 true result)
+            sb.toString(result)
+        end
+
+    let write(wr: writer.T d: T width: Int): Ok = writer.putString(wr render(d width))
+end

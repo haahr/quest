@@ -1,0 +1,1441 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('pp') : 'PrettyPrint')
+        (TypedImportItem ('writer') : 'Writer')
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T
+      :value (TypedSelect '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T
+        :target (TypedVar 'pp' :type Module 'pp')))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 't' :type Fun(s: String): prettyPrint.T
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): prettyPrint.T
+        :body (TypedApp :type prettyPrint.T
+          :func (TypedSelect 'text' :type Fun(s: String): prettyPrint.T
+            :target (TypedVar 'pp' :type Module 'pp'))
+          :args (
+            (TypedVar 's' :type String)
+          ))))
+    (TypedLetValue 'show' :type Fun(name: String d: prettyPrint.T widths: Array(Int)): Ok
+      :value (TypedFun :params (('name' : String) ('d' : prettyPrint.T) ('widths' : Array(Int))) :type Fun(name: String d: prettyPrint.T widths: Array(Int)): Ok
+        :body (TypedFor 'i' :upto
+          :start (TypedInt 0 :type Int)
+          :stop (TypedInfix '-' :type Int
+            :left (TypedApp :type Int
+              :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+              :args (
+                (TypedVar 'widths' :type Array(Int))
+              ))
+            :right (TypedInt 1 :type Int))
+          :body (TypedBlock :type Ok
+            :bindings (
+              (TypedExprStmt
+                :expr (TypedApp :type Ok
+                  :func (TypedVar 'print' :type Fun(s: String): Ok)
+                  :args (
+                    (TypedInfix '<>' :type String
+                      :left (TypedString '-- ' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedVar 'name' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedString ' at ' :type String)
+                          :right (TypedApp :type String
+                            :func (TypedSelect 'int' :type Fun(n: Int): String
+                              :target (TypedVar 'conv' :type Module 'conv'))
+                            :args (
+                              (TypedIndex :type Int
+                                :target (TypedVar 'widths' :type Array(Int))
+                                :index (TypedVar 'i' :type Int))
+                            )))))
+                  )))
+            )
+            :result (TypedApp :type Ok
+              :func (TypedVar 'print' :type Fun(s: String): Ok)
+              :args (
+                (TypedInfix '<>' :type String
+                  :left (TypedString '|' :type String)
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedApp :type String
+                      :func (TypedSelect 'render' :type Fun(d: prettyPrint.T width: Int): String
+                        :target (TypedVar 'pp' :type Module 'pp'))
+                      :args (
+                        (TypedVar 'd' :type prettyPrint.T)
+                        (TypedIndex :type Int
+                          :target (TypedVar 'widths' :type Array(Int))
+                          :index (TypedVar 'i' :type Int))
+                      ))
+                    :right (TypedString '|' :type String)))
+              ))))))
+    (TypedLetType 'Tree' :kind TYPE)
+    (TypedLetValue 'leaf' :type Fun(name: String): Tree
+      :value (TypedFun :params (('name' : String)) :type Fun(name: String): Tree
+        :body (TypedTuple :type Tuple name: String children: Array(Tree) end
+          :elements (
+            (TypedVar 'name' :type String)
+            (TypedArray :type Array(Tree)
+              :elements ())
+          ))))
+    (TypedLetValue 'node' :type Fun(name: String children: Array(Tree)): Tree
+      :value (TypedFun :params (('name' : String) ('children' : Array(Tree))) :type Fun(name: String children: Array(Tree)): Tree
+        :body (TypedTuple :type Tuple name: String children: Array(Tree) end
+          :elements (
+            (TypedVar 'name' :type String)
+            (TypedVar 'children' :type Array(Tree))
+          ))))
+    (TypedLetValue 'showTree' :rec :type Fun(tree: Tree): prettyPrint.T
+      :value (TypedFun :params (('tree' : Tree)) :type Fun(tree: Tree): prettyPrint.T
+        :body (TypedIf :type prettyPrint.T
+          :cond (TypedInfix 'is' :type Bool
+            :left (TypedApp :type Int
+              :func (TypedTypeApp [Tuple name: String children: Array(Tree) end] :type Fun(a: Array(Tuple name: String children: Array(Tree) end)): Int
+                :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+              :args (
+                (TypedSelect 'children' :type Array(Tree)
+                  :target (TypedVar 'tree' :type Tree))
+              ))
+            :right (TypedInt 0 :type Int))
+          :then (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedSelect 'name' :type String
+                :target (TypedVar 'tree' :type Tree))
+            ))
+          :else (TypedBlock :type prettyPrint.T
+            :bindings (
+              (TypedLetValue 'docs' :type Array(prettyPrint.T)
+                :value (TypedArrayRep :type Array(prettyPrint.T)
+                  :count (TypedApp :type Int
+                    :func (TypedTypeApp [Tuple name: String children: Array(Tree) end] :type Fun(a: Array(Tuple name: String children: Array(Tree) end)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedSelect 'children' :type Array(Tree)
+                        :target (TypedVar 'tree' :type Tree))
+                    ))
+                  :init (TypedSelect 'empty' :type prettyPrint.T
+                    :target (TypedVar 'pp' :type Module 'pp'))))
+              (TypedExprStmt
+                :expr (TypedFor 'i' :upto
+                  :start (TypedInt 0 :type Int)
+                  :stop (TypedInfix '-' :type Int
+                    :left (TypedApp :type Int
+                      :func (TypedTypeApp [Tuple name: String children: Array(Tree) end] :type Fun(a: Array(Tuple name: String children: Array(Tree) end)): Int
+                        :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                      :args (
+                        (TypedSelect 'children' :type Array(Tree)
+                          :target (TypedVar 'tree' :type Tree))
+                      ))
+                    :right (TypedInt 1 :type Int))
+                  :body (TypedIndexAssign
+                    :target (TypedVar 'docs' :type Array(prettyPrint.T))
+                    :index (TypedVar 'i' :type Int)
+                    :value (TypedApp :type prettyPrint.T
+                      :func (TypedVar 'showTree' :type Fun(tree: Tree): prettyPrint.T)
+                      :args (
+                        (TypedIndex :type Tree
+                          :target (TypedSelect 'children' :type Array(Tree)
+                            :target (TypedVar 'tree' :type Tree))
+                          :index (TypedVar 'i' :type Int))
+                      )))))
+            )
+            :result (TypedApp :type prettyPrint.T
+              :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+              :args (
+                (TypedApp :type prettyPrint.T
+                  :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                  :args (
+                    (TypedSelect 'name' :type String
+                      :target (TypedVar 'tree' :type Tree))
+                  ))
+                (TypedApp :type prettyPrint.T
+                  :func (TypedSelect 'bracket' :type Fun(open: String separator: String close: String i: Int ds: Array(prettyPrint.T)): prettyPrint.T
+                    :target (TypedVar 'pp' :type Module 'pp'))
+                  :args (
+                    (TypedString '[' :type String)
+                    (TypedString ',' :type String)
+                    (TypedString ']' :type String)
+                    (TypedInt 2 :type Int)
+                    (TypedVar 'docs' :type Array(prettyPrint.T))
+                  ))
+              ))))))
+    (TypedLetValue 'tree' :type prettyPrint.T
+      :value (TypedApp :type prettyPrint.T
+        :func (TypedVar 'showTree' :type Fun(tree: Tree): prettyPrint.T)
+        :args (
+          (TypedApp :type Tree
+            :func (TypedVar 'node' :type Fun(name: String children: Array(Tree)): Tree)
+            :args (
+              (TypedString 'aaa' :type String)
+              (TypedArray :type Array(Tree)
+                :elements (
+                  (TypedApp :type Tree
+                    :func (TypedVar 'node' :type Fun(name: String children: Array(Tree)): Tree)
+                    :args (
+                      (TypedString 'bbbbb' :type String)
+                      (TypedArray :type Array(Tree)
+                        :elements (
+                          (TypedApp :type Tree
+                            :func (TypedVar 'leaf' :type Fun(name: String): Tree)
+                            :args (
+                              (TypedString 'ccc' :type String)
+                            ))
+                          (TypedApp :type Tree
+                            :func (TypedVar 'leaf' :type Fun(name: String): Tree)
+                            :args (
+                              (TypedString 'dd' :type String)
+                            ))
+                        ))
+                    ))
+                  (TypedApp :type Tree
+                    :func (TypedVar 'leaf' :type Fun(name: String): Tree)
+                    :args (
+                      (TypedString 'eee' :type String)
+                    ))
+                  (TypedApp :type Tree
+                    :func (TypedVar 'node' :type Fun(name: String children: Array(Tree)): Tree)
+                    :args (
+                      (TypedString 'ffff' :type String)
+                      (TypedArray :type Array(Tree)
+                        :elements (
+                          (TypedApp :type Tree
+                            :func (TypedVar 'leaf' :type Fun(name: String): Tree)
+                            :args (
+                              (TypedString 'gg' :type String)
+                            ))
+                          (TypedApp :type Tree
+                            :func (TypedVar 'leaf' :type Fun(name: String): Tree)
+                            :args (
+                              (TypedString 'hhh' :type String)
+                            ))
+                          (TypedApp :type Tree
+                            :func (TypedVar 'leaf' :type Fun(name: String): Tree)
+                            :args (
+                              (TypedString 'ii' :type String)
+                            ))
+                        ))
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(name: String d: prettyPrint.T widths: Array(Int)): Ok)
+        :args (
+          (TypedString 'tree' :type String)
+          (TypedVar 'tree' :type prettyPrint.T)
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 80 :type Int)
+              (TypedInt 30 :type Int)
+              (TypedInt 20 :type Int)
+              (TypedInt 10 :type Int)
+            ))
+        )))
+    (TypedLetValue 'member' :type Fun(name: String value: prettyPrint.T): prettyPrint.T
+      :value (TypedFun :params (('name' : String) ('value' : prettyPrint.T)) :type Fun(name: String value: prettyPrint.T): prettyPrint.T
+        :body (TypedApp :type prettyPrint.T
+          :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+          :args (
+            (TypedApp :type prettyPrint.T
+              :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+              :args (
+                (TypedInfix '<>' :type String
+                  :left (TypedString '"' :type String)
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedVar 'name' :type String)
+                    :right (TypedString '": ' :type String)))
+              ))
+            (TypedVar 'value' :type prettyPrint.T)
+          ))))
+    (TypedLetValue 'json' :type prettyPrint.T
+      :value (TypedApp :type prettyPrint.T
+        :func (TypedSelect 'bracket' :type Fun(open: String separator: String close: String i: Int ds: Array(prettyPrint.T)): prettyPrint.T
+          :target (TypedVar 'pp' :type Module 'pp'))
+        :args (
+          (TypedString '{' :type String)
+          (TypedString ',' :type String)
+          (TypedString '}' :type String)
+          (TypedInt 2 :type Int)
+          (TypedArray :type Array(prettyPrint.T)
+            :elements (
+              (TypedApp :type prettyPrint.T
+                :func (TypedVar 'member' :type Fun(name: String value: prettyPrint.T): prettyPrint.T)
+                :args (
+                  (TypedString 'name' :type String)
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                    :args (
+                      (TypedString '"quest"' :type String)
+                    ))
+                ))
+              (TypedApp :type prettyPrint.T
+                :func (TypedVar 'member' :type Fun(name: String value: prettyPrint.T): prettyPrint.T)
+                :args (
+                  (TypedString 'versions' :type String)
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedSelect 'bracket' :type Fun(open: String separator: String close: String i: Int ds: Array(prettyPrint.T)): prettyPrint.T
+                      :target (TypedVar 'pp' :type Module 'pp'))
+                    :args (
+                      (TypedString '[' :type String)
+                      (TypedString ',' :type String)
+                      (TypedString ']' :type String)
+                      (TypedInt 2 :type Int)
+                      (TypedArray :type Array(prettyPrint.T)
+                        :elements (
+                          (TypedApp :type prettyPrint.T
+                            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                            :args (
+                              (TypedString '1' :type String)
+                            ))
+                          (TypedApp :type prettyPrint.T
+                            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                            :args (
+                              (TypedString '2' :type String)
+                            ))
+                          (TypedApp :type prettyPrint.T
+                            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                            :args (
+                              (TypedString '3' :type String)
+                            ))
+                        ))
+                    ))
+                ))
+              (TypedApp :type prettyPrint.T
+                :func (TypedVar 'member' :type Fun(name: String value: prettyPrint.T): prettyPrint.T)
+                :args (
+                  (TypedString 'authors' :type String)
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedSelect 'bracket' :type Fun(open: String separator: String close: String i: Int ds: Array(prettyPrint.T)): prettyPrint.T
+                      :target (TypedVar 'pp' :type Module 'pp'))
+                    :args (
+                      (TypedString '[' :type String)
+                      (TypedString ',' :type String)
+                      (TypedString ']' :type String)
+                      (TypedInt 2 :type Int)
+                      (TypedArray :type Array(prettyPrint.T)
+                        :elements (
+                          (TypedApp :type prettyPrint.T
+                            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                            :args (
+                              (TypedString '"Cardelli"' :type String)
+                            ))
+                          (TypedApp :type prettyPrint.T
+                            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                            :args (
+                              (TypedString '"Wadler"' :type String)
+                            ))
+                          (TypedApp :type prettyPrint.T
+                            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                            :args (
+                              (TypedString '"Leijen"' :type String)
+                            ))
+                        ))
+                    ))
+                ))
+              (TypedApp :type prettyPrint.T
+                :func (TypedVar 'member' :type Fun(name: String value: prettyPrint.T): prettyPrint.T)
+                :args (
+                  (TypedString 'empty' :type String)
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedSelect 'bracket' :type Fun(open: String separator: String close: String i: Int ds: Array(prettyPrint.T)): prettyPrint.T
+                      :target (TypedVar 'pp' :type Module 'pp'))
+                    :args (
+                      (TypedString '[' :type String)
+                      (TypedString ',' :type String)
+                      (TypedString ']' :type String)
+                      (TypedInt 2 :type Int)
+                      (TypedArray :type Array(prettyPrint.T)
+                        :elements ())
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(name: String d: prettyPrint.T widths: Array(Int)): Ok)
+        :args (
+          (TypedString 'json' :type String)
+          (TypedVar 'json' :type prettyPrint.T)
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 100 :type Int)
+              (TypedInt 60 :type Int)
+              (TypedInt 40 :type Int)
+              (TypedInt 20 :type Int)
+            ))
+        )))
+    (TypedLetValue 'call' :type Fun(f: String args: Array(prettyPrint.T)): prettyPrint.T
+      :value (TypedFun :params (('f' : String) ('args' : Array(prettyPrint.T))) :type Fun(f: String args: Array(prettyPrint.T)): prettyPrint.T
+        :body (TypedApp :type prettyPrint.T
+          :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+          :args (
+            (TypedApp :type prettyPrint.T
+              :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+              :args (
+                (TypedVar 'f' :type String)
+              ))
+            (TypedApp :type prettyPrint.T
+              :func (TypedSelect 'bracket' :type Fun(open: String separator: String close: String i: Int ds: Array(prettyPrint.T)): prettyPrint.T
+                :target (TypedVar 'pp' :type Module 'pp'))
+              :args (
+                (TypedString '(' :type String)
+                (TypedString ',' :type String)
+                (TypedString ')' :type String)
+                (TypedInt 4 :type Int)
+                (TypedVar 'args' :type Array(prettyPrint.T))
+              ))
+          ))))
+    (TypedLetValue 'calls' :type prettyPrint.T
+      :value (TypedApp :type prettyPrint.T
+        :func (TypedVar 'call' :type Fun(f: String args: Array(prettyPrint.T)): prettyPrint.T)
+        :args (
+          (TypedString 'outer' :type String)
+          (TypedArray :type Array(prettyPrint.T)
+            :elements (
+              (TypedApp :type prettyPrint.T
+                :func (TypedVar 'call' :type Fun(f: String args: Array(prettyPrint.T)): prettyPrint.T)
+                :args (
+                  (TypedString 'inner' :type String)
+                  (TypedArray :type Array(prettyPrint.T)
+                    :elements (
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                        :args (
+                          (TypedString 'alpha' :type String)
+                        ))
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                        :args (
+                          (TypedString 'beta' :type String)
+                        ))
+                    ))
+                ))
+              (TypedApp :type prettyPrint.T
+                :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                :args (
+                  (TypedString 'gamma' :type String)
+                ))
+              (TypedApp :type prettyPrint.T
+                :func (TypedVar 'call' :type Fun(f: String args: Array(prettyPrint.T)): prettyPrint.T)
+                :args (
+                  (TypedString 'other' :type String)
+                  (TypedArray :type Array(prettyPrint.T)
+                    :elements (
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedVar 'call' :type Fun(f: String args: Array(prettyPrint.T)): prettyPrint.T)
+                        :args (
+                          (TypedString 'deep' :type String)
+                          (TypedArray :type Array(prettyPrint.T)
+                            :elements (
+                              (TypedApp :type prettyPrint.T
+                                :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                                :args (
+                                  (TypedString 'x' :type String)
+                                ))
+                            ))
+                        ))
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                        :args (
+                          (TypedString 'delta' :type String)
+                        ))
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(name: String d: prettyPrint.T widths: Array(Int)): Ok)
+        :args (
+          (TypedString 'calls' :type String)
+          (TypedVar 'calls' :type prettyPrint.T)
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 80 :type Int)
+              (TypedInt 40 :type Int)
+              (TypedInt 25 :type Int)
+              (TypedInt 12 :type Int)
+            ))
+        )))
+    (TypedLetValue 'words' :type Array(prettyPrint.T)
+      :value (TypedArray :type Array(prettyPrint.T)
+        :elements (
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString "Wadler's" :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'printer' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'lays' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'out' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'text' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'in' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'lines' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'that' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'fit' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'a' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'width,' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'choosing' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'for' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'each' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'group' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'whether' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'its' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'breaks' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'are' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'spaces.' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(name: String d: prettyPrint.T widths: Array(Int)): Ok)
+        :args (
+          (TypedString 'fill' :type String)
+          (TypedApp :type prettyPrint.T
+            :func (TypedSelect 'fill' :type Fun(separator: String ds: Array(prettyPrint.T)): prettyPrint.T
+              :target (TypedVar 'pp' :type Module 'pp'))
+            :args (
+              (TypedString '' :type String)
+              (TypedVar 'words' :type Array(prettyPrint.T))
+            ))
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 40 :type Int)
+              (TypedInt 25 :type Int)
+              (TypedInt 12 :type Int)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(name: String d: prettyPrint.T widths: Array(Int)): Ok)
+        :args (
+          (TypedString 'fill with commas' :type String)
+          (TypedApp :type prettyPrint.T
+            :func (TypedSelect 'fill' :type Fun(separator: String ds: Array(prettyPrint.T)): prettyPrint.T
+              :target (TypedVar 'pp' :type Module 'pp'))
+            :args (
+              (TypedString ',' :type String)
+              (TypedArray :type Array(prettyPrint.T)
+                :elements (
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                    :args (
+                      (TypedString 'one' :type String)
+                    ))
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                    :args (
+                      (TypedString 'two' :type String)
+                    ))
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                    :args (
+                      (TypedString 'three' :type String)
+                    ))
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                    :args (
+                      (TypedString 'four' :type String)
+                    ))
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                    :args (
+                      (TypedString 'five' :type String)
+                    ))
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                    :args (
+                      (TypedString 'six' :type String)
+                    ))
+                ))
+            ))
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 20 :type Int)
+              (TypedInt 12 :type Int)
+            ))
+        )))
+    (TypedLetValue 'block' :type prettyPrint.T
+      :value (TypedApp :type prettyPrint.T
+        :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+        :args (
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'let ' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+            :args (
+              (TypedApp :type prettyPrint.T
+                :func (TypedSelect 'align' :type Fun(d: prettyPrint.T): prettyPrint.T
+                  :target (TypedVar 'pp' :type Module 'pp'))
+                :args (
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedSelect 'concat' :type Fun(ds: Array(prettyPrint.T)): prettyPrint.T
+                      :target (TypedVar 'pp' :type Module 'pp'))
+                    :args (
+                      (TypedArray :type Array(prettyPrint.T)
+                        :elements (
+                          (TypedApp :type prettyPrint.T
+                            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                            :args (
+                              (TypedString 'x = 1' :type String)
+                            ))
+                          (TypedSelect 'hardLine' :type prettyPrint.T
+                            :target (TypedVar 'pp' :type Module 'pp'))
+                          (TypedApp :type prettyPrint.T
+                            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                            :args (
+                              (TypedString 'y = 2' :type String)
+                            ))
+                          (TypedSelect 'hardLine' :type prettyPrint.T
+                            :target (TypedVar 'pp' :type Module 'pp'))
+                          (TypedApp :type prettyPrint.T
+                            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                            :args (
+                              (TypedString 'z = 3' :type String)
+                            ))
+                        ))
+                    ))
+                ))
+              (TypedApp :type prettyPrint.T
+                :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+                :args (
+                  (TypedSelect 'hardLine' :type prettyPrint.T
+                    :target (TypedVar 'pp' :type Module 'pp'))
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                    :args (
+                      (TypedString 'in x + y + z' :type String)
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(name: String d: prettyPrint.T widths: Array(Int)): Ok)
+        :args (
+          (TypedString 'aligned' :type String)
+          (TypedVar 'block' :type prettyPrint.T)
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 40 :type Int)
+            ))
+        )))
+    (TypedLetValue 'hung' :type prettyPrint.T
+      :value (TypedApp :type prettyPrint.T
+        :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+        :args (
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString 'result: ' :type String)
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedSelect 'hang' :type Fun(i: Int d: prettyPrint.T): prettyPrint.T
+              :target (TypedVar 'pp' :type Module 'pp'))
+            :args (
+              (TypedInt 2 :type Int)
+              (TypedApp :type prettyPrint.T
+                :func (TypedSelect 'sep' :type Fun(separator: String ds: Array(prettyPrint.T)): prettyPrint.T
+                  :target (TypedVar 'pp' :type Module 'pp'))
+                :args (
+                  (TypedString '' :type String)
+                  (TypedArray :type Array(prettyPrint.T)
+                    :elements (
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                        :args (
+                          (TypedString 'first' :type String)
+                        ))
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                        :args (
+                          (TypedString 'second' :type String)
+                        ))
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                        :args (
+                          (TypedString 'third' :type String)
+                        ))
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(name: String d: prettyPrint.T widths: Array(Int)): Ok)
+        :args (
+          (TypedString 'hung' :type String)
+          (TypedVar 'hung' :type prettyPrint.T)
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 40 :type Int)
+              (TypedInt 20 :type Int)
+            ))
+        )))
+    (TypedLetValue 'hard' :type prettyPrint.T
+      :value (TypedApp :type prettyPrint.T
+        :func (TypedSelect 'group' :type Fun(d: prettyPrint.T): prettyPrint.T
+          :target (TypedVar 'pp' :type Module 'pp'))
+        :args (
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+            :args (
+              (TypedApp :type prettyPrint.T
+                :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                :args (
+                  (TypedString 'a' :type String)
+                ))
+              (TypedApp :type prettyPrint.T
+                :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+                :args (
+                  (TypedSelect 'line' :type prettyPrint.T
+                    :target (TypedVar 'pp' :type Module 'pp'))
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+                    :args (
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                        :args (
+                          (TypedString 'b' :type String)
+                        ))
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+                        :args (
+                          (TypedSelect 'hardLine' :type prettyPrint.T
+                            :target (TypedVar 'pp' :type Module 'pp'))
+                          (TypedApp :type prettyPrint.T
+                            :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+                            :args (
+                              (TypedApp :type prettyPrint.T
+                                :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                                :args (
+                                  (TypedString 'c' :type String)
+                                ))
+                              (TypedApp :type prettyPrint.T
+                                :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+                                :args (
+                                  (TypedSelect 'line' :type prettyPrint.T
+                                    :target (TypedVar 'pp' :type Module 'pp'))
+                                  (TypedApp :type prettyPrint.T
+                                    :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                                    :args (
+                                      (TypedString 'd' :type String)
+                                    ))
+                                ))
+                            ))
+                        ))
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(name: String d: prettyPrint.T widths: Array(Int)): Ok)
+        :args (
+          (TypedString 'hard' :type String)
+          (TypedVar 'hard' :type prettyPrint.T)
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 80 :type Int)
+            ))
+        )))
+    (TypedLetValue 'followed' :type prettyPrint.T
+      :value (TypedApp :type prettyPrint.T
+        :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+        :args (
+          (TypedApp :type prettyPrint.T
+            :func (TypedSelect 'group' :type Fun(d: prettyPrint.T): prettyPrint.T
+              :target (TypedVar 'pp' :type Module 'pp'))
+            :args (
+              (TypedApp :type prettyPrint.T
+                :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+                :args (
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                    :args (
+                      (TypedString 'f(' :type String)
+                    ))
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+                    :args (
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedSelect 'nest' :type Fun(i: Int d: prettyPrint.T): prettyPrint.T
+                          :target (TypedVar 'pp' :type Module 'pp'))
+                        :args (
+                          (TypedInt 2 :type Int)
+                          (TypedApp :type prettyPrint.T
+                            :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+                            :args (
+                              (TypedSelect 'softBreak' :type prettyPrint.T
+                                :target (TypedVar 'pp' :type Module 'pp'))
+                              (TypedApp :type prettyPrint.T
+                                :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                                :args (
+                                  (TypedString 'x' :type String)
+                                ))
+                            ))
+                        ))
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+                        :args (
+                          (TypedSelect 'softBreak' :type prettyPrint.T
+                            :target (TypedVar 'pp' :type Module 'pp'))
+                          (TypedApp :type prettyPrint.T
+                            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                            :args (
+                              (TypedString ')' :type String)
+                            ))
+                        ))
+                    ))
+                ))
+            ))
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+            :args (
+              (TypedString ' + something long' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(name: String d: prettyPrint.T widths: Array(Int)): Ok)
+        :args (
+          (TypedString 'followed' :type String)
+          (TypedVar 'followed' :type prettyPrint.T)
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 40 :type Int)
+              (TypedInt 12 :type Int)
+            ))
+        )))
+    (TypedLetValue 'alternative' :type prettyPrint.T
+      :value (TypedApp :type prettyPrint.T
+        :func (TypedSelect 'group' :type Fun(d: prettyPrint.T): prettyPrint.T
+          :target (TypedVar 'pp' :type Module 'pp'))
+        :args (
+          (TypedApp :type prettyPrint.T
+            :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+            :args (
+              (TypedApp :type prettyPrint.T
+                :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                :args (
+                  (TypedString 'a' :type String)
+                ))
+              (TypedApp :type prettyPrint.T
+                :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+                :args (
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedSelect 'breakOr' :type Fun(flat: String): prettyPrint.T
+                      :target (TypedVar 'pp' :type Module 'pp'))
+                    :args (
+                      (TypedString ' | ' :type String)
+                    ))
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+                    :args (
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                        :args (
+                          (TypedString 'b' :type String)
+                        ))
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedVar '<+>' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T)
+                        :args (
+                          (TypedApp :type prettyPrint.T
+                            :func (TypedSelect 'breakOr' :type Fun(flat: String): prettyPrint.T
+                              :target (TypedVar 'pp' :type Module 'pp'))
+                            :args (
+                              (TypedString ' | ' :type String)
+                            ))
+                          (TypedApp :type prettyPrint.T
+                            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                            :args (
+                              (TypedString 'c' :type String)
+                            ))
+                        ))
+                    ))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(name: String d: prettyPrint.T widths: Array(Int)): Ok)
+        :args (
+          (TypedString 'breakOr' :type String)
+          (TypedVar 'alternative' :type prettyPrint.T)
+          (TypedArray :type Array(Int)
+            :elements (
+              (TypedInt 20 :type Int)
+              (TypedInt 5 :type Int)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'flat [' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'renderFlat' :type Fun(d: prettyPrint.T): String
+                  :target (TypedVar 'pp' :type Module 'pp'))
+                :args (
+                  (TypedVar 'json' :type prettyPrint.T)
+                ))
+              :right (TypedString ']' :type String)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'flat hard [' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'renderFlat' :type Fun(d: prettyPrint.T): String
+                  :target (TypedVar 'pp' :type Module 'pp'))
+                :args (
+                  (TypedVar 'hard' :type prettyPrint.T)
+                ))
+              :right (TypedString ']' :type String)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'cat ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'render' :type Fun(d: prettyPrint.T width: Int): String
+                  :target (TypedVar 'pp' :type Module 'pp'))
+                :args (
+                  (TypedApp :type prettyPrint.T
+                    :func (TypedSelect 'cat' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T
+                      :target (TypedVar 'pp' :type Module 'pp'))
+                    :args (
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                        :args (
+                          (TypedString 'x' :type String)
+                        ))
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedSelect 'cat' :type Fun(a: prettyPrint.T b: prettyPrint.T): prettyPrint.T
+                          :target (TypedVar 'pp' :type Module 'pp'))
+                        :args (
+                          (TypedSelect 'empty' :type prettyPrint.T
+                            :target (TypedVar 'pp' :type Module 'pp'))
+                          (TypedApp :type prettyPrint.T
+                            :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                            :args (
+                              (TypedString 'y' :type String)
+                            ))
+                        ))
+                    ))
+                  (TypedInt 10 :type Int)
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'render' :type Fun(d: prettyPrint.T width: Int): String
+                      :target (TypedVar 'pp' :type Module 'pp'))
+                    :args (
+                      (TypedApp :type prettyPrint.T
+                        :func (TypedSelect 'concat' :type Fun(ds: Array(prettyPrint.T)): prettyPrint.T
+                          :target (TypedVar 'pp' :type Module 'pp'))
+                        :args (
+                          (TypedArray :type Array(prettyPrint.T)
+                            :elements (
+                              (TypedApp :type prettyPrint.T
+                                :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                                :args (
+                                  (TypedString 'p' :type String)
+                                ))
+                              (TypedApp :type prettyPrint.T
+                                :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                                :args (
+                                  (TypedString 'q' :type String)
+                                ))
+                              (TypedApp :type prettyPrint.T
+                                :func (TypedVar 't' :type Fun(s: String): prettyPrint.T)
+                                :args (
+                                  (TypedString 'r' :type String)
+                                ))
+                            ))
+                        ))
+                      (TypedInt 10 :type Int)
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' [' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedSelect 'render' :type Fun(d: prettyPrint.T width: Int): String
+                          :target (TypedVar 'pp' :type Module 'pp'))
+                        :args (
+                          (TypedSelect 'empty' :type prettyPrint.T
+                            :target (TypedVar 'pp' :type Module 'pp'))
+                          (TypedInt 10 :type Int)
+                        ))
+                      :right (TypedString ']' :type String)))))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'text with a newline ' :type String)
+            :right (TypedTry :type String
+              :body (TypedBlock :type String
+                :bindings (
+                  (TypedLetValue 'd' :type prettyPrint.T
+                    :value (TypedApp :type prettyPrint.T
+                      :func (TypedSelect 'text' :type Fun(s: String): prettyPrint.T
+                        :target (TypedVar 'pp' :type Module 'pp'))
+                      :args (
+                        (TypedString 'a\nb' :type String)
+                      )))
+                )
+                :result (TypedString 'none' :type String))
+              :branches (
+                (TypedTryBranch
+                  :exc_pattern (TypedSelect 'error' :type Exception
+                    :target (TypedVar 'pp' :type Module 'pp'))
+                  :body (TypedString 'error' :type String))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'width 0 ' :type String)
+            :right (TypedTry :type String
+              :body (TypedApp :type String
+                :func (TypedSelect 'render' :type Fun(d: prettyPrint.T width: Int): String
+                  :target (TypedVar 'pp' :type Module 'pp'))
+                :args (
+                  (TypedVar 'tree' :type prettyPrint.T)
+                  (TypedInt 0 :type Int)
+                ))
+              :branches (
+                (TypedTryBranch
+                  :exc_pattern (TypedSelect 'error' :type Exception
+                    :target (TypedVar 'pp' :type Module 'pp'))
+                  :body (TypedString 'error' :type String))
+              )))
+        )))
+    (TypedLetValue 'lines' :type Fun(s: String): Array(String)
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Array(String)
+        :body (TypedBlock :type Array(String)
+          :bindings (
+            (TypedLetValue 'count' :type Int
+              :value (TypedInt 1 :type Int))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedSelect 'length' :type Fun(string: String): Int
+                      :target (TypedVar 'string' :type Module 'string'))
+                    :args (
+                      (TypedVar 's' :type String)
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedIf :type Ok
+                  :cond (TypedInfix 'is' :type Bool
+                    :left (TypedApp :type Char
+                      :func (TypedSelect 'getChar' :type Fun(string: String index: Int): Char
+                        :target (TypedVar 'string' :type Module 'string'))
+                      :args (
+                        (TypedVar 's' :type String)
+                        (TypedVar 'i' :type Int)
+                      ))
+                    :right (TypedChar '\n' :type Char))
+                  :then (TypedBlock :type Ok
+                    :bindings (
+                      (TypedExprStmt
+                        :expr (TypedAssign
+                          :target (TypedVar 'count' :type Var(Int))
+                          :value (TypedInfix '+' :type Int
+                            :left (TypedDerefCell :type Int
+                              :target (TypedVar 'count' :type Var(Int)))
+                            :right (TypedInt 1 :type Int))))
+                    )
+                    :result (TypedOk))
+                  :else (TypedOk))))
+            (TypedLetValue 'result' :type Array(String)
+              :value (TypedArrayRep :type Array(String)
+                :count (TypedDerefCell :type Int
+                  :target (TypedVar 'count' :type Var(Int)))
+                :init (TypedString '' :type String)))
+            (TypedLetValue 'k' :type Int
+              :value (TypedInt 0 :type Int))
+            (TypedLetValue 'start' :type Int
+              :value (TypedInt 0 :type Int))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedSelect 'length' :type Fun(string: String): Int
+                      :target (TypedVar 'string' :type Module 'string'))
+                    :args (
+                      (TypedVar 's' :type String)
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedIf :type Ok
+                  :cond (TypedInfix 'is' :type Bool
+                    :left (TypedApp :type Char
+                      :func (TypedSelect 'getChar' :type Fun(string: String index: Int): Char
+                        :target (TypedVar 'string' :type Module 'string'))
+                      :args (
+                        (TypedVar 's' :type String)
+                        (TypedVar 'i' :type Int)
+                      ))
+                    :right (TypedChar '\n' :type Char))
+                  :then (TypedBlock :type Ok
+                    :bindings (
+                      (TypedExprStmt
+                        :expr (TypedBlock :type Ok
+                          :bindings (
+                            (TypedExprStmt
+                              :expr (TypedIndexAssign
+                                :target (TypedVar 'result' :type Array(String))
+                                :index (TypedDerefCell :type Int
+                                  :target (TypedVar 'k' :type Var(Int)))
+                                :value (TypedApp :type String
+                                  :func (TypedSelect 'getSub' :type Fun(source: String start: Int size: Int): String
+                                    :target (TypedVar 'string' :type Module 'string'))
+                                  :args (
+                                    (TypedVar 's' :type String)
+                                    (TypedDerefCell :type Int
+                                      :target (TypedVar 'start' :type Var(Int)))
+                                    (TypedInfix '-' :type Int
+                                      :left (TypedVar 'i' :type Int)
+                                      :right (TypedDerefCell :type Int
+                                        :target (TypedVar 'start' :type Var(Int))))
+                                  ))))
+                            (TypedExprStmt
+                              :expr (TypedAssign
+                                :target (TypedVar 'k' :type Var(Int))
+                                :value (TypedInfix '+' :type Int
+                                  :left (TypedDerefCell :type Int
+                                    :target (TypedVar 'k' :type Var(Int)))
+                                  :right (TypedInt 1 :type Int))))
+                          )
+                          :result (TypedAssign
+                            :target (TypedVar 'start' :type Var(Int))
+                            :value (TypedInfix '+' :type Int
+                              :left (TypedVar 'i' :type Int)
+                              :right (TypedInt 1 :type Int)))))
+                    )
+                    :result (TypedOk))
+                  :else (TypedOk))))
+            (TypedExprStmt
+              :expr (TypedIndexAssign
+                :target (TypedVar 'result' :type Array(String))
+                :index (TypedDerefCell :type Int
+                  :target (TypedVar 'k' :type Var(Int)))
+                :value (TypedApp :type String
+                  :func (TypedSelect 'getSub' :type Fun(source: String start: Int size: Int): String
+                    :target (TypedVar 'string' :type Module 'string'))
+                  :args (
+                    (TypedVar 's' :type String)
+                    (TypedDerefCell :type Int
+                      :target (TypedVar 'start' :type Var(Int)))
+                    (TypedInfix '-' :type Int
+                      :left (TypedApp :type Int
+                        :func (TypedSelect 'length' :type Fun(string: String): Int
+                          :target (TypedVar 'string' :type Module 'string'))
+                        :args (
+                          (TypedVar 's' :type String)
+                        ))
+                      :right (TypedDerefCell :type Int
+                        :target (TypedVar 'start' :type Var(Int))))
+                  ))))
+          )
+          :result (TypedVar 'result' :type Array(String)))))
+    (TypedLetValue 'documents' :type Array(prettyPrint.T)
+      :value (TypedArray :type Array(prettyPrint.T)
+        :elements (
+          (TypedVar 'tree' :type prettyPrint.T)
+          (TypedVar 'json' :type prettyPrint.T)
+          (TypedVar 'calls' :type prettyPrint.T)
+          (TypedApp :type prettyPrint.T
+            :func (TypedSelect 'fill' :type Fun(separator: String ds: Array(prettyPrint.T)): prettyPrint.T
+              :target (TypedVar 'pp' :type Module 'pp'))
+            :args (
+              (TypedString '' :type String)
+              (TypedVar 'words' :type Array(prettyPrint.T))
+            ))
+          (TypedVar 'block' :type prettyPrint.T)
+          (TypedVar 'hung' :type prettyPrint.T)
+          (TypedVar 'hard' :type prettyPrint.T)
+          (TypedVar 'followed' :type prettyPrint.T)
+          (TypedVar 'alternative' :type prettyPrint.T)
+        )))
+    (TypedLetValue 'flatOnes' :type Array(Bool)
+      :value (TypedArray :type Array(Bool)
+        :elements (
+          (TypedBool true)
+          (TypedBool true)
+          (TypedBool true)
+          (TypedBool true)
+          (TypedBool false)
+          (TypedBool true)
+          (TypedBool false)
+          (TypedBool true)
+          (TypedBool true)
+        )))
+    (TypedLetValue 'trailing' :type Int
+      :value (TypedInt 0 :type Int))
+    (TypedLetValue 'flatDiffers' :type Int
+      :value (TypedInt 0 :type Int))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [prettyPrint.T] :type Fun(a: Array(prettyPrint.T)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'documents' :type Array(prettyPrint.T))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedFor 'width' :upto
+                :start (TypedInt 1 :type Int)
+                :stop (TypedInt 60 :type Int)
+                :body (TypedBlock :type Ok
+                  :bindings (
+                    (TypedLetValue 'ls' :type Array(String)
+                      :value (TypedApp :type Array(String)
+                        :func (TypedVar 'lines' :type Fun(s: String): Array(String))
+                        :args (
+                          (TypedApp :type String
+                            :func (TypedSelect 'render' :type Fun(d: prettyPrint.T width: Int): String
+                              :target (TypedVar 'pp' :type Module 'pp'))
+                            :args (
+                              (TypedIndex :type prettyPrint.T
+                                :target (TypedVar 'documents' :type Array(prettyPrint.T))
+                                :index (TypedVar 'i' :type Int))
+                              (TypedVar 'width' :type Int)
+                            ))
+                        )))
+                  )
+                  :result (TypedFor 'j' :upto
+                    :start (TypedInt 0 :type Int)
+                    :stop (TypedInfix '-' :type Int
+                      :left (TypedApp :type Int
+                        :func (TypedTypeApp [String] :type Fun(a: Array(String)): Int
+                          :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                        :args (
+                          (TypedVar 'ls' :type Array(String))
+                        ))
+                      :right (TypedInt 1 :type Int))
+                    :body (TypedBlock :type Ok
+                      :bindings (
+                        (TypedLetValue 'n' :type Int
+                          :value (TypedApp :type Int
+                            :func (TypedSelect 'length' :type Fun(string: String): Int
+                              :target (TypedVar 'string' :type Module 'string'))
+                            :args (
+                              (TypedIndex :type String
+                                :target (TypedVar 'ls' :type Array(String))
+                                :index (TypedVar 'j' :type Int))
+                            )))
+                      )
+                      :result (TypedIf :type Ok
+                        :cond (TypedIf :type Bool
+                          :cond (TypedInfix '>' :type Bool
+                            :left (TypedVar 'n' :type Int)
+                            :right (TypedInt 0 :type Int))
+                          :then (TypedInfix 'is' :type Bool
+                            :left (TypedApp :type Char
+                              :func (TypedSelect 'getChar' :type Fun(string: String index: Int): Char
+                                :target (TypedVar 'string' :type Module 'string'))
+                              :args (
+                                (TypedIndex :type String
+                                  :target (TypedVar 'ls' :type Array(String))
+                                  :index (TypedVar 'j' :type Int))
+                                (TypedInfix '-' :type Int
+                                  :left (TypedVar 'n' :type Int)
+                                  :right (TypedInt 1 :type Int))
+                              ))
+                            :right (TypedChar ' ' :type Char))
+                          :else (TypedBool false))
+                        :then (TypedBlock :type Ok
+                          :bindings (
+                            (TypedExprStmt
+                              :expr (TypedAssign
+                                :target (TypedVar 'trailing' :type Var(Int))
+                                :value (TypedInfix '+' :type Int
+                                  :left (TypedDerefCell :type Int
+                                    :target (TypedVar 'trailing' :type Var(Int)))
+                                  :right (TypedInt 1 :type Int))))
+                          )
+                          :result (TypedOk))
+                        :else (TypedOk)))))))
+          )
+          :result (TypedIf :type Ok
+            :cond (TypedIf :type Bool
+              :cond (TypedIndex :type Bool
+                :target (TypedVar 'flatOnes' :type Array(Bool))
+                :index (TypedVar 'i' :type Int))
+              :then (TypedApp :type Bool
+                :func (TypedVar 'not' :type Fun(b: Bool): Bool)
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                      :target (TypedVar 'string' :type Module 'string'))
+                    :args (
+                      (TypedApp :type String
+                        :func (TypedSelect 'renderFlat' :type Fun(d: prettyPrint.T): String
+                          :target (TypedVar 'pp' :type Module 'pp'))
+                        :args (
+                          (TypedIndex :type prettyPrint.T
+                            :target (TypedVar 'documents' :type Array(prettyPrint.T))
+                            :index (TypedVar 'i' :type Int))
+                        ))
+                      (TypedApp :type String
+                        :func (TypedSelect 'render' :type Fun(d: prettyPrint.T width: Int): String
+                          :target (TypedVar 'pp' :type Module 'pp'))
+                        :args (
+                          (TypedIndex :type prettyPrint.T
+                            :target (TypedVar 'documents' :type Array(prettyPrint.T))
+                            :index (TypedVar 'i' :type Int))
+                          (TypedInt 1000 :type Int)
+                        ))
+                    ))
+                ))
+              :else (TypedBool false))
+            :then (TypedBlock :type Ok
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedAssign
+                    :target (TypedVar 'flatDiffers' :type Var(Int))
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedDerefCell :type Int
+                        :target (TypedVar 'flatDiffers' :type Var(Int)))
+                      :right (TypedInt 1 :type Int))))
+              )
+              :result (TypedOk))
+            :else (TypedOk)))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'properties: trailing spaces ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedDerefCell :type Int
+                    :target (TypedVar 'trailing' :type Var(Int)))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', flat differs ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedDerefCell :type Int
+                      :target (TypedVar 'flatDiffers' :type Var(Int)))
+                  )))))
+        )))
+  ))
