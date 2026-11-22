@@ -67,6 +67,14 @@ def check_cells(driver: str, options: list[str], label: str, scratch: Path, sess
         c.expect("a tuple", s.execute('tuple let x = 1 let y = "s" end').results,
                  ['tuple x=1 y="s" end : Tuple x: Int y: String end'])
 
+        # Cells are interactive inputs: an earlier cell's function and value
+        # passed to a library's function
+        s.execute("import util/iter: util/Iter")
+        s.execute("let up(c: Char) = if c is 'a' then 'A' else c end")
+        s.execute("let k = up")
+        reply = s.execute('iter.count(iter.map(iter.chars("ab") up)) + iter.count(iter.map(iter.chars("c") k))')
+        c.expect("earlier cells' bindings", (reply.status, reply.results), ("ok", ["3 : Int"]))
+
         # Output comes ahead of the records written after it, decoded from
         # UTF-8, standard error apart
         events: list[tuple[str, str]] = []
