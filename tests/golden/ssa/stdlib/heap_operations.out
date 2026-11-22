@@ -148,8 +148,9 @@ b0():
   tail call quest_register_funcs(%2, %3)
 }
 
-function main exported(%0: int, %1: ptr) int32 [0]: int result int32 slots [8:8 8:8 8:8 8:8 8:8 8:8 8:8 8:8 8:8 8:8 8:8 8:8 240:16 8:8 48:8 240:16 8:8 48:8] {
+function main exported(%0: int, %1: ptr) int32 [0]: int result int32 slots [240:16 8:8 48:8 240:16 8:8 48:8] {
 b0(%0: int, %1: ptr):
+  %758: int = const 0
   call quest_gc_init()
   call quest_builtins_init(%0, %1) int32 [0]
   call qr_register_dicts()
@@ -168,8 +169,7 @@ b0(%0: int, %1: ptr):
   %7: ptr = call quest_alloc(%5, %6)
   %8: int = const 8
   store8 %7 + 0, %8
-  %9: int = const 0
-  %10: val = toVal %9
+  %10: val = toVal %758
   store8 %7 + 8, %10
   %11: int = const 1
   %12: val = toVal %11
@@ -191,30 +191,22 @@ b0(%0: int, %1: ptr):
   %23: int = const 100
   %24: val = toVal %23
   store8 %7 + 64, %24
-  @38:1
-  %25: ptr = slot 0
-  store1 %25 + 0, %11
-  @39:1
-  %28: ptr = slot 1
-  store1 %28 + 0, %11
   @40:17
   %31: int = load8 %7 + 0 invariant
   %33: int = sub %31, %11
   @40:1
-  %34: ptr = slot 2
-  store8 %34 + 0, %9
-  %39: int = le %9, %33
+  %39: int = le %758, %33
   branch %39, b1(), b2()
 b1():
   @40:1
-  jump b4()
+  jump b4(%11, %11, %758)
 b2():
   @40:1
-  jump b3()
-b3():
+  jump b3(%11, %11)
+b3(%717: int, %720: int):
   @52:1
   %185: ptr = symbol qso_4 + 8
-  %187: int = load1 %25 + 0
+  %187: int = zext8 %717
   @14:65
   %188: ptr = call qv_conv_bool(%187) narrow [0]
   @14:57
@@ -228,14 +220,14 @@ b3():
   %197: ptr = load8 %196 + 0
   @13:59
   %198: ptr = symbol qso_6 + 8
-  %717: int = const 4
-  %718: ptr = null
-  %199: ptr = call quest_string_concat_n(%717, %185, %189, %188, %198, %718, %718, %718)
+  %762: int = const 4
+  %763: ptr = null
+  %199: ptr = call quest_string_concat_n(%762, %185, %189, %188, %198, %763, %763, %763)
   @13:28
   call quest_writer_put_string(%197, %199)
   @53:1
   %200: ptr = symbol qso_7 + 8
-  %202: int = load1 %28 + 0
+  %202: int = zext8 %720
   @14:65
   %203: ptr = call qv_conv_bool(%202) narrow [0]
   @13:45
@@ -245,7 +237,7 @@ b3():
   %211: ptr = ptrAdd %208, %210
   %212: ptr = load8 %211 + 0
   @13:59
-  %214: ptr = call quest_string_concat_n(%717, %200, %189, %203, %198, %718, %718, %718)
+  %214: ptr = call quest_string_concat_n(%762, %200, %189, %203, %198, %763, %763, %763)
   @13:28
   call quest_writer_put_string(%212, %214)
   @56:34
@@ -262,25 +254,21 @@ b3():
   @20:17
   %229: val = call qv_collections__vector_new(%222)
   @21:9
-  %230: ptr = slot 6
   %231: int = const 1
-  store8 %230 + 0, %231
   %235: int = const 100
   %236: int = le %231, %235
-  branch %236, b46(), b47()
-b4():
-  @40:1
-  %41: int = load8 %34 + 0
+  branch %236, b40(), b41()
+b4(%718: int, %721: int, %727: int):
   @41:21
   %42: ptr = null
   %43: int = peq %7, %42
   branch %43, b7(), b6()
 b5():
   @40:1
-  jump b3()
+  jump b3(%719, %723)
 b6():
   @41:21
-  %46: int = ult %41, %31
+  %46: int = ult %727, %31
   branch %46, b8(), b9()
 b7():
   @41:21
@@ -290,7 +278,7 @@ b7():
 b8():
   @41:21
   %48: int = const 8
-  %49: int = mul %41, %48
+  %49: int = mul %727, %48
   %51: ptr = ptrAdd %7, %48
   %52: ptr = ptrAdd %51, %49
   %53: val = load8 %52 + 0
@@ -299,9 +287,7 @@ b8():
   %55: ptr = symbol quest_type_Int
   %56: val = call qv_collections__vector_new(%55)
   @21:9
-  %57: ptr = slot 3
   %58: int = const 1
-  store8 %57 + 0, %58
   %62: int = le %58, %54
   branch %62, b10(), b11()
 b9():
@@ -311,7 +297,7 @@ b9():
   unreachable
 b10():
   @21:9
-  jump b13()
+  jump b13(%58)
 b11():
   @21:9
   jump b12()
@@ -326,12 +312,10 @@ b12():
   %86: int = const 1
   %87: int = sub %85, %86
   @43:5
-  %88: ptr = slot 4
   %89: int = const 0
-  store8 %88 + 0, %89
   %93: int = le %89, %87
   branch %93, b18(), b19()
-b13():
+b13(%731: int):
   @21:50
   %63: int = const 50
   %64: int = call qv_util__random_below(%3, %63)
@@ -340,8 +324,7 @@ b13():
   %66: ptr = symbol quest_type_Int
   call qv_collections__vector_append(%66, %56, %65)
   @21:9
-  %68: int = load8 %57 + 0
-  %69: int = eq %68, %54
+  %69: int = eq %731, %54
   branch %69, b15(), b16()
 b14():
   @21:9
@@ -355,12 +338,11 @@ b16():
 b17():
   @21:9
   %72: int = const 1
-  %73: int = add %68, %72
-  store8 %57 + 0, %73
-  jump b13()
+  %73: int = add %731, %72
+  jump b13(%73)
 b18():
   @43:5
-  jump b21()
+  jump b21(%89)
 b19():
   @43:5
   jump b20()
@@ -379,21 +361,21 @@ b20():
   @44:8
   %118: int = const 1
   %119: int = xor %117, %118
+  @44:52
+  %120: int = const 0
   @44:5
-  branch %119, b26(), b27()
-b21():
-  @43:5
-  %95: int = load8 %88 + 0
+  %812: int = select %119, %120, %718
+  jump b26(%812)
+b21(%735: int):
   @43:68
   %96: ptr = symbol quest_type_Int
-  %97: val = call qv_collections__vector_get(%96, %56, %95)
+  %97: val = call qv_collections__vector_get(%96, %56, %735)
   %98: int = fromVal %97
   %99: val = toVal %98
   @43:51
   call qv_collections__heap_push(%96, %83, %99)
   @43:5
-  %102: int = load8 %88 + 0
-  %103: int = eq %102, %87
+  %103: int = eq %735, %87
   branch %103, b23(), b24()
 b22():
   @43:5
@@ -407,18 +389,9 @@ b24():
 b25():
   @43:5
   %106: int = const 1
-  %107: int = add %102, %106
-  store8 %88 + 0, %107
-  jump b21()
-b26():
-  @44:52
-  %120: int = const 0
-  store1 %25 + 0, %120
-  jump b28()
-b27():
-  @44:52
-  jump b28()
-b28():
+  %107: int = add %735, %106
+  jump b21(%107)
+b26(%719: int):
   @45:18
   %122: ptr = symbol quest_type_Int
   %123: val = call qv_collections__vector_copy(%122, %56)
@@ -440,102 +413,84 @@ b28():
   @47:8
   %142: int = const 1
   %143: int = xor %141, %142
-  @47:5
-  branch %143, b29(), b30()
-b29():
   @47:52
   %144: int = const 0
-  store1 %28 + 0, %144
-  jump b31()
-b30():
-  @47:52
-  jump b31()
-b31():
+  @47:5
+  %813: int = select %143, %144, %721
+  jump b27(%813)
+b27(%722: int):
   @48:21
   %146: ptr = symbol quest_type_Int
   %147: int = call qv_collections__vector_length(%146, %56)
   %148: int = const 1
   %149: int = sub %147, %148
   @48:5
-  %150: ptr = slot 5
   %151: int = const 0
-  store8 %150 + 0, %151
   %155: int = le %151, %149
-  branch %155, b32(), b33()
-b32():
+  branch %155, b28(), b29()
+b28():
   @48:5
-  jump b35()
-b33():
+  jump b31(%722, %151)
+b29():
   @48:5
-  jump b34()
-b34():
+  jump b30(%722)
+b30(%723: int):
   @40:1
-  %178: int = load8 %34 + 0
-  %179: int = eq %178, %33
-  branch %179, b43(), b44()
-b35():
-  @48:5
-  %157: int = load8 %150 + 0
+  %179: int = eq %727, %33
+  branch %179, b37(), b38()
+b31(%724: int, %739: int):
   @49:12
   %158: ptr = symbol quest_type_Int
-  %159: val = call qv_collections__vector_get(%158, %56, %157)
+  %159: val = call qv_collections__vector_get(%158, %56, %739)
   %160: int = fromVal %159
   @49:39
-  %162: val = call qv_collections__vector_get(%158, %123, %157)
+  %162: val = call qv_collections__vector_get(%158, %123, %739)
   %163: int = fromVal %162
   @49:12
   %164: int = eq %160, %163
   %165: int = const 1
   %166: int = xor %164, %165
-  @49:9
-  branch %166, b37(), b38()
-b36():
-  @48:5
-  jump b34()
-b37():
   @49:70
   %167: int = const 0
-  store1 %28 + 0, %167
-  jump b39()
-b38():
-  @49:70
-  jump b39()
-b39():
+  @49:9
+  %814: int = select %166, %167, %724
+  jump b33(%814)
+b32():
   @48:5
-  %170: int = load8 %150 + 0
-  %171: int = eq %170, %149
-  branch %171, b40(), b41()
-b40():
+  jump b30(%725)
+b33(%725: int):
+  @48:5
+  %171: int = eq %739, %149
+  branch %171, b34(), b35()
+b34():
+  @48:5
+  jump b32()
+b35():
   @48:5
   jump b36()
-b41():
-  @48:5
-  jump b42()
-b42():
+b36():
   @48:5
   %174: int = const 1
-  %175: int = add %170, %174
-  store8 %150 + 0, %175
-  jump b35()
-b43():
+  %175: int = add %739, %174
+  jump b31(%725, %175)
+b37():
   @40:1
   jump b5()
-b44():
+b38():
   @40:1
-  jump b45()
-b45():
+  jump b39()
+b39():
   @40:1
   %182: int = const 1
-  %183: int = add %178, %182
-  store8 %34 + 0, %183
-  jump b4()
-b46():
+  %183: int = add %727, %182
+  jump b4(%719, %723, %183)
+b40():
   @21:9
-  jump b49()
-b47():
+  jump b43(%231)
+b41():
   @21:9
-  jump b48()
-b48():
+  jump b42()
+b42():
   @21:9
   %250: int = const 16
   %251: ptr = symbol quest_layout_adapt_closure
@@ -565,8 +520,8 @@ b48():
   %269: ptr = load8 %268 + 0
   @13:59
   %270: ptr = symbol qso_6 + 8
-  %725: int = const 4
-  %271: ptr = call quest_string_concat_n(%725, %259, %261, %260, %270, %256, %256, %256)
+  %770: int = const 4
+  %271: ptr = call quest_string_concat_n(%770, %259, %261, %260, %270, %256, %256, %256)
   @13:28
   call quest_writer_put_string(%269, %271)
   @61:23
@@ -576,16 +531,12 @@ b48():
   @62:13
   %282: val = call qv_collections__vector_new(%254)
   @63:1
-  %283: ptr = slot 7
   %284: int = const 1
-  store1 %283 + 0, %284
   @64:1
-  %286: ptr = slot 8
-  store8 %286 + 0, %284
   %291: int = const 400
   %292: int = le %284, %291
-  branch %292, b54(), b55()
-b49():
+  branch %292, b48(), b49()
+b43(%741: int):
   @21:50
   %237: int = const 1000000
   %238: int = call qv_util__random_below(%3, %237)
@@ -594,35 +545,33 @@ b49():
   %240: ptr = symbol quest_type_Int
   call qv_collections__vector_append(%240, %229, %239)
   @21:9
-  %242: int = load8 %230 + 0
   %243: int = const 100
-  %244: int = eq %242, %243
-  branch %244, b51(), b52()
-b50():
+  %244: int = eq %741, %243
+  branch %244, b45(), b46()
+b44():
   @21:9
-  jump b48()
-b51():
+  jump b42()
+b45():
   @21:9
-  jump b50()
-b52():
+  jump b44()
+b46():
   @21:9
-  jump b53()
-b53():
+  jump b47()
+b47():
   @21:9
   %247: int = const 1
-  %248: int = add %242, %247
-  store8 %230 + 0, %248
-  jump b49()
-b54():
+  %248: int = add %741, %247
+  jump b43(%248)
+b48():
   @64:1
-  jump b57()
-b55():
+  jump b51(%284, %284)
+b49():
   @64:1
-  jump b56()
-b56():
+  jump b50(%284)
+b50(%742: int):
   @83:1
   %387: ptr = symbol qso_9 + 8
-  %389: int = load1 %283 + 0
+  %389: int = zext8 %742
   @14:65
   %390: ptr = call qv_conv_bool(%389) narrow [0]
   @14:57
@@ -636,9 +585,9 @@ b56():
   %399: ptr = load8 %398 + 0
   @13:59
   %400: ptr = symbol qso_6 + 8
-  %729: int = const 4
-  %730: ptr = null
-  %401: ptr = call quest_string_concat_n(%729, %387, %391, %390, %400, %730, %730, %730)
+  %774: int = const 4
+  %775: ptr = null
+  %401: ptr = call quest_string_concat_n(%774, %387, %391, %390, %400, %775, %775, %775)
   @13:28
   call quest_writer_put_string(%399, %401)
   @84:52
@@ -661,7 +610,7 @@ b56():
   %418: ptr = ptrAdd %415, %417
   %419: ptr = load8 %418 + 0
   @13:59
-  %421: ptr = call quest_string_concat_n(%729, %409, %391, %410, %400, %730, %730, %730)
+  %421: ptr = call quest_string_concat_n(%774, %409, %391, %410, %400, %775, %775, %775)
   @13:28
   call quest_writer_put_string(%419, %421)
   @87:52
@@ -687,7 +636,7 @@ b56():
   %447: int = fromVal %446
   @88:24
   %448: ptr = call quest_conv_int(%447)
-  %450: val = toVal %729
+  %450: val = toVal %774
   @88:88
   %452: val = call qv_collections__heap_pushPop(%402, %442, %450)
   %453: int = fromVal %452
@@ -723,9 +672,9 @@ b56():
   %485: ptr = ptrAdd %482, %484
   %486: ptr = load8 %485 + 0
   @13:59
-  %738: int = const 7
-  %737: ptr = call quest_string_concat_n(%738, %479, %448, %476, %454, %473, %458, %467)
-  %488: ptr = call quest_string_concat_n(%426, %737, %462, %467, %466, %400, %730, %730)
+  %783: int = const 7
+  %782: ptr = call quest_string_concat_n(%783, %479, %448, %476, %454, %473, %458, %467)
+  %488: ptr = call quest_string_concat_n(%426, %782, %462, %467, %466, %400, %775, %775)
   @13:28
   call quest_writer_put_string(%486, %488)
   @91:23
@@ -754,7 +703,7 @@ b56():
   %516: ptr = ptrAdd %513, %515
   %517: ptr = load8 %516 + 0
   @13:59
-  %519: ptr = call quest_string_concat_n(%426, %510, %503, %507, %506, %400, %730, %730)
+  %519: ptr = call quest_string_concat_n(%426, %510, %503, %507, %506, %400, %775, %775)
   @13:28
   call quest_writer_put_string(%517, %519)
   @95:30
@@ -788,12 +737,10 @@ b56():
   %545: int = load8 %531 + 0 invariant
   %547: int = sub %545, %443
   @97:1
-  %548: ptr = slot 10
   %549: int = const 0
-  store8 %548 + 0, %549
   %553: int = le %549, %547
-  branch %553, b82(), b83()
-b57():
+  branch %553, b70(), b71()
+b51(%743: int, %749: int):
   @65:9
   %293: int = const 3
   %294: int = call qv_util__random_below(%3, %293)
@@ -806,11 +753,11 @@ b57():
   @65:9
   %300: int = or %296, %299
   @65:5
-  branch %300, b59(), b60()
-b58():
+  branch %300, b53(), b54()
+b52():
   @64:1
-  jump b56()
-b59():
+  jump b50(%747)
+b53():
   @66:17
   %301: int = const 100
   %302: int = call qv_util__random_below(%3, %301)
@@ -831,11 +778,9 @@ b59():
   @71:57
   %322: int = add %314, %319
   @71:9
-  %323: ptr = slot 9
-  store8 %323 + 0, %320
   %327: int = ge %320, %322
-  branch %327, b62(), b63()
-b60():
+  branch %327, b56(), b57()
+b54():
   @76:21
   %347: ptr = symbol quest_type_Int
   %348: int = const 0
@@ -849,9 +794,12 @@ b60():
   %356: int = eq %355, %350
   %357: int = const 1
   %358: int = xor %356, %357
+  @78:47
+  %359: int = const 0
   @78:9
-  branch %358, b70(), b71()
-b61():
+  %815: int = select %358, %359, %743
+  jump b64(%815)
+b55(%744: int):
   @81:8
   %369: ptr = symbol quest_type_Int
   %370: int = call qv_collections__heap_size(%369, %280)
@@ -861,60 +809,49 @@ b61():
   %373: int = eq %370, %372
   %374: int = const 1
   %375: int = xor %373, %374
+  @81:63
+  %376: int = const 0
   @81:5
-  branch %375, b76(), b77()
-b62():
+  %816: int = select %375, %376, %744
+  jump b66(%816)
+b56():
   @71:9
-  jump b65()
-b63():
+  jump b59(%320)
+b57():
   @71:9
-  jump b64()
-b64():
+  jump b58()
+b58():
   @74:9
   %346: ptr = symbol quest_type_Int
   call qv_collections__vector_set(%346, %282, %314, %303)
-  jump b61()
-b65():
-  @71:9
-  %329: int = load8 %323 + 0
+  jump b55(%743)
+b59(%754: int):
   @72:59
   %330: int = const 1
-  %331: int = sub %329, %330
+  %331: int = sub %754, %330
   @72:37
   %332: ptr = symbol quest_type_Int
   %333: val = call qv_collections__vector_get(%332, %282, %331)
   %334: int = fromVal %333
   %335: val = toVal %334
   @72:13
-  call qv_collections__vector_set(%332, %282, %329, %335)
+  call qv_collections__vector_set(%332, %282, %754, %335)
   @71:9
-  %338: int = load8 %323 + 0
-  %339: int = eq %338, %322
-  branch %339, b67(), b68()
-b66():
+  %339: int = eq %754, %322
+  branch %339, b61(), b62()
+b60():
   @71:9
-  jump b64()
-b67():
+  jump b58()
+b61():
   @71:9
-  jump b66()
-b68():
+  jump b60()
+b62():
   @71:9
-  jump b69()
-b69():
+  jump b63()
+b63():
   @71:9
-  %342: int = const 1
-  %343: int = sub %338, %342
-  store8 %323 + 0, %343
-  jump b65()
-b70():
-  @78:47
-  %359: int = const 0
-  store1 %283 + 0, %359
-  jump b72()
-b71():
-  @78:47
-  jump b72()
-b72():
+  jump b59(%331)
+b64(%745: int):
   @79:12
   %361: ptr = symbol quest_type_Int
   %362: val = call qv_collections__heap_pop(%361, %280)
@@ -922,80 +859,61 @@ b72():
   %364: int = eq %363, %350
   %365: int = const 1
   %366: int = xor %364, %365
-  @79:9
-  branch %366, b73(), b74()
-b73():
   @79:46
   %367: int = const 0
-  store1 %283 + 0, %367
-  jump b75()
-b74():
+  @79:9
+  %817: int = select %366, %367, %745
+  jump b65(%817)
+b65(%746: int):
   @79:46
-  jump b75()
-b75():
-  @79:46
-  jump b61()
-b76():
-  @81:63
-  %376: int = const 0
-  store1 %283 + 0, %376
-  jump b78()
-b77():
-  @81:63
-  jump b78()
-b78():
+  jump b55(%746)
+b66(%747: int):
   @64:1
-  %379: int = load8 %286 + 0
   %380: int = const 400
-  %381: int = eq %379, %380
-  branch %381, b79(), b80()
-b79():
+  %381: int = eq %749, %380
+  branch %381, b67(), b68()
+b67():
   @64:1
-  jump b58()
-b80():
+  jump b52()
+b68():
   @64:1
-  jump b81()
-b81():
+  jump b69()
+b69():
   @64:1
   %384: int = const 1
-  %385: int = add %379, %384
-  store8 %286 + 0, %385
-  jump b57()
-b82():
+  %385: int = add %749, %384
+  jump b51(%747, %385)
+b70():
   @97:1
-  jump b85()
-b83():
+  jump b73(%549)
+b71():
   @97:1
-  jump b84()
-b84():
+  jump b72()
+b72():
   @98:1
-  %579: ptr = slot 11
   %580: ptr = symbol qso_23 + 8
-  store8 %579 + 0, %580
-  jump b94()
-b85():
-  @97:1
-  %555: int = load8 %548 + 0
+  jump b82(%580)
+b73(%756: int):
   @97:59
   %556: ptr = null
   %557: int = peq %531, %556
-  branch %557, b88(), b87()
-b86():
+  branch %557, b76(), b75()
+b74():
   @97:1
-  jump b84()
-b87():
+  jump b72()
+b75():
   @97:59
-  %560: int = ult %555, %545
-  branch %560, b89(), b90()
-b88():
+  %560: int = ult %756, %545
+  branch %560, b77(), b78()
+b76():
   @97:59
   %558: ptr = symbol qs_22
   call quest_raise_array_error_at(%558)
   unreachable
-b89():
+b77():
   @97:59
   %562: int = const 8
-  %563: int = mul %555, %562
+  %563: int = mul %756, %562
   %565: ptr = ptrAdd %531, %562
   %566: ptr = ptrAdd %565, %563
   %567: val = load8 %566 + 0
@@ -1005,27 +923,25 @@ b89():
   %570: ptr = symbol quest_type_String
   call qv_collections__heap_push(%570, %528, %569)
   @97:1
-  %572: int = load8 %548 + 0
-  %573: int = eq %572, %547
-  branch %573, b91(), b92()
-b90():
+  %573: int = eq %756, %547
+  branch %573, b79(), b80()
+b78():
   @97:59
   %561: ptr = symbol qs_22
   call quest_raise_array_error_at(%561)
   unreachable
-b91():
+b79():
   @97:1
-  jump b86()
-b92():
+  jump b74()
+b80():
   @97:1
-  jump b93()
-b93():
+  jump b81()
+b81():
   @97:1
   %576: int = const 1
-  %577: int = add %572, %576
-  store8 %548 + 0, %577
-  jump b85()
-b94():
+  %577: int = add %756, %576
+  jump b73(%577)
+b82(%757: ptr):
   @99:11
   %582: ptr = symbol quest_type_String
   %583: int = call qv_collections__heap_empty(%582, %528) result narrow
@@ -1034,11 +950,10 @@ b94():
   %585: int = const 1
   %586: int = xor %584, %585
   @99:1
-  branch %586, b96(), b97()
-b95():
+  branch %586, b84(), b85()
+b83():
   @100:7
   %596: ptr = symbol qso_24 + 8
-  %598: ptr = load8 %579 + 0
   @13:45
   %600: ptr = symbol qm_writer
   %601: ptr = load8 %600 + 0
@@ -1048,9 +963,9 @@ b95():
   %605: ptr = load8 %604 + 0
   @13:59
   %606: ptr = symbol qso_6 + 8
-  %745: int = const 3
-  %746: ptr = null
-  %607: ptr = call quest_string_concat_n(%745, %596, %598, %606, %746, %746, %746, %746)
+  %790: int = const 3
+  %791: ptr = null
+  %607: ptr = call quest_string_concat_n(%790, %596, %757, %606, %791, %791, %791, %791)
   @13:28
   call quest_writer_put_string(%605, %607)
   %608: ptr = symbol qso_25 + 8
@@ -1076,8 +991,8 @@ b95():
   %624: ptr = ptrAdd %621, %623
   %625: ptr = load8 %624 + 0
   @13:59
-  %750: int = const 4
-  %627: ptr = call quest_string_concat_n(%750, %615, %617, %616, %606, %746, %746, %746)
+  %795: int = const 4
+  %627: ptr = call quest_string_concat_n(%795, %615, %617, %616, %606, %791, %791, %791)
   @13:28
   call quest_writer_put_string(%625, %627)
   @107:1
@@ -1089,19 +1004,19 @@ b95():
   %633: int = load8 %632 + 32
   %634: ptr = ptrAdd %631, %633
   %635: ptr = load8 %634 + 0
-  %636: ptr = slot 12
+  %636: ptr = slot 0
   %637: ptr = threadLocal quest_current_exception_handler
   %638: ptr = load8 %637 + 0
   store8 %636 + 0, %638
-  store8 %636 + 24, %746
-  %640: ptr = slot 13
+  store8 %636 + 24, %791
+  %640: ptr = slot 1
   store8 %640 + 0, %635
   store8 %636 + 8, %640
   %641: int = const 1
   store8 %636 + 16, %641
   store8 %637 + 0, %636
-  try slot 12, b102(), handler b103
-b96():
+  try slot 0, b90(), handler b91
+b84():
   @99:66
   %587: ptr = symbol quest_type_String
   %588: val = call qv_collections__heap_pop(%587, %528)
@@ -1109,20 +1024,18 @@ b96():
   @99:59
   %590: ptr = symbol qso_11 + 8
   @99:50
-  %593: ptr = load8 %579 + 0
-  %754: int = const 3
-  %755: ptr = null
-  %594: ptr = call quest_string_concat_n(%754, %593, %590, %589, %755, %755, %755, %755)
+  %799: int = const 3
+  %800: ptr = null
+  %594: ptr = call quest_string_concat_n(%799, %757, %590, %589, %800, %800, %800, %800)
   @99:41
-  store8 %579 + 0, %594
-  jump b98()
-b97():
+  jump b86()
+b85():
   @99:1
-  jump b95()
-b98():
+  jump b83()
+b86():
   @99:1
-  jump b94()
-b99():
+  jump b82(%594)
+b87():
   @108:1
   %672: ptr = symbol qso_29 + 8
   @106:87
@@ -1132,23 +1045,23 @@ b99():
   %677: int = load8 %676 + 32
   %678: ptr = ptrAdd %675, %677
   %679: ptr = load8 %678 + 0
-  %680: ptr = slot 15
+  %680: ptr = slot 3
   %682: ptr = load8 %637 + 0
   store8 %680 + 0, %682
   %683: ptr = null
   store8 %680 + 24, %683
-  %684: ptr = slot 16
+  %684: ptr = slot 4
   store8 %684 + 0, %679
   store8 %680 + 8, %684
   %685: int = const 1
   store8 %680 + 16, %685
   store8 %637 + 0, %680
-  try slot 15, b109(), handler b110
-b100():
+  try slot 3, b97(), handler b98
+b88():
   @13:28
   %716: int = const 0
   return %716
-b101(%629: ptr):
+b89(%629: ptr):
   @106:56
   %661: ptr = symbol qso_5 + 8
   @13:45
@@ -1160,13 +1073,13 @@ b101(%629: ptr):
   %669: ptr = load8 %668 + 0
   @13:59
   %670: ptr = symbol qso_6 + 8
-  %759: int = const 4
-  %760: ptr = null
-  %671: ptr = call quest_string_concat_n(%759, %628, %661, %629, %670, %760, %760, %760)
+  %804: int = const 4
+  %805: ptr = null
+  %671: ptr = call quest_string_concat_n(%804, %628, %661, %629, %670, %805, %805, %805)
   @13:28
   call quest_writer_put_string(%669, %671)
-  jump b99()
-b102():
+  jump b87()
+b90():
   @107:31
   %642: ptr = symbol quest_type_Int
   %643: val = call qv_collections__heap_pop(%642, %497)
@@ -1176,12 +1089,12 @@ b102():
   @106:64
   %647: ptr = load8 %636 + 0
   store8 %637 + 0, %647
-  jump b101(%645)
-b103():
+  jump b89(%645)
+b91():
   @106:64
   %649: ptr = load8 %636 + 0
   store8 %637 + 0, %649
-  %650: ptr = slot 14
+  %650: ptr = slot 2
   %651: ptr = threadLocal quest_current_exception
   %652: int = load8 %651 + 0
   store8 %650 + 0, %652
@@ -1197,22 +1110,22 @@ b103():
   store8 %650 + 40, %657
   %658: ptr = load8 %650 + 0
   %659: int = peq %658, %635
-  branch %659, b104(), b105()
-b104():
+  branch %659, b92(), b93()
+b92():
   @106:64
   %660: ptr = symbol qso_28 + 8
-  jump b101(%660)
-b105():
+  jump b89(%660)
+b93():
   @106:64
   call quest_reraise(%650) memory [0:48]
   unreachable
-b106():
+b94():
   @13:28
-  jump b107()
-b107():
+  jump b95()
+b95():
   @13:28
-  jump b100()
-b108(%673: ptr):
+  jump b88()
+b96(%673: ptr):
   @106:56
   %705: ptr = symbol qso_5 + 8
   @13:45
@@ -1224,13 +1137,13 @@ b108(%673: ptr):
   %713: ptr = load8 %712 + 0
   @13:59
   %714: ptr = symbol qso_6 + 8
-  %763: int = const 4
-  %764: ptr = null
-  %715: ptr = call quest_string_concat_n(%763, %672, %705, %673, %714, %764, %764, %764)
+  %808: int = const 4
+  %809: ptr = null
+  %715: ptr = call quest_string_concat_n(%808, %672, %705, %673, %714, %809, %809, %809)
   @13:28
   call quest_writer_put_string(%713, %715)
-  jump b106()
-b109():
+  jump b94()
+b97():
   @108:32
   %686: ptr = symbol quest_type_Int
   %687: val = call qv_collections__heap_peek(%686, %497)
@@ -1240,12 +1153,12 @@ b109():
   @106:64
   %691: ptr = load8 %680 + 0
   store8 %637 + 0, %691
-  jump b108(%689)
-b110():
+  jump b96(%689)
+b98():
   @106:64
   %693: ptr = load8 %680 + 0
   store8 %637 + 0, %693
-  %694: ptr = slot 17
+  %694: ptr = slot 5
   %695: ptr = threadLocal quest_current_exception
   %696: int = load8 %695 + 0
   store8 %694 + 0, %696
@@ -1261,12 +1174,12 @@ b110():
   store8 %694 + 40, %701
   %702: ptr = load8 %694 + 0
   %703: int = peq %702, %679
-  branch %703, b111(), b112()
-b111():
+  branch %703, b99(), b100()
+b99():
   @106:64
   %704: ptr = symbol qso_28 + 8
-  jump b108(%704)
-b112():
+  jump b96(%704)
+b100():
   @106:64
   call quest_reraise(%694) memory [0:48]
   unreachable

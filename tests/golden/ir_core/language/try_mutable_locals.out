@@ -239,5 +239,61 @@ main {
   let %63: Int = call component(0) @103:16
   let %64: String = call conv.int(%63) @103:7
   do call print(%64) @103:1
+  funs rec {
+    fun bodyOnly(n.8: Int): Int {
+      var seen: Int = 0 @111:9
+      join k3(r.3: Int) {
+        join k4(r.4: Int) {
+          return r.4
+        } in {
+          let %65: Bool = prim <(n.8, 0) @126:12
+          if %65 { @126:9
+            let %66: Int = prim -(0, n.8) @126:32
+            let %67: Int = call bodyOnly(%66) @126:23
+            jump k4(%67) @126:9
+          } else {
+            let %68: Int = prim +(r.3, seen) @126:44
+            jump k4(%68) @126:9
+          }
+        }
+      } in {
+        try catching (Stop) {
+          var sum: Int = 0 @115:21
+          var i.2: Int = 0 @116:21
+          loop L2 {
+            let %69: Bool = prim <(i.2, n.8) @117:27
+            if %69 { @117:21
+              let %70: Int = prim +(sum, i.2) @118:32
+              sum := %70 @118:25
+              let %71: Int = prim +(i.2, 1) @119:30
+              i.2 := %71 @119:25
+              let %72: Bool = prim >(sum, 100) @120:28
+              if %72 { @120:25
+                seen := i.2 @120:49
+                raise Stop @120:59
+              }
+            } else {
+              break L2 @117:21
+            }
+          }
+          jump k3(sum) @113:13
+        } handle (e.8: Exception) {
+          let %73: Bool = prim is(e.8, Stop) @113:13
+          if %73 { @113:13
+            let %74: Int = prim +(1000, seen) @124:28
+            jump k3(%74) @113:13
+          } else {
+            reraise e.8 @113:13
+          }
+        }
+      }
+    }
+  }
+  let %75: Int = call bodyOnly(5) @128:16
+  let %76: String = call conv.int(%75) @128:7
+  do call print(%76) @128:1
+  let %77: Int = call bodyOnly(-50) @129:16
+  let %78: String = call conv.int(%77) @129:7
+  do call print(%78) @129:1
 }
 

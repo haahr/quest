@@ -113,7 +113,7 @@ show("a slot whose address a call takes" array of
     "}"
 end);
 
-show("a function that enters a try" array of
+show("a function that enters a try: the slot its handler loads is kept, with the try's record" array of
     "function tries(): int slots [240:16 8:8] {"
     "b0():"
     "  %0: ptr = slot 1"
@@ -126,5 +126,24 @@ show("a function that enters a try" array of
     "b2():"
     "  %3: int = load8 %0 + 0"
     "  return %3"
+    "}"
+end);
+
+show("a try whose body alone uses a slot, which is promoted" array of
+    "function bodyOnly(): int slots [240:16 8:8 8:8] {"
+    "b0():"
+    "  %0: ptr = slot 1"
+    "  %1: ptr = slot 2"
+    "  %2: int = const 4"
+    "  store8 %0 + 0, %2"
+    "  try slot 0, b1(), handler b2"
+    "b1():"
+    "  %3: int = const 5"
+    "  store8 %1 + 0, %3"
+    "  %4: int = load8 %1 + 0"
+    "  return %4"
+    "b2():"
+    "  %5: int = load8 %0 + 0"
+    "  return %5"
     "}"
 end);

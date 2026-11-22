@@ -101,3 +101,29 @@ let rec component(n: Int): Int =
     end;
 print(conv.int(component(1)));
 print(conv.int(component(0)));
+
+(* 8. Locals the body alone uses, which the SSA makes values though the
+ * function enters a try: a loop's variables, whose sum is the try's value,
+ * beside one the handler reads, which keeps its stack slot (recursive, so
+ * that it is not inlined into main, where earlier handlers reach it) *)
+let rec bodyOnly(n: Int): Int =
+    begin
+        let var seen = 0
+        let r =
+            try
+                begin
+                    let var sum = 0
+                    let var i = 0
+                    while i < n do
+                        sum := sum + i
+                        i := i + 1
+                        if sum > 100 then begin seen := i raise Stop end end end
+                    end
+                    sum
+                end
+            when Stop then 1000 + seen
+            end
+        if n < 0 then bodyOnly(0 - n) else r + seen end
+    end;
+print(conv.int(bodyOnly(5)));
+print(conv.int(bodyOnly(~50)));

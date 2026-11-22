@@ -206,9 +206,10 @@ internal error.
   whole only if stored whole. A block that the definitions reaching it differ at gets a parameter (Cytron et al.'s
   placement at the iterated dominance frontier); then, along the dominator tree, a load becomes the value last stored,
   or, for a byte, its `zext8` or `sext8`, and one before any store reads a zero made in the entry. The slots left are
-  renumbered. A function that enters a `try` keeps all its slots, since its handler must see what the body stored
-  (arm64.md §3.6); a variable captured by a closure is a heap cell, and one passed as a `var` argument keeps its slot,
-  its address escaping. `language/mutable_locals` covers each kind.
+  renumbered. A slot accessed in a block that a `try`'s handler reaches keeps its memory, since the handler must see
+  what the body stored (arm64.md §3.6), and no such block gets a parameter for a promoted variable, which it never
+  loads; a variable captured by a closure is a heap cell, and one passed as a `var` argument keeps its slot, its
+  address escaping. `language/mutable_locals` covers each kind.
 - **`ssa/scalars`** replaces the objects that block parameters merge, which escape analysis leaves, by the values of
   their words (§4.3): a loop that carries a tuple carries its components. It runs after promotion, which makes the
   variables a loop carries its parameters, and before `ssa/passes/constants`.

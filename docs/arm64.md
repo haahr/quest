@@ -224,9 +224,9 @@ reliably is enter fewer handlers (§6.2).
   entered, so a `try` in a loop costs only its record's stores. `tests/self-hosted/backends` checks it: a C loop keeps
   its state in such registers across calls of a native closure that catches what C code raises.
 - **SSA and `try`.** As the C printer marks `volatile` the mutable variables assigned in a `try` body and live in its
-  handler or after the `try` (ir.md §6.4), the SSA keeps a function's mutable variables in stack slots when it enters
-  a `try` ([ssa.md](ssa.md) §4.1). Every other value the handler uses dominates the `try`'s entry, so the handler
-  block needs no parameters from the points that raise.
+  handler or after the `try` (ir.md §6.4), the SSA keeps in a stack slot each mutable variable that a block a `try`'s
+  handler reaches loads or stores ([ssa.md](ssa.md) §4.1). Every other value the handler uses dominates the `try`'s
+  entry, so the handler block needs no parameters from the points that raise.
 - **The chain stays thread-local** (`_Thread_local`, though Quest has no threads). On Darwin, native code gets a
   thread-local's address from its descriptor's accessor (`_tlv_get_addr`, a call; the SSA's `threadLocal`), taken at
   each use. Raises go through the runtime.

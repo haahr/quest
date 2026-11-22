@@ -11,16 +11,28 @@ export
     let typeCode = ssa.typeCode
     let typeOfCode = ssa.typeOfCode
 
-    let enters(f: Function): Bool =
+    (* The blocks some try's handler reaches. A raise arrives at a handler
+     * with the values defined before its try and the memory the body wrote,
+     * so a slot accessed in any of these blocks keeps its memory; one
+     * accessed only elsewhere (by the body, or before the try, or in a
+     * function with no try) can be promoted (docs/arm64.md section 3.6) *)
+    let handlerReached(f: Function): Array(Bool) =
         begin
-            let var found = false
-            for b = 0 upto {vector.length(f.blocks) - 1} do
+            let n = vector.length(f.blocks)
+            let reached = array of(n false)
+            let work = vector.new(:Int)
+            let reach(b: Int): Ok = if not(reached[b]) then begin reached[b] := true vector.append(work b) end end
+            for b = 0 upto {n - 1} do
                 case ssa.block(f b).term
-                    when termTry then found := true
+                    when termTry with x then reach(x.handler)
                     when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then ok
                 end
             end
-            found
+            while not(vector.empty(work)) do
+                let succs = ssa.successors(ssa.block(f vector.pop(work)).term)
+                for k = 0 upto {extent succs - 1} do reach(succs[k]) end
+            end
+            reached
         end
 
     (* A function's slots and their words, the variables promotion makes *)
@@ -45,10 +57,10 @@ export
         end
 
     (* The slots that can be promoted: of whole words, their addresses only
-     * loaded from and stored to, a word at a time, or its first byte; each word
-     * of values of one type, stored all of one width, and loaded whole only if
-     * stored whole *)
-    let variables(f: Function): Variables =
+     * loaded from and stored to, a word at a time, or its first byte, and not
+     * in a block a handler reaches (inHandler); each word of values of one
+     * type, stored all of one width, and loaded whole only if stored whole *)
+    let variables(f: Function inHandler: Array(Bool)): Variables =
         begin
             let nSlots = vector.length(f.slots)
             let slotOf = array of(vector.length(f.types) ~1)
@@ -82,8 +94,11 @@ export
                 let blk = ssa.block(f b)
                 for k = 0 upto {vector.length(blk.insts) - 1} do
                     let i = vector.get(blk.insts k)
-                    (* Any other use of a slot's address escapes *)
+                    (* Any other use of a slot's address escapes, as does
+                     * any use in a block a handler reaches *)
                     if ssa.isOp(i ssa.opSlot) then ok
+                    elsif inHandler[b] then
+                        for a = 0 upto {extent i.args - 1} do escape(i.args[a]) end
                     elsif ssa.isOp(i ssa.opLoad) then
                         let s = slotOf[i.args[0]]
                         if {s >= 0} andif promoted[s] then
@@ -112,6 +127,11 @@ export
                 end
                 let uses = ssa.terminatorUses(blk.term)
                 for a = 0 upto {extent uses - 1} do escape(uses[a]) end
+                (* A try's handler record, which the try names by number *)
+                case blk.term
+                    when termTry with x then promoted[x.slot] := false
+                    when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then ok
+                end
             end
             for s = 0 upto {nSlots - 1} do
                 if promoted[s] then
@@ -129,12 +149,13 @@ export
         end
 
     let promoteFunction(f: Function): Int =
-        if {vector.length(f.slots) is 0} orif enters(f) then 0 else
+        if vector.length(f.slots) is 0 then 0 else
             begin
                 let nBlocks = vector.length(f.blocks)
                 let nSlots = vector.length(f.slots)
                 let nValues = vector.length(f.types)
-                let vs = variables(f)
+                let inHandler = handlerReached(f)
+                let vs = variables(f inHandler)
                 let nVars = extent vs.kind
                 let slotOf = vs.slotOf
                 let promoted = vs.promoted
@@ -156,7 +177,12 @@ export
                     end
                 end
                 (* Where each variable needs a block parameter: the iterated
-                 * frontier of the blocks that store to it *)
+                 * frontier of the blocks that store to it, but for the blocks
+                 * a handler reaches. A promoted variable is not loaded in
+                 * those, nor in any block after them, which a handler also
+                 * reaches, so a parameter there would be dead, and the value
+                 * a handler's path passed it would be kept live into the
+                 * handler for nothing *)
                 let needs = array of(nVars array of(0 false))
                 for s = 0 upto {nSlots - 1} do
                     if promoted[s] then
@@ -173,7 +199,7 @@ export
                                 let b = vector.pop(work)
                                 for k = 0 upto {extent frontier[b] - 1} do
                                     let x = frontier[b][k]
-                                    if not(needs[v][x]) then
+                                    if not(needs[v][x]) andif not(inHandler[x]) then
                                         needs[v][x] := true
                                         if not(queued[x]) then
                                             queued[x] := true
@@ -342,6 +368,14 @@ export
                     for k = 0 upto {vector.length(blk.insts) - 1} do
                         let i = vector.get(blk.insts k)
                         if ssa.isOp(i ssa.opSlot) then i.imm := renumbered[i.imm] end
+                    end
+                    (* A try names its handler record's slot, which is kept *)
+                    case blk.term
+                        when termTry with x then
+                            blk.term := option termTry of ssa.Terminator with
+                                let slot = renumbered[x.slot] let body = x.body let handler = x.handler
+                            end
+                        when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then ok
                     end
                 end
                 ssa.replaceUses(f resolve)
