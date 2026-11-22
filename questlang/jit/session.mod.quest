@@ -92,17 +92,18 @@ export
                         end
                     else ok
                 end
-                case phrase.form
-                    when bindExprStmt with x then
-                        case x.expr.form
-                            when exprException with y then
-                                if maybe.isSome(y.symbol) then
-                                    let declared = maybe.unwrap(y.symbol)
-                                    vector.append(found declared)
-                                end
-                            else ok
-                        end
-                    else ok
+                (* And the exceptions it names, a let's value's among them;
+                 * a module's are its own, in its record *)
+                let excs = case phrase.form
+                    when bindModule then array of :typedAst.Expr end
+                    else typedAst.namedExceptionsIn(phrase)
+                end
+                for j = 0 upto {extent excs - 1} do
+                    case excs[j].form
+                        when exprException with y then
+                            if maybe.isSome(y.symbol) then vector.append(found maybe.unwrap(y.symbol)) end
+                        else ok
+                    end
                 end
             end
             found

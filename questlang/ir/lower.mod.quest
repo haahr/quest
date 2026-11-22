@@ -2316,19 +2316,20 @@ export
                                 for j = 0 upto {extent x.members - 1} do bound(x.members[j].symbol) end
                             else binding(l phrase show)
                         end
-                        (* An exception it declares, which later inputs may
-                         * raise and catch (one a let binds is the let's
-                         * value) *)
-                        case phrase.form
-                            when bindExprStmt with x then
-                                case x.expr.form
-                                    when exprException with y then
-                                        if maybe.isSome(y.symbol) then
-                                            bound(maybe.unwrap(y.symbol))
-                                        end
-                                    else ok
-                                end
-                            else ok
+                        (* The exceptions it names, which later inputs may
+                         * raise and catch: a let's value's binds its own name
+                         * too (let e2 = exception error end binds error). A
+                         * module's are its own, in its record *)
+                        let excs = case phrase.form
+                            when bindModule then array of :typedAst.Expr end
+                            else typedAst.namedExceptionsIn(phrase)
+                        end
+                        for j = 0 upto {extent excs - 1} do
+                            case excs[j].form
+                                when exprException with y then
+                                    if maybe.isSome(y.symbol) then bound(maybe.unwrap(y.symbol)) end
+                                else ok
+                            end
                         end
                     end
                     lastBody := l.body
