@@ -1563,10 +1563,13 @@ export
         begin
             let ts = tagShape(atomType(o.value))
             let st = site(p o.offset)
+            (* A decided payload's tag is known, and not tested *)
             if maybe.isSome(o.viewMap) then
-                let tagC = tagOf(p atom(p o.value) ts o.access o.viewMap)
-                emit(p "if (" <> tagC <> " != " <> lit(tagIndexOf(ts o.tag)) <> ") quest_raise_variant_error_at("
-                    <> st <> ");")
+                if not(o.decided) then
+                    let tagC = tagOf(p atom(p o.value) ts o.access o.viewMap)
+                    emit(p "if (" <> tagC <> " != " <> lit(tagIndexOf(ts o.tag)) <> ") quest_raise_variant_error_at("
+                        <> st <> ");")
+                end
                 let result = viewPayload(p atom(p o.value) ts o.tag maybe.unwrap(o.viewMap) t)
                 case ts.kind
                     when shapeOption then
@@ -1581,9 +1584,11 @@ export
                 let index = tagIndexOf(ts o.tag)
                 case ts.kind
                     when shapeVariant then
-                        emit(p "if (" <> atom(p o.value) <> ".tag != " <> lit(index)
-                            <> ") quest_raise_variant_error_at("
-                            <> st <> ");")
+                        if not(o.decided) then
+                            emit(p "if (" <> atom(p o.value) <> ".tag != " <> lit(index)
+                                <> ") quest_raise_variant_error_at("
+                                <> st <> ");")
+                        end
                         let cs = caseShape(ts o.tag)
                         let caseS = if maybe.isSome(cs) then maybe.unwrap(cs) else shapeOf(t) end
                         (* In its slot form (a record or variant, for a boxed
@@ -1593,9 +1598,11 @@ export
                         shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
                         shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
                         shapePending then
-                        let tagC = optionTag(atom(p o.value) o.access)
-                        emit(p "if (" <> tagC <> " != " <> lit(index) <> ") quest_raise_variant_error_at(" <> st
-                            <> ");")
+                        if not(o.decided) then
+                            let tagC = optionTag(atom(p o.value) o.access)
+                            emit(p "if (" <> tagC <> " != " <> lit(index) <> ") quest_raise_variant_error_at(" <> st
+                                <> ");")
+                        end
                         optionCaseTuple(p atom(p o.value) ts o.tag t 1 o.components
                             maybe.unwrapOr(o.ordinalIndex 0))
                 end
@@ -2512,7 +2519,9 @@ export
             let v = atom(p x.value)
             let t = tagShape(atomType(x.value))
             let isVariant = shapes.kindIs(t shapes.shapeVariant)
-            emit(p "switch (" <> tagOf(p v t x.access x.viewMap) <> ") {")
+            (* A decided switch's tag is its one case's, not read *)
+            let tagC = if x.decided then lit(tagIndexOf(t x.cases[0].tags[0])) else tagOf(p v t x.access x.viewMap) end
+            emit(p "switch (" <> tagC <> ") {")
             p.indent := p.indent + 1
             for ci = 0 upto {extent x.cases - 1} do
                 let c = x.cases[ci]

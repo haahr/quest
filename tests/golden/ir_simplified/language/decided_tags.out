@@ -1,0 +1,261 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun setLet(o: O, v: Int): Ok {
+      let %1: Bool = is_tag(o, made) @17:34
+      if %1 { @17:31
+        switch tag(o) decided { @17:46
+          case made (p: Tuple var x: Int end): {
+            store p.#0 := v @17:46
+          }
+        }
+      }
+      return ok
+    }
+  }
+  funs {
+    fun getLet(o.1: O): Int {
+      let %2: Bool = is_tag(o.1, made) @18:28
+      if %2 { @18:25
+        let %3: Tuple Int var x: Int end = payload(o.1, made) #1 decided @18:40
+        let %4: Int = tuple_field(%3, 1) @18:40
+        return %4 @18:25
+      } else {
+        return -1 @18:25
+      }
+    }
+  }
+  funs {
+    fun setVar(h: H, v.1: Int): Ok {
+      let %5: O = tuple_field(h, 0) @19:34
+      let %6: Bool = is_tag(%5, made) @19:34
+      if %6 { @19:31
+        switch tag(%5) decided { @19:51
+          case made (p.1: Tuple var x: Int end): {
+            store p.1.#0 := v.1 @19:51
+          }
+        }
+      }
+      return ok
+    }
+  }
+  funs {
+    fun getVar(h.1: H): Int {
+      let %7: O = tuple_field(h.1, 0) @20:28
+      let %8: Bool = is_tag(%7, made) @20:28
+      if %8 { @20:25
+        let %9: Tuple Int var x: Int end = payload(%7, made) #1 decided @20:45
+        let %10: Int = tuple_field(%9, 1) @20:45
+        return %10 @20:25
+      } else {
+        return -1 @20:25
+      }
+    }
+  }
+  funs {
+    fun cased(o.2: O): Int {
+      let %11: Bool = is_tag(o.2, made) @21:27
+      if %11 { @21:24
+        switch tag(o.2) decided { @21:39
+          case made (c: Tuple var x: Int end): {
+            let %12: Int = tuple_field(c, 0) @21:68
+            let %13: Int = prim +(%12, 1) @21:68
+            return %13 @21:39
+          }
+        }
+      } else {
+        return 0 @21:24
+      }
+    }
+  }
+  funs {
+    fun nested(o.3: O, p.2: O): Int {
+      let %14: Bool = is_tag(o.3, made) @23:8
+      if %14 { @23:5
+        let %15: Bool = is_tag(p.2, made) @23:24
+        if %15 { @23:21
+          let %16: Tuple Int var x: Int end = payload(o.3, made) #1 decided @23:36
+          let %17: Int = tuple_field(%16, 1) @23:36
+          let %18: Tuple Int var x: Int end = payload(p.2, made) #1 decided @23:47
+          let %19: Int = tuple_field(%18, 1) @23:47
+          let %20: Int = prim +(%17, %19) @23:36
+          return %20 @23:21
+        } else {
+          let %21: Tuple Int var x: Int end = payload(o.3, made) #1 decided @23:61
+          let %22: Int = tuple_field(%21, 1) @23:61
+          return %22 @23:21
+        }
+      } else {
+        return 0 @23:5
+      }
+    }
+  }
+  funs {
+    fun tagAgain(o.4: O): Bool {
+      let %23: Bool = is_tag(o.4, made) @24:31
+      if %23 { @24:28
+        return true @24:43
+      } else {
+        return false @24:28
+      }
+    }
+  }
+  funs {
+    fun variantPayload(n: Num): Int {
+      let %24: Bool = is_tag(n, int) @25:38
+      if %24 { @25:35
+        let %25: Int = payload(n, int) decided @25:49
+        let %26: Int = prim +(%25, 1) @25:49
+        return %26 @25:35
+      } else {
+        return 0 @25:35
+      }
+    }
+  }
+  funs {
+    fun written(h.2: H): Int {
+      let %27: O = tuple_field(h.2, 0) @28:8
+      let %28: Bool = is_tag(%27, made) @28:8
+      if %28 { @28:5
+        let %29: Tuple var x: Int end = tuple(99) @28:41
+        let %30: O = option(made, %29) @28:41
+        store h.2.#0 := %30 @28:31
+        let %31: O = tuple_field(h.2, 0) @28:82
+        let %32: Tuple Int var x: Int end = payload(%31, made) #1 @28:82
+        let %33: Int = tuple_field(%32, 1) @28:82
+        return %33 @28:5
+      } else {
+        return -1 @28:5
+      }
+    }
+  }
+  funs {
+    fun refill(h.3: H): Ok {
+      let %34: Tuple var x: Int end = tuple(42) @31:34
+      let %35: O = option(made, %34) @31:34
+      store h.3.#0 := %35 @31:24
+      return ok
+    }
+  }
+  funs {
+    fun called(h.4: H, f: Fun(h: H): Ok): Int {
+      let %36: O = tuple_field(h.4, 0) @32:44
+      let %37: Bool = is_tag(%36, made) @32:44
+      if %37 { @32:41
+        do call f(h.4) @32:67
+        let %38: O = tuple_field(h.4, 0) @32:72
+        let %39: Tuple Int var x: Int end = payload(%38, made) #1 @32:72
+        let %40: Int = tuple_field(%39, 1) @32:72
+        return %40 @32:41
+      } else {
+        return -1 @32:41
+      }
+    }
+  }
+  var sl: Fun(o: O v: Int): Ok = setLet @34:1
+  var gl: Fun(o: O): Int = getLet @35:1
+  var sv: Fun(h: H v: Int): Ok = setVar @36:1
+  var gv: Fun(h: H): Int = getVar @37:1
+  var cs: Fun(o: O): Int = cased @38:1
+  var ns: Fun(o: O p: O): Int = nested @39:1
+  var ta: Fun(o: O): Bool = tagAgain @40:1
+  var vp: Fun(n: Num): Int = variantPayload @41:1
+  var wr: Fun(h: H): Int = written @42:1
+  var ca: Fun(h: H f: Fun(h: H): Ok): Int = called @43:1
+  let %41: Tuple var x: Int end = tuple(1) @45:9
+  let o.5: O = option(made, %41) @45:9
+  let none: O = option(none) @46:12
+  do call sl(o.5, 5) @47:1
+  do call sl(none, 6) @48:1
+  let %42: Int = call gl(o.5) @49:27
+  let %43: String = call conv.int(%42) @49:18
+  let %44: Int = call gl(none) @49:53
+  let %45: String = call conv.int(%44) @49:44
+  let %46: String = prim <>(" ", %45) @49:37
+  let %47: String = prim <>(%43, %46) @49:18
+  let %48: String = prim <>("let: ", %47) @49:7
+  let %49: writer.T = member writer.output @11:45
+  let %50: String = prim <>(%48, "\n") @11:59
+  let %51: Ok = call writer.putString(%49, %50) @11:28
+  let h.5: Tuple var slot: O end = tuple(o.5) @50:9
+  do call sv(h.5, 7) @51:1
+  let %52: Int = call gv(h.5) @52:27
+  let %53: String = call conv.int(%52) @52:18
+  let %54: Int = call gl(o.5) @52:53
+  let %55: String = call conv.int(%54) @52:44
+  let %56: String = prim <>(" ", %55) @52:37
+  let %57: String = prim <>(%53, %56) @52:18
+  let %58: String = prim <>("var: ", %57) @52:7
+  let %59: writer.T = member writer.output @11:45
+  let %60: String = prim <>(%58, "\n") @11:59
+  let %61: Ok = call writer.putString(%59, %60) @11:28
+  let %62: Int = call cs(o.5) @53:28
+  let %63: String = call conv.int(%62) @53:19
+  let %64: Int = call cs(none) @53:54
+  let %65: String = call conv.int(%64) @53:45
+  let %66: String = prim <>(" ", %65) @53:38
+  let %67: String = prim <>(%63, %66) @53:19
+  let %68: String = prim <>("case: ", %67) @53:7
+  let %69: writer.T = member writer.output @11:45
+  let %70: String = prim <>(%68, "\n") @11:59
+  let %71: Ok = call writer.putString(%69, %70) @11:28
+  let %72: Int = call ns(o.5, o.5) @54:30
+  let %73: String = call conv.int(%72) @54:21
+  let %74: Int = call ns(o.5, none) @54:58
+  let %75: String = call conv.int(%74) @54:49
+  let %76: Int = call ns(none, o.5) @54:89
+  let %77: String = call conv.int(%76) @54:80
+  let %78: String = prim <>(" ", %77) @54:73
+  let %79: String = prim <>(%75, %78) @54:49
+  let %80: String = prim <>(" ", %79) @54:42
+  let %81: String = prim <>(%73, %80) @54:21
+  let %82: String = prim <>("nested: ", %81) @54:7
+  let %83: writer.T = member writer.output @11:45
+  let %84: String = prim <>(%82, "\n") @11:59
+  let %85: Ok = call writer.putString(%83, %84) @11:28
+  let %86: Bool = call ta(o.5) @55:34
+  let %87: String = call conv.bool(%86) @55:24
+  let %88: Bool = call ta(none) @55:61
+  let %89: String = call conv.bool(%88) @55:51
+  let %90: String = prim <>(" ", %89) @55:44
+  let %91: String = prim <>(%87, %90) @55:24
+  let %92: String = prim <>("tag again: ", %91) @55:7
+  let %93: writer.T = member writer.output @11:45
+  let %94: String = prim <>(%92, "\n") @11:59
+  let %95: Ok = call writer.putString(%93, %94) @11:28
+  let %96: Num = variant(int, 4) @56:34
+  let %97: Int = call vp(%96) @56:31
+  let %98: String = call conv.int(%97) @56:22
+  let %99: Num = variant(real, 1.5) @56:88
+  let %100: Int = call vp(%99) @56:85
+  let %101: String = call conv.int(%100) @56:76
+  let %102: String = prim <>(" ", %101) @56:69
+  let %103: String = prim <>(%98, %102) @56:22
+  let %104: String = prim <>("variant: ", %103) @56:7
+  let %105: writer.T = member writer.output @11:45
+  let %106: String = prim <>(%104, "\n") @11:59
+  let %107: Ok = call writer.putString(%105, %106) @11:28
+  let %108: Int = call wr(h.5) @57:31
+  let %109: String = call conv.int(%108) @57:22
+  let %110: Int = call gl(o.5) @57:57
+  let %111: String = call conv.int(%110) @57:48
+  let %112: String = prim <>(" ", %111) @57:41
+  let %113: String = prim <>(%109, %112) @57:22
+  let %114: String = prim <>("written: ", %113) @57:7
+  let %115: writer.T = member writer.output @11:45
+  let %116: String = prim <>(%114, "\n") @11:59
+  let %117: Ok = call writer.putString(%115, %116) @11:28
+  let g: Tuple var slot: O end = tuple(o.5) @58:9
+  let %118: Int = call ca(g, refill) @59:30
+  let %119: String = call conv.int(%118) @59:21
+  let %120: Int = call gl(o.5) @59:63
+  let %121: String = call conv.int(%120) @59:54
+  let %122: String = prim <>(" ", %121) @59:47
+  let %123: String = prim <>(%119, %122) @59:21
+  let %124: String = prim <>("called: ", %123) @59:7
+  let %125: writer.T = member writer.output @11:45
+  let %126: String = prim <>(%124, "\n") @11:59
+  let %127: Ok = call writer.putString(%125, %126) @11:28
+}
+

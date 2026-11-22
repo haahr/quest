@@ -1701,20 +1701,27 @@ export
             let s = shapeOf(ir.atomType(x.value))
             let held = scratch(f model.eqref)
             let viewed = maybe.isSome(x.viewMap)
-            if viewed then
+            (* A decided payload's tag is known, and not tested *)
+            if x.decided then
                 variantAtom(f x.value)
                 emit(f i1(ops.localSet held))
                 emit(f i(ops.drop))
-                viewTag(f x.value x.viewMap)
             else
-                variantAtom(f x.value)
-                emit(f i1(ops.localSet held))
+                if viewed then
+                    variantAtom(f x.value)
+                    emit(f i1(ops.localSet held))
+                    emit(f i(ops.drop))
+                    viewTag(f x.value x.viewMap)
+                else
+                    variantAtom(f x.value)
+                    emit(f i1(ops.localSet held))
+                end
+                emit(f model.i32Const(tagIndex(s x.tag)))
+                emit(f i(ops.i32Ne))
+                emit(f model.ifInst(empty ""))
+                raiseAt(f "variant.tagMismatch" x.offset)
+                emit(f model.endInst)
             end
-            emit(f model.i32Const(tagIndex(s x.tag)))
-            emit(f i(ops.i32Ne))
-            emit(f model.ifInst(empty ""))
-            raiseAt(f "variant.tagMismatch" x.offset)
-            emit(f model.endInst)
             emit(f i1(ops.localGet held))
             if viewed then viewPartOnStack(f x.viewMap tagIndex(s x.tag)) end
             unboxFor(f t target)
@@ -1727,12 +1734,15 @@ export
         begin
             let s = optionShape(ir.atomType(x.value))
             let viewed = maybe.isSome(x.viewMap)
-            if viewed then viewTag(f x.value x.viewMap) else tagOf(f x.value x.access) end
-            emit(f model.i32Const(tagIndex(s x.tag)))
-            emit(f i(ops.i32Ne))
-            emit(f model.ifInst(empty ""))
-            raiseAt(f "variant.tagMismatch" x.offset)
-            emit(f model.endInst)
+            (* A decided payload's tag is known, and not tested *)
+            if not(x.decided) then
+                if viewed then viewTag(f x.value x.viewMap) else tagOf(f x.value x.access) end
+                emit(f model.i32Const(tagIndex(s x.tag)))
+                emit(f i(ops.i32Ne))
+                emit(f model.ifInst(empty ""))
+                raiseAt(f "variant.tagMismatch" x.offset)
+                emit(f model.endInst)
+            end
             let n = extent shapeOf(t).components
             let form = caseForm(s x.tag)
             let slots = scratch(f model.refNull(tSlots))
@@ -5247,7 +5257,9 @@ export
             for k = 0 upto m - 1 do
                 for j = 0 upto extent x.cases[k].tags - 1 do targets[tagIndex(s x.cases[k].tags[j])] := k end
             end
-            if viewed then viewTag(f x.value x.viewMap)
+            (* A decided switch's tag is its one case's, not read *)
+            if x.decided then emit(f model.i32Const(tagIndex(s x.cases[0].tags[0])))
+            elsif viewed then viewTag(f x.value x.viewMap)
             elsif isV then emit(f i1(ops.localGet vTag))
             elsif proxied then
                 emit(f i1(ops.localGet raw))

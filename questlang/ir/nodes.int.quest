@@ -421,7 +421,9 @@ export
          * variant's, or an option's components as a new tuple, which starts
          * with ordinalIndex, the case's index in the option's type as written
          * (docs/ir.md section 5). access says how the tag is read, and
-         * components (set by the represent pass) how the components are *)
+         * components (set by the represent pass) how the components are. A
+         * decided payload's tag is known to be tag (the simplifier sets it),
+         * so it is not tested *)
         opPayload with
             var value: Atom
             tag: String
@@ -430,6 +432,7 @@ export
             var components: Array(Access)
             ordinalIndex: maybe.T(Int)
             var viewMap: maybe.T(Variable)
+            var decided: Bool
         end
         (* An option's ordinal: its case's index in cases, as opMakeOption's *)
         opOrdinal with var value: Atom cases: Array(String) var access: Access var viewMap: maybe.T(Variable) end
@@ -560,6 +563,9 @@ export
          * finishes *)
         sLetRec with var vars: Array(Variable) var body: Body end
         sIf with var pos: Int var cond: Atom var thenBody: Body var elseBody: Body end
+        (* A switch on a variant's or option's tag. A decided switch's value
+         * is known to be of its one case (the simplifier sets it, and leaves
+         * no else body), so its tag is not tested *)
         sSwitch with
             var pos: Int
             var value: Atom
@@ -567,6 +573,7 @@ export
             var elseBody: maybe.T(Body)
             var access: Access
             var viewMap: maybe.T(Variable)
+            var decided: Bool
         end
         (* An inspect of an auto value (whose type is autoType) by its
          * run-time type component (docs/ir.md section 6.5); with no case
@@ -705,6 +712,7 @@ export
         var components: Array(Access)
         ordinalIndex: maybe.T(Int)
         var viewMap: maybe.T(Variable)
+        var decided: Bool
     end
     and OpOrdinal = Tuple var value: Atom cases: Array(String) var access: Access var viewMap: maybe.T(Variable) end
     and OpMakeArray = Tuple var args: Array(Atom) end
@@ -747,6 +755,7 @@ export
         var elseBody: maybe.T(Body)
         var access: Access
         var viewMap: maybe.T(Variable)
+        var decided: Bool
     end
     and StmtInspect = Tuple
         var pos: Int

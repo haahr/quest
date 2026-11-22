@@ -329,6 +329,7 @@ export
             when opPayload with x then
                 let ordinalText = if maybe.isSome(x.ordinalIndex) then " #" <> conv.int(maybe.unwrap(x.ordinalIndex)) else "" end
                 "payload(" <> atom(p x.value) <> ", " <> x.tag <> ")" <> ordinalText <> access(x.access) <> accesses(x.components)
+                    <> if x.decided then " decided" else "" end
             when opOrdinal with x then
                 "ordinal(" <> atom(p x.value) <> ") in (" <> strutil.joinArray(" " x.cases) <> ")" <> access(x.access)
             when opMakeArray with x then "array(" <> atoms(p x.args) <> ")"
@@ -506,7 +507,8 @@ export
                 end
             when sSwitch with x then
                 begin
-                    emit(p depth "switch tag(" <> atom(p x.value) <> ")" <> access(x.access) <> through(p x.viewMap) <> " {")
+                    emit(p depth "switch tag(" <> atom(p x.value) <> ")" <> access(x.access) <> through(p x.viewMap)
+                        <> if x.decided then " decided" else "" end <> " {")
                     for i = 0 upto {extent x.cases - 1} do
                         let c = x.cases[i]
                         let binder = if maybe.isSome(c.binder) then

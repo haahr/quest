@@ -74,11 +74,12 @@ They have three kinds of user:
    ```
 
    It overwrites the element through a `case` binder, which is the option's payload itself (`when made with c then
-   c.x := x`). `s.slot!made.x := x` would store into the same component, since a selection through `!` used as a
-   location is the option's own ([type-system.md](type-system.md) §6.8), but the first element must make the option,
-   so it needs a `?made` test before it, and the simplifier does not see that the test settles the location's own tag
-   test: measured 2026-11-20 with `benchmarks/iter/`, a `filter` took 46.1 instructions per element in a whole program
-   against the `case`'s 45.1, and 156.7 against 153.2 separately. `?made` and `!made.x` are inline tests and reads,
+   c.x := x`). `if l.slot?made then l.slot!made.x := x else ... end` stores into the same component, since a
+   selection through `!` used as a location is the option's own ([type-system.md](type-system.md) §6.8), and costs
+   the same: the simplifier decides the location's tag test by the `?made` before it, and reads the slot once
+   ([ir.md](ir.md) §8.6). Measured 2026-11-22 with `benchmarks/iter/`, a `filter` took 44.7 instructions per element
+   in a whole program against the `case`'s 45.1, and 153.3 against 153.2 separately, so either may be used.
+   `?made` and `!made.x` are inline tests and reads,
    and nothing is allocated after the first element (130 instructions per element, 1.8 MB). The stages that look ahead
    share one pair of helpers for it, `hold` and `release`.
 6. **Closures, not an existential package.** `Tuple S::TYPE state: S more(s: S): Bool ... end` was measured as the

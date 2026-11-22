@@ -533,18 +533,21 @@ export
         begin
             let ts = tagShape(ir.atomType(o.value))
             let vs = vals.atom(fn o.value)
-            let index = representation.tagIndex(ts o.tag)
-            let tag = representation.tagOf(fn vs ts o.access o.viewMap)
-            let good = ssa.newBlock(fn.f)
-            let bad = ssa.newBlock(fn.f)
-            vals.terminate(fn option termBranch of ssa.Terminator with
-                let cond = vals.binary(fn ssa.opEq tag vals.constant(fn index))
-                let ifTrue = ssa.target(good vals.noValues) let ifFalse = ssa.target(bad vals.noValues)
-            end)
-            fn.cur := bad
-            vals.callVoid(fn "quest_raise_variant_error_at" array of vals.site(fn o.offset) end)
-            vals.terminate(fn ssa.termUnreachable)
-            fn.cur := good
+            (* A decided payload's tag is known, and not tested *)
+            if not(o.decided) then
+                let index = representation.tagIndex(ts o.tag)
+                let tag = representation.tagOf(fn vs ts o.access o.viewMap)
+                let good = ssa.newBlock(fn.f)
+                let bad = ssa.newBlock(fn.f)
+                vals.terminate(fn option termBranch of ssa.Terminator with
+                    let cond = vals.binary(fn ssa.opEq tag vals.constant(fn index))
+                    let ifTrue = ssa.target(good vals.noValues) let ifFalse = ssa.target(bad vals.noValues)
+                end)
+                fn.cur := bad
+                vals.callVoid(fn "quest_raise_variant_error_at" array of vals.site(fn o.offset) end)
+                vals.terminate(fn ssa.termUnreachable)
+                fn.cur := good
+            end
             if maybe.isSome(o.viewMap) then
                 let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(o.viewMap)))
                 let result = viewPayload(fn vs ts o.tag vm t)

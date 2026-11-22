@@ -15,6 +15,7 @@ import
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
+    conv : Conv
     stringOp = string : StringOp
     system : System
     intOp = int : IntOp
@@ -80,6 +81,13 @@ export
          * each constant's let removed does *)
         renames: hashMap.T(Int Variable)
         consts: hashMap.T(Int Atom)
+        (* The tag each immutable variable is known to have, by id, in the
+         * then-branch of an if on its is_tag being simplified *)
+        tags: hashMap.T(Int String)
+        (* The variable each tuple_field read so far was bound to, by its
+         * tuple's variable's id and its index, while nothing since can have
+         * changed the component (a var one): a later read of it is a copy *)
+        var loads: hashMap.T(String Variable)
         var changed: Bool
         (* The unit's functions, as the round began *)
         var analysis: inline.Analysis
@@ -191,6 +199,32 @@ export
             end
         end
 
+    (* The tag an atom's value is known to have: made in scope, as madeOf
+     * says, or tested by an enclosing if whose then-branch this is, with no
+     * payload known *)
+    let tagOf(s: Simplifier a: Atom): maybe.T(Made) =
+        begin
+            let m = madeOf(s a)
+            if maybe.isSome(m) then
+                m
+            else
+                case a
+                    when atomVar with x then
+                        let t = hashMap.get(s.tags x.v.id)
+                        if maybe.isSome(t) then
+                            maybe.some(tuple
+                                let tag = maybe.unwrap(t)
+                                let payload = maybe.none(:Atom)
+                                let isVariant = shapes.kindIs(shapes.shape(x.v.type) shapes.shapeVariant)
+                            end)
+                        else
+                            maybe.none()
+                        end
+                    when atomConst then maybe.none()
+                end
+            end
+        end
+
     (* ======================================================================
      * Operations
      * ====================================================================== *)
@@ -236,7 +270,10 @@ export
             (* A module's member is read from its record or its global, both
              * made before any code that names it runs *)
             when opModuleMember then true
-            when opCall, opTypeApp, opBuiltin, opCallExternal, opConvert, opPayload, opArrayRep,
+            (* A payload raises when the value is of another case, unless it
+             * is decided *)
+            when opPayload with x then x.decided
+            when opCall, opTypeApp, opBuiltin, opCallExternal, opConvert, opArrayRep,
                 opIndex, opCaughtException, opAddrElement then false
         end
 
@@ -360,13 +397,13 @@ export
                     maybe.none()
                 end
             when opIsTag with x then
-                let m = madeOf(s x.value)
+                let m = tagOf(s x.value)
                 if maybe.isSome(m) then maybe.some(boolConst(eq(maybe.unwrap(m).tag x.tag)))
                 else maybe.none() end
             when opOrdinal with x then
                 (* A known option's ordinal: its case's position in the cases
                  * as written *)
-                let m = madeOf(s x.value)
+                let m = tagOf(s x.value)
                 let var n = ~1
                 if maybe.isSome(m) andif not(maybe.unwrap(m).isVariant) then
                     for i = 0 upto {extent x.cases - 1} do
@@ -377,13 +414,17 @@ export
             when opPayload with x then
                 (* A variant's payload is the value it was made of; an
                  * option's is a new tuple (of its ordinal and its
-                 * components) *)
-                let m = madeOf(s x.value)
-                let known = maybe.isSome(m) andif maybe.unwrap(m).isVariant
-                    andif eq(maybe.unwrap(m).tag x.tag)
-                if known andif maybe.isSome(maybe.unwrap(m).payload)
+                 * components). Either, of a value known to be of its case,
+                 * is decided: it needs no test of the tag, and cannot
+                 * raise *)
+                let m = tagOf(s x.value)
+                let known = maybe.isSome(m) andif eq(maybe.unwrap(m).tag x.tag)
+                if known andif maybe.unwrap(m).isVariant andif maybe.isSome(maybe.unwrap(m).payload)
                     andif stable(maybe.unwrap(maybe.unwrap(m).payload)) then
                     maybe.some(nodes.opOfAtom(maybe.unwrap(maybe.unwrap(m).payload)))
+                elsif known andif not(x.decided) then
+                    x.decided := true
+                    maybe.some(o)
                 else
                     maybe.none()
                 end
@@ -431,6 +472,85 @@ export
 
     (* The case of a switch on a known tag: its body and binder, or the else
      * body, if any *)
+    (* The case of a switch that matches tag, if one does *)
+    let caseOf(x: nodes.StmtSwitch tag: String): maybe.T(nodes.Case) =
+        begin
+            let var found = maybe.none(:nodes.Case)
+            for i = 0 upto {extent x.cases - 1} do
+                for j = 0 upto {extent x.cases[i].tags - 1} do
+                    if maybe.isNone(found) andif eq(x.cases[i].tags[j] tag) then found := maybe.some(x.cases[i]) end
+                end
+            end
+            found
+        end
+
+    (* The immutable variable an if's condition tests the tag of, and the
+     * tag, when the condition is bound to an is_tag *)
+    Let Tested = Tuple id: Int tag: String end
+    let tested(s: Simplifier cond: Atom): maybe.T(Tested) =
+        begin
+            let d = defOf(s cond)
+            if maybe.isSome(d) then
+                case maybe.unwrap(d)
+                    when opIsTag with x then
+                        case x.value
+                            when atomVar with y then
+                                if y.v.isMutable then maybe.none()
+                                else maybe.some(tuple let id = y.v.id let tag = x.tag end)
+                                end
+                            when atomConst then maybe.none()
+                        end
+                    else maybe.none()
+                end
+            else
+                maybe.none()
+            end
+        end
+
+    (* Forgets the tuple_field reads, at a statement that may change a
+     * component or that holds bodies, which start with none known *)
+    let forget(s: Simplifier): Ok = hashMap.clear(s.loads)
+
+    (* The key of a tuple_field read of an immutable variable's component in
+     * s.loads *)
+    let loadKey(o: Op): maybe.T(String) =
+        case o
+            when opTupleField with x then
+                case x.tup
+                    when atomVar with b then
+                        if b.v.isMutable then maybe.none()
+                        else maybe.some(conv.int(b.v.id) <> "." <> conv.int(x.index))
+                        end
+                    when atomConst then maybe.none()
+                end
+            else maybe.none()
+        end
+
+    (* A tuple_field read, bound to v, of a component an earlier read kept in
+     * s.loads made, as a copy of the earlier one's variable *)
+    let loaded(s: Simplifier v: Variable o: Op): maybe.T(Op) =
+        begin
+            let key = loadKey(o)
+            let earlier = if maybe.isSome(key) then hashMap.get(s.loads maybe.unwrap(key))
+                else maybe.none(:Variable) end
+            if maybe.isSome(earlier) andif nodes.sameType(maybe.unwrap(earlier).type v.type) then
+                maybe.some(nodes.opOfAtom(nodes.atomOfVar(maybe.unwrap(earlier))))
+            else
+                maybe.none()
+            end
+        end
+
+    (* Keeps a let's tuple_field read, of an immutable variable v, for later
+     * reads of the component *)
+    let remember(s: Simplifier v: Variable o: Op): Ok =
+        begin
+            let key = loadKey(o)
+            if maybe.isSome(key) andif not(v.isMutable) then
+                hashMap.insert(s.loads maybe.unwrap(key) v)
+                ok
+            end
+        end
+
     Let Chosen = Tuple body: Body binder: maybe.T(Variable) end
     let chosen(x: nodes.StmtSwitch tag: String): maybe.T(Chosen) =
         begin
@@ -948,6 +1068,12 @@ export
                 case st
                     when sLet with x then
                         x.value := simplified(s x.value)
+                        if not(pure(x.value)) then forget(s) end
+                        let reread = loaded(s x.v x.value)
+                        if maybe.isSome(reread) then
+                            x.value := maybe.unwrap(reread)
+                            s.changed := true
+                        end
                         let copied = case x.value
                             when opAtom with a then
                                 case a.atom
@@ -976,11 +1102,12 @@ export
                              * variable is in scope after the body that binds
                              * it, where what made its value may not be *)
                             if not(x.v.isMutable) andif not(pinned(s x.v)) then setDef(s x.v.id x.value) end
+                            remember(s x.v x.value)
                             vector.append(kept st)
                         end
                     when sDo with x then
                         x.value := simplified(s x.value)
-                        if pure(x.value) then s.changed := true else vector.append(kept st) end
+                        if pure(x.value) then s.changed := true else begin forget(s) vector.append(kept st) end end
                     when sIf with x then
                         let c = boolOf(s x.cond)
                         if maybe.isSome(c) then
@@ -989,12 +1116,29 @@ export
                             splice(taken)
                             s.changed := true
                         else
+                            (* In the then-branch of an if on an is_tag, the
+                             * value tested is of that case; both branches
+                             * start with the reads made before the if *)
+                            let t = tested(s x.cond)
+                            let added = maybe.isSome(t) andif not(hashMap.contains(s.tags maybe.unwrap(t).id))
+                            if added then
+                                hashMap.insert(s.tags maybe.unwrap(t).id maybe.unwrap(t).tag)
+                                ok
+                            end
+                            let before = hashMap.map(s.loads fun(k: String v: Variable): Variable v)
                             body(s x.thenBody within)
+                            if added then
+                                hashMap.delete(s.tags maybe.unwrap(t).id)
+                                ok
+                            end
+                            s.loads := before
                             body(s x.elseBody within)
+                            forget(s)
                             vector.append(kept st)
                         end
                     when sSwitch with x then
-                        let m = madeOf(s x.value)
+                        forget(s)
+                        let m = tagOf(s x.value)
                         let c = if maybe.isSome(m) then chosen(x maybe.unwrap(m).tag)
                             else maybe.none(:Chosen) end
                         (* A binder is bound to the payload, which a case that
@@ -1018,8 +1162,24 @@ export
                             splice(ch.body)
                             s.changed := true
                         else
+                            (* A switch whose case is known but binds an
+                             * option's payload, or a variant's not known, is
+                             * decided: its one case, with no test of the
+                             * tag *)
+                            let known = if maybe.isSome(m) andif not(x.decided) then caseOf(x maybe.unwrap(m).tag)
+                                else maybe.none(:nodes.Case) end
+                            if maybe.isSome(known) then
+                                x.cases := array of maybe.unwrap(known) end
+                                x.elseBody := maybe.none()
+                                x.decided := true
+                                s.changed := true
+                            end
                             let inner = walk.statementBodies(st)
-                            for k = 0 upto {extent inner - 1} do body(s inner[k] within) end
+                            for k = 0 upto {extent inner - 1} do
+                                forget(s)
+                                body(s inner[k] within)
+                            end
+                            forget(s)
                             vector.append(kept st)
                         end
                     when sJoin with x then
@@ -1035,14 +1195,19 @@ export
                             i := ~1
                             s.changed := true
                         else
+                            forget(s)
                             body(s x.continuation within)
+                            forget(s)
                             body(s x.body within)
+                            forget(s)
                             vector.append(kept st)
                         end
                     when sFuns with x then
                         for k = 0 upto {extent x.functions - 1} do
+                            forget(s)
                             body(s x.functions[k].body componentOf(s x.functions[k]))
                         end
+                        forget(s)
                         let var used = false
                         for k = 0 upto {extent x.functions - 1} do
                             if {usesOf(s x.functions[k].v) > 0} orif pinned(s x.functions[k].v) then used := true end
@@ -1050,7 +1215,11 @@ export
                         if used then vector.append(kept st) else s.changed := true end
                     else
                         let inner = walk.statementBodies(st)
-                        for k = 0 upto {extent inner - 1} do body(s inner[k] within) end
+                        for k = 0 upto {extent inner - 1} do
+                            forget(s)
+                            body(s inner[k] within)
+                        end
+                        forget(s)
                         vector.append(kept st)
                         if nodes.isTerminator(st) then live := false end
                 end
@@ -1090,6 +1259,8 @@ export
                 let defs = hashMap.new(:Int :Op intEqual hash.int)
                 let renames = hashMap.new(:Int :Variable intEqual hash.int)
                 let consts = hashMap.new(:Int :Atom intEqual hash.int)
+                let tags = hashMap.new(:Int :String intEqual hash.int)
+                let var loads = hashMap.new(:String :Variable stringOp.equal hash.string)
                 let var changed = true
                 let var analysis = inline.analyze(walk.unitBodies(unit))
                 let labels = clone.newLabels()
@@ -1105,7 +1276,10 @@ export
                 hashMap.clear(s.defs)
                 let all = walk.unitBodies(unit)
                 if round > 0 then s.analysis := inline.analyze(all) end
-                for b = 0 upto {extent all - 1} do body(s all[b] maybe.none()) end
+                for b = 0 upto {extent all - 1} do
+                    forget(s)
+                    body(s all[b] maybe.none())
+                end
                 if contify.contify(all s.analysis.recursive s.pinned s.labels) then s.changed := true end
                 round := round + 1
             end

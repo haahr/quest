@@ -1,0 +1,59 @@
+(* Tag tests that a dominating ?tag decides (docs/ir.md section 8.6): in the
+ * then-branch of if o?made, o!made reads or updates the payload, and a case
+ * on o takes its case, with no second test of the tag, for an immutable o
+ * and for a var component read twice with nothing between that may change
+ * it. The functions are called through vars, so that the simplifier does not
+ * inline them where their arguments are made. Its ir_simplified golden shows
+ * the payloads and switches decided; the results are those of the program as
+ * written, which a write or a call between the two reads keeps. *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+Let O = Option none made with var x: Int end end;
+Let H = Tuple var slot: O end;
+Let Num = Variant int: Int real: Real end;
+
+let setLet(o: O v: Int): Ok = if o?made then o!made.x := v end;
+let getLet(o: O): Int = if o?made then o!made.x else ~1 end;
+let setVar(h: H v: Int): Ok = if h.slot?made then h.slot!made.x := v end;
+let getVar(h: H): Int = if h.slot?made then h.slot!made.x else ~1 end;
+let cased(o: O): Int = if o?made then case o when made with c then c.x + 1 else 0 end else 0 end;
+let nested(o: O p: O): Int =
+    if o?made then {if p?made then o!made.x + p!made.x else o!made.x end} else 0 end;
+let tagAgain(o: O): Bool = if o?made then o?made andif not(o?none) else false end;
+let variantPayload(n: Num): Int = if n?int then n!int + 1 else 0 end;
+(* A write between the reads: the second reads the slot's new option *)
+let written(h: H): Int =
+    if h.slot?made then begin h.slot := option made of O with let var x = 99 end h.slot!made.x end
+    else ~1 end;
+(* A call between the reads, which may write the slot *)
+let refill(h: H): Ok = h.slot := option made of O with let var x = 42 end;
+let called(h: H f: All(h: H) Ok): Int = if h.slot?made then begin f(h) h.slot!made.x end else ~1 end;
+
+var sl = setLet;
+var gl = getLet;
+var sv = setVar;
+var gv = getVar;
+var cs = cased;
+var ns = nested;
+var ta = tagAgain;
+var vp = variantPayload;
+var wr = written;
+var ca = called;
+
+let o = option made of O with let var x = 1 end;
+let none = option none of O end;
+sl(o 5);
+sl(none 6);
+print("let: " <> conv.int(gl(o)) <> " " <> conv.int(gl(none)));
+let h = tuple let var slot = o end;
+sv(h 7);
+print("var: " <> conv.int(gv(h)) <> " " <> conv.int(gl(o)));
+print("case: " <> conv.int(cs(o)) <> " " <> conv.int(cs(none)));
+print("nested: " <> conv.int(ns(o o)) <> " " <> conv.int(ns(o none)) <> " " <> conv.int(ns(none o)));
+print("tag again: " <> conv.bool(ta(o)) <> " " <> conv.bool(ta(none)));
+print("variant: " <> conv.int(vp(variant int of Num with 4 end)) <> " " <> conv.int(vp(variant real of Num with 1.5 end)));
+print("written: " <> conv.int(wr(h)) <> " " <> conv.int(gl(o)));
+let g = tuple let var slot = o end;
+print("called: " <> conv.int(ca(g refill)) <> " " <> conv.int(gl(o)));

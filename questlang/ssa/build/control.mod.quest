@@ -601,7 +601,6 @@ export
             let v = vals.atom(fn x.value)
             let t = aggregates.tagShape(ir.atomType(x.value))
             let isVariant = shapes.kindIs(t shapes.shapeVariant)
-            let tag = representation.tagOf(fn v t x.access x.viewMap)
             let after = ssa.newBlock(fn.f)
             let cases = vector.new(:Int)
             let targets = vector.new(:ssa.Target)
@@ -614,11 +613,25 @@ export
                     vector.append(targets ssa.target(blocks[ci] vals.noValues))
                 end
             end
-            let otherwise = ssa.newBlock(fn.f)
-            vals.terminate(fn option termSwitch of ssa.Terminator with
-                let value = tag let cases = vector.toArray(cases) let targets = vector.toArray(targets)
-                let default = ssa.target(otherwise vals.noValues)
-            end)
+            (* A decided switch's one case is taken, with no tag read *)
+            if x.decided then
+                vals.jump(fn blocks[0] vals.noValues)
+            else
+                let tag = representation.tagOf(fn v t x.access x.viewMap)
+                let otherwise = ssa.newBlock(fn.f)
+                vals.terminate(fn option termSwitch of ssa.Terminator with
+                    let value = tag let cases = vector.toArray(cases) let targets = vector.toArray(targets)
+                    let default = ssa.target(otherwise vals.noValues)
+                end)
+                fn.cur := otherwise
+                if maybe.isSome(x.elseBody) then
+                    body(fn maybe.unwrap(x.elseBody))
+                    if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
+                else
+                    vals.callVoid(fn "quest_raise_variant_error" vals.noValues)
+                    vals.terminate(fn ssa.termUnreachable)
+                end
+            end
             for ci = 0 upto {extent x.cases - 1} do
                 let c = x.cases[ci]
                 fn.cur := blocks[ci]
@@ -647,14 +660,6 @@ export
                 end
                 body(fn c.body)
                 if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
-            end
-            fn.cur := otherwise
-            if maybe.isSome(x.elseBody) then
-                body(fn maybe.unwrap(x.elseBody))
-                if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
-            else
-                vals.callVoid(fn "quest_raise_variant_error" vals.noValues)
-                vals.terminate(fn ssa.termUnreachable)
             end
             fn.cur := after
         end

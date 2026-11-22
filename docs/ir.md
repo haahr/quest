@@ -279,7 +279,8 @@ switch tag(v) { case cons (c: τ): { body } case nil: { body } else: { body } }
 ```
 
 `switch` covers `case` on variants and options, by tag; a case may bind the payload. A conditional or `case`
-*expression* jumps to a join point with its value (§6.3).
+*expression* jumps to a join point with its value (§6.3). A `switch tag(v) decided` (and a `payload(v, tag) decided`),
+which the simplifier makes (§8.6), has a value known to be of its one case, which it takes with no test of the tag.
 
 ### 6.2. Loops
 
@@ -683,7 +684,12 @@ at most six, each followed by contification:
 - dead `let`s, closures, allocations, and modules' members nothing reads included, and unused `funs`;
 - a `switch` on an option or variant made in the same function, and `!` of one; a case of a known option that binds
   its payload is left, since the binder shares the option's payload, which compiled code copies from the tuple it was
-  made of (a variant's payload is the value itself);
+  made of (a variant's payload is the value itself), but decided: its one case, taken with no test of the tag;
+- the tag tests, `!`s, and `switch`es of an immutable variable in the then-branch of an `if` on its `is_tag`, where
+  its case is known: `if o?made then o!made.x := v end` tests the tag once, its `!` and its location's `switch`
+  decided. A `tuple_field` read of an immutable variable's component that an earlier one made, with only pure
+  `let`s between, or the start of an `if`'s branch (no call, store, or other statement), is a copy of the earlier
+  read, so that a `var` component read twice, `h.slot?made` and `h.slot!made`, is one value, whose tag is known too;
 - projections of a tuple made in the same function, bound directly or through copies of immutable variables of
   another type (a module's abstract type for its manifest one, a prefix supertype), which copy propagation leaves:
   the component is `var` in neither the projection's type nor the made tuple's, and its argument is a constant or
