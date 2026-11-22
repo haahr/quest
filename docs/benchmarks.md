@@ -22,8 +22,8 @@ the arm64 performance review (§24), measures the compiler compiled to WebAssemb
 (§25), measures the strings work (§26), times every backend, WebAssembly included, at one commit (§27),
 measures the collections tuned on the compiler (§28), the compiler on `util/json` (§29), scalar replacement
 through a loop's parameters (§30), character I/O without a lock per character (§31), one object per closure (§32),
-ssac's `volatile` locals (§33) and adapter closures made once (§34), and times every backend again, arm64 whole
-program included (§35).
+ssac's `volatile` locals (§33) and adapter closures made once (§34), times every backend again, arm64 whole
+program included (§35), and measures what inlining three library modules into their importers would gain (§36).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -3327,3 +3327,39 @@ Time against MLton's (below 1 is faster).
 | wc-scanStream | 8192 | 5.61 | 9.90 | 3.30 | 3.55 | 4.00 | 91.2 |
 | zebra | 16 | 2.78 | 4.76 | 5.03 | 4.96 | 3.81 | 12.8 |
 | zern | 4096 | 3.35 | 1.02 | 0.91 | 1.26 | 1.26 | 9.25 |
+
+## 36. What inlining util/maybe, util/iter, and collections/vector would gain (2026-11-22)
+
+The tasklist's entry "A few library modules inlined into their importers, as in a whole program" asks first how much
+of a whole program's gain those three modules account for. Measured at `f163904b` with an experiment's flag,
+`--apart MODULE` (not kept), under which a whole program compiles MODULE apart, as it does the prelinked modules,
+rather than merging it: its abstract types stay opaque and its calls stay calls. `string` is named too, since
+`util/iter` imports it and a module merged and built apart would be linked twice. Instructions retired
+(`/usr/bin/time -l`, which load barely changes).
+
+**`benchmarks/iter/`,** instructions per element, 20,000,000 elements. The program imports nothing else but
+`util/strutil` (once, for its argument) and the prelinked modules, so its whole build is what the list would give it:
+
+| Workload | Separate | Whole program | Whole, the three apart |
+|---|---:|---:|---:|
+| `loop` | 17.2 | 17.1 | 17.1 |
+| `map` | 83.2 | 11.1 | 83.2 |
+| `filter` | 153.2 | 45.1 | 153.3 |
+| `sumInt` | 141.9 | 45.2 | 141.8 |
+
+Every instruction a whole program saves here is the three modules'.
+
+**The compiler.** Three builds of the driver by stage 2 (arm64, `-j 8`): separate (stage 2 itself), whole
+(`--whole-program`), and whole with the three and `string` apart. Each then built the driver separately at `-j 1`
+into an empty build directory; all three wrote the same assembly for every one of the 212 units:
+
+| Compiler | Instructions retired | Against separate |
+|---|---:|---:|
+| Separate | 506.58 G | 1.000 |
+| Whole | 483.60 G | 0.955 |
+| Whole, the three apart | 496.43 G | 0.980 |
+
+A whole program saves 22.98 G; with the three apart it saves 10.15 G, so the three account for 12.83 G, 56% of the
+gain, or 2.5% of the separate compiler's instructions. That is measured inside a whole program, where the rest of the
+program is inlined too; inlining only the three into separately compiled units may gain somewhat less, since their
+callers' own calls stay calls. The seconds were not measured on a quiet machine and are not given.
