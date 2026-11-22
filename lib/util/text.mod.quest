@@ -1,0 +1,440 @@
+(* Paragraph layout, a port of Python 3.11's textwrap (docs/libraries.md
+ * section 1.21). wrap splits a paragraph into chunks as TextWrapper's
+ * wordsep_re does, by a scanner rather than a regular expression, since that
+ * expression's lookbehinds and lookaheads are not in RE2's syntax
+ * (util/regexp); then lays the chunks in lines as _wrap_chunks and
+ * _handle_long_word do, in the same order of tests, so that every line breaks
+ * where Python's would. *)
+
+module text : Text
+import
+    collections/vector : collections/Vector
+    sb = util/stringBuilder : util/StringBuilder
+    ascii : Ascii
+    stringOp = string : StringOp
+export
+    Let Options = Tuple
+        width: Int
+        initialIndent: String
+        subsequentIndent: String
+        breakLongWords: Bool
+        breakOnHyphens: Bool
+        tabSize: Int
+        maxLines: Int
+        placeholder: String
+    end
+
+    let options(width: Int): Options =
+        tuple
+            let width = width
+            let initialIndent = ""
+            let subsequentIndent = ""
+            let breakLongWords = true
+            let breakOnHyphens = true
+            let tabSize = 8
+            let maxLines = 0
+            let placeholder = " [...]"
+        end
+
+    let error: Exception = exception error: Ok end
+
+    let size(s: String): Int = stringOp.length(s)
+    let at(s: String i: Int): Char = stringOp.getChar(s i)
+    let sub(s: String start: Int n: Int): String = stringOp.getSub(s start n)
+
+    (* =========================================================================
+     * Characters, as textwrap's expressions class them (ASCII)
+     * ====================================================================== *)
+
+    (* textwrap's _whitespace: tab, newline, vertical tab, form feed, carriage
+     * return, and space *)
+    let isSpace(c: Char): Bool = begin let v = ascii.val(c) {v is 32} \/ {{v >= 9} /\ {v <= 13}} end
+    let isDigit(c: Char): Bool = begin let v = ascii.val(c) {v >= 48} /\ {v <= 57} end
+    let isLetter(c: Char): Bool =
+        begin
+            let v = ascii.val(c)
+            {{v >= 65} /\ {v <= 90}} \/ {{v >= 97} /\ {v <= 122}} \/ {v is 95}
+        end
+    (* \w: a letter (with _) or a digit *)
+    let isWord(c: Char): Bool = isLetter(c) \/ isDigit(c)
+    (* textwrap's word_punct: \w and !"'&.,? *)
+    let isWordPunct(c: Char): Bool =
+        isWord(c) \/ {c is '!'} \/ {c is '"'} \/ {c is '\''} \/ {c is '&'} \/ {c is '.'} \/ {c is ','} \/ {c is '?'}
+    (* str.strip's whitespace in ASCII: textwrap's, and bytes 28 to 31 *)
+    let isStripSpace(c: Char): Bool = isSpace(c) \/ begin let v = ascii.val(c) {v >= 28} /\ {v <= 31} end
+    let isBlank(s: String): Bool =
+        begin
+            let var blank = true
+            for i = 0 upto {size(s) - 1} do if not(isStripSpace(at(s i))) then blank := false end end
+            blank
+        end
+
+    (* =========================================================================
+     * Tabs and chunks
+     * ====================================================================== *)
+
+    let expandTabs(s: String tabSize: Int): String =
+        begin
+            let b = sb.new()
+            let var column = 0
+            for i = 0 upto {size(s) - 1} do
+                let c = at(s i)
+                if c is '\t' then
+                    if tabSize > 0 then
+                        let n = tabSize - {column % tabSize}
+                        sb.repeat(b ' ' n)
+                        column := column + n
+                    end
+                elsif {c is '\n'} \/ {c is '\r'} then
+                    sb.char(b c)
+                    column := 0
+                else
+                    sb.char(b c)
+                    column := column + 1
+                end
+            end
+            sb.toString(b)
+        end
+
+    (* s with tabs expanded and each whitespace byte a space, as
+     * _munge_whitespace *)
+    let munged(s: String tabSize: Int): String =
+        begin
+            let t = expandTabs(s tabSize)
+            let b = sb.new()
+            for i = 0 upto {size(t) - 1} do sb.char(b if isSpace(at(t i)) then ' ' else at(t i) end) end
+            sb.toString(b)
+        end
+
+    (* The end of the chunk that starts at i, as wordsep_re matches there: a
+     * run of spaces; an em dash (two hyphens or more) after a word's
+     * character and before a letter or digit; or the shortest run of other
+     * bytes that ends in a hyphen between letters (aa-, or a-b- in a-b-c),
+     * before a space or the end, or before an em dash *)
+    let chunkEnd(s: String i: Int): Int =
+        begin
+            let n = size(s)
+            let letterAt(k: Int): Bool = {k >= 0} andif {k < n} andif isLetter(at(s k))
+            let dashesFrom(k: Int): Int =
+                begin
+                    let var e = k
+                    while {e < n} andif {at(s e) is '-'} do e := e + 1 end
+                    e - k
+                end
+            if isSpace(at(s i)) then
+                let var e = i
+                while {e < n} andif isSpace(at(s e)) do e := e + 1 end
+                e
+            elsif {i > 0} andif isWordPunct(at(s i - 1)) andif {dashesFrom(i) >= 2}
+                andif {{i + dashesFrom(i)} < n} andif isWord(at(s i + dashesFrom(i))) then
+                i + dashesFrom(i)
+            else
+                (* The lazy run: try each end j after i, while the bytes are not
+                 * spaces *)
+                let var j = i + 1
+                let var found = ~1
+                while found < 0 do
+                    if {j < n} andif {at(s j) is '-'}
+                        andif {{letterAt(j - 1) /\ letterAt(j - 2)}
+                            \/ {letterAt(j - 1) /\ {{j - 2} >= 0} andif {at(s j - 2) is '-'} andif letterAt(j - 3)}}
+                        andif letterAt(j + 1)
+                        andif {letterAt(j + 2) \/ {{{j + 2} < n} andif {at(s j + 2) is '-'} andif letterAt(j + 3)}} then
+                        found := j + 1
+                    elsif {j >= n} orif isSpace(at(s j)) then
+                        found := j
+                    elsif isWordPunct(at(s j - 1)) andif {dashesFrom(j) >= 2} andif {{j + dashesFrom(j)} < n}
+                        andif isWord(at(s j + dashesFrom(j))) then
+                        found := j
+                    else
+                        j := j + 1
+                    end
+                end
+                found
+            end
+        end
+
+    (* The paragraph's chunks: wordsep_re's with breakOnHyphens, else
+     * wordsep_simple_re's (runs of spaces and of other bytes) *)
+    let chunks(s: String breakOnHyphens: Bool): vector.T(String) =
+        begin
+            let v = vector.new(:String)
+            let n = size(s)
+            let var i = 0
+            while i < n do
+                let e =
+                    if breakOnHyphens then chunkEnd(s i)
+                    else
+                        let space = isSpace(at(s i))
+                        let var k = i
+                        while {k < n} andif {isSpace(at(s k)) is space} do k := k + 1 end
+                        k
+                    end
+                vector.append(v sub(s i e - i))
+                i := e
+            end
+            v
+        end
+
+    (* =========================================================================
+     * Wrapping
+     * ====================================================================== *)
+
+    let lstripped(s: String): String =
+        begin
+            let var k = 0
+            while {k < size(s)} andif isStripSpace(at(s k)) do k := k + 1 end
+            sub(s k size(s) - k)
+        end
+    let rstripped(s: String): String =
+        begin
+            let var k = size(s)
+            while {k > 0} andif isStripSpace(at(s k - 1)) do k := k - 1 end
+            sub(s 0 k)
+        end
+    let joined(parts: vector.T(String)): String =
+        begin
+            let b = sb.new()
+            for i = 0 upto {vector.length(parts) - 1} do sb.str(b vector.get(parts i)) end
+            sb.toString(b)
+        end
+    (* The last index of a hyphen in s before end, or ~1 *)
+    let lastHyphen(s: String limit: Int): Int =
+        begin
+            let var k = ~1
+            for i = 0 upto {limit - 1} do if {i < size(s)} andif {at(s i) is '-'} then k := i end end
+            k
+        end
+
+    let wrapWith(s: String o: Options): Array(String) =
+        begin
+            if o.width <= 0 then raise error end end
+            if o.maxLines > 0 then
+                let indent = if o.maxLines > 1 then o.subsequentIndent else o.initialIndent end
+                if {size(indent) + size(lstripped(o.placeholder))} > o.width then raise error end end
+            end
+            (* The chunks still to lay, from first, the first of them shortened
+             * in place when a long word is broken *)
+            let all = vector.toArray(chunks(munged(s o.tabSize) o.breakOnHyphens))
+            let total = extent(all)
+            let var first = 0
+            let lines = vector.new(:String)
+            let var stopped = false
+            while {first < total} /\ not(stopped) do
+                let line = vector.new(:String)
+                let var length = 0
+                let indent = if vector.empty(lines) then o.initialIndent else o.subsequentIndent end
+                let width = o.width - size(indent)
+                if isBlank(all[first]) /\ not(vector.empty(lines)) then first := first + 1 end
+                let var fits = true
+                while {first < total} /\ fits do
+                    let l = size(all[first])
+                    if {length + l} <= width then
+                        vector.append(line all[first])
+                        length := length + l
+                        first := first + 1
+                    else
+                        fits := false
+                    end
+                end
+                (* A chunk too long for any line: broken at the room left (after
+                 * its last hyphen there, with breakOnHyphens and other bytes
+                 * before that hyphen), or put whole on a line of its own *)
+                if {first < total} andif {size(all[first]) > width} then
+                    let room = if width < 1 then 1 else width - length end
+                    if o.breakLongWords then
+                        let chunk = all[first]
+                        let var e = room
+                        if o.breakOnHyphens andif {size(chunk) > room} then
+                            let hyphen = lastHyphen(chunk room)
+                            let var other = false
+                            for k = 0 upto {hyphen - 1} do if at(chunk k) isnot '-' then other := true end end
+                            if {hyphen > 0} /\ other then e := hyphen + 1 end
+                        end
+                        vector.append(line sub(chunk 0 e))
+                        all[first] := sub(chunk e size(chunk) - e)
+                    elsif vector.empty(line) then
+                        vector.append(line all[first])
+                        first := first + 1
+                    end
+                    length := 0
+                    for k = 0 upto {vector.length(line) - 1} do length := length + size(vector.get(line k)) end
+                end
+                if not(vector.empty(line)) andif isBlank(vector.last(line)) then
+                    length := length - size(vector.pop(line))
+                end
+                if not(vector.empty(line)) then
+                    let left = total - first
+                    if {o.maxLines <= 0} \/ {{vector.length(lines) + 1} < o.maxLines}
+                        \/ {{{left is 0} \/ {{left is 1} andif isBlank(all[first])}} /\ {length <= width}} then
+                        vector.append(lines indent <> joined(line))
+                    else
+                        (* The last line: chunks dropped from its end until the
+                         * placeholder fits after a word, else the placeholder on
+                         * the line before, or on a line of its own *)
+                        let var placed = false
+                        while not(placed) /\ not(vector.empty(line)) do
+                            if not(isBlank(vector.last(line))) andif {{length + size(o.placeholder)} <= width} then
+                                vector.append(line o.placeholder)
+                                vector.append(lines indent <> joined(line))
+                                placed := true
+                            else
+                                length := length - size(vector.pop(line))
+                            end
+                        end
+                        if not(placed) then
+                            let var done = false
+                            if not(vector.empty(lines)) then
+                                let previous = rstripped(vector.last(lines))
+                                if {size(previous) + size(o.placeholder)} <= o.width then
+                                    vector.set(lines vector.length(lines) - 1 previous <> o.placeholder)
+                                    done := true
+                                end
+                            end
+                            if not(done) then vector.append(lines indent <> lstripped(o.placeholder)) end
+                        end
+                        stopped := true
+                    end
+                end
+            end
+            vector.toArray(lines)
+        end
+
+    let wrap(s: String width: Int): Array(String) = wrapWith(s options(width))
+
+    let fillWith(s: String o: Options): String =
+        begin
+            let lines = wrapWith(s o)
+            let b = sb.new()
+            for i = 0 upto {extent(lines) - 1} do
+                if i > 0 then sb.char(b '\n') end
+                sb.str(b lines[i])
+            end
+            sb.toString(b)
+        end
+
+    let fill(s: String width: Int): String = fillWith(s options(width))
+
+    let shorten(s: String width: Int placeholder: String): String =
+        begin
+            (* The words, by str.split, joined by single spaces *)
+            let b = sb.new()
+            let n = size(s)
+            let var i = 0
+            let var words = 0
+            while i < n do
+                while {i < n} andif isStripSpace(at(s i)) do i := i + 1 end
+                let start = i
+                while {i < n} andif not(isStripSpace(at(s i))) do i := i + 1 end
+                if i > start then
+                    if words > 0 then sb.char(b ' ') end
+                    sb.sub(b s start i - start)
+                    words := words + 1
+                end
+            end
+            fillWith(sb.toString(b) tuple
+                let width = width let initialIndent = "" let subsequentIndent = "" let breakLongWords = true
+                let breakOnHyphens = true let tabSize = 8 let maxLines = 1 let placeholder = placeholder
+            end)
+        end
+
+    (* =========================================================================
+     * Indenting
+     * ====================================================================== *)
+
+    (* s's lines, split at newlines only, without them *)
+    let newlineLines(s: String): vector.T(String) =
+        begin
+            let v = vector.new(:String)
+            let var start = 0
+            for i = 0 upto {size(s) - 1} do
+                if at(s i) is '\n' then
+                    vector.append(v sub(s start i - start))
+                    start := i + 1
+                end
+            end
+            vector.append(v sub(s start size(s) - start))
+            v
+        end
+
+    let isTabOrSpace(c: Char): Bool = {c is ' '} \/ {c is '\t'}
+
+    let dedent(s: String): String =
+        begin
+            let lines = newlineLines(s)
+            let count = vector.length(lines)
+            (* Lines of only spaces and tabs emptied *)
+            for i = 0 upto {count - 1} do
+                let line = vector.get(lines i)
+                let var only = size(line) > 0
+                for k = 0 upto {size(line) - 1} do if not(isTabOrSpace(at(line k))) then only := false end end
+                if only then vector.set(lines i "") end
+            end
+            (* The margin: the longest common prefix of the other lines'
+             * leading spaces and tabs *)
+            let var margin = ""
+            let var seen = false
+            for i = 0 upto {count - 1} do
+                let line = vector.get(lines i)
+                let var k = 0
+                while {k < size(line)} andif isTabOrSpace(at(line k)) do k := k + 1 end
+                if k < size(line) then
+                    let indent = sub(line 0 k)
+                    if not(seen) then
+                        margin := indent
+                        seen := true
+                    else
+                        let var common = 0
+                        while {common < size(margin)} andif {common < size(indent)}
+                            andif {at(margin common) is at(indent common)} do
+                            common := common + 1
+                        end
+                        margin := sub(margin 0 common)
+                    end
+                end
+            end
+            let b = sb.new()
+            let m = size(margin)
+            for i = 0 upto {count - 1} do
+                if i > 0 then sb.char(b '\n') end
+                let line = vector.get(lines i)
+                if {m > 0} andif {size(line) >= m} andif stringOp.equalSub(line 0 m margin 0 m) then
+                    sb.sub(b line m size(line) - m)
+                else
+                    sb.str(b line)
+                end
+            end
+            sb.toString(b)
+        end
+
+    let indentIf(s: String prefix: String predicate: All(line: String) Bool): String =
+        begin
+            let b = sb.new()
+            let n = size(s)
+            let var start = 0
+            while start < n do
+                (* The line from start, with its ending, as splitlines(True) *)
+                let var e = start
+                let var ended = false
+                while {e < n} /\ not(ended) do
+                    let v = ascii.val(at(s e))
+                    if {v is 13} andif {{e + 1} < n} andif {at(s e + 1) is '\n'} then
+                        e := e + 2
+                        ended := true
+                    elsif {v is 10} \/ {v is 11} \/ {v is 12} \/ {v is 13} \/ {{v >= 28} /\ {v <= 30}} then
+                        e := e + 1
+                        ended := true
+                    else
+                        e := e + 1
+                    end
+                end
+                let line = sub(s start e - start)
+                if predicate(line) then sb.str(b prefix) end
+                sb.str(b line)
+                start := e
+            end
+            sb.toString(b)
+        end
+
+    let indent(s: String prefix: String): String =
+        indentIf(s prefix fun(line: String): Bool not(isBlank(line)))
+end

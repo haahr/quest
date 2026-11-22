@@ -1350,6 +1350,65 @@ export
 end
 ```
 
+### 1.21. `util/text : util/Text`
+
+Paragraphs wrapped, filled, shortened, indented, and dedented, as Python 3.11's `textwrap` does them, line break for
+line break:
+
+```quest
+let lines = text.wrap(paragraph 72);
+writer.putString(writer.output text.indent(text.fill(paragraph 60) "> "));
+```
+
+- **`wrap` is a port of `TextWrapper`:** tabs are expanded and each whitespace byte made a space
+  (`_munge_whitespace`), the paragraph is split into chunks, and the chunks are laid greedily in lines by
+  `_wrap_chunks`, with `_handle_long_word` for a chunk wider than a line, in the same order of tests, so that every
+  line breaks where Python's would.
+- **Chunks are `wordsep_re`'s,** found by a scanner, since that expression's lookbehinds and lookaheads are not in
+  RE2's syntax (§1.9): runs of spaces; an em dash (two hyphens or more) after a word's character and before a letter
+  or digit; and the shortest run of other bytes ending in a hyphen between letters, before a space or the end, or
+  before an em dash. Without `breakOnHyphens`, chunks are `wordsep_simple_re`'s: runs of spaces and of other bytes.
+- **Options** are a Tuple of TextWrapper's main settings: the width, the first and later indents, the two breaks, the
+  tab size, a line limit with its placeholder. `options(width)` gives Python's defaults; Quest has no record update,
+  so another setting is a whole tuple written out. `wrap(s w)` and `fill(s w)` are the common cases.
+- **`shorten`** joins the words with single spaces and fills them on one line with the placeholder; **`dedent`**
+  removes the longest common leading run of spaces and tabs from the lines that are not blank, emptying lines of only
+  spaces and tabs; **`indent`** and **`indentIf`** prefix lines split as `splitlines(True)` splits them (at newlines,
+  carriage returns, vertical tabs, form feeds, and bytes 28 to 30), by default those not all whitespace;
+  **`expandTabs`** is `str.expandtabs`.
+- **Bytes and ASCII:** widths count bytes and whitespace is ASCII's, as elsewhere in `lib/`.
+- **Left out:** `fix_sentence_endings` (whose rule Python's own documentation calls unreliable), and
+  `replace_whitespace` and `drop_whitespace` set false. `error` is raised for a width below 1 and a placeholder that
+  cannot fit beside its line's indent, where Python raises `ValueError`.
+
+`tests/source/stdlib/text_operations.quest` wraps nine paragraphs (plain words, hyphenated words and em dashes, long
+words, leading spaces, tabs and newlines, an empty and a blank one, a single word) at seven widths from 1 to 60, and
+with each option changed, and fills and shortens them; then the errors, dedent, indent, and expandTabs. Every line was
+checked against Python 3.11's `textwrap`, strings written as Python's `repr` writes them.
+
+#### Interface Summary
+
+```quest
+interface Text
+export
+    Def Options = Tuple
+        width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool
+        tabSize: Int maxLines: Int placeholder: String
+    end
+    options(width: Int): Options
+    error: Exception
+    wrap(s: String width: Int): Array(String)
+    wrapWith(s: String options: Options): Array(String)
+    fill(s: String width: Int): String
+    fillWith(s: String options: Options): String
+    shorten(s: String width: Int placeholder: String): String
+    dedent(s: String): String
+    indent(s: String prefix: String): String
+    indentIf(s: String prefix: String predicate: All(line: String) Bool): String
+    expandTabs(s: String tabSize: Int): String
+end
+```
+
 ---
 
 ## 2. Collections (`lib/collections/`)

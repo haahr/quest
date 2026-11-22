@@ -1,0 +1,843 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('text') : 'Text')
+        (TypedImportItem ('writer') : 'Writer')
+        (TypedImportItem ('conv') : 'Conv')
+        (TypedImportItem ('ascii') : 'Ascii')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'char' :type Fun(n: Int): String
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): String
+        :body (TypedApp :type String
+          :func (TypedSelect 'new' :type Fun(size: Int init: Char): String
+            :target (TypedVar 'string' :type Module 'string'))
+          :args (
+            (TypedInt 1 :type Int)
+            (TypedApp :type Char
+              :func (TypedSelect 'char' :type Fun(n: Int): Char
+                :target (TypedVar 'ascii' :type Module 'ascii'))
+              :args (
+                (TypedVar 'n' :type Int)
+              ))
+          ))))
+    (TypedLetValue 'repr' :type Fun(s: String): String
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): String
+        :body (TypedBlock :type String
+          :bindings (
+            (TypedLetValue 'digits' :type String
+              :value (TypedString '0123456789abcdef' :type String))
+            (TypedLetValue 'r' :type String
+              :value (TypedString "'" :type String))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedSelect 'length' :type Fun(string: String): Int
+                      :target (TypedVar 'string' :type Module 'string'))
+                    :args (
+                      (TypedVar 's' :type String)
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedBlock :type Ok
+                  :bindings (
+                    (TypedLetValue 'c' :type Char
+                      :value (TypedApp :type Char
+                        :func (TypedSelect 'getChar' :type Fun(string: String index: Int): Char
+                          :target (TypedVar 'string' :type Module 'string'))
+                        :args (
+                          (TypedVar 's' :type String)
+                          (TypedVar 'i' :type Int)
+                        )))
+                    (TypedLetValue 'v' :type Int
+                      :value (TypedApp :type Int
+                        :func (TypedSelect 'val' :type Fun(c: Char): Int
+                          :target (TypedVar 'ascii' :type Module 'ascii'))
+                        :args (
+                          (TypedVar 'c' :type Char)
+                        )))
+                  )
+                  :result (TypedAssign
+                    :target (TypedVar 'r' :type Var(String))
+                    :value (TypedInfix '<>' :type String
+                      :left (TypedDerefCell :type String
+                        :target (TypedVar 'r' :type Var(String)))
+                      :right (TypedIf :type String
+                        :cond (TypedInfix 'is' :type Bool
+                          :left (TypedVar 'c' :type Char)
+                          :right (TypedChar '\n' :type Char))
+                        :then (TypedString '\\n' :type String)
+                        :else (TypedIf :type String
+                          :cond (TypedInfix 'is' :type Bool
+                            :left (TypedVar 'c' :type Char)
+                            :right (TypedChar '\t' :type Char))
+                          :then (TypedString '\\t' :type String)
+                          :else (TypedIf :type String
+                            :cond (TypedInfix 'is' :type Bool
+                              :left (TypedVar 'c' :type Char)
+                              :right (TypedChar '\r' :type Char))
+                            :then (TypedString '\\r' :type String)
+                            :else (TypedIf :type String
+                              :cond (TypedInfix 'is' :type Bool
+                                :left (TypedVar 'c' :type Char)
+                                :right (TypedChar '\\' :type Char))
+                              :then (TypedString '\\\\' :type String)
+                              :else (TypedIf :type String
+                                :cond (TypedInfix '\\/' :type Bool
+                                  :left (TypedInfix '<' :type Bool
+                                    :left (TypedVar 'v' :type Int)
+                                    :right (TypedInt 32 :type Int))
+                                  :right (TypedInfix '>=' :type Bool
+                                    :left (TypedVar 'v' :type Int)
+                                    :right (TypedInt 127 :type Int)))
+                                :then (TypedInfix '<>' :type String
+                                  :left (TypedString '\\x' :type String)
+                                  :right (TypedInfix '<>' :type String
+                                    :left (TypedApp :type String
+                                      :func (TypedSelect 'new' :type Fun(size: Int init: Char): String
+                                        :target (TypedVar 'string' :type Module 'string'))
+                                      :args (
+                                        (TypedInt 1 :type Int)
+                                        (TypedApp :type Char
+                                          :func (TypedSelect 'getChar' :type Fun(string: String index: Int): Char
+                                            :target (TypedVar 'string' :type Module 'string'))
+                                          :args (
+                                            (TypedVar 'digits' :type String)
+                                            (TypedInfix '/' :type Int
+                                              :left (TypedVar 'v' :type Int)
+                                              :right (TypedInt 16 :type Int))
+                                          ))
+                                      ))
+                                    :right (TypedApp :type String
+                                      :func (TypedSelect 'new' :type Fun(size: Int init: Char): String
+                                        :target (TypedVar 'string' :type Module 'string'))
+                                      :args (
+                                        (TypedInt 1 :type Int)
+                                        (TypedApp :type Char
+                                          :func (TypedSelect 'getChar' :type Fun(string: String index: Int): Char
+                                            :target (TypedVar 'string' :type Module 'string'))
+                                          :args (
+                                            (TypedVar 'digits' :type String)
+                                            (TypedInfix '%' :type Int
+                                              :left (TypedVar 'v' :type Int)
+                                              :right (TypedInt 16 :type Int))
+                                          ))
+                                      ))))
+                                :else (TypedApp :type String
+                                  :func (TypedSelect 'new' :type Fun(size: Int init: Char): String
+                                    :target (TypedVar 'string' :type Module 'string'))
+                                  :args (
+                                    (TypedInt 1 :type Int)
+                                    (TypedVar 'c' :type Char)
+                                  ))))))))))))
+          )
+          :result (TypedInfix '<>' :type String
+            :left (TypedDerefCell :type String
+              :target (TypedVar 'r' :type Var(String)))
+            :right (TypedString "'" :type String)))))
+    (TypedLetValue 'show' :type Fun(lines: Array(String)): String
+      :value (TypedFun :params (('lines' : Array(String))) :type Fun(lines: Array(String)): String
+        :body (TypedBlock :type String
+          :bindings (
+            (TypedLetValue 'r' :type String
+              :value (TypedString '' :type String))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [String] :type Fun(a: Array(String)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedVar 'lines' :type Array(String))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedAssign
+                  :target (TypedVar 'r' :type Var(String))
+                  :value (TypedInfix '<>' :type String
+                    :left (TypedDerefCell :type String
+                      :target (TypedVar 'r' :type Var(String)))
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedString '[' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedIndex :type String
+                          :target (TypedVar 'lines' :type Array(String))
+                          :index (TypedVar 'i' :type Int))
+                        :right (TypedString ']' :type String)))))))
+          )
+          :result (TypedDerefCell :type String
+            :target (TypedVar 'r' :type Var(String))))))
+    (TypedLetValue 'wrapped' :type Fun(s: String o: text.Options): String
+      :value (TypedFun :params (('s' : String) ('o' : text.Options)) :type Fun(s: String o: text.Options): String
+        :body (TypedTry :type String
+          :body (TypedApp :type String
+            :func (TypedVar 'show' :type Fun(lines: Array(String)): String)
+            :args (
+              (TypedApp :type Array(String)
+                :func (TypedSelect 'wrapWith' :type Fun(s: String options: Options): Array(String)
+                  :target (TypedVar 'text' :type Module 'text'))
+                :args (
+                  (TypedVar 's' :type String)
+                  (TypedVar 'o' :type text.Options)
+                ))
+            ))
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedSelect 'error' :type Exception
+                :target (TypedVar 'text' :type Module 'text'))
+              :body (TypedString 'error' :type String))
+          ))))
+    (TypedLetValue 'opts' :type Fun(width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool tabSize: Int maxLines: Int placeholder: String): text.Options
+      :value (TypedFun :params (('width' : Int) ('initialIndent' : String) ('subsequentIndent' : String) ('breakLongWords' : Bool) ('breakOnHyphens' : Bool) ('tabSize' : Int) ('maxLines' : Int) ('placeholder' : String)) :type Fun(width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool tabSize: Int maxLines: Int placeholder: String): text.Options
+        :body (TypedTuple :type Tuple width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool tabSize: Int maxLines: Int placeholder: String end
+          :elements (
+            (TypedVar 'width' :type Int)
+            (TypedVar 'initialIndent' :type String)
+            (TypedVar 'subsequentIndent' :type String)
+            (TypedVar 'breakLongWords' :type Bool)
+            (TypedVar 'breakOnHyphens' :type Bool)
+            (TypedVar 'tabSize' :type Int)
+            (TypedVar 'maxLines' :type Int)
+            (TypedVar 'placeholder' :type String)
+          ))))
+    (TypedLetValue 'paragraphs' :type Array(String)
+      :value (TypedArray :type Array(String)
+        :elements (
+          (TypedString 'The quick brown fox jumps over the lazy dog, a well-known pangram used by typists.' :type String)
+          (TypedString 'A state-of-the-art, self-hosting compiler -- written in Quest -- compiles itself; its run-time is small.' :type String)
+          (TypedString '  Leading spaces stay\ton the first line,\tbut tabs\tbecome spaces and\nnewlines\r\ndo too.' :type String)
+          (TypedString 'Supercalifragilisticexpialidocious is long, and so is pneumonoultramicroscopicsilicovolcanoconiosis.' :type String)
+          (TypedString 'hyphen-ated-words-in-a-long-chain-break-after-each-hyphen and well--formed em--dashes' :type String)
+          (TypedString 'x---y, a--b, --start, end--, 1-2-3 and a-1 and 9--x' :type String)
+          (TypedString '' :type String)
+          (TypedString '   \t  \n ' :type String)
+          (TypedString 'one' :type String)
+        )))
+    (TypedLetValue 'widths' :type Array(Int)
+      :value (TypedArray :type Array(Int)
+        :elements (
+          (TypedInt 1 :type Int)
+          (TypedInt 5 :type Int)
+          (TypedInt 10 :type Int)
+          (TypedInt 15 :type Int)
+          (TypedInt 20 :type Int)
+          (TypedInt 30 :type Int)
+          (TypedInt 60 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [String] :type Fun(a: Array(String)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'paragraphs' :type Array(String))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'p' :type String
+              :value (TypedIndex :type String
+                :target (TypedVar 'paragraphs' :type Array(String))
+                :index (TypedVar 'i' :type Int)))
+            (TypedLetValue 'n' :type String
+              :value (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedVar 'i' :type Int)
+                )))
+            (TypedExprStmt
+              :expr (TypedFor 'j' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedVar 'widths' :type Array(Int))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedApp :type Ok
+                  :func (TypedVar 'print' :type Fun(s: String): Ok)
+                  :args (
+                    (TypedInfix '<>' :type String
+                      :left (TypedString 'wrap ' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedVar 'n' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedString ' ' :type String)
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedApp :type String
+                              :func (TypedSelect 'int' :type Fun(n: Int): String
+                                :target (TypedVar 'conv' :type Module 'conv'))
+                              :args (
+                                (TypedIndex :type Int
+                                  :target (TypedVar 'widths' :type Array(Int))
+                                  :index (TypedVar 'j' :type Int))
+                              ))
+                            :right (TypedInfix '<>' :type String
+                              :left (TypedString ' ' :type String)
+                              :right (TypedApp :type String
+                                :func (TypedVar 'show' :type Fun(lines: Array(String)): String)
+                                :args (
+                                  (TypedApp :type Array(String)
+                                    :func (TypedSelect 'wrap' :type Fun(s: String width: Int): Array(String)
+                                      :target (TypedVar 'text' :type Module 'text'))
+                                    :args (
+                                      (TypedVar 'p' :type String)
+                                      (TypedIndex :type Int
+                                        :target (TypedVar 'widths' :type Array(Int))
+                                        :index (TypedVar 'j' :type Int))
+                                    ))
+                                )))))))
+                  ))))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'print' :type Fun(s: String): Ok)
+                :args (
+                  (TypedInfix '<>' :type String
+                    :left (TypedString 'no hyphens ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedVar 'n' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' ' :type String)
+                        :right (TypedApp :type String
+                          :func (TypedVar 'wrapped' :type Fun(s: String o: text.Options): String)
+                          :args (
+                            (TypedVar 'p' :type String)
+                            (TypedApp :type text.Options
+                              :func (TypedVar 'opts' :type Fun(width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool tabSize: Int maxLines: Int placeholder: String): text.Options)
+                              :args (
+                                (TypedInt 12 :type Int)
+                                (TypedString '' :type String)
+                                (TypedString '' :type String)
+                                (TypedBool true)
+                                (TypedBool false)
+                                (TypedInt 8 :type Int)
+                                (TypedInt 0 :type Int)
+                                (TypedString ' [...]' :type String)
+                              ))
+                          )))))
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'print' :type Fun(s: String): Ok)
+                :args (
+                  (TypedInfix '<>' :type String
+                    :left (TypedString 'no long words ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedVar 'n' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' ' :type String)
+                        :right (TypedApp :type String
+                          :func (TypedVar 'wrapped' :type Fun(s: String o: text.Options): String)
+                          :args (
+                            (TypedVar 'p' :type String)
+                            (TypedApp :type text.Options
+                              :func (TypedVar 'opts' :type Fun(width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool tabSize: Int maxLines: Int placeholder: String): text.Options)
+                              :args (
+                                (TypedInt 12 :type Int)
+                                (TypedString '' :type String)
+                                (TypedString '' :type String)
+                                (TypedBool false)
+                                (TypedBool true)
+                                (TypedInt 8 :type Int)
+                                (TypedInt 0 :type Int)
+                                (TypedString ' [...]' :type String)
+                              ))
+                          )))))
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'print' :type Fun(s: String): Ok)
+                :args (
+                  (TypedInfix '<>' :type String
+                    :left (TypedString 'neither ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedVar 'n' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' ' :type String)
+                        :right (TypedApp :type String
+                          :func (TypedVar 'wrapped' :type Fun(s: String o: text.Options): String)
+                          :args (
+                            (TypedVar 'p' :type String)
+                            (TypedApp :type text.Options
+                              :func (TypedVar 'opts' :type Fun(width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool tabSize: Int maxLines: Int placeholder: String): text.Options)
+                              :args (
+                                (TypedInt 12 :type Int)
+                                (TypedString '' :type String)
+                                (TypedString '' :type String)
+                                (TypedBool false)
+                                (TypedBool false)
+                                (TypedInt 8 :type Int)
+                                (TypedInt 0 :type Int)
+                                (TypedString ' [...]' :type String)
+                              ))
+                          )))))
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'print' :type Fun(s: String): Ok)
+                :args (
+                  (TypedInfix '<>' :type String
+                    :left (TypedString 'indents ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedVar 'n' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' ' :type String)
+                        :right (TypedApp :type String
+                          :func (TypedVar 'wrapped' :type Fun(s: String o: text.Options): String)
+                          :args (
+                            (TypedVar 'p' :type String)
+                            (TypedApp :type text.Options
+                              :func (TypedVar 'opts' :type Fun(width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool tabSize: Int maxLines: Int placeholder: String): text.Options)
+                              :args (
+                                (TypedInt 24 :type Int)
+                                (TypedString '* ' :type String)
+                                (TypedString '    ' :type String)
+                                (TypedBool true)
+                                (TypedBool true)
+                                (TypedInt 8 :type Int)
+                                (TypedInt 0 :type Int)
+                                (TypedString ' [...]' :type String)
+                              ))
+                          )))))
+                )))
+            (TypedExprStmt
+              :expr (TypedFor 'm' :upto
+                :start (TypedInt 1 :type Int)
+                :stop (TypedInt 3 :type Int)
+                :body (TypedApp :type Ok
+                  :func (TypedVar 'print' :type Fun(s: String): Ok)
+                  :args (
+                    (TypedInfix '<>' :type String
+                      :left (TypedString 'max lines ' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedVar 'n' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedString ' ' :type String)
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedApp :type String
+                              :func (TypedSelect 'int' :type Fun(n: Int): String
+                                :target (TypedVar 'conv' :type Module 'conv'))
+                              :args (
+                                (TypedVar 'm' :type Int)
+                              ))
+                            :right (TypedInfix '<>' :type String
+                              :left (TypedString ' ' :type String)
+                              :right (TypedApp :type String
+                                :func (TypedVar 'wrapped' :type Fun(s: String o: text.Options): String)
+                                :args (
+                                  (TypedVar 'p' :type String)
+                                  (TypedApp :type text.Options
+                                    :func (TypedVar 'opts' :type Fun(width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool tabSize: Int maxLines: Int placeholder: String): text.Options)
+                                    :args (
+                                      (TypedInt 20 :type Int)
+                                      (TypedString '' :type String)
+                                      (TypedString '' :type String)
+                                      (TypedBool true)
+                                      (TypedBool true)
+                                      (TypedInt 8 :type Int)
+                                      (TypedVar 'm' :type Int)
+                                      (TypedString ' [...]' :type String)
+                                    ))
+                                )))))))
+                  ))))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'print' :type Fun(s: String): Ok)
+                :args (
+                  (TypedInfix '<>' :type String
+                    :left (TypedString 'max lines custom ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedVar 'n' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' ' :type String)
+                        :right (TypedApp :type String
+                          :func (TypedVar 'wrapped' :type Fun(s: String o: text.Options): String)
+                          :args (
+                            (TypedVar 'p' :type String)
+                            (TypedApp :type text.Options
+                              :func (TypedVar 'opts' :type Fun(width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool tabSize: Int maxLines: Int placeholder: String): text.Options)
+                              :args (
+                                (TypedInt 20 :type Int)
+                                (TypedString '' :type String)
+                                (TypedString '' :type String)
+                                (TypedBool true)
+                                (TypedBool true)
+                                (TypedInt 8 :type Int)
+                                (TypedInt 2 :type Int)
+                                (TypedString '...' :type String)
+                              ))
+                          )))))
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'print' :type Fun(s: String): Ok)
+                :args (
+                  (TypedInfix '<>' :type String
+                    :left (TypedString 'tabs 4 ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedVar 'n' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' ' :type String)
+                        :right (TypedApp :type String
+                          :func (TypedVar 'wrapped' :type Fun(s: String o: text.Options): String)
+                          :args (
+                            (TypedVar 'p' :type String)
+                            (TypedApp :type text.Options
+                              :func (TypedVar 'opts' :type Fun(width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool tabSize: Int maxLines: Int placeholder: String): text.Options)
+                              :args (
+                                (TypedInt 30 :type Int)
+                                (TypedString '' :type String)
+                                (TypedString '' :type String)
+                                (TypedBool true)
+                                (TypedBool true)
+                                (TypedInt 4 :type Int)
+                                (TypedInt 0 :type Int)
+                                (TypedString ' [...]' :type String)
+                              ))
+                          )))))
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'print' :type Fun(s: String): Ok)
+                :args (
+                  (TypedInfix '<>' :type String
+                    :left (TypedString 'fill ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedVar 'n' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' [' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedSelect 'fill' :type Fun(s: String width: Int): String
+                              :target (TypedVar 'text' :type Module 'text'))
+                            :args (
+                              (TypedVar 'p' :type String)
+                              (TypedInt 25 :type Int)
+                            ))
+                          :right (TypedString ']' :type String)))))
+                )))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedVar 'print' :type Fun(s: String): Ok)
+            :args (
+              (TypedInfix '<>' :type String
+                :left (TypedString 'shorten ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedVar 'n' :type String)
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' [' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedSelect 'shorten' :type Fun(s: String width: Int placeholder: String): String
+                          :target (TypedVar 'text' :type Module 'text'))
+                        :args (
+                          (TypedVar 'p' :type String)
+                          (TypedInt 30 :type Int)
+                          (TypedString ' [...]' :type String)
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString '] [' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedSelect 'shorten' :type Fun(s: String width: Int placeholder: String): String
+                              :target (TypedVar 'text' :type Module 'text'))
+                            :args (
+                              (TypedVar 'p' :type String)
+                              (TypedInt 12 :type Int)
+                              (TypedString '...' :type String)
+                            ))
+                          :right (TypedString ']' :type String)))))))
+            )))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'errors ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'wrapped' :type Fun(s: String o: text.Options): String)
+                :args (
+                  (TypedString 'abc' :type String)
+                  (TypedApp :type Options
+                    :func (TypedSelect 'options' :type Fun(width: Int): Options
+                      :target (TypedVar 'text' :type Module 'text'))
+                    :args (
+                      (TypedInt 0 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'wrapped' :type Fun(s: String o: text.Options): String)
+                    :args (
+                      (TypedString 'a b c' :type String)
+                      (TypedApp :type text.Options
+                        :func (TypedVar 'opts' :type Fun(width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool tabSize: Int maxLines: Int placeholder: String): text.Options)
+                        :args (
+                          (TypedInt 5 :type Int)
+                          (TypedString '' :type String)
+                          (TypedString '' :type String)
+                          (TypedBool true)
+                          (TypedBool true)
+                          (TypedInt 8 :type Int)
+                          (TypedInt 1 :type Int)
+                          (TypedString '  [toolong]' :type String)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'wrapped' :type Fun(s: String o: text.Options): String)
+                      :args (
+                        (TypedString 'a b c' :type String)
+                        (TypedApp :type text.Options
+                          :func (TypedVar 'opts' :type Fun(width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool tabSize: Int maxLines: Int placeholder: String): text.Options)
+                          :args (
+                            (TypedInt 8 :type Int)
+                            (TypedString '' :type String)
+                            (TypedString '    ' :type String)
+                            (TypedBool true)
+                            (TypedBool true)
+                            (TypedInt 8 :type Int)
+                            (TypedInt 2 :type Int)
+                            (TypedString ' [..]' :type String)
+                          ))
+                      )))))))
+        )))
+    (TypedLetValue 'dedents' :type Array(String)
+      :value (TypedArray :type Array(String)
+        :elements (
+          (TypedString '    a\n      b\n    c\n' :type String)
+          (TypedString '\tx\n\ty\n' :type String)
+          (TypedString '  a\n\tb\n' :type String)
+          (TypedString '    a\n  \n    b' :type String)
+          (TypedString '  a\n \t\n  b\n' :type String)
+          (TypedString 'no indent\n  some\n' :type String)
+          (TypedString '\n\n    only\n\n' :type String)
+          (TypedString '  \t mixed\n  \t  more\n' :type String)
+          (TypedString '' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [String] :type Fun(a: Array(String)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'dedents' :type Array(String))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedString 'dedent ' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedApp :type String
+                  :func (TypedVar 'repr' :type Fun(s: String): String)
+                  :args (
+                    (TypedIndex :type String
+                      :target (TypedVar 'dedents' :type Array(String))
+                      :index (TypedVar 'i' :type Int))
+                  ))
+                :right (TypedInfix '<>' :type String
+                  :left (TypedString ' ' :type String)
+                  :right (TypedApp :type String
+                    :func (TypedVar 'repr' :type Fun(s: String): String)
+                    :args (
+                      (TypedApp :type String
+                        :func (TypedSelect 'dedent' :type Fun(s: String): String
+                          :target (TypedVar 'text' :type Module 'text'))
+                        :args (
+                          (TypedIndex :type String
+                            :target (TypedVar 'dedents' :type Array(String))
+                            :index (TypedVar 'i' :type Int))
+                        ))
+                    )))))
+          ))))
+    (TypedLetValue 'indents' :type Array(String)
+      :value (TypedArray :type Array(String)
+        :elements (
+          (TypedString 'a\nb\n' :type String)
+          (TypedString 'a\n\nb' :type String)
+          (TypedString '  \n x\n' :type String)
+          (TypedInfix '<>' :type String
+            :left (TypedString 'r\rcr\r\nlf\nvt' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'char' :type Fun(n: Int): String)
+                :args (
+                  (TypedInt 11 :type Int)
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString 'ff' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'char' :type Fun(n: Int): String)
+                    :args (
+                      (TypedInt 12 :type Int)
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString 'fs' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedVar 'char' :type Fun(n: Int): String)
+                        :args (
+                          (TypedInt 28 :type Int)
+                        ))
+                      :right (TypedString 'end' :type String)))))))
+          (TypedString '' :type String)
+          (TypedString '\n' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [String] :type Fun(a: Array(String)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'indents' :type Array(String))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 's' :type String
+              :value (TypedIndex :type String
+                :target (TypedVar 'indents' :type Array(String))
+                :index (TypedVar 'i' :type Int)))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedVar 'print' :type Fun(s: String): Ok)
+            :args (
+              (TypedInfix '<>' :type String
+                :left (TypedString 'indent ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'repr' :type Fun(s: String): String)
+                    :args (
+                      (TypedVar 's' :type String)
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedApp :type String
+                        :func (TypedVar 'repr' :type Fun(s: String): String)
+                        :args (
+                          (TypedApp :type String
+                            :func (TypedSelect 'indent' :type Fun(s: String prefix: String): String
+                              :target (TypedVar 'text' :type Module 'text'))
+                            :args (
+                              (TypedVar 's' :type String)
+                              (TypedString '> ' :type String)
+                            ))
+                        ))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' ' :type String)
+                        :right (TypedApp :type String
+                          :func (TypedVar 'repr' :type Fun(s: String): String)
+                          :args (
+                            (TypedApp :type String
+                              :func (TypedSelect 'indentIf' :type Fun(s: String prefix: String predicate: Fun(line: String): Bool): String
+                                :target (TypedVar 'text' :type Module 'text'))
+                              :args (
+                                (TypedVar 's' :type String)
+                                (TypedString '+' :type String)
+                                (TypedFun :params (('line' : String)) :type Fun(line: String): Bool
+                                  :body (TypedBool true))
+                              ))
+                          )))))))
+            )))))
+    (TypedLetValue 'tabbed' :type Array(String)
+      :value (TypedArray :type Array(String)
+        :elements (
+          (TypedString 'a\tb\tc' :type String)
+          (TypedString 'ab\tc\n\td' :type String)
+          (TypedString '\t' :type String)
+          (TypedString 'x\r\ty' :type String)
+          (TypedString 'abcdefgh\ti' :type String)
+        )))
+    (TypedLetValue 'sizes' :type Array(Int)
+      :value (TypedArray :type Array(Int)
+        :elements (
+          (TypedInt 8 :type Int)
+          (TypedInt 4 :type Int)
+          (TypedInt 0 :type Int)
+          (TypedInt 2 :type Int)
+          (TypedInt 4 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [String] :type Fun(a: Array(String)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'tabbed' :type Array(String))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedString 'expandTabs ' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedApp :type String
+                  :func (TypedVar 'repr' :type Fun(s: String): String)
+                  :args (
+                    (TypedIndex :type String
+                      :target (TypedVar 'tabbed' :type Array(String))
+                      :index (TypedVar 'i' :type Int))
+                  ))
+                :right (TypedInfix '<>' :type String
+                  :left (TypedString ' ' :type String)
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedApp :type String
+                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedIndex :type Int
+                          :target (TypedVar 'sizes' :type Array(Int))
+                          :index (TypedVar 'i' :type Int))
+                      ))
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedString ' ' :type String)
+                      :right (TypedApp :type String
+                        :func (TypedVar 'repr' :type Fun(s: String): String)
+                        :args (
+                          (TypedApp :type String
+                            :func (TypedSelect 'expandTabs' :type Fun(s: String tabSize: Int): String
+                              :target (TypedVar 'text' :type Module 'text'))
+                            :args (
+                              (TypedIndex :type String
+                                :target (TypedVar 'tabbed' :type Array(String))
+                                :index (TypedVar 'i' :type Int))
+                              (TypedIndex :type Int
+                                :target (TypedVar 'sizes' :type Array(Int))
+                                :index (TypedVar 'i' :type Int))
+                            ))
+                        )))))))
+          ))))
+  ))

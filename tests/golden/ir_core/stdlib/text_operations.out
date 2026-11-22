@@ -1,0 +1,395 @@
+import text = "util/text" : util/Text
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import ascii = "ascii" : Ascii
+import string = "string" : StringOp
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @18:45
+      let %2: String = prim <>(s, "\n") @18:59
+      let %3: Ok = call writer.putString(%1, %2) @18:28
+      return %3
+    }
+  }
+  funs {
+    fun char(n: Int): String {
+      let %4: Char = call ascii.char(n) @19:41
+      let %5: String = call string.new(1, %4) @19:28
+      return %5
+    }
+  }
+  funs {
+    fun repr(s.1: String): String {
+      let digits: String = "0123456789abcdef" @24:22
+      var r: String = "'" @25:9
+      let %6: Int = call string.length(s.1) @26:25
+      let %7: Int = prim -(%6, 1) @26:25
+      var i: Int = 0 @26:9
+      let %8: Bool = prim <=(i, %7) @26:9
+      if %8 { @26:9
+        loop L1 {
+          let i.1: Int = i @26:9
+          let c: Char = call string.getChar(s.1, i.1) @27:21
+          let v: Int = call ascii.val(c) @28:21
+          join k1(r.1: String) {
+            let %9: String = prim <>(r, r.1) @29:18
+            r := %9 @29:13
+            let %10: Bool = prim is(i, %7) @26:9
+            if %10 { @26:9
+              break L1 @26:9
+            }
+            let %11: Int = prim +(i, 1) @26:9
+            i := %11 @26:9
+          } in {
+            let %12: Bool = prim is(c, '\n') @29:26
+            if %12 { @29:23
+              jump k1("\\n") @29:23
+            } else {
+              join k2(r.2: String) {
+                jump k1(r.2) @29:23
+              } in {
+                let %13: Bool = prim is(c, '\t') @30:23
+                if %13 { @30:23
+                  jump k2("\\t") @30:23
+                } else {
+                  join k3(r.3: String) {
+                    jump k2(r.3) @30:23
+                  } in {
+                    let %14: Bool = prim is(c, '\r') @31:23
+                    if %14 { @31:23
+                      jump k3("\\r") @31:23
+                    } else {
+                      join k4(r.4: String) {
+                        jump k3(r.4) @31:23
+                      } in {
+                        let %15: Bool = prim is(c, '\\') @32:23
+                        if %15 { @32:23
+                          jump k4("\\\\") @32:23
+                        } else {
+                          join k5(r.5: String) {
+                            jump k4(r.5) @32:23
+                          } in {
+                            let %16: Bool = prim <(v, 32) @33:24
+                            let %17: Bool = prim >=(v, 127) @33:36
+                            let %18: Bool = prim \/(%16, %17) @33:24
+                            if %18 { @33:24
+                              let %19: Int = prim /(v, 16) @34:65
+                              let %20: Char = call string.getChar(digits, %19) @34:43
+                              let %21: String = call string.new(1, %20) @34:30
+                              let %22: Int = prim %(v, 16) @34:112
+                              let %23: Char = call string.getChar(digits, %22) @34:90
+                              let %24: String = call string.new(1, %23) @34:77
+                              let %25: String = prim <>(%21, %24) @34:30
+                              let %26: String = prim <>("\\x", %25) @34:21
+                              jump k5(%26) @33:24
+                            } else {
+                              let %27: String = call string.new(1, c) @35:22
+                              jump k5(%27) @33:24
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      let %28: String = prim <>(r, "'") @38:9
+      return %28
+    }
+  }
+  funs {
+    fun show(lines: Array(String)): String {
+      var r.6: String = "" @43:9
+      let %29: Int = prim extent(lines) @44:25
+      let %30: Int = prim -(%29, 1) @44:25
+      var i.2: Int = 0 @44:9
+      let %31: Bool = prim <=(i.2, %30) @44:9
+      if %31 { @44:9
+        loop L2 {
+          let i.3: Int = i.2 @44:9
+          let %32: String = index(lines, i.3) @44:64
+          let %33: String = prim <>(%32, "]") @44:64
+          let %34: String = prim <>("[", %33) @44:57
+          let %35: String = prim <>(r.6, %34) @44:52
+          r.6 := %35 @44:47
+          let %36: Bool = prim is(i.2, %30) @44:9
+          if %36 { @44:9
+            break L2 @44:9
+          }
+          let %37: Int = prim +(i.2, 1) @44:9
+          i.2 := %37 @44:9
+        }
+      }
+      return r.6
+    }
+  }
+  funs {
+    fun wrapped(s.2: String, o: text.Options): String {
+      join k6(r.7: String) {
+        return r.7
+      } in {
+        let %38: Exception = member text.error @47:84
+        try catching (%38) {
+          let %39: Array(String) = call text.wrapWith(s.2, o) @47:59
+          let %40: String = call show(%39) @47:54
+          jump k6(%40) @47:50
+        } handle (e: Exception) {
+          let %41: Bool = prim is(e, %38) @47:50
+          if %41 { @47:50
+            jump k6("error") @47:50
+          } else {
+            reraise e @47:50
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun opts(width: Int, initialIndent: String, subsequentIndent: String, breakLongWords: Bool, breakOnHyphens: Bool, tabSize: Int, maxLines: Int, placeholder: String): text.Options {
+      let width.1: Int = width @53:21
+      let initialIndent.1: String = initialIndent @53:47
+      let subsequentIndent.1: String = subsequentIndent @53:84
+      let breakLongWords.1: Bool = breakLongWords @54:30
+      let breakOnHyphens.1: Bool = breakOnHyphens @54:66
+      let tabSize.1: Int = tabSize @54:95
+      let maxLines.1: Int = maxLines @55:24
+      let placeholder.1: String = placeholder @55:51
+      let %42: Tuple width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool tabSize: Int maxLines: Int placeholder: String end = tuple(width.1, initialIndent.1, subsequentIndent.1, breakLongWords.1, breakOnHyphens.1, tabSize.1, maxLines.1, placeholder.1) @52:5
+      return %42
+    }
+  }
+  let paragraphs: Array(String) = array("The quick brown fox jumps over the lazy dog, a well-known pangram used by typists.", "A state-of-the-art, self-hosting compiler -- written in Quest -- compiles itself; its run-time is small.", "  Leading spaces stay\ton the first line,\tbut tabs\tbecome spaces and\nnewlines\r\ndo too.", "Supercalifragilisticexpialidocious is long, and so is pneumonoultramicroscopicsilicovolcanoconiosis.", "hyphen-ated-words-in-a-long-chain-break-after-each-hyphen and well--formed em--dashes", "x---y, a--b, --start, end--, 1-2-3 and a-1 and 9--x", "", "   \t  \n ", "one") @58:18
+  let widths: Array(Int) = array(1, 5, 10, 15, 20, 30, 60) @69:14
+  let %43: Int = prim extent(paragraphs) @70:17
+  let %44: Int = prim -(%43, 1) @70:17
+  var i.4: Int = 0 @70:1
+  let %45: Bool = prim <=(i.4, %44) @70:1
+  if %45 { @70:1
+    loop L3 {
+      let i.5: Int = i.4 @70:1
+      let p: String = index(paragraphs, i.5) @71:13
+      let n.1: String = call conv.int(i.5) @72:13
+      let %46: Int = prim extent(widths) @73:21
+      let %47: Int = prim -(%46, 1) @73:21
+      var j: Int = 0 @73:5
+      let %48: Bool = prim <=(j, %47) @73:5
+      if %48 { @73:5
+        loop L4 {
+          let j.1: Int = j @73:5
+          let %49: Int = index(widths, j.1) @74:47
+          let %50: String = call conv.int(%49) @74:38
+          let %51: Int = index(widths, j.1) @74:85
+          let %52: Array(String) = call text.wrap(p, %51) @74:73
+          let %53: String = call show(%52) @74:68
+          let %54: String = prim <>(" ", %53) @74:61
+          let %55: String = prim <>(%50, %54) @74:38
+          let %56: String = prim <>(" ", %55) @74:31
+          let %57: String = prim <>(n.1, %56) @74:26
+          let %58: String = prim <>("wrap ", %57) @74:15
+          do call print(%58) @74:9
+          let %59: Bool = prim is(j, %47) @73:5
+          if %59 { @73:5
+            break L4 @73:5
+          }
+          let %60: Int = prim +(j, 1) @73:5
+          j := %60 @73:5
+        }
+      }
+      let %61: text.Options = call opts(12, "", "", true, false, 8, 0, " [...]") @76:50
+      let %62: String = call wrapped(p, %61) @76:40
+      let %63: String = prim <>(" ", %62) @76:33
+      let %64: String = prim <>(n.1, %63) @76:28
+      let %65: String = prim <>("no hyphens ", %64) @76:11
+      do call print(%65) @76:5
+      let %66: text.Options = call opts(12, "", "", false, true, 8, 0, " [...]") @77:53
+      let %67: String = call wrapped(p, %66) @77:43
+      let %68: String = prim <>(" ", %67) @77:36
+      let %69: String = prim <>(n.1, %68) @77:31
+      let %70: String = prim <>("no long words ", %69) @77:11
+      do call print(%70) @77:5
+      let %71: text.Options = call opts(12, "", "", false, false, 8, 0, " [...]") @78:47
+      let %72: String = call wrapped(p, %71) @78:37
+      let %73: String = prim <>(" ", %72) @78:30
+      let %74: String = prim <>(n.1, %73) @78:25
+      let %75: String = prim <>("neither ", %74) @78:11
+      do call print(%75) @78:5
+      let %76: text.Options = call opts(24, "* ", "    ", true, true, 8, 0, " [...]") @79:47
+      let %77: String = call wrapped(p, %76) @79:37
+      let %78: String = prim <>(" ", %77) @79:30
+      let %79: String = prim <>(n.1, %78) @79:25
+      let %80: String = prim <>("indents ", %79) @79:11
+      do call print(%80) @79:5
+      var m: Int = 1 @80:5
+      let %81: Bool = prim <=(m, 3) @80:5
+      if %81 { @80:5
+        loop L5 {
+          let m.1: Int = m @80:5
+          let %82: String = call conv.int(m.1) @81:43
+          let %83: text.Options = call opts(20, "", "", true, true, 8, m.1, " [...]") @81:75
+          let %84: String = call wrapped(p, %83) @81:65
+          let %85: String = prim <>(" ", %84) @81:58
+          let %86: String = prim <>(%82, %85) @81:43
+          let %87: String = prim <>(" ", %86) @81:36
+          let %88: String = prim <>(n.1, %87) @81:31
+          let %89: String = prim <>("max lines ", %88) @81:15
+          do call print(%89) @81:9
+          let %90: Bool = prim is(m, 3) @80:5
+          if %90 { @80:5
+            break L5 @80:5
+          }
+          let %91: Int = prim +(m, 1) @80:5
+          m := %91 @80:5
+        }
+      }
+      let %92: text.Options = call opts(20, "", "", true, true, 8, 2, "...") @83:56
+      let %93: String = call wrapped(p, %92) @83:46
+      let %94: String = prim <>(" ", %93) @83:39
+      let %95: String = prim <>(n.1, %94) @83:34
+      let %96: String = prim <>("max lines custom ", %95) @83:11
+      do call print(%96) @83:5
+      let %97: text.Options = call opts(30, "", "", true, true, 4, 0, " [...]") @84:46
+      let %98: String = call wrapped(p, %97) @84:36
+      let %99: String = prim <>(" ", %98) @84:29
+      let %100: String = prim <>(n.1, %99) @84:24
+      let %101: String = prim <>("tabs 4 ", %100) @84:11
+      do call print(%101) @84:5
+      let %102: String = call text.fill(p, 25) @85:35
+      let %103: String = prim <>(%102, "]") @85:35
+      let %104: String = prim <>(" [", %103) @85:27
+      let %105: String = prim <>(n.1, %104) @85:22
+      let %106: String = prim <>("fill ", %105) @85:11
+      do call print(%106) @85:5
+      let %107: String = call text.shorten(p, 30, " [...]") @86:38
+      let %108: String = call text.shorten(p, 12, "...") @86:78
+      let %109: String = prim <>(%108, "]") @86:78
+      let %110: String = prim <>("] [", %109) @86:69
+      let %111: String = prim <>(%107, %110) @86:38
+      let %112: String = prim <>(" [", %111) @86:30
+      let %113: String = prim <>(n.1, %112) @86:25
+      let %114: String = prim <>("shorten ", %113) @86:11
+      do call print(%114) @86:5
+      let %115: Bool = prim is(i.4, %44) @70:1
+      if %115 { @70:1
+        break L3 @70:1
+      }
+      let %116: Int = prim +(i.4, 1) @70:1
+      i.4 := %116 @70:1
+    }
+  }
+  let %117: Options = call text.options(0) @88:34
+  let %118: String = call wrapped("abc", %117) @88:20
+  let %119: text.Options = call opts(5, "", "", true, true, 8, 1, "  [toolong]") @88:77
+  let %120: String = call wrapped("a b c", %119) @88:61
+  let %121: text.Options = call opts(8, "", "    ", true, true, 8, 2, " [..]") @89:31
+  let %122: String = call wrapped("a b c", %121) @89:15
+  let %123: String = prim <>(" ", %122) @89:8
+  let %124: String = prim <>(%120, %123) @88:61
+  let %125: String = prim <>(" ", %124) @88:54
+  let %126: String = prim <>(%118, %125) @88:20
+  let %127: String = prim <>("errors ", %126) @88:7
+  do call print(%127) @88:1
+  let dedents: Array(String) = array("    a\n      b\n    c\n", "\tx\n\ty\n", "  a\n\tb\n", "    a\n  \n    b", "  a\n \t\n  b\n", "no indent\n  some\n", "\n\n    only\n\n", "  \t mixed\n  \t  more\n", "") @91:15
+  let %128: Int = prim extent(dedents) @102:17
+  let %129: Int = prim -(%128, 1) @102:17
+  var i.6: Int = 0 @102:1
+  let %130: Bool = prim <=(i.6, %129) @102:1
+  if %130 { @102:1
+    loop L6 {
+      let i.7: Int = i.6 @102:1
+      let %131: String = index(dedents, i.7) @103:29
+      let %132: String = call repr(%131) @103:24
+      let %133: String = index(dedents, i.7) @103:68
+      let %134: String = call text.dedent(%133) @103:56
+      let %135: String = call repr(%134) @103:51
+      let %136: String = prim <>(" ", %135) @103:44
+      let %137: String = prim <>(%132, %136) @103:24
+      let %138: String = prim <>("dedent ", %137) @103:11
+      do call print(%138) @103:5
+      let %139: Bool = prim is(i.6, %129) @102:1
+      if %139 { @102:1
+        break L6 @102:1
+      }
+      let %140: Int = prim +(i.6, 1) @102:1
+      i.6 := %140 @102:1
+    }
+  }
+  let %141: String = call char(11) @106:55
+  let %142: String = call char(12) @106:75
+  let %143: String = call char(28) @106:95
+  let %144: String = prim <>(%143, "end") @106:95
+  let %145: String = prim <>("fs", %144) @106:87
+  let %146: String = prim <>(%142, %145) @106:75
+  let %147: String = prim <>("ff", %146) @106:67
+  let %148: String = prim <>(%141, %147) @106:55
+  let %149: String = prim <>("r\rcr\r\nlf\nvt", %148) @106:34
+  let indents: Array(String) = array("a\nb\n", "a\n\nb", "  \n x\n", %149, "", "\n") @105:15
+  let %150: Int = prim extent(indents) @108:17
+  let %151: Int = prim -(%150, 1) @108:17
+  var i.8: Int = 0 @108:1
+  let %152: Bool = prim <=(i.8, %151) @108:1
+  if %152 { @108:1
+    loop L7 {
+      let i.9: Int = i.8 @108:1
+      let s.3: String = index(indents, i.9) @109:13
+      let %153: String = call repr(s.3) @110:24
+      let %154: String = call text.indent(s.3, "> ") @110:47
+      let %155: String = call repr(%154) @110:42
+      funs {
+        fun f(line: String): Bool {
+          return true
+        }
+      }
+      let %156: String = call text.indentIf(s.3, "+", f) @111:17
+      let %157: String = call repr(%156) @111:12
+      let %158: String = prim <>(" ", %157) @110:71
+      let %159: String = prim <>(%155, %158) @110:42
+      let %160: String = prim <>(" ", %159) @110:35
+      let %161: String = prim <>(%153, %160) @110:24
+      let %162: String = prim <>("indent ", %161) @110:11
+      do call print(%162) @110:5
+      let %163: Bool = prim is(i.8, %151) @108:1
+      if %163 { @108:1
+        break L7 @108:1
+      }
+      let %164: Int = prim +(i.8, 1) @108:1
+      i.8 := %164 @108:1
+    }
+  }
+  let tabbed: Array(String) = array("a\tb\tc", "ab\tc\n\td", "\t", "x\r\ty", "abcdefgh\ti") @113:14
+  let sizes: Array(Int) = array(8, 4, 0, 2, 4) @114:13
+  let %165: Int = prim extent(tabbed) @115:17
+  let %166: Int = prim -(%165, 1) @115:17
+  var i.10: Int = 0 @115:1
+  let %167: Bool = prim <=(i.10, %166) @115:1
+  if %167 { @115:1
+    loop L8 {
+      let i.11: Int = i.10 @115:1
+      let %168: String = index(tabbed, i.11) @116:33
+      let %169: String = call repr(%168) @116:28
+      let %170: Int = index(sizes, i.11) @116:63
+      let %171: String = call conv.int(%170) @116:54
+      let %172: String = index(tabbed, i.11) @116:104
+      let %173: Int = index(sizes, i.11) @116:114
+      let %174: String = call text.expandTabs(%172, %173) @116:88
+      let %175: String = call repr(%174) @116:83
+      let %176: String = prim <>(" ", %175) @116:76
+      let %177: String = prim <>(%171, %176) @116:54
+      let %178: String = prim <>(" ", %177) @116:47
+      let %179: String = prim <>(%169, %178) @116:28
+      let %180: String = prim <>("expandTabs ", %179) @116:11
+      do call print(%180) @116:5
+      let %181: Bool = prim is(i.10, %166) @115:1
+      if %181 { @115:1
+        break L8 @115:1
+      }
+      let %182: Int = prim +(i.10, 1) @115:1
+      i.10 := %182 @115:1
+    }
+  }
+}
+

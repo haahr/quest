@@ -1,0 +1,117 @@
+(* Standard library: util/text (docs/libraries.md section 1.21): paragraphs of
+ * plain words, hyphenated words and em dashes (which Python's wordsep_re
+ * breaks after, or not), long words, leading spaces, tabs, and newlines, an
+ * empty and a blank paragraph, and a single word, each wrapped at widths
+ * from 1 to 60, without hyphen breaks, without long-word breaks, with
+ * indents, with a line limit and placeholders, with tabs of 4, filled, and
+ * shortened; the errors; dedent, indent (by its default rule and by a
+ * predicate, at every line ending Python's splitlines knows), and
+ * expandTabs. Each line is what Python 3.11's textwrap gives, its strings
+ * written as Python's repr writes them. *)
+
+import
+    util/text : util/Text
+    writer : Writer
+    conv : Conv
+    ascii : Ascii
+;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let char(n: Int): String = string.new(1 ascii.char(n));
+
+(* s as Python's repr writes a string without quotes in it *)
+let repr(s: String): String =
+    begin
+        let digits = "0123456789abcdef"
+        let var r = "'"
+        for i = 0 upto {string.length(s) - 1} do
+            let c = string.getChar(s i)
+            let v = ascii.val(c)
+            r := r <> if c is '\n' then "\\n"
+                elsif c is '\t' then "\\t"
+                elsif c is '\r' then "\\r"
+                elsif c is '\\' then "\\\\"
+                elsif {v < 32} \/ {v >= 127} then
+                    "\\x" <> string.new(1 string.getChar(digits v / 16)) <> string.new(1 string.getChar(digits v % 16))
+                else string.new(1 c)
+                end
+        end
+        r <> "'"
+    end;
+
+let show(lines: Array(String)): String =
+    begin
+        let var r = ""
+        for i = 0 upto {extent(lines) - 1} do r := r <> "[" <> lines[i] <> "]" end
+        r
+    end;
+let wrapped(s: String o: text.Options): String = try show(text.wrapWith(s o)) when text.error then "error" end;
+
+(* options(width) with each field given *)
+let opts(width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool
+        tabSize: Int maxLines: Int placeholder: String): text.Options =
+    tuple
+        let width = width let initialIndent = initialIndent let subsequentIndent = subsequentIndent
+        let breakLongWords = breakLongWords let breakOnHyphens = breakOnHyphens let tabSize = tabSize
+        let maxLines = maxLines let placeholder = placeholder
+    end;
+
+let paragraphs = array of
+    "The quick brown fox jumps over the lazy dog, a well-known pangram used by typists."
+    "A state-of-the-art, self-hosting compiler -- written in Quest -- compiles itself; its run-time is small."
+    "  Leading spaces stay\ton the first line,\tbut tabs\tbecome spaces and\nnewlines\r\ndo too."
+    "Supercalifragilisticexpialidocious is long, and so is pneumonoultramicroscopicsilicovolcanoconiosis."
+    "hyphen-ated-words-in-a-long-chain-break-after-each-hyphen and well--formed em--dashes"
+    "x---y, a--b, --start, end--, 1-2-3 and a-1 and 9--x"
+    ""
+    "   \t  \n "
+    "one"
+end;
+let widths = array of 1 5 10 15 20 30 60 end;
+for i = 0 upto {extent(paragraphs) - 1} do
+    let p = paragraphs[i]
+    let n = conv.int(i)
+    for j = 0 upto {extent(widths) - 1} do
+        print("wrap " <> n <> " " <> conv.int(widths[j]) <> " " <> show(text.wrap(p widths[j])))
+    end
+    print("no hyphens " <> n <> " " <> wrapped(p opts(12 "" "" true false 8 0 " [...]")))
+    print("no long words " <> n <> " " <> wrapped(p opts(12 "" "" false true 8 0 " [...]")))
+    print("neither " <> n <> " " <> wrapped(p opts(12 "" "" false false 8 0 " [...]")))
+    print("indents " <> n <> " " <> wrapped(p opts(24 "* " "    " true true 8 0 " [...]")))
+    for m = 1 upto 3 do
+        print("max lines " <> n <> " " <> conv.int(m) <> " " <> wrapped(p opts(20 "" "" true true 8 m " [...]")))
+    end
+    print("max lines custom " <> n <> " " <> wrapped(p opts(20 "" "" true true 8 2 "...")))
+    print("tabs 4 " <> n <> " " <> wrapped(p opts(30 "" "" true true 4 0 " [...]")))
+    print("fill " <> n <> " [" <> text.fill(p 25) <> "]")
+    print("shorten " <> n <> " [" <> text.shorten(p 30 " [...]") <> "] [" <> text.shorten(p 12 "...") <> "]")
+end;
+print("errors " <> wrapped("abc" text.options(0)) <> " " <> wrapped("a b c" opts(5 "" "" true true 8 1 "  [toolong]"))
+    <> " " <> wrapped("a b c" opts(8 "" "    " true true 8 2 " [..]")));
+
+let dedents = array of
+    "    a\n      b\n    c\n"
+    "\tx\n\ty\n"
+    "  a\n\tb\n"
+    "    a\n  \n    b"
+    "  a\n \t\n  b\n"
+    "no indent\n  some\n"
+    "\n\n    only\n\n"
+    "  \t mixed\n  \t  more\n"
+    ""
+end;
+for i = 0 upto {extent(dedents) - 1} do
+    print("dedent " <> repr(dedents[i]) <> " " <> repr(text.dedent(dedents[i])))
+end;
+let indents = array of
+    "a\nb\n" "a\n\nb" "  \n x\n" "r\rcr\r\nlf\nvt" <> char(11) <> "ff" <> char(12) <> "fs" <> char(28) <> "end" "" "\n"
+end;
+for i = 0 upto {extent(indents) - 1} do
+    let s = indents[i]
+    print("indent " <> repr(s) <> " " <> repr(text.indent(s "> ")) <> " "
+        <> repr(text.indentIf(s "+" fun(line: String): Bool true)))
+end;
+let tabbed = array of "a\tb\tc" "ab\tc\n\td" "\t" "x\r\ty" "abcdefgh\ti" end;
+let sizes = array of 8 4 0 2 4 end;
+for i = 0 upto {extent(tabbed) - 1} do
+    print("expandTabs " <> repr(tabbed[i]) <> " " <> conv.int(sizes[i]) <> " " <> repr(text.expandTabs(tabbed[i] sizes[i])))
+end;

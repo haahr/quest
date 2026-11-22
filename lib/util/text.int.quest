@@ -1,0 +1,65 @@
+(* Paragraphs wrapped, filled, shortened, indented, and dedented, as Python
+ * 3.11's textwrap does them. Widths count bytes, and whitespace is ASCII's
+ * (tab, newline, vertical tab, form feed, carriage return, space). Left out:
+ * TextWrapper's fix_sentence_endings, and its replace_whitespace and
+ * drop_whitespace set false. *)
+
+interface Text
+export
+    (* How wrap lays out a paragraph, as Python's TextWrapper's options *)
+    Def Options = Tuple
+        (* The greatest width of a line, its indent included *)
+        width: Int
+        (* Put before the first line, and before each line after it *)
+        initialIndent: String
+        subsequentIndent: String
+        (* Break a word wider than a line at the width; else it overflows on
+         * a line of its own *)
+        breakLongWords: Bool
+        (* Break after the hyphens in a compound word, as Python does *)
+        breakOnHyphens: Bool
+        (* Tabs are expanded to multiples of tabSize before wrapping *)
+        tabSize: Int
+        (* At most this many lines (0 for no limit); a paragraph cut short ends
+         * with placeholder, which fits on the last line *)
+        maxLines: Int
+        placeholder: String
+    end
+    (* width, with Python's defaults otherwise: no indents, both breaks,
+     * tabs of 8, no line limit, placeholder " [...]" *)
+    options(width: Int): Options
+
+    (* Raised for a width less than 1, or a placeholder (after any leading
+     * spaces) that does not fit beside its line's indent *)
+    error: Exception
+
+    (* The paragraph in lines of at most width, as textwrap.wrap: tabs
+     * expanded and each whitespace byte made a space, then the words (and
+     * the spaces between them) laid in lines greedily, the spaces at each
+     * break dropped; none for a blank paragraph *)
+    wrap(s: String width: Int): Array(String)
+    wrapWith(s: String options: Options): Array(String)
+    (* wrap's lines joined by newlines, as textwrap.fill *)
+    fill(s: String width: Int): String
+    fillWith(s: String options: Options): String
+    (* s's words separated by single spaces, on one line, cut to width with
+     * placeholder if they do not fit, as textwrap.shorten *)
+    shorten(s: String width: Int placeholder: String): String
+
+    (* s with the leading spaces and tabs that every line that is not blank
+     * begins with removed, and lines of only spaces and tabs emptied, as
+     * textwrap.dedent; lines end at newlines *)
+    dedent(s: String): String
+    (* prefix put before each line of s that is not all whitespace, as
+     * textwrap.indent; lines end at a newline, a carriage return (with any
+     * newline after it), a vertical tab, a form feed, or bytes 28 to 30, as
+     * Python's splitlines ends them *)
+    indent(s: String prefix: String): String
+    (* prefix put before each line for which predicate holds, the line given
+     * with its ending *)
+    indentIf(s: String prefix: String predicate: All(line: String) Bool): String
+    (* Tabs replaced by spaces to the next multiple of tabSize (none for 0),
+     * columns restarting after each newline and carriage return, as Python's
+     * str.expandtabs *)
+    expandTabs(s: String tabSize: Int): String
+end
