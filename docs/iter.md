@@ -302,7 +302,7 @@ Left out:
   lines over these; they can be added when a program wants one.
 
 Pending:
-- **`maybe.T` public.** `filterMap`'s function, `unfold`'s step, `find`, `first`, and the rest speak `maybe.T`,
+- **`util/maybe` inlined.** `filterMap`'s function, `unfold`'s step, `find`, `first`, and the rest speak `maybe.T`,
   which is abstract, so every test of one outside `util/maybe` is a call; that is why the stages hold their elements
-  in a slot of their own (rule 5). The tasklist entry "`maybe.T` is abstract, so every test of one in another module
-  is a call" ([tasklist.md](tasklist.md)) would make it manifest.
+  in a slot of their own (rule 5). The tasklist entry "A few library modules inlined into their importers, as in a
+  whole program" ([tasklist.md](tasklist.md)) would let importers inline `util/maybe` and keep `maybe.T` abstract.

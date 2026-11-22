@@ -5,28 +5,43 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
-## `maybe.T` is abstract, so every test of one in another module is a call
+## A few library modules inlined into their importers, as in a whole program
 
-**Problem.** `util/maybe` exports `T` abstract, though it is only `Option none some with val: A end end` and has no
-invariant to protect. Separate compilation inlines nothing across modules ([ir.md](ir.md) §8.6), so outside
-`util/maybe` every `isSome`, `isNone`, `unwrap`, and `some` is a call, where a visible type would let code write
-`o?some` and `o!some.val`, inline. Measured in [iter.md](iter.md) §2: a `filter` reaching its held element
-through `util/maybe` took 305 instructions per element, and the same stage with an option type of its own, 143.
+**Problem.** Separate compilation inlines nothing across modules ([ir.md](ir.md) §8.6), so outside `util/maybe`
+every `isSome`, `isNone`, `unwrap`, and `some` is a call, at the generic layout of an abstract type. Measured in
+[iter.md](iter.md) §2: a `filter` reaching its held element through `util/maybe` took 305 instructions per element,
+and the same stage with an option type of its own, 143; util/iter's stages hold their elements in slots of their own
+for that reason (rule 5). Two other fixes were weighed and set aside (2026-11-22): making `maybe.T` manifest gives up
+the abstraction, and importers would have to write `?some` and `!some.val` for any gain; carrying every module's
+small bodies in `.qi` files changes the separate compilation model, under which an importer depends on interfaces
+alone.
 
-**Where to start.** Make `T` manifest in `lib/util/maybe.int.quest` (choosing the field's name for good, perhaps
-`value`, since it becomes public). Then:
+The idea: a short list, fixed in the compiler, of library modules that every importing unit sees as a whole program
+would, with their abstract types transparent to shapes and their members open to inlining and specialization. The
+candidates are `util/maybe`, `util/iter`, and `collections/vector`: small or hot, polymorphic, and stable. A user's
+own modules keep the interface-only model. The prelinked modules (`conv`, `int`, `string`, ...) are already a tier
+of their own, always compiled apart (ir.md §4.1); this adds a tier always merged.
 
-- see what the dynamic format's change touches: a type mentioning `maybe.T` is encoded today as an abstract node
-  ([dynamic.md](dynamic.md) §2.3) and would become an option type, so values externed before would not intern;
-- update the goldens that print the type;
-- rewrite the compiler's hottest call sites to the inline forms, and measure the driver build's instructions retired
-  (`/usr/bin/time -l`).
+**Where to start.** Measure first. Build `benchmarks/iter/` and the driver whole, and with only these three modules
+seen through if an experimental setting can do that, else compare whole against separate (inlining.md: 0.94) as an
+upper bound. If the three account for little of the difference, the list would have to keep growing; drop the idea
+with the measurement. Then the two questions that decide whether it can be built:
 
-Every importer rebuilds once, since the interface's fingerprint changes. Calls of `isSome` and the rest stay calls, so
-only code that uses `?some` and `!some` gains.
+- **One module, one state.** Each module's globals stay single: `maybe.error`, `vector.error`, and `iter.exhausted`
+  and `iter.error` are exceptions, matched by identity, so an importer may copy function bodies but must refer to the
+  compiled module's globals, not merge a copy of the module the way `driver/whole` does.
+- **Layouts across the boundary.** Inlined code sees `vector.T(Int)` through to its representation; calls not
+  inlined, and units that are not importers, see it at its abstract layout (`genericLayout.abstractInstance`). Every
+  value crossing between them must agree or be converted.
 
-**Done when.** `maybe.T` is public and the compiler's hot paths use the inline forms, with the measurement in
-benchmarks.md, or the idea is dropped with its measurement.
+The rest follows whole programs: opaque shapes keep descriptors, echo, and dynamic values unchanged; every backend and
+the JIT (its units, module rollback) take the bodies; build cache keys include the listed modules' bodies; tracebacks
+lose their frames, as in a whole program. Self-hosted only. State the rule for joining the list (small, hot,
+polymorphic, stable, no state worth isolating) where the list is defined.
+
+**Done when.** The listed modules' calls are inlined in separately compiled importers, util/iter's own slots may give
+way to `util/maybe` (iter.md rule 5 then says so), and the driver build's instructions retired and `benchmarks/iter/`
+are in benchmarks.md; or the idea is dropped with its measurement.
 
 ---
 
