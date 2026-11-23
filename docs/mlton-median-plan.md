@@ -335,6 +335,34 @@ These are larger, and each is measured on its own before the next. The order is 
   through `blr` in its search loop. When every `Dict` in a whole program is made with the same `leq`, the inliner's
   specialization (ir.md §8.6) applies; the step finds why it does not here.
 
+**Step 11 analyzed, not made** (2026-11-23). `mCompare` is self-recursive, and `simplify.eligible` inlines a recursive
+function only when it has a static parameter passed a known function, which `mCompare` (two lists of Ints) has not:
+neither its size nor the growth bound is the reason. Inlining it usefully would take two transformations the
+simplifier lacks: copying a recursive callee into its caller as a local loop, and case-of-case (a switch on a join's
+parameter pushed into the jumps that pass it a known constant), since a known-tag switch is decided only on a
+variable whose definition is known. Two hand-made versions of tyan bound the gain, whole programs at its count of 12,
+instructions retired against the unchanged program:
+
+| Variant | ssac | arm64 |
+|---|--:|--:|
+| `mCompare` returns an Int, which `plus` and `minus` test with `if` | 0.982 | 0.994 |
+| the comparison's loop written into `plus` and `minus` (no call, no `Relation`) | 0.956 | 1.015 |
+
+So the `Relation` result costs under 2%, and the call at most 4.4% through ssac and nothing through arm64, whose
+loop over `var`s costs more than the call it saves (step 14's kind of cost). Below what the two transformations
+would cost to build; not made.
+
+**Step 12 analyzed** (2026-11-23). `leq` is not a parameter but a field of the `Dict` tuple, loaded as `d.leq` in
+the generic `lookup` and `enter`; the inliner's specialization covers only a self-recursive function's static
+parameter passed a known function, so it cannot apply. A hand-made lexgen whose `lookup` and `enter` are copied at
+`String` and at `Int` keys, calling `stringLeq` and `intLeq` directly, retires 0.907 of the instructions through ssac
+and 0.936 through arm64 (whole programs at count 48, the same output). Getting that automatically needs a
+whole-program fact about a field: every `Dict(String _)` made in the program (by `create`, once inlined, or as a copy
+of another `Dict`'s `leq`) holds `stringLeq`, every `Dict(Int _)` `intLeq`, and the field is immutable, so a load of
+`leq` from a `Dict` at a closed type is that function, which the simplifier then calls directly and inlines. That is a
+design of its own (where the facts are collected, how a copy of the field is followed, and what makes a type's field
+values known), for the user to decide on; it is not started.
+
 ### 4.2. The arm64 code generator
 
 From §38.3 item 7 and the subagents' listings; each a change to `codegen/arm64` alone, tested by `questlang/arm64_*`
@@ -383,6 +411,24 @@ allocations by function; it gains `--by-layout`: the count and bytes of each lay
 Run over the whole suite and the compiler's own build, it gives each of steps 20 to 24 its gain in bytes before it is
 designed further. Each step below states the gain it needs: a step whose census gain is under 3% of the bytes
 allocated on every program, with no program's instructions moved by 1% in a hand-built experiment, is not made.
+
+**Step 19 done** (2026-11-23): `allocations.py --by-layout`, from the `allocations` mode's census by layout and size
+(runtime/quest_gc.c, written to `$QUEST_LAYOUTS_OUT`; no ABI change). An option made at a known case already has
+that case's own layout (`repr/objectlayout`), so the census tells cases apart by layout with no tag read. Over the
+suite (arm64 whole programs, a thirty-second of the counts), options are 50 to 100% of the bytes of 15 programs
+(tyan 96%, tailmerge and DLXSimulator 100%, logic 58%), and almost none of 23. What the census gives each step:
+
+- **Step 21 (the tag in the header)** saves the tag's 8 bytes of every option object: 25 to 26% of the bytes of
+  zebra, tyan, tailmerge, and DLXSimulator; 19 to 22% of peek, boyer, mlyacc, life, vliw, and model-elimination; 15%
+  of hamlet and logic; 10 to 15% of count-graphs, tsp, simple, lexgen, and knuth-bendix; 8% of nucleic. Far above
+  the 3% gate, so steps 20 and 21 are worth designing further.
+- **Step 20 (each case sized to itself)** gains what a case's payload is smaller than the union, which the census
+  cannot see, since an option is allocated at the union's size. Lists, most options' bytes, have one case with a
+  payload, so for them step 20 gains nothing; it is measured on the types with several (logic's `Term`, hamlet's
+  syntax) when it is designed.
+- **Step 22 (payload-free cases by address)** saves no bytes, only the tag's load, and **step 23** applies to mpuz,
+  which allocates almost nothing at this count: their gains are in instructions, not bytes, and each needs its own
+  hand-built experiment.
 
 **Step 20, each case of an option sized to itself.** An option's object is its tag and then its own case's payload,
 not the largest case's. That needs a layout for each case (a tag, then the case's words, with their kinds), so that
@@ -440,6 +486,14 @@ instructions); workers ([inlining.md](inlining.md) step 5) already return tuples
 step finds why `tfoCombine`'s callers do not get a worker (its size, its being exported, or a caller that stores the
 result), and widens the rule; a result that is stored is still allocated, but at the store, not in the callee. This
 changes no layout and no ABI.
+
+**Step 24 analyzed, not made** (2026-11-23). `tfoCombine` is far over the inlining threshold (30), and its result
+falls outside unboxed results' rule twice: that rule takes one or two components, each an Int, Bool, Char, or
+String, and a `Tfo` is twelve Reals. Workers, which would widen it, are not built (inlining.md §2). Of its calls, the
+one in `dgfBase` (`tfoCombine(nuc.dgfBaseTfo tfoCombine(tfo tfoInvOrtho(x)))`) makes two `Tfo`s that are only
+read. A hand-made nucleic with the three calls fused, so that only the stored `Tfo` is allocated, allocates 0.903 of
+the bytes, but retires 0.987 of the instructions through ssac and 1.004 through arm64 (whole programs at count 128;
+its own check of the result passes), where 24 live Reals spill. Under the 1% this part asks on arm64; not made.
 
 ## 5. Order and stopping
 
