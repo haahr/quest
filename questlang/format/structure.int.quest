@@ -45,15 +45,43 @@ export
     end
 
     (* One item of an import list: the offsets of its first token and past its
-     * last, and the key it sorts by: its group (0 for a path under
-     * questlang/, 1 for another path, 2 for an unqualified name), then its
-     * module path *)
+     * last, and the key it sorts by: its section (0 for an unqualified name,
+     * a unit of the language's own library; 1 for a path that resolves to a
+     * unit in lib/; 2 for any other path), then its module path *)
     Def ImportItem = Tuple start: Int stop: Int group: Int path: String end
 
     (* An import list whose items can be sorted: a module's or an interface's
      * (items holds one list's items), or a run of a program's top-level
      * import phrases, each one item (phrases) *)
     Def ImportList = Tuple items: vector.T(ImportItem) phrases: Bool end
+
+    (* Parts that start lines together: when the first of offsets starts a
+     * line (any of them, if any), or a line starts anywhere after the first
+     * and before the token at within (if within isn't ~1), each does. A
+     * tuple's fields are one run, within its end (a tuple whose fields take
+     * more than one line has one to a line, below the tuple); the first
+     * phrases of an if's arms are another (an if whose first arm starts on a
+     * line of its own has each start on a line of its own) *)
+    Def Run = Tuple offsets: Array(Int) any: Bool within: Int end
+
+    (* An if, case, inspect, or try that is the value of a let or the right
+     * side of := (at ifToken) starts a line, one level deeper than the let or
+     * the assignment, when it is broken: for an if, when its first arm (at
+     * arm) starts a line; otherwise (arm ~1) when a line starts with a token
+     * from within through until, its end *)
+    Def Lift = Tuple ifToken: Int arm: Int within: Int until: Int end
+
+    (* A let, a function's or a value's, or a tuple's field: the offsets of
+     * its = and of its value's first and last tokens (its braces included).
+     * A value on one line of its own after an = that ends a line goes back
+     * to the ='s line when it fits there *)
+    Def Join = Tuple equal: Int first: Int last: Int end
+
+    (* An if, case, inspect, or try (its first token at head) and its arms
+     * after the first (the offsets of their elsif, else, or when): when the
+     * construct starts a line and so does one of these, its end (at closing)
+     * does too *)
+    Def ArmEnd = Tuple head: Int parts: Array(Int) closing: Int end
 
     Def T = Tuple
         (* By the offset of a token that may start a line *)
@@ -69,6 +97,22 @@ export
          * around them (util/stringBuilder) *)
         pathSlashes: hashMap.T(Int Bool)
         imports: vector.T(ImportList)
+        (* By the offset of a construct's part (a phrase of one of its bodies,
+         * or a field): the offset of the end that closes
+         * the construct. A part that starts a line puts that end on a line of
+         * its own *)
+        ends: hashMap.T(Int Int)
+        runs: vector.T(Run)
+        lifts: vector.T(Lift)
+        joins: vector.T(Join)
+        armEnds: vector.T(ArmEnd)
+        (* By the offset of each token of an if, elsif, or while condition:
+         * the offset of that keyword *)
+        conditions: hashMap.T(Int Int)
+        (* By the offset of the first token of an elsif's or else's body: the
+         * offset of that elsif or else, which starts a line when its body
+         * does *)
+        armHeads: hashMap.T(Int Int)
     end
 
     (* The structure of program, parsed from toks (which end with EOF) of the

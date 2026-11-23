@@ -12,7 +12,9 @@
 
 module structure : Structure
 import
+    questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
+    questlang/modules/paths : questlang/modules/Paths
     questlang/syntax/ast : questlang/syntax/Ast
     questlang/syntax/tokens : questlang/syntax/Tokens
     collections/hashMap : collections/HashMap
@@ -33,12 +35,23 @@ export
     end
     Let ImportItem = Tuple start: Int stop: Int group: Int path: String end
     Let ImportList = Tuple items: vector.T(ImportItem) phrases: Bool end
+    Let Run = Tuple offsets: Array(Int) any: Bool within: Int end
+    Let Lift = Tuple ifToken: Int arm: Int within: Int until: Int end
+    Let Join = Tuple equal: Int first: Int last: Int end
+    Let ArmEnd = Tuple head: Int parts: Array(Int) closing: Int end
     Let T = Tuple
         rules: hashMap.T(Int Rule)
         continuations: hashMap.T(Int Int)
         spacedColons: hashMap.T(Int Bool)
         pathSlashes: hashMap.T(Int Bool)
         imports: vector.T(ImportList)
+        ends: hashMap.T(Int Int)
+        runs: vector.T(Run)
+        lifts: vector.T(Lift)
+        joins: vector.T(Join)
+        armEnds: vector.T(ArmEnd)
+        conditions: hashMap.T(Int Int)
+        armHeads: hashMap.T(Int Int)
     end
 
     Let Range = Tuple start: Int stop: Int end
@@ -57,6 +70,17 @@ export
         spacedColons: hashMap.T(Int Bool)
         pathSlashes: hashMap.T(Int Bool)
         imports: vector.T(ImportList)
+        ends: hashMap.T(Int Int)
+        runs: vector.T(Run)
+        lifts: vector.T(Lift)
+        joins: vector.T(Join)
+        armEnds: vector.T(ArmEnd)
+        conditions: hashMap.T(Int Int)
+        armHeads: hashMap.T(Int Int)
+        (* The directory of the file, from which its imports resolve *)
+        dir: String
+        (* The end of the construct whose parts are being walked, or ~1 *)
+        var closing: Int
     end
 
     let intEqual(a: Int b: Int): Bool = a is b
@@ -152,6 +176,10 @@ export
             end)
         end
 
+    (* Token i is a part of the construct being walked, closed by its end *)
+    let part(st: St i: Int): Ok =
+        if {i >= 0} andif {st.closing >= 0} then hashMap.insert(st.ends offset(st i) offset(st st.closing)) end
+
     (* Tokens i to j (inclusive) are a phrase *)
     let phrase(st: St i: Int j: Int): Ok =
         if {i >= 0} andif {j >= i} then
@@ -191,7 +219,7 @@ export
                     if isKind(st j "IDENT") then
                         j := j + 1
                         while {{j + 1} < limit} andif isKind(st j "SYMBOLIC_INFIX")
-                            andif stringOp.equal(vector.get(st.toks j).lexeme "/") andif isKind(st j + 1 "IDENT") do
+                                andif stringOp.equal(vector.get(st.toks j).lexeme "/") andif isKind(st j + 1 "IDENT") do
                             j := j + 2
                         end
                     end
@@ -202,12 +230,23 @@ export
             lastTok
         end
 
-    (* The group and path an item sorts by *)
-    let sortKey(item: ast.ImportItem): Tuple group: Int path: String end =
+    (* Whether the unit at path, as the file's imports find it, is in lib/ *)
+    let inLib(st: St path: String): Bool =
         begin
-            let paths = ast.effectiveModulePaths(item)
-            let path = if vector.empty(paths) then ast.effectiveInterfacePath(item) else vector.get(paths 0) end
-            let group = if strutil.startsWith(path "questlang/") then 0 elsif strutil.contains(path "/") then 1 else 2 end
+            let dir = maybe.some(st.dir)
+            let none = array of :String end
+            let found = paths.resolveInterfaceSourceFile(path dir none)
+            let source = if maybe.isSome(found) then found else paths.resolveModuleFile(path dir none) end
+            maybe.isSome(source) andif strutil.startsWith(files.absolute(maybe.unwrap(source)) paths.libDir() <> "/")
+        end
+
+    (* The section and path an item sorts by *)
+    let sortKey(st: St item: ast.ImportItem): Tuple group: Int path: String end =
+        begin
+            let modulePaths = ast.effectiveModulePaths(item)
+            let path =
+                if vector.empty(modulePaths) then ast.effectiveInterfacePath(item) else vector.get(modulePaths 0) end
+            let group = if not(strutil.contains(path "/")) then 0 elsif inLib(st path) then 1 else 2 end
             tuple let group = group let path = path end
         end
 
@@ -229,7 +268,7 @@ export
                 end
                 rule(st j anchor 4)
                 phrase(st j e)
-                let key = sortKey(vector.get(items k))
+                let key = sortKey(st vector.get(items k))
                 vector.append(found tuple
                     let start = offset(st j)
                     let stop = stopOf(st e)
@@ -241,6 +280,10 @@ export
             end
             if {k is vector.length(items)} andif {j is limit} then found else vector.new(:ImportItem) end
         end
+
+    (* The items of an import list are sorted, if there is more than one *)
+    let sortable(st: St found: vector.T(ImportItem)): Ok =
+        if vector.length(found) > 1 then vector.append(st.imports tuple let items = found let phrases = false end) end
 
     (* A module's or an interface's header, from its first token f to its
      * import or export: its colons keep their spaces, and its import list's
@@ -255,10 +298,7 @@ export
             end
             if {imp >= 0} andif {exp > imp} then
                 rule(st imp f 0)
-                let found = importItems(st imp + 1 exp imp items)
-                if vector.length(found) > 1 then
-                    vector.append(st.imports tuple let items = found let phrases = false end)
-                end
+                sortable(st importItems(st imp + 1 exp imp items))
             end
             rule(st exp f 0)
             exp
@@ -294,7 +334,8 @@ export
     (* The index of the last token of a signature component, or ~1 *)
     let sigLast(st: St s: ast.Signature): Int =
         case s
-            when sigValue with x then if maybe.isSome(x.val.typeSig) then last(st maybe.unwrap(x.val.typeSig).span) else ~1 end
+            when sigValue with x then
+                if maybe.isSome(x.val.typeSig) then last(st maybe.unwrap(x.val.typeSig).span) else ~1 end
             when sigType with x then last(st x.val.bound.span)
             when sigTypeBinding with x then last(st x.val.typeVal.span)
             when sigTypeBindingGroup with x then
@@ -302,10 +343,143 @@ export
             when sigKindBinding with x then last(st x.val.kindVal.span)
         end
 
+    (* Whether the end that ends e's span is e's own, not that of a construct
+     * e ends with (let x = if c then a else b end) *)
+    let ownsEnd(st: St e: ast.Expr): Bool =
+        case e.form
+            when exprBlock then isKind(st first(st e.span) "KW_BEGIN")
+            when exprIf then true
+            when exprWhile then true
+            when exprLoop then true
+            when exprFor then true
+            when exprTuple then isKind(st first(st e.span) "KW_TUPLE")
+            when exprRecord then true
+            when exprArray then true
+            when exprCase then true
+            when exprInspect then true
+            when exprTry then true
+            when exprOption with x then maybe.isSome(x.payload)
+            when exprVariant with x then maybe.isSome(x.payload)
+            when exprRaise with x then maybe.isSome(x.payload)
+            else false
+        end
+
+    (* Whether e, a let's value or an assignment's right side, may go to a
+     * line of its own (lift) *)
+    (* The value e after an =, which may go back to the ='s line *)
+    let join(st: St e: ast.Expr): Ok =
+        begin
+            let var a = first(st e.span)
+            let var b = last(st e.span)
+            while {a > 0} andif isKind(st a - 1 "LBRACE") andif isKind(st b + 1 "RBRACE") do
+                a := a - 1
+                b := b + 1
+            end
+            if {a > 0} andif {b >= a} andif isKind(st a - 1 "EQUAL") then
+                vector.append(st.joins tuple let equal = offset(st a - 1) let first = offset(st a) let last = offset(st b) end)
+            end
+        end
+
+    (* The arms after the first, at tokens ks, of the construct e at token f *)
+    let armEnd(st: St f: Int e: ast.Expr ks: vector.T(Int)): Ok =
+        begin
+            let l = last(st e.span)
+            let var known = {f >= 0} andif isKind(st l "KW_END") andif not(vector.empty(ks))
+            for i = 0 upto {vector.length(ks) - 1} do if vector.get(ks i) < 0 then known := false end end
+            if known then
+                let parts = array of(vector.length(ks) 0)
+                for i = 0 upto {vector.length(ks) - 1} do parts[i] := offset(st vector.get(ks i)) end
+                vector.append(st.armEnds tuple let head = offset(st f) let parts = parts let closing = offset(st l) end)
+            end
+        end
+
+    (* The condition e of the if, elsif, or while at token k: an operator that
+     * starts one of its lines is indented 8, not 4, past k's line, so that the
+     * line ending in then or do stands apart from the body under it *)
+    let condition(st: St k: Int e: ast.Expr): Ok =
+        begin
+            let f = first(st e.span)
+            let l = last(st e.span)
+            if {k >= 0} andif {f >= 0} andif {l >= f} then
+                for i = f upto l do hashMap.insert(st.conditions offset(st i) offset(st k)) end
+            end
+        end
+
+    (* The elsifs and else of an if, at tokens ks: when one starts a line, all
+     * do, so that no arm follows another on a line *)
+    let elsifRun(st: St ks: vector.T(Int)): Ok =
+        begin
+            let var known = vector.length(ks) > 1
+            for i = 0 upto {vector.length(ks) - 1} do if vector.get(ks i) < 0 then known := false end end
+            if known then
+                let offsets = array of(vector.length(ks) 0)
+                for i = 0 upto {vector.length(ks) - 1} do offsets[i] := offset(st vector.get(ks i)) end
+                vector.append(st.runs tuple let offsets = offsets let any = true let within = ~1 end)
+            end
+        end
+
+    (* The elsif or else at token k, whose body is e *)
+    let armHead(st: St k: Int e: ast.Expr): Ok =
+        begin
+            let f = firstOf(st e)
+            if {k >= 0} andif {f >= 0} then hashMap.insert(st.armHeads offset(st f) offset(st k)) end
+        end
+
+    let isIf(e: ast.Expr): Bool =
+        case e.form
+            when exprIf then true
+            when exprCase then true
+            when exprInspect then true
+            when exprTry then true
+            else false
+        end
+
+    (* e, a let's value or an assignment's right side, goes to a line of its
+     * own when it is broken: an if when its first arm starts a line (so not a
+     * compact if), a case, inspect, or try when a line starts anywhere after
+     * its first token, through its end *)
+    let lift(st: St e: ast.Expr): Ok =
+        begin
+            let f = first(st e.span)
+            let l = last(st e.span)
+            let arm = case e.form when exprIf with x then firstOf(st x.thenBranch) else ~1 end
+            if {f >= 0} andif {l > f} andif isKind(st l "KW_END") then
+                vector.append(st.lifts tuple
+                    let ifToken = offset(st f)
+                    let arm = if arm >= 0 then offset(st arm) else ~1 end
+                    let within = if arm >= 0 then ~1 else offset(st f + 1) end
+                    let until = offset(st l)
+                end)
+            end
+        end
+
+    (* The right operand e of an infix operator other than :=: if it is an
+     * if broken across lines, the line breaks before the operator, which
+     * leaves the if's line to it (<> if c then) *)
+    let operandIf(st: St e: ast.Expr): Ok =
+        case e.form
+            when exprIf then
+                let f = first(st e.span)
+                let l = last(st e.span)
+                let var op = f - 1
+                while isKind(st op "LBRACE") do op := op - 1 end
+                if {op > 0} andif {l > f} andif isKind(st l "KW_END") then
+                    vector.append(st.lifts tuple
+                        let ifToken = offset(st op)
+                        let arm = ~1
+                        let within = offset(st f + 1)
+                        let until = offset(st l)
+                    end)
+                end
+            else ok
+        end
+
     let rec expr(st: St e: ast.Expr): Ok =
         begin
             closer(st e.span)
             let f = first(st e.span)
+            let saved = st.closing
+            st.closing := if isKind(st last(st e.span) "KW_END") andif ownsEnd(st e) then last(st e.span) else ~1 end
             case e.form
                 when exprBlock with x then
                     if isKind(st f "KW_BEGIN") then
@@ -321,24 +495,49 @@ export
                      * up with the if's line and the bodies are 4 past it.
                      * Which it is depends on the output's lines *)
                     let arm = firstOf(st x.thenBranch)
+                    let arms = vector.new(:Int)
+                    vector.append(arms arm)
                     if isKind(st last(st e.span) "KW_END") then ifRule(st last(st e.span) f arm f 0 f 4) end
+                    condition(st f x.cond)
                     expr(st x.cond)
                     body(st f x.thenBranch)
                     let var prev = lastOf(st x.thenBranch)
+                    let ks = vector.new(:Int)
                     for i = 0 upto {vector.length(x.elsifs) - 1} do
                         let b = vector.get(x.elsifs i)
                         let k = after(st prev)
+                        vector.append(ks k)
                         ifRule(st k f arm f 0 f 4)
+                        condition(st k b.cond)
                         expr(st b.cond)
                         ifBody(st f arm k b.thenBranch)
+                        armHead(st k b.thenBranch)
+                        vector.append(arms firstOf(st b.thenBranch))
                         prev := lastOf(st b.thenBranch)
                     end
                     if maybe.isSome(x.elseBranch) then
                         let k = after(st prev)
+                        vector.append(ks k)
                         ifRule(st k f arm f 0 f 4)
                         ifBody(st f arm k maybe.unwrap(x.elseBranch))
+                        armHead(st k maybe.unwrap(x.elseBranch))
+                        vector.append(arms firstOf(st maybe.unwrap(x.elseBranch)))
+                    end
+                    armEnd(st f e ks)
+                    elsifRun(st ks)
+                    let var known = true
+                    for i = 0 upto {vector.length(arms) - 1} do if vector.get(arms i) < 0 then known := false end end
+                    (* Every arm starts a line when the first does, and in an
+                     * if with only else, when the else's body does; an elsif
+                     * chain's later arms may be tabular *)
+                    if {vector.length(arms) > 1} andif known then
+                        let offsets = array of(vector.length(arms) 0)
+                        for i = 0 upto {vector.length(arms) - 1} do offsets[i] := offset(st vector.get(arms i)) end
+                        let any = vector.empty(x.elsifs)
+                        vector.append(st.runs tuple let offsets = offsets let any = any let within = ~1 end)
                     end
                 when exprWhile with x then
+                    condition(st f x.cond)
                     expr(st x.cond)
                     body(st f x.body)
                 when exprLoop with x then body(st f x.body)
@@ -355,19 +554,17 @@ export
                     for i = 0 upto {vector.length(x.args) - 1} do expr(st vector.get(x.args i)) end
                 when exprInfix with x then
                     expr(st x.left)
+                    if stringOp.equal(x.op ":=") andif isIf(x.right) then
+                        rule(st first(st x.right.span) f 4)
+                        lift(st x.right)
+                    else
+                        operandIf(st x.right)
+                    end
                     expr(st x.right)
                 when exprTuple with x then
-                    for i = 0 upto {vector.length(x.fields) - 1} do
-                        case vector.get(x.fields i)
-                            when fieldVal with v then binding(st f v.val)
-                            when fieldGroup with g then
-                                for k = 0 upto {vector.length(g.val) - 1} do
-                                    let b = vector.get(g.val k)
-                                    if k is 0 then binding(st f b) else andBinding(st b) end
-                                end
-                            when fieldDecl with d then item(st f d.val)
-                        end
-                    end
+                    let closing =
+                        if isKind(st f "KW_TUPLE") andif isKind(st last(st e.span) "KW_END") then last(st e.span) else ~1 end
+                    tupleFields(st f closing x.fields)
                 when exprRecord with x then
                     for i = 0 upto {vector.length(x.fields) - 1} do
                         let b = vector.get(x.fields i)
@@ -384,11 +581,11 @@ export
                     expr(st x.initVal)
                 when exprOption with x then
                     type(st x.optionType)
-                    if maybe.isSome(x.payload) then payload(st f maybe.unwrap(x.payload)) end
+                    if maybe.isSome(x.payload) then payload(st f last(st e.span) maybe.unwrap(x.payload)) end
                     if maybe.isSome(x.ordinalExpr) then expr(st maybe.unwrap(x.ordinalExpr)) end
                 when exprVariant with x then
                     type(st x.variantType)
-                    if maybe.isSome(x.payload) then payload(st f maybe.unwrap(x.payload)) end
+                    if maybe.isSome(x.payload) then payload(st f last(st e.span) maybe.unwrap(x.payload)) end
                 when exprAuto with x then
                     type(st x.witnessType)
                     expr(st x.payload)
@@ -407,41 +604,54 @@ export
                 when exprCase with x then
                     expr(st x.target)
                     let var prev = last(st x.target.span)
+                    let ks = vector.new(:Int)
                     for i = 0 upto {vector.length(x.branches) - 1} do
                         let b = vector.get(x.branches i)
                         if maybe.isSome(b.binderType) then type(st maybe.unwrap(b.binderType)) end
+                        if i > 0 then vector.append(ks after(st prev)) end
                         prev := branch(st f prev b.body 4)
                     end
+                    if maybe.isSome(x.elseBranch) then vector.append(ks after(st prev)) end
                     elseBranch(st f prev x.elseBranch 4)
+                    armEnd(st f e ks)
                 when exprInspect with x then
                     expr(st x.target)
                     let var prev = last(st x.target.span)
+                    let ks = vector.new(:Int)
                     for i = 0 upto {vector.length(x.branches) - 1} do
                         let b = vector.get(x.branches i)
                         type(st b.matchType)
+                        if i > 0 then vector.append(ks after(st prev)) end
                         prev := branch(st f prev b.body 4)
                     end
+                    if maybe.isSome(x.elseBranch) then vector.append(ks after(st prev)) end
                     elseBranch(st f prev x.elseBranch 4)
+                    armEnd(st f e ks)
                 when exprTry with x then
                     body(st f x.body)
                     let var prev = lastOf(st x.body)
+                    let ks = vector.new(:Int)
                     for i = 0 upto {vector.length(x.branches) - 1} do
                         let b = vector.get(x.branches i)
                         expr(st b.excPattern)
                         if maybe.isSome(b.binderType) then type(st maybe.unwrap(b.binderType)) end
+                        vector.append(ks after(st prev))
                         prev := branch(st f prev b.body 0)
                     end
+                    if maybe.isSome(x.elseBranch) then vector.append(ks after(st prev)) end
                     elseBranch(st f prev x.elseBranch 0)
+                    armEnd(st f e ks)
                 when exprException with x then if maybe.isSome(x.typeAnnot) then type(st maybe.unwrap(x.typeAnnot)) end
                 when exprRaise with x then
                     expr(st x.exc)
-                    if maybe.isSome(x.payload) then payload(st f maybe.unwrap(x.payload)) end
+                    if maybe.isSome(x.payload) then payload(st f last(st e.span) maybe.unwrap(x.payload)) end
                     if maybe.isSome(x.asType) then type(st maybe.unwrap(x.asType)) end
                 when typeArg with x then type(st x.typeVal)
                 when kindArg with x then type(st x.kindVal)
                 when declLetVal with x then
                     params(st x.params)
                     if maybe.isSome(x.typeAnnot) then type(st maybe.unwrap(x.typeAnnot)) end
+                    join(st x.value)
                     value(st f x.value)
                 when declLetValGroup with x then group(st x.bindings)
                 when declTypeBinding with x then
@@ -456,10 +666,10 @@ export
                 when declExprStmt with x then expr(st x.expr)
                 when declImport with x then
                     let limit = last(st e.span) + 1
-                    importItems(st f + 1 limit f x.phrase.items)
-                    ok
+                    sortable(st importItems(st f + 1 limit f x.phrase.items))
                 else ok
             end
+            st.closing := saved
         end
 
     (* A phrase of a body or a block, indented 4 past anchor *)
@@ -467,6 +677,7 @@ export
         begin
             let i = first(st e.span)
             rule(st i anchor 4)
+            part(st i)
             phrase(st i last(st e.span))
             expr(st e)
         end
@@ -484,6 +695,7 @@ export
                 let p = vector.get(phrases i)
                 let j = first(st p.span)
                 ifRule(st j f arm f 4 k 4)
+                part(st j)
                 phrase(st j last(st p.span))
                 expr(st p)
             end
@@ -502,25 +714,78 @@ export
             else item(st anchor e)
         end
 
-    (* The payload after a with (of an option, a variant, or a raise): a body
-     * if it is not a tuple, whose fields are indented by the tuple's rules *)
-    and payload(st: St anchor: Int e: ast.Expr): Ok =
+    (* The payload after a with of the construct at anchor (an option, a
+     * variant, or a raise) closed by the end at closing: a body, but for one
+     * written as fields (with let ... end), which are indented 4 past the
+     * construct as a tuple's are past the tuple *)
+    and payload(st: St anchor: Int closing: Int e: ast.Expr): Ok =
         case e.form
-            when exprTuple then if isKind(st first(st e.span) "KW_TUPLE") then item(st anchor e) else expr(st e) end
+            when exprTuple with x then
+                if isKind(st first(st e.span) "KW_TUPLE") then item(st anchor e) else tupleFields(st anchor closing x.fields) end
             else item(st anchor e)
         end
 
+    (* A tuple's fields, each indented 4 past anchor. With the end that closes
+     * them (closing, or ~1), they are a run: a line starting among them puts
+     * each on a line of its own *)
+    and tupleFields(st: St anchor: Int closing: Int fields: vector.T(ast.TupleFieldOf(ast.Expr))): Ok =
+        begin
+            let starts = array of(vector.length(fields) ~1)
+            for i = 0 upto {vector.length(fields) - 1} do
+                starts[i] := case vector.get(fields i)
+                    when fieldVal with v then maybe.unwrapOr(hashMap.get(st.byStart v.val.offset) ~1)
+                    when fieldGroup with g then
+                        if vector.empty(g.val) then
+                            ~1
+                        else
+                            maybe.unwrapOr(hashMap.get(st.byStart vector.get(g.val 0).offset) ~1)
+                        end
+                    when fieldDecl with d then first(st d.val.span)
+                end
+            end
+            if {closing >= 0} andif {extent(starts) > 0} then
+                let var known = true
+                for i = 0 upto {extent(starts) - 1} do if starts[i] < 0 then known := false end end
+                if known then
+                    let offsets = array of(extent(starts) 0)
+                    for i = 0 upto {extent(starts) - 1} do offsets[i] := offset(st starts[i]) end
+                    vector.append(st.runs tuple let offsets = offsets let any = false let within = offset(st closing) end)
+                end
+            end
+            for i = 0 upto {vector.length(fields) - 1} do
+                case vector.get(fields i)
+                    when fieldVal with v then binding(st anchor v.val)
+                    when fieldGroup with g then
+                        for k = 0 upto {vector.length(g.val) - 1} do
+                            let b = vector.get(g.val k)
+                            if k is 0 then binding(st anchor b) else andBinding(st b) end
+                        end
+                    when fieldDecl with d then item(st anchor d.val)
+                end
+            end
+        end
+
     (* A declaration's value after its =, indented 4 past the declaration *)
-    and value(st: St anchor: Int e: ast.Expr): Ok = item(st anchor e)
+    and value(st: St anchor: Int e: ast.Expr): Ok =
+        begin
+            if isIf(e) then lift(st e) end
+            item(st anchor e)
+        end
 
     (* A tuple's binding, indented 4 past the tuple *)
     and binding(st: St anchor: Int b: ast.TupleFieldBinding): Ok =
         begin
             let i = maybe.unwrapOr(hashMap.get(st.byStart b.offset) ~1)
             rule(st i anchor 4)
+            part(st i)
             phrase(st i last(st b.value.span))
             if maybe.isSome(b.typeAnnot) then type(st maybe.unwrap(b.typeAnnot)) end
-            if i is first(st b.value.span) then expr(st b.value) else value(st i b.value) end
+            if i is first(st b.value.span) then
+                expr(st b.value)
+            else
+                join(st b.value)
+                value(st i b.value)
+            end
         end
 
     (* A binding after and, which lines up with the first *)
@@ -691,11 +956,15 @@ export
                                     j := ~1
                                 end
                             else
-                                for k = 0 upto {vector.length(v.payloadSig) - 1} do sigTypes(st vector.get(v.payloadSig k)) end
+                                for k = 0 upto {vector.length(v.payloadSig) - 1} do
+                                    sigTypes(st vector.get(v.payloadSig k))
+                                end
                                 j := j + 1
                             end
                         else
-                            for k = 0 upto {vector.length(v.payloadSig) - 1} do sigTypes(st vector.get(v.payloadSig k)) end
+                            for k = 0 upto {vector.length(v.payloadSig) - 1} do
+                                sigTypes(st vector.get(v.payloadSig k))
+                            end
                         end
                     end
                 when typeAuto with x then
@@ -743,8 +1012,7 @@ export
             case p.form
                 when phraseImport with x then
                     let limit = if isKind(st l "SEMICOLON") then l else l + 1 end
-                    importItems(st f + 1 limit f x.phrase.items)
-                    ok
+                    sortable(st importItems(st f + 1 limit f x.phrase.items))
                 when phraseInterface with x then
                     let exp = header(st f l x.iface.imports)
                     if exp >= 0 then
@@ -754,7 +1022,9 @@ export
                     rule(st l f 0)
                 when phraseModule with x then
                     let exp = header(st f l x.modDecl.imports)
-                    for i = 0 upto {vector.length(x.modDecl.bindings) - 1} do item(st exp vector.get(x.modDecl.bindings i)) end
+                    for i = 0 upto {vector.length(x.modDecl.bindings) - 1} do
+                        item(st exp vector.get(x.modDecl.bindings i))
+                    end
                     rule(st l f 0)
                 when phraseDecl with x then expr(st x.decl)
                 when phraseExpr with x then expr(st x.expr)
@@ -762,7 +1032,7 @@ export
         end
 
     (* The runs of consecutive top-level import phrases, each phrase an item
-     * keyed by its first import *)
+     * keyed by its least import, which sorting the phrase puts first *)
     let importRuns(st: St program: ast.Program): Ok =
         begin
             let var run = vector.new(:ImportItem)
@@ -778,8 +1048,16 @@ export
                     else false
                 end
                 if isImport then
-                    let items = case p.form when phraseImport with x then x.phrase.items else vector.new(:ast.ImportItem) end
-                    let key = sortKey(vector.get(items 0))
+                    let items =
+                        case p.form when phraseImport with x then x.phrase.items else vector.new(:ast.ImportItem) end
+                    let var key = sortKey(st vector.get(items 0))
+                    for k = 1 upto {vector.length(items) - 1} do
+                        let other = sortKey(st vector.get(items k))
+                        if {other.group < key.group}
+                                orif {{other.group is key.group} andif {sort.stringCompare(other.path key.path) < 0}} then
+                            key := other
+                        end
+                    end
                     let f = first(st p.span)
                     let l = last(st p.span)
                     if {f >= 0} andif {l >= 0} then
@@ -848,6 +1126,15 @@ export
                 let spacedColons = hashMap.new(:Int :Bool intEqual hash.int)
                 let pathSlashes = hashMap.new(:Int :Bool intEqual hash.int)
                 let imports = vector.new(:ImportList)
+                let ends = hashMap.new(:Int :Int intEqual hash.int)
+                let runs = vector.new(:Run)
+                let lifts = vector.new(:Lift)
+                let joins = vector.new(:Join)
+                let armEnds = vector.new(:ArmEnd)
+                let conditions = hashMap.new(:Int :Int intEqual hash.int)
+                let armHeads = hashMap.new(:Int :Int intEqual hash.int)
+                let dir = files.parent(files.absolute(location.file(sm)))
+                var closing = ~1
             end
             let phrases = program.form.phrases
             for i = 0 upto {vector.length(phrases) - 1} do programPhrase(st vector.get(phrases i)) end
@@ -858,6 +1145,13 @@ export
                 let spacedColons = st.spacedColons
                 let pathSlashes = st.pathSlashes
                 let imports = st.imports
+                let ends = st.ends
+                let runs = st.runs
+                let lifts = st.lifts
+                let joins = st.joins
+                let armEnds = st.armEnds
+                let conditions = st.conditions
+                let armHeads = st.armHeads
             end
         end
 end

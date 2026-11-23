@@ -5,12 +5,14 @@ the same tokens come out in the same order, with:
 
 - their spacing and indentation normalized (§2.1–2.8);
 - optional semicolons removed (§2.9);
-- imports sorted (§2.7);
+- imports sorted, in sections (§2.7);
 - a `then` or `do` that starts a line moved to the end of the line before (§2.0);
+- a broken construct broken throughout: its `end` on a line of its own, and each field of a tuple or arm of an `if`
+  on one too (§2.0);
 - lines over 120 columns broken (§3).
 
-Like go fmt, it keeps the programmer's line breaks: it never joins lines except to move `then` and `do`, and splits
-only lines too long to fit. The tree is not formatted yet (§5).
+Like go fmt, it keeps the programmer's line breaks: it never joins lines except to move `then` and `do`, and adds
+breaks only to a construct already broken and to lines too long to fit. The tree is not formatted yet (§5).
 
 ```
 quest fmt FILE...            # print each file formatted
@@ -89,6 +91,24 @@ line before it. What followed the `then` keeps its own line, as the arm's body:
 if {x > 0}                        if {x > 0} then
 then f(x)                             f(x)
 end                               end
+```
+
+Breaks are added, never removed, where a construct is already broken (§2.4, §2.6):
+
+- **An end on its own line:** a body's phrase or a tuple's field that starts a line puts the `end` of its construct
+  on a line of its own, at the construct's column.
+- **Broken throughout:** an `if` whose first arm starts on a line of its own has every arm start on one, and a tuple
+  whose first field does has each field on one.
+
+```
+(* source *)                      (* formatted *)
+if c then                         if c then
+    valid := false end                valid := false
+                                  end
+let t = tuple                     let t = tuple
+    let a = 1 let b = 2               let a = 1
+end                                   let b = 2
+                                  end
 ```
 
 Within that:
@@ -194,7 +214,11 @@ end
 for i = 0 upto n - 1 do total := total + a[i] end
 ```
 
-- **`if`:** `elsif`, `else`, and `end` go at the `if`'s line's column.
+- **`if`:** `elsif`, `else`, and `end` go at the `if`'s line's column. When its first arm's body starts a line, each
+  arm's does (§2.0); an `if` whose first arm stays on the `if`'s line keeps its arms as written.
+- **`end`:** a construct (`if`, `case`, `while`, `for`, `begin`, `try`, `tuple`, ...) any of whose bodies or fields
+  starts a line ends with `end` on a line of its own. A `when`, `elsif`, or `else` starting a line does not do this
+  alone, so a compact `if` or a `case` of one-line arms keeps `else z end`.
 - **`case` and `inspect`:** `when` and `else` go one level deeper than the head, and a `when` arm's body on lines of
   its own goes one level further.
 - **`try`:** `when` and `else` go at the `try` line's column, as the tree writes them.
@@ -227,6 +251,8 @@ for i = 0 upto n - 1 do total := total + a[i] end
 ### 2.6. Aggregates
 
 - **`tuple let ... end`:** a broken one has its fields one level deeper and its `end` at the opening line's column.
+  If its first field is on a line after `tuple`, each field gets a line of its own (§2.0); one written on its
+  `tuple`'s line keeps its fields as written.
 - **`array of ... end`:** items go one level deeper, as many to a line as written.
 
 ### 2.7. Modules, interfaces, imports
@@ -234,12 +260,15 @@ for i = 0 upto n - 1 do total := total + a[i] end
 ```
 module m : M
 import
-    (* the AST *)
-    questlang/syntax/ast : questlang/syntax/Ast
-    collections/vector : collections/Vector
-    util/maybe : util/Maybe
     stringOp = string : StringOp
     writer : Writer
+
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+
+    (* the AST *)
+    questlang/syntax/ast : questlang/syntax/Ast
+    support/bench : support/Bench
 export
     let x = 1
 end
@@ -247,15 +276,19 @@ end
 
 - **Layout:** `module` or `interface`, `import`, `export`, and `end` are at column 0, with the items one level deeper.
   Programs keep the import form they use (tests write `import writer : Writer;` one per line).
-- **Sorting:** imports are sorted in three groups, without blank lines between them:
-  1. paths under `questlang/`;
-  2. other qualified paths;
-  3. unqualified names: built-ins such as `string` and sibling modules such as a test's `joiner`.
+- **Sorting:** imports are sorted in three sections:
+  1. unqualified names: the units of Typeful Programming's own library, such as `string` and `writer`, and sibling
+     modules such as a test's `joiner`;
+  2. paths that resolve to a unit in lib/, such as `util/maybe`;
+  3. every other path: `questlang/` and a program's own units, such as a benchmark's `support/bench`.
 
-  Within a group, imports go in order of module path, ignoring any alias (`stringOp = string` sorts as `string`).
+  Within a section, imports go in order of module path, ignoring any alias (`stringOp = string` sorts as `string`).
+  A path's section is found as the compiler would find its unit, from the file's directory.
+- **Blank lines:** a list written one import to a line has one blank line between two sections and none inside
+  one. A list with several imports on a line keeps its line breaks.
 - **Comments:** a comment on the lines just before an item, or at the end of its line, moves with it.
-- **Programs:** a program's run of consecutive top-level `import ...;` phrases is sorted as one list, each phrase
-  keyed by its first import.
+- **Programs:** a program's `import` phrase of several items is sorted as a module's list is, and a run of
+  consecutive top-level `import ...;` phrases is sorted as one list, each phrase keyed by its least import.
 - **Why sorting is safe:** a module's initializer runs those of the modules it imports first (docs/modules.md §7),
   so a dependency always initializes before its dependents, in any order. The order only decides which of two
   independent imports initializes first. That is visible only if both initializers have visible effects, and none in
@@ -286,7 +319,8 @@ end
 - **Blank lines:** a run of blank lines becomes one. Blank lines at the start or end of a file are removed, and so
   are those after a line that ends with `begin`, `then`, `do`, `else`, `import`, or `export`, or before an `end`.
 - **Semicolons** are removed if the program parses to the same AST without any of them, as it does whenever none is
-  needed (docs/instructions.md §5). Otherwise the file keeps them all.
+  needed (docs/instructions.md §5). Otherwise the file keeps them all. No file in the tree keeps them: the one test
+  that needs its semicolons, language/top_level_semicolons.quest, is left alone by `@no-format` (§2.10).
 - **Line ends:** no line ends in spaces, a comment's inner lines included. The inside of a string literal is never
   touched.
 
@@ -356,9 +390,12 @@ options.
   It finds a node's tokens from its span. It finds the parts that are not nodes (a field of a type, a branch, an
   `else`, an import item) between the nodes around them. A block of phrases the parser makes for a `then`, `when`, or
   `else` has the span of the construct around it, so its own extent is taken from its first and last phrases. The
-  same walk records the colons that keep their spaces, the slashes of import paths, and the sortable import lists.
+  same walk records the colons that keep their spaces, the slashes of import paths, the sortable import lists, the
+  `end` that closes each body's or field's construct, and the parts (a tuple's fields, an `if`'s arms) that start
+  lines together.
 - **Format** (questlang/format/format) makes one sequence of tokens and comments, each with the line breaks before
-  it. It then removes the semicolons, sorts the imports, moves each `then` and `do`, breaks the long lines, cuts the
+  it. It then removes the semicolons, sorts the imports, moves each `then` and `do`, adds the breaks of §2.0 (again
+  after each round of breaking long lines, since a break after a `then` starts a body), breaks the long lines, cuts the
   sequence into lines, indents and spaces them, and aligns end-of-line comments.
 - **Checked before it is returned.** The output must tokenize to exactly the tokens intended, have the same number of
   comments, and parse. If it doesn't, `quest fmt` reports an internal error and leaves the file alone. Semicolons are

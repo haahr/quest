@@ -120,14 +120,16 @@ show("comments" "let f(x: Int): Int =
 end
 ")
 
-(* Imports sorted: questlang/, other paths, unqualified names; a comment
- * moves with its import *)
+(* Imports sorted in sections, a blank line between two: unqualified names,
+ * paths into lib/, other paths; a comment moves with its import *)
 show("module imports" "module m : M
 import
     writer : Writer
     util/maybe : util/Maybe
     (* the AST *)
     questlang/syntax/ast : questlang/syntax/Ast
+    support/bench : support/Bench
+
     stringOp = string : StringOp
     collections/vector : collections/Vector
 export
@@ -145,6 +147,25 @@ show("semicolons" "let x = 1;
 let y = 2;
 ;
 x + y;
+")
+
+(* A body or a field that starts a line puts its construct's end on a line
+ * of its own; so does a tuple's first field each of its fields, and an if's
+ * first arm each of its arms *)
+show("ends" "if c then
+    x := 1 end
+for i = 0 upto 9 do
+    step(i) end
+let t = tuple
+    let a = 1 let b = 2 end
+let u = tuple let a = 1 let b = 2 end
+let v = if c then
+        a
+    elsif d then b
+    else c end
+let w = if c then a
+    elsif d then b
+    else c end
 ")
 
 (* A then or do that starts a line goes back to the line before *)
