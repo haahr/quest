@@ -138,7 +138,14 @@ static void quest_frames_add(QFramePrinter *p, const void *start, int64_t count)
 
    On Darwin arm64 it is the symbol table's start (which has static functions,
    unless the binary is stripped), from dladdr. Elsewhere it is the unwinder's:
-   Linux's unwind tables (.eh_frame) describe each function on its own. */
+   Linux's unwind tables (.eh_frame) describe each function on its own.
+
+   The cache has two ways a set, indexed by pc's offset from this file's code
+   rather than by pc itself. Indexed by pc, with one way, the slot two return
+   addresses shared moved with the address space's random slide, so in some
+   runs two frames that every raise walks took turns evicting each other, and
+   each raise called dladdr for both: zebra took twice as long in about one run
+   in four. */
 #define Q_FUNCTION_START_CACHE 1024
 
 typedef struct QFunctionStart {
@@ -194,9 +201,15 @@ void quest_code_add_function(void *start, void *limit) {
 }
 
 static const void *quest_function_start(void *pc) {
-    uintptr_t       h = (uintptr_t)pc;
-    QFunctionStart *cached = &quest_function_starts[((h >> 2) ^ (h >> 12)) % Q_FUNCTION_START_CACHE];
-    if (cached->pc == pc) return cached->start;
+    uintptr_t       h = (uintptr_t)pc - (uintptr_t)&quest_function_start;
+    QFunctionStart *set = &quest_function_starts[2 * (((h >> 2) ^ (h >> 11)) % (Q_FUNCTION_START_CACHE / 2))];
+    if (set[0].pc == pc) return set[0].start;
+    if (set[1].pc == pc) {
+        QFunctionStart hit = set[1];
+        set[1] = set[0];
+        set[0] = hit;
+        return hit.start;
+    }
     const void *start = quest_registered_function_start(pc);
     if (start == NULL) {
 #ifdef Q_FRAME_POINTER_WALK
@@ -206,8 +219,8 @@ static const void *quest_function_start(void *pc) {
         start = _Unwind_FindEnclosingFunction(pc);
 #endif
     }
-    cached->pc = pc;
-    cached->start = start;
+    set[1] = set[0];
+    set[0] = (QFunctionStart){ pc, start };
     return start;
 }
 
