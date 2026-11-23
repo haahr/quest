@@ -116,7 +116,10 @@ right to move is reserved in the header and designed (§9.1), and not taken (dec
   it does not skip the small holes the ordinary cursor would fill.
 - **Large objects,** 8 KB and up (`Q_GC_LARGE`; strings' buffers, arrays), take a run of blocks of their own
   (`QB_LARGE_HEAD` and its tails in the block table), never moved, marked as any object is, and freed whole when
-  unmarked.
+  unmarked. A run of one block (an object under 32 KB) is the free list's next block, as a small block is; a longer
+  run is the first fit below the high-water mark, else fresh blocks beyond it (`quest_gc_take_run`). One-block runs
+  scanned the block table for their first fit too, which a big heap made a build's bottleneck: the code generator's
+  per-function tables, which grow with the function, are such objects (2026-11-23).
 - **Runtime metadata stays in the ordinary heap:** descriptors, instantiation caches, view maps, record dictionaries,
   abstract types, adapters, allocated as any object and reached from the runtime's listed roots (§3.8), so a full
   collection marks them at a cost proportional to their size, small outside a long JIT session. They are keyed by

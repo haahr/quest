@@ -24,8 +24,8 @@ measures the collections tuned on the compiler (§28), the compiler on `util/jso
 through a loop's parameters (§30), character I/O without a lock per character (§31), one object per closure (§32),
 ssac's `volatile` locals (§33) and adapter closures made once (§34), times every backend again, arm64 whole
 program included (§35), measures what inlining three library modules into their importers would gain (§36),
-makes whole program as fast as unit by unit (§37), and counts where the median programs' instructions go against
-MLton's (§38).
+makes whole program as fast as unit by unit (§37), counts where the median programs' instructions go against
+MLton's (§38), and takes one-block large objects from the collector's free list (§39).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -3545,3 +3545,26 @@ Estimated from the counts, not measured:
 
 The NaN rule and the start bitmap are design choices (the bitmap is how the collector checks an ambiguous word and
 resolves an interior pointer, collector.md §3.1); the others change no behavior.
+
+## 39. One-block large objects from the free list (2026-11-23)
+
+An object of 8 to 32 KB is large (collector.md §3.1) and takes a run of one block, which `quest_gc_take_run` found by
+scanning the block table from its start for the first free block, every time: linear in the heap's blocks for each
+such allocation. The code generator's per-function tables are such objects and grow with the function, so a build
+whose functions grow (one inlining library modules into its units, docs/inlined-modules-plan.md) spent 65% of its
+samples in that scan, compiling `questlang/wasm/codegen.mod.quest` alone in 947 G instructions where its functions
+inlined nothing took 77 G. A one-block run is now the free list's next block, as a small block's is; longer runs
+still take the first fit.
+
+The driver at `184fac25`, built by stage 2 twice, linked with the old runtime and with the new, each building the
+fixed tree of §36 (`dbd1768a`) separately in one process (`-j 1`), three runs each, alternating; both wrote the same
+assembly for every unit. Instructions retired (`/usr/bin/time -l`); the seconds, on a busy machine, are left out:
+
+| Runtime | Instructions retired | Peak memory |
+|---|---:|---:|
+| Old | 513.2 to 514.0 G | 4.89 to 4.97 GB |
+| One-block runs from the free list | 473.8 to 477.9 G | 4.21 to 4.98 GB |
+
+7.4 percent fewer instructions. The build with the library modules inlined into its units fell from 2,732 G to
+1,442 G (by an experimental stage 1).
+

@@ -505,20 +505,29 @@ static void quest_gc_took(size_t n) {
     if (quest_gc_used > quest_gc_used_max) quest_gc_used_max = quest_gc_used;
 }
 
-/* A free block: one the last collection freed, else a fresh one beyond the
- * high-water mark */
-static size_t quest_gc_take_free_block(unsigned space, uint8_t state) {
-    size_t b;
+/* A free block off the free list: one the last collection freed, else a
+ * fresh one beyond the high-water mark (*fresh says which) */
+static size_t quest_gc_pop_free(bool *fresh) {
     for (;;) {
         if (quest_gc_free_n == 0) {
             if (quest_gc_high_water == quest_gc_block_n) quest_gc_fatal("out of memory: the heap's reserve is used up");
-            b = quest_gc_high_water++;
-            quest_gc_blocks[b].fresh = 1;
-            break;
+            *fresh = true;
+            return quest_gc_high_water++;
         }
-        b = quest_gc_free[--quest_gc_free_n];
-        if (quest_gc_blocks[b].state == QB_FREE) break;  /* else taken by a large run since */
+        size_t b = quest_gc_free[--quest_gc_free_n];
+        if (quest_gc_blocks[b].state == QB_FREE) {  /* else taken by a large run since */
+            *fresh = false;
+            return b;
+        }
     }
+}
+
+/* A free block: one the last collection freed, else a fresh one beyond the
+ * high-water mark */
+static size_t quest_gc_take_free_block(unsigned space, uint8_t state) {
+    bool fresh;
+    size_t b = quest_gc_pop_free(&fresh);
+    if (fresh) quest_gc_blocks[b].fresh = 1;
     quest_gc_blocks[b].state = state;
     quest_gc_blocks[b].space = (uint8_t)space;
     quest_gc_blocks[b].run = 0;
@@ -527,15 +536,24 @@ static size_t quest_gc_take_free_block(unsigned space, uint8_t state) {
     return b;
 }
 
-/* A run of n free blocks: the first fit below the high-water mark, else fresh
- * blocks beyond it */
+/* A run of n free blocks: for one, the free list's next, as a small block
+ * takes it; for more, the first fit below the high-water mark, else fresh
+ * blocks beyond it. A one-block run (an allocation of 8 to 32 KB: the code
+ * generator's per-function tables, which grow with the function) scanned the
+ * whole heap's blocks for its first fit each time, which a big heap made the
+ * build's bottleneck */
 static size_t quest_gc_take_run(unsigned space, size_t n) {
     size_t run = 0, b = 0;
-    for (size_t i = 0; i < quest_gc_high_water; ++i) {
-        if (quest_gc_blocks[i].state != QB_FREE) { run = 0; continue; }
-        if (++run == n) { b = i + 1 - n; break; }
-    }
     bool fresh = false;
+    if (n == 1) {
+        b = quest_gc_pop_free(&fresh);
+        run = 1;
+    } else {
+        for (size_t i = 0; i < quest_gc_high_water; ++i) {
+            if (quest_gc_blocks[i].state != QB_FREE) { run = 0; continue; }
+            if (++run == n) { b = i + 1 - n; break; }
+        }
+    }
     if (run < n) {
         if (quest_gc_high_water + n > quest_gc_block_n) quest_gc_fatal("out of memory: the heap's reserve is used up");
         b = quest_gc_high_water;
