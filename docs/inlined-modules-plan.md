@@ -6,6 +6,9 @@ compiled importers their bodies while each module's state stays single (§3), th
 command-line option that gives a program's own modules the same treatment, marked in their `.qi` files (§5).
 Self-hosted compiler only. The bootstrap is untouched: behavior goldens stay shared, and its output does not change.
 
+**Status (2026-11-23):** steps 1 to 5 are built, uncommitted, and paused while their build cost is weighed. §6 records
+what was built, where it departs from §§3 to 5, what was measured, and what was learned.
+
 ## 1. What is measured already
 
 [benchmarks.md](benchmarks.md) §36 built whole programs with `util/maybe`, `util/iter`, and `collections/vector` kept
@@ -285,3 +288,206 @@ Once the list works, a command-line option can give a program's own modules the 
 The `.qi` file still carries no bodies, so the model stays "an importer depends on interfaces" for every unmarked
 module. A marked module's importers depend on its source too, and the mark says so, so a build can tell from the
 artifacts alone which objects a source change makes stale.
+
+## 6. What was built and learned (2026-11-22 to 2026-11-23)
+
+### 6.1. Status
+
+Steps 1 to 5 are built, uncommitted, in the `shared-faults-plan-3389f4` worktree. With them, the compiler's own code
+runs 2.6 to 4.8% faster, which matches §1's whole-program estimate. Building with them costs 3.4 times the
+instructions of a separate build without them: 6.3 times before a collector fix found on the way (§6.5), which landed
+on its own. A whole program costs 3.6 times, which had never been measured. The work is paused while the cost is
+weighed (§6.8).
+
+### 6.2. As built, and where it departs from §3
+
+- **The list and the flags.** `questlang/modules/inlined` holds the library's three. `--inline-module M` adds a
+  module, its path resolved as the program's imports are, and `--no-inline-library` drops the library's. The driver
+  forwards the set to its workers as `--inline-library no` and each `--inline-module`.
+- **No exports for openers (§3.2 changed).** A private identity member gets no symbol. A function that reaches one
+  (vector's private state, a test module's private counter) is simply not copied, and calls to it stay calls of the
+  compiled module. The objects are unchanged, so no ABI change was needed for this.
+- **Opened modules** are `nodes.Module`s named `opened/<module>` (`nodes.openedModuleName`), with no exports, so the C
+  printer and the SSA builder make their symbols static. A copy keeps its functions and its scalar constants. Its
+  exported identity members are bound to reads of the compiled module's record. Its initializer's other statements
+  are dropped: they are the compiled module's to run, once.
+- **Copies are pruned** to what the unit reaches, before the simplifier and again after it (`pipeline.simplified`).
+  Their members are pinned, since they are named from outside the unit's bodies. `whole.dropUnreachable` moved into
+  `ir/opened` with a predicate saying which modules it may prune.
+- **Initializers.** A module file's initializer calls its copies' initializers after its imports' (the C printer and
+  the SSA builder). A program's `main` already called every module's; the wasm backend already ran every module's body
+  in one initializer.
+- **Transparency is per application (§3.3 changed).** `model.substituteFiltered` keeps an application's constructor
+  where a filter says to. `shapes.openedTransparent` substitutes an opened type's representation only at the
+  applications whose arguments, seen through first, are word-like in every parameter that is a function's parameter
+  or result in the representation (`agreesWith`, `wordLike`). Word-like means held in a register as a `QVal` is: `Int`,
+  a pointer, an unbounded type parameter, or an opaque application.
+
+  The first version decided per type, not per application: a type with one disagreeing instance kept every instance
+  of that operator opaque. That broke. `Fun(: iter.T(Int)) iter.T(Real)` described `iter.T(Int)` opaquely while the
+  same type alone was transparent, so a thunk's C signature disagreed with its descriptor.
+- **Calls go to the copy only where the member's interface type, at the call's type arguments, holds no disagreeing
+  instance** (`opened.rewriteRefs`, by `shapes.disagreesAt`). The first version sent every call to the copy. Then
+  `iter.enumerate`'s copy, its `make` inlined at a record type, built a native-layout iterator that the program's code,
+  holding `iter.T(Indexed(String))` opaque, read generically, and crashed. The inliner refuses the same instances too.
+- **The inliner.** A call into a copy may be inlined where the interface type and the copy's type are represented
+  alike (`signatureRepresentation`), as a whole program's are. A copy's members may be read by inlined code
+  (`memberReads`). Both relaxations are limited to copies: applying them to every module inlined an ordinary
+  program-defined module's function at a record type.
+- **Names of records.** A record's naming key gains its fields' opaque shapes only where a field's shape is
+  transparent, so records that see through nothing keep their names. The C printer declares each record type
+  under its own name too (`declarations.collectAggregateTypes`), since records of one transparent shape can have
+  names of their own.
+- **Loading sources in C mode.** Compiling to C, `elaboration.bindImportedModule` types an import against its
+  interface and never loads the source, and the build engine marks the modules it builds apart as precompiled. Both
+  now load an inlined module's source (`e.openInlined`). An interface's compile (`interfacecompiler`) and the JIT do
+  not: an interface is typed against interfaces alone, and the JIT's units copy nothing.
+- **The `.qi` mark (§3.5 simplified).** The `.qi` of an inlined module's interface holds `"inlined": true`. It is
+  written only there, so other `.qi` files are byte for byte as before (`interfaceCompiler.qiSchema`). A `.qi` is
+  fresh only while its mark agrees with the build's set (`paths`, `interfacecompiler`), so adding or dropping
+  `--inline-module` writes it again. The plan's "the `.qi` keeps the decision for a later `-c`" was dropped: with the
+  freshness rule, a `-c` without the option would rewrite the mark rather than obey it. Correctness does not need
+  agreement between units either, since mixing units that open a module with units that do not is safe (§6.2's
+  transparency rule).
+- **The `.qm` (§3.4 simplified).** `inlined_modules`, the set the unit was compiled with, and `inlined_sources`, the
+  sources it copied from. The unit is stale when the build's set differs, or a source is missing or newer. Imports
+  that copies gain are in the unit's IR imports, which every backend initializes and declares.
+- **Golden dumps.** The phases that print compiler output (IR stages, SSA, code) run with `--no-inline-library`, so
+  that their goldens do not change with the library's bodies; `(* @inline-library *)` and `(* @inline-module: M *)`
+  opt in (testing.md §2.5). `modules/inlined_module_state` tests identity across copied and compiled code, at `Int`
+  and at `Real`, with `--inline-module`.
+- **Version and stack.** ABI 89, since three `.qi` files of the ABI corpus gained the mark. Every program is linked
+  with a 64 MB main stack on macOS (both compilers, exceptions.md §6): the interpreter's frames grew with inlining, and
+  the 8 MB stack held barely 1,000 interpreted calls, about 8.1 KB each, even before.
+
+### 6.3. Bugs met on the way, for whoever continues
+
+- `--stop-after` runs out of C mode, so it elaborated sources and showed inlining that no real build did. Check a
+  real build (`quest compile`, its `.qm`'s `inlined_sources`) before trusting a dump.
+- An import made through an alias (vector's `iterLib`) lacks its record type. `withRecordType` builds it from the
+  interface's scope, and the unit's one import of a module is the one with a record type.
+- Shapes asked for before an inlined module's representation was registered were cached opaque: the cache is emptied
+  when the registered count changes.
+- A copy's initializer must run before the copies' code reads its globals. vector's `floorSize` read 0 in a module
+  file, so vectors never grew, until module initializers called copies' initializers.
+- The C printer's offset-table structs are named per record type, and with transparency one shape had several names.
+- Interfaces compiled from the ABI corpus's snapshot elaborated `lib/` sources, until interface compiles stopped
+  opening.
+- The JIT, opening, elaborated a changed `util/maybe` and failed there before its fingerprint check refused it.
+- Bumping `abiVersion` while a native stage 2 was older made the wasm self-compile check report every unit's
+  fingerprint as different. Rebuild after a bump before running it.
+
+### 6.4. Measurements
+
+- **Screen.** `tools/perf/crosscalls.py` counts call sites between modules in a separate arm64 build. For the
+  compiler: `collections/vector` 12,093 (4,040 to small members), `util/maybe` 11,952 (9,908), `collections/hashMap`
+  4,246 (92), `util/stringBuilder` 1,273, `util/strutil` 602, `util/hash` 190, `util/iter` 96. With the three inlined:
+  vector 2, maybe 0, iter 13.
+- **Leave-one-out** whole builds (§2.3) were too noisy to rank modules finely. One compiler's instructions retired
+  varied by about ±4% between runs, from address-dependent behavior; take three runs at least. Keeping vector apart
+  cost about 6%. Keeping maybe and iter apart showed no loss on the compiler, though `benchmarks/iter`'s gain is
+  iter's. hashMap with hash showed about 1.7%, within the noise. The list stayed at three, with `collections/hashMap`
+  a candidate.
+- **The gain.** The compiler built with inlining, building the fixed tree with `--no-inline-library` so that it does
+  the same work: 488.4 and 488.7 G instructions, against 501.7 to 513.3 G for the compiler at HEAD, 2.6 to 4.8%
+  fewer.
+- **Code size.** `__TEXT` 15.2 MB against 11.1 MB, 37% more. A whole program's is 15.5 MB. The units' code was 2.62 M
+  instructions against 1.85 M, and the largest functions grew up to five times (`printDescriptor`: 3,948 to 21,971).
+- **The cost.** One process (`-j 1`) building the fixed tree:
+
+  | Build | Seconds | Instructions | Peak memory |
+  |---|---:|---:|---:|
+  | Separate, HEAD | 69 | 501 G | 4.2 GB |
+  | Whole program, HEAD | 193 | 1,799 G | 10.5 GB |
+  | Separate, three inlined | 250 | 3,156 G | 22.5 GB |
+
+### 6.5. Where the cost came from
+
+- **The collector's large runs (fixed, `2d5fe8a5`).** In a profile of one big unit (`wasm/codegen`: 77 G
+  instructions separately, 947 G with inlining), 65% of samples were in one loop of `quest_gc_alloc_slow`. A one-block
+  large object (8 to 32 KB) scanned the whole block table for its first fit on every allocation. The code generator's
+  per-function tables are such objects and grow with the function. Taking one-block runs from the free list made a
+  separate build of the compiler 7.4% cheaper (benchmarks.md §39), and the inlined build 1,442 G against 2,732 G (by
+  an experimental stage 1). It landed on its own, after a full tools/check.
+- **What is left: more code.** With that fix the inlined build costs 3.4 times the instructions and 2.4 times the
+  time of one without, close to a whole program's 3.6 times. It allocates 153 GB against 47 GB, and its heap reaches
+  17.4 GB around 3.4 GB live. The work is the back end's on bigger functions: liveness bitsets (`unionWith`,
+  `subtract`, `intersection`) and register allocation grow faster than a function does.
+- **Not the cause:**
+  - the shape cache's emptying;
+  - the process-wide type caches, which only doubled (shapes 37 K entries against 20 K at the end of a build);
+  - `openedTransparent`'s repeated substitution (memoizing it changed nothing);
+  - the inliner's growth budget counting the copies (budgeting only the unit's own code changed nothing);
+  - `vector.append`'s grow path (moving it out of line changed nothing, since the inliner takes it too).
+
+  `QUEST_INLINE=growth=25` cut a small build's cost from 1.7 to 1.4 times, and slowed builds without inlining too.
+- **Elaborating the modules' sources in every unit** was a real but smaller cost, the next section's subject.
+
+### 6.6. The elaboration cache and the shared builtins, a critique
+
+To stop every unit elaborating the inlined modules' sources again, three changes were tried together. Together they
+saved about 13% of the inlined build before the collector fix. They never ran through a test suite.
+
+- **An elaboration cache** (`loader.loadedInlined`): an inlined module's typed module, by canonical name and source
+  time. On a hit it is registered in the new environment, skipping parsing, elaboration, and the interface check.
+- **Shared builtins** (`env.sharedBase`): one base scope for the process, made by the first environment. Lowering
+  knows a builtin by its symbol, and each environment made its own, so a typed module from one environment could not
+  be lowered in another ("variable 'extent' (#27) has no binder").
+- **Loading on demand in `ir/opened`.** A hit skips loading the module's own imports into the new environment, so
+  `ir/opened` loads a missing one itself, treating a failure as "not copied".
+
+Their faults:
+
+- **The key is too narrow.** It leaves out:
+  - the importer's expected interface, whose check a hit skips;
+  - the search roots and program directory, which decide what the module's imports resolve to;
+  - `--variant`;
+  - the interfaces the module imports, which can change while its source does not.
+
+  Short-lived workers hide this; a long-lived process would not.
+- **A typed module is reused across environments** without knowing that nothing mutates it: solved metavariables,
+  fields filled in place.
+- **The shared base scope is mutable global state.** Only `initBuiltins` writes it today, and nothing enforces that.
+  Sharing it also renumbers symbols in every unit after the first, in every build, which no suite checked.
+- **Loading on demand makes the result depend on order.** Whether a module's imports are in an environment depends
+  on what the process compiled before. Swallowing the error lets a unit's code differ between `-j 1` and `-j 8`,
+  which the fixed points exist to forbid.
+- **It treats a symptom.** The type layer's caches live as long as the process while what they hold belongs to one
+  unit. Repeated elaboration is only the most visible way to feed them.
+
+Alternatives:
+
+- **A. Share builtin symbols, not the scope.** Make the builtin symbols once, as module constants, and give each
+  environment its own base scope holding the same symbols. Or let lowering know a builtin by a flag on its symbol.
+- **B. A cache of elaborated modules like `loadedQis`.** Key it by the source time, the fingerprints of the
+  interfaces the module imports, the variant, and the search roots. Check the expected interface against the cached
+  scope on a hit. Bind the module's imports into the new environment on a hit, so that nothing loads on demand and
+  no error is swallowed.
+- **C. Drop the per-unit caches between units.** Clear the derived caches (shapes, canonical forms, layouts,
+  subtyping results, digests) after each unit in a worker; they are functions of types and safe to rebuild. The
+  hash-consing tables and symbols stay, since cached `.qi` scopes refer to them. This would bound every build's
+  memory, not only inlined ones, but it needs an audit that nothing compares shapes across units.
+- **D. Stable symbols for module elaboration.** Derive a module's symbols from its canonical name and each
+  declaration's path, not a global counter, so that elaborating a source twice gives the same types, which every
+  cache then shares.
+- **E. No elaboration in importers.** The module's own compile writes its lowered Core IR beside its object, and
+  importers read it (§3.4's "later"). It needs an IR serialization and builds ordered so that importers wait for the
+  module.
+
+The recommendation was to revert the three changes, measure again without them now that the collector is fixed, do
+A and B only if repeated elaboration still matters, consider C on its own merits, and leave D and E for the case
+where inlined modules become a permanent part of separate compilation.
+
+### 6.7. Tools added
+
+- `tools/perf/crosscalls.py`, with `tests/python/test_crosscalls.py`.
+- `--apart M` (whole programs) and the `apart` builds it allows, for leave-one-out measurement.
+- `benchmarks/iter/run.py` builds `no-inline` too.
+
+### 6.8. Open questions
+
+- Whether a build costing 3.4 times as much is worth 2.6 to 4.8% faster code and `benchmarks/iter`'s gains, or what
+  would make it cheaper: a smaller size bound for calls into copies (inlining `isSome`, `get`, and `length`, but not
+  `append`, `new`, or `toArray`); a back end whose liveness and allocation cost less on big functions, which whole
+  programs would gain from too; or C above.
+- Whether whole programs' 3.6 times needs the same attention, now that it has been measured.
