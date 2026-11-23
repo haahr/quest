@@ -27,6 +27,10 @@ import
     questlang/types/model : questlang/types/Model
 export
     Let Type = model.Type
+
+    (* Whether a slot of type t holds a Real's bits *)
+    let realSlot(t: Type): Bool = case layout.wordForm(shapes.shape(t)) when wordReal then true else false end
+
     Let Variable = ir.Variable
     Let Atom = ir.Atom
     let noBoxes = array of :shapes.Shape end
@@ -195,8 +199,13 @@ export
                 end) end
             when opIndex with x then
                 let address = aggregates.elementAddress(fn vals.atom1(fn x.arr) vals.atom1(fn x.index) x.offset)
-                representation.slotFromWord(fn vals.loadWord(fn address 0 vals.tVal)
-                        aggregates.elementShape(x.arr).type)
+                let t = aggregates.elementShape(x.arr).type
+                (* A Real is its bits in the slot: loaded as a real, it goes
+                 * to a floating-point register without passing through an
+                 * integer one *)
+                if realSlot(t) then array of vals.loadWord(fn address 0 vals.tReal) end
+                else representation.slotFromWord(fn vals.loadWord(fn address 0 vals.tVal) t)
+                end
             when opTypeApp with x then aggregates.typeApp(fn x maybe.unwrap(result))
             when opAddrVar with x then
                 let pointer = vals.pointerOf(fn x.v)
@@ -566,7 +575,11 @@ export
                     let arr = vals.atom1(fn x.base)
                     let elem = aggregates.elementShape(x.base)
                     let address = aggregates.elementAddress(fn arr vals.atom1(fn x.index) x.offset)
-                    vals.store(fn address 0 8 representation.slotToWord(fn vals.atom(fn x.value) elem.type))
+                    let stored =
+                        if realSlot(elem.type) then vals.atom1(fn x.value)
+                        else representation.slotToWord(fn vals.atom(fn x.value) elem.type)
+                        end
+                    vals.store(fn address 0 8 stored)
                     if vals.holdsPointer(elem.type) then vals.callVoid(fn "quest_barrier_slot" array of address end) end
                 when sSwitch with x then switch(fn x)
                 when sTry with x then tryStatement(fn x)
