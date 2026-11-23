@@ -28,24 +28,9 @@ separately, 45 whole), and for 56% of it in the compiler, 2.5% of the separate c
 (whole: 4.5%). Inlining the three into separately compiled units, without the rest of a whole program, may gain
 somewhat less there.
 
-**Where to start.** The two questions that decide whether it can be built:
-
-- **One module, one state.** Each module's globals stay single: `maybe.error`, `vector.error`, and `iter.exhausted`
-  and `iter.error` are exceptions, matched by identity, so an importer may copy function bodies but must refer to the
-  compiled module's globals, not merge a copy of the module the way `driver/whole` does.
-- **Layouts across the boundary.** Inlined code sees `vector.T(Int)` through to its representation; calls not
-  inlined, and units that are not importers, see it at its abstract layout (`genericLayout.abstractInstance`). Every
-  value crossing between them must agree or be converted.
-
-The rest follows whole programs: opaque shapes keep descriptors, echo, and dynamic values unchanged; every backend and
-the JIT (its units, module rollback) take the bodies; build cache keys include the listed modules' bodies; tracebacks
-lose their frames, as in a whole program. Self-hosted only. State the rule for joining the list (small, hot,
-polymorphic, stable, no state worth isolating) where the list is defined.
-
-**Later: a user's own modules.** Once the list works, consider a command-line option naming some of a program's
-own modules for the same treatment. Such a module's `.qi` must then be marked as one whose importers inline it (and
-carry what they need to), so that a build compiling an importer knows its object depends on the module's bodies, not
-its interface alone; an unmarked `.qi` keeps today's meaning.
+**Plan:** [inlined-modules-plan.md](inlined-modules-plan.md) (2026-11-22). It covers choosing the modules by
+profiling, copying members while each module's state stays single, layouts across the boundary, staleness, the steps,
+and a later `--inline-module` option for a program's own modules, marked in their `.qi` files.
 
 **Done when.** The listed modules' calls are inlined in separately compiled importers, util/iter's own slots may give
 way to `util/maybe` (iter.md rule 5 then says so), and the driver build's instructions retired and `benchmarks/iter/`
