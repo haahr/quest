@@ -12,18 +12,20 @@
 
 module structure : Structure
 import
-    questlang/common/files : questlang/common/Files
-    questlang/common/location : questlang/common/Location
-    questlang/modules/paths : questlang/modules/Paths
-    questlang/syntax/ast : questlang/syntax/Ast
-    questlang/syntax/tokens : questlang/syntax/Tokens
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/strutil : util/Strutil
-    stringOp = string : StringOp
+
+    questlang/common/files : questlang/common/Files
+    questlang/common/location : questlang/common/Location
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/tokens : questlang/syntax/Tokens
 export
     Let Rule = Tuple
         anchor: Int
@@ -101,10 +103,8 @@ export
 
     (* The index of the token starting at a span's start, or ending at its end;
      * ~1 if there is none *)
-    let first(st: St sp: location.Span): Int =
-        maybe.unwrapOr(hashMap.get(st.byStart sp.startOffset) ~1)
-    let last(st: St sp: location.Span): Int =
-        maybe.unwrapOr(hashMap.get(st.byEnd sp.endOffset) ~1)
+    let first(st: St sp: location.Span): Int = maybe.unwrapOr(hashMap.get(st.byStart sp.startOffset) ~1)
+    let last(st: St sp: location.Span): Int = maybe.unwrapOr(hashMap.get(st.byEnd sp.endOffset) ~1)
 
     (* The token after i, past any closing braces: where the keyword that
      * follows a body is *)
@@ -318,7 +318,8 @@ export
         case e.form
             when exprBlock with x then
                 if isBlock(st e) orif vector.empty(x.bindings) then last(st e.span)
-                else last(st vector.get(x.bindings vector.length(x.bindings) - 1).span) end
+                else last(st vector.get(x.bindings vector.length(x.bindings) - 1).span)
+                end
             else last(st e.span)
         end
 
@@ -327,7 +328,8 @@ export
         case e.form
             when exprBlock with x then
                 if isBlock(st e) orif vector.empty(x.bindings) then first(st e.span)
-                else first(st vector.get(x.bindings 0).span) end
+                else first(st vector.get(x.bindings 0).span)
+                end
             else first(st e.span)
         end
 
@@ -376,7 +378,11 @@ export
                 b := b + 1
             end
             if {a > 0} andif {b >= a} andif isKind(st a - 1 "EQUAL") then
-                vector.append(st.joins tuple let equal = offset(st a - 1) let first = offset(st a) let last = offset(st b) end)
+                vector.append(st.joins tuple
+                    let equal = offset(st a - 1)
+                    let first = offset(st a)
+                    let last = offset(st b)
+                end)
             end
         end
 
@@ -563,7 +569,11 @@ export
                     expr(st x.right)
                 when exprTuple with x then
                     let closing =
-                        if isKind(st f "KW_TUPLE") andif isKind(st last(st e.span) "KW_END") then last(st e.span) else ~1 end
+                        if isKind(st f "KW_TUPLE") andif isKind(st last(st e.span) "KW_END") then
+                            last(st e.span)
+                        else
+                            ~1
+                        end
                     tupleFields(st f closing x.fields)
                 when exprRecord with x then
                     for i = 0 upto {vector.length(x.fields) - 1} do
@@ -687,10 +697,12 @@ export
      * compact *)
     and ifBody(st: St f: Int arm: Int k: Int e: ast.Expr): Ok =
         begin
-            let phrases = case e.form
-                when exprBlock with x then if isBlock(st e) then vector.fromArray(array of e end) else x.bindings end
-                else vector.fromArray(array of e end)
-            end
+            let phrases =
+                case e.form
+                    when exprBlock with x then
+                        if isBlock(st e) then vector.fromArray(array of e end) else x.bindings end
+                    else vector.fromArray(array of e end)
+                end
             for i = 0 upto {vector.length(phrases) - 1} do
                 let p = vector.get(phrases i)
                 let j = first(st p.span)
@@ -721,7 +733,11 @@ export
     and payload(st: St anchor: Int closing: Int e: ast.Expr): Ok =
         case e.form
             when exprTuple with x then
-                if isKind(st first(st e.span) "KW_TUPLE") then item(st anchor e) else tupleFields(st anchor closing x.fields) end
+                if isKind(st first(st e.span) "KW_TUPLE") then
+                    item(st anchor e)
+                else
+                    tupleFields(st anchor closing x.fields)
+                end
             else item(st anchor e)
         end
 
@@ -732,16 +748,17 @@ export
         begin
             let starts = array of(vector.length(fields) ~1)
             for i = 0 upto {vector.length(fields) - 1} do
-                starts[i] := case vector.get(fields i)
-                    when fieldVal with v then maybe.unwrapOr(hashMap.get(st.byStart v.val.offset) ~1)
-                    when fieldGroup with g then
-                        if vector.empty(g.val) then
-                            ~1
-                        else
-                            maybe.unwrapOr(hashMap.get(st.byStart vector.get(g.val 0).offset) ~1)
-                        end
-                    when fieldDecl with d then first(st d.val.span)
-                end
+                starts[i] :=
+                    case vector.get(fields i)
+                        when fieldVal with v then maybe.unwrapOr(hashMap.get(st.byStart v.val.offset) ~1)
+                        when fieldGroup with g then
+                            if vector.empty(g.val) then
+                                ~1
+                            else
+                                maybe.unwrapOr(hashMap.get(st.byStart vector.get(g.val 0).offset) ~1)
+                            end
+                        when fieldDecl with d then first(st d.val.span)
+                    end
             end
             if {closing >= 0} andif {extent(starts) > 0} then
                 let var known = true
@@ -749,7 +766,11 @@ export
                 if known then
                     let offsets = array of(extent(starts) 0)
                     for i = 0 upto {extent(starts) - 1} do offsets[i] := offset(st starts[i]) end
-                    vector.append(st.runs tuple let offsets = offsets let any = false let within = offset(st closing) end)
+                    vector.append(st.runs tuple
+                        let offsets = offsets
+                        let any = false
+                        let within = offset(st closing)
+                    end)
                 end
             end
             for i = 0 upto {vector.length(fields) - 1} do
@@ -1043,10 +1064,11 @@ export
             let phrases = program.form.phrases
             for i = 0 upto {vector.length(phrases) - 1} do
                 let p = vector.get(phrases i)
-                let isImport = case p.form
-                    when phraseImport with x then not(vector.empty(x.phrase.items))
-                    else false
-                end
+                let isImport =
+                    case p.form
+                        when phraseImport with x then not(vector.empty(x.phrase.items))
+                        else false
+                    end
                 if isImport then
                     let items =
                         case p.form when phraseImport with x then x.phrase.items else vector.new(:ast.ImportItem) end
@@ -1054,7 +1076,8 @@ export
                     for k = 1 upto {vector.length(items) - 1} do
                         let other = sortKey(st vector.get(items k))
                         if {other.group < key.group}
-                                orif {{other.group is key.group} andif {sort.stringCompare(other.path key.path) < 0}} then
+                                orif {{other.group is key.group}
+                                        andif {sort.stringCompare(other.path key.path) < 0}} then
                             key := other
                         end
                     end

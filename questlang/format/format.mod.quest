@@ -10,6 +10,20 @@
 
 module format : Format
 import
+    reader : Reader
+    stringOp = string : StringOp
+    system : System
+    writer : Writer
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    osFiles = os/files : os/Files
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    sb = util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+
     questlang/common/diagbag : questlang/common/DiagBag
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
@@ -19,18 +33,6 @@ import
     questlang/syntax/parser : questlang/syntax/Parser
     questlang/syntax/tokenizer : questlang/syntax/Tokenizer
     questlang/syntax/tokens : questlang/syntax/Tokens
-    collections/hashMap : collections/HashMap
-    collections/vector : collections/Vector
-    osFiles = os/files : os/Files
-    util/hash : util/Hash
-    util/maybe : util/Maybe
-    util/sort : util/Sort
-    sb = util/stringBuilder : util/StringBuilder
-    util/strutil : util/Strutil
-    reader : Reader
-    stringOp = string : StringOp
-    system : System
-    writer : Writer
 export
     Let Result = Option
         formatted with text: String end
@@ -104,7 +106,7 @@ export
             let var prevStop = 0
             while {i < n} orif {j < m} do
                 let isComment = {j < m}
-                        andif {{i >= n}
+                    andif {{i >= n}
                         orif {vector.get(p.comments j).startOffset < vector.get(p.toks i).span.startOffset}}
                 let start =
                     if isComment then
@@ -157,7 +159,7 @@ export
             else
                 let other = parseTokens(kept p.sm diagbag.new())
                 maybe.isSome(other)
-                        andif stringOp.equal(astprint.dump(maybe.unwrap(other)) astprint.dump(maybe.unwrap(p.program)))
+                    andif stringOp.equal(astprint.dump(maybe.unwrap(other)) astprint.dump(maybe.unwrap(p.program)))
             end
         end
 
@@ -186,12 +188,21 @@ export
      * elements can be told apart: an item takes the comments on lines of
      * their own just before it, and one at the end of its last line. A list
      * written one item to a line is laid out in its sections, a blank line
-     * between two *)
+     * between two. A program's import phrases are sorted before the items
+     * within them, since sorting the items moves the tokens a phrase's extent
+     * is known by *)
     let sortImports(elems: vector.T(Elem) lists: vector.T(structure.ImportList)): vector.T(Elem) =
         begin
             let var current = elems
+            let ordered = vector.new(:structure.ImportList)
             for l = 0 upto {vector.length(lists) - 1} do
-                let importList = vector.get(lists l)
+                if vector.get(lists l).phrases then vector.append(ordered vector.get(lists l)) end
+            end
+            for l = 0 upto {vector.length(lists) - 1} do
+                if not(vector.get(lists l).phrases) then vector.append(ordered vector.get(lists l)) end
+            end
+            for l = 0 upto {vector.length(ordered) - 1} do
+                let importList = vector.get(ordered l)
                 let byStart = hashMap.new(:Int :Int intEqual hash.int)
                 let byStop = hashMap.new(:Int :Int intEqual hash.int)
                 for i = 0 upto {vector.length(current) - 1} do
@@ -214,7 +225,7 @@ export
                         let n = vector.length(current)
                         while {{b + 1} < n} andif {vector.get(current b + 1).breaks is 0}
                                 andif {vector.get(current b + 1).comment
-                                orif isA(vector.get(current b + 1) "SEMICOLON")} do
+                                        orif isA(vector.get(current b + 1) "SEMICOLON")} do
                             b := b + 1
                         end
                         let floor = if i is 0 then ~1 else ranges[i - 1].last end
@@ -336,7 +347,9 @@ export
                 let run = vector.get(st.runs r)
                 let var starts = startsLine(run.offsets[0])
                 if run.any then
-                    for i = 1 upto {extent(run.offsets) - 1} do if startsLine(run.offsets[i]) then starts := true end end
+                    for i = 1 upto {extent(run.offsets) - 1} do
+                        if startsLine(run.offsets[i]) then starts := true end
+                    end
                 end
                 if run.within >= 0 then
                     let from = hashMap.get(at run.offsets[0])
@@ -418,7 +431,7 @@ export
             end
             let firstElem = vector.get(b.elems 0)
             not(isOneOf(lastKind array of "KW_BEGIN" "KW_THEN" "KW_DO" "KW_ELSE" "KW_EXPORT" "KW_IMPORT" end))
-                    andif not(isA(firstElem "KW_END"))
+                andif not(isA(firstElem "KW_END"))
         end
 
     let lines(elems: vector.T(Elem)): vector.T(Line) =
@@ -478,11 +491,14 @@ export
                 for j = 0 upto {vector.length(l.elems) - 1} do
                     let e = vector.get(l.elems j)
                     if not(e.comment) then
-                        if firstToken andif not(vector.empty(stack)) then hashMap.insert(openAt e.start vector.last(stack)) end
+                        if firstToken andif not(vector.empty(stack)) then
+                            hashMap.insert(openAt e.start vector.last(stack))
+                        end
                         firstToken := false
                         if isOneOf(e.kind array of "LPAREN" "LBRACKET" "LBRACE" end) then
                             vector.append(stack e.start)
-                        elsif isOneOf(e.kind array of "RPAREN" "RBRACKET" "RBRACE" end) andif not(vector.empty(stack)) then
+                        elsif isOneOf(e.kind array of "RPAREN" "RBRACKET" "RBRACE" end)
+                                andif not(vector.empty(stack)) then
                             let ignored = vector.pop(stack)
                             ok
                         end
@@ -501,23 +517,28 @@ export
             let tokenIndent = fun(e: Elem here: Int): Int
                 begin
                     let r = hashMap.get(st.rules e.start)
-                    let byRule = if maybe.isNone(r) then
-                        maybe.none(:Int)
-                    else
-                        let x = maybe.unwrap(r)
-                        (* An if's parts depend on whether it is compact here *)
-                        let compact = {x.ifToken >= 0} andif not(hashMap.contains(startsLine x.ifToken))
-                                andif {maybe.unwrapOr(hashMap.get(lineOf x.ifToken) ~1)
-                                is maybe.unwrapOr(hashMap.get(lineOf x.armToken) ~2)}
-                        let anchor = if compact then x.compactAnchor else x.anchor end
-                        let delta = if compact then x.compactDelta else x.delta end
-                        if anchor < 0 then
-                            maybe.some(delta)
+                    let byRule =
+                        if maybe.isNone(r) then
+                            maybe.none(:Int)
                         else
-                            let base = at(anchor here)
-                            if maybe.isSome(base) then maybe.some(maybe.unwrap(base) + delta) else maybe.none(:Int) end
+                            let x = maybe.unwrap(r)
+                            (* An if's parts depend on whether it is compact here *)
+                            let compact = {x.ifToken >= 0} andif not(hashMap.contains(startsLine x.ifToken))
+                                andif {maybe.unwrapOr(hashMap.get(lineOf x.ifToken) ~1)
+                                    is maybe.unwrapOr(hashMap.get(lineOf x.armToken) ~2)}
+                            let anchor = if compact then x.compactAnchor else x.anchor end
+                            let delta = if compact then x.compactDelta else x.delta end
+                            if anchor < 0 then
+                                maybe.some(delta)
+                            else
+                                let base = at(anchor here)
+                                if maybe.isSome(base) then
+                                    maybe.some(maybe.unwrap(base) + delta)
+                                else
+                                    maybe.none(:Int)
+                                end
+                            end
                         end
-                    end
                     if maybe.isSome(byRule) then
                         maybe.unwrap(byRule)
                     else
@@ -532,15 +553,22 @@ export
                         (* A bracket opened on the phrase's line or after
                          * it, on an earlier line than this one *)
                         let open = hashMap.get(openAt e.start)
-                        let phraseLine = if maybe.isSome(c) then maybe.unwrapOr(hashMap.get(lineOf maybe.unwrap(c)) ~1) else ~1 end
-                        let openLine = if maybe.isSome(open) then maybe.unwrapOr(hashMap.get(lineOf maybe.unwrap(open)) ~1) else ~1 end
+                        let phraseLine =
+                            if maybe.isSome(c) then maybe.unwrapOr(hashMap.get(lineOf maybe.unwrap(c)) ~1) else ~1 end
+                        let openLine =
+                            if maybe.isSome(open) then
+                                maybe.unwrapOr(hashMap.get(lineOf maybe.unwrap(open)) ~1)
+                            else
+                                ~1
+                            end
                         (* An if, elsif, or while on a later line than the
                          * phrase's, when this is in its condition *)
-                        let keywordLine = if maybe.isSome(keyword) then
-                            maybe.unwrapOr(hashMap.get(lineOf maybe.unwrap(keyword)) ~1)
-                        else
-                            ~1
-                        end
+                        let keywordLine =
+                            if maybe.isSome(keyword) then
+                                maybe.unwrapOr(hashMap.get(lineOf maybe.unwrap(keyword)) ~1)
+                            else
+                                ~1
+                            end
                         if maybe.isSome(base) andif {openLine >= phraseLine} andif {openLine < here}
                                 andif {openLine >= keywordLine} then
                             vector.get(ls openLine).indent + step
@@ -577,18 +605,19 @@ export
                         end
                         k := k + 1
                     end
-                    l.indent := if maybe.isNone(found) then
-                        0
-                    else
-                        let t = maybe.unwrap(found)
-                        let n = tokenIndent(t i)
-                        let r = hashMap.get(st.rules t.start)
-                        if isA(t "KW_END") andif maybe.isSome(r) andif {maybe.unwrap(r).delta is 0} then
-                            n + 4
+                    l.indent :=
+                        if maybe.isNone(found) then
+                            0
                         else
-                            n
+                            let t = maybe.unwrap(found)
+                            let n = tokenIndent(t i)
+                            let r = hashMap.get(st.rules t.start)
+                            if isA(t "KW_END") andif maybe.isSome(r) andif {maybe.unwrap(r).delta is 0} then
+                                n + 4
+                            else
+                                n
+                            end
                         end
-                    end
                 end
             end
         end
@@ -605,8 +634,8 @@ export
             let x = stringOp.getChar(a.text stringOp.length(a.text) - 1)
             let y = stringOp.getChar(b.text 0)
             {strutil.isAlnum(x) andif strutil.isAlnum(y)} orif {isSymbolicChar(x) andif isSymbolicChar(y)}
-                    orif {{x is '('} andif {y is '*'}} orif {isA(a "INT_LIT") andif {y is '.'}}
-                    orif {{x is '.'} andif isA(b "INT_LIT")}
+                orif {{x is '('} andif {y is '*'}} orif {isA(a "INT_LIT") andif {y is '.'}}
+                orif {{x is '.'} andif isA(b "INT_LIT")}
         end
 
     let marked(m: hashMap.T(Int Bool) e: Elem): Bool = not(e.comment) andif hashMap.contains(m e.start)
@@ -617,7 +646,7 @@ export
      * follows (f(x :Int), a type argument) *)
     let annotation(a: Elem colon: Elem next: maybe.T(Elem)): Bool =
         isOneOf(a.kind array of "IDENT" "RPAREN" "RBRACKET" "UNDERSCORE" end)
-                andif {{colon.start is a.stop} orif maybe.isNone(next) orif {maybe.unwrap(next).start isnot colon.stop}}
+            andif {{colon.start is a.stop} orif maybe.isNone(next) orif {maybe.unwrap(next).start isnot colon.stop}}
 
     (* Whether a space comes between a and b; before is the kind of the
      * element before a, if any, and after the element after b; annotationColon
@@ -626,41 +655,42 @@ export
         begin
             let glued = b.start is a.stop
             let names = array of "IDENT" "RPAREN" "RBRACKET" "UNDERSCORE" end
-            let wanted = if a.comment orif b.comment then
-                true
-            elsif marked(st.pathSlashes a) orif marked(st.pathSlashes b) then
-                false
-            elsif isOneOf(b.kind array of "RPAREN" "RBRACKET" "RBRACE" "COMMA" "SEMICOLON" end) then
-                false
-            elsif isOneOf(a.kind array of "LPAREN" "LBRACKET" "LBRACE" end) then
-                false
-            elsif isA(a "DOT") orif isA(b "DOT") then
-                false
-            elsif isA(a "COMMA") then
-                not(glued)
-            elsif isA(b "LPAREN") then
-                if isOneOf(a.kind array of "IDENT" "RPAREN" "RBRACKET" "RBRACE" "UNDERSCORE" end)
-                        orif strutil.startsWith(a.kind "KW_") then false else not(glued) end
-            elsif isA(b "LBRACKET") then
-                if isOneOf(a.kind array of "IDENT" "RPAREN" "RBRACKET" "RBRACE" end) then false else not(glued) end
-            elsif isA(b "COLON") then
-                if marked(st.spacedColons b) then true elsif annotation(a b after) then false else not(glued) end
-            elsif isA(a "COLON") then
-                if marked(st.spacedColons a) orif {isOneOf(before names) andif annotationColon} then
+            let wanted =
+                if a.comment orif b.comment then
                     true
-                else
+                elsif marked(st.pathSlashes a) orif marked(st.pathSlashes b) then
+                    false
+                elsif isOneOf(b.kind array of "RPAREN" "RBRACKET" "RBRACE" "COMMA" "SEMICOLON" end) then
+                    false
+                elsif isOneOf(a.kind array of "LPAREN" "LBRACKET" "LBRACE" end) then
+                    false
+                elsif isA(a "DOT") orif isA(b "DOT") then
+                    false
+                elsif isA(a "COMMA") then
                     not(glued)
+                elsif isA(b "LPAREN") then
+                    if isOneOf(a.kind array of "IDENT" "RPAREN" "RBRACKET" "RBRACE" "UNDERSCORE" end)
+                            orif strutil.startsWith(a.kind "KW_") then false else not(glued) end
+                elsif isA(b "LBRACKET") then
+                    if isOneOf(a.kind array of "IDENT" "RPAREN" "RBRACKET" "RBRACE" end) then false else not(glued) end
+                elsif isA(b "COLON") then
+                    if marked(st.spacedColons b) then true elsif annotation(a b after) then false else not(glued) end
+                elsif isA(a "COLON") then
+                    if marked(st.spacedColons a) orif {isOneOf(before names) andif annotationColon} then
+                        true
+                    else
+                        not(glued)
+                    end
+                elsif isA(b "COLON_COLON") then
+                    if isOneOf(a.kind array of "IDENT" "UNDERSCORE" end) then false else not(glued) end
+                elsif isA(a "COLON_COLON") then
+                    false
+                elsif isOneOf(a.kind array of "QUESTION" "BANG" "AT" end)
+                        orif isOneOf(b.kind array of "QUESTION" "BANG" end) then
+                    false
+                else
+                    true
                 end
-            elsif isA(b "COLON_COLON") then
-                if isOneOf(a.kind array of "IDENT" "UNDERSCORE" end) then false else not(glued) end
-            elsif isA(a "COLON_COLON") then
-                false
-            elsif isOneOf(a.kind array of "QUESTION" "BANG" "AT" end)
-                    orif isOneOf(b.kind array of "QUESTION" "BANG" end) then
-                false
-            else
-                true
-            end
             wanted orif mustSeparate(a b)
         end
 
@@ -729,7 +759,8 @@ export
                 sb.str(b s)
                 col := columnAfter(col s)
             end
-            tuple let code = sb.toString(b)
+            tuple
+                let code = sb.toString(b)
                 let trailing = if trailing then maybe.some(lastElem) else maybe.none(:Elem) end
             end
         end
@@ -809,7 +840,6 @@ export
             if multiline then array of :Int end else result end
         end
 
-
     (* An infix operator that ends a line starts the next one instead *)
     let leadOperators(elems: vector.T(Elem)): Ok =
         for i = 1 upto {vector.length(elems) - 2} do
@@ -846,7 +876,9 @@ export
         for i = 0 upto {vector.length(elems) - 2} do
             let e = vector.get(elems i)
             let next = vector.get(elems i + 1)
-            if isOperator(e) andif {e.breaks > 0} andif {next.breaks > 0} andif not(next.comment) then next.breaks := 0 end
+            if isOperator(e) andif {e.breaks > 0} andif {next.breaks > 0} andif not(next.comment) then
+                next.breaks := 0
+            end
         end
 
     (* Where to break a line over the width, or at ~1 for none. Of the places a
@@ -889,10 +921,10 @@ export
                         let e = vector.get(l.elems k)
                         let p = vector.get(l.elems k - 1)
                         not(e.comment) andif not(p.comment) andif not(isOneOf(e.kind never))
-                                andif not(isOneOf(p.kind neverAfter)) andif not(isOperator(p))
-                                andif {not(strutil.startsWith(p.kind "KW_")) orif isOneOf(p.kind keywordsBefore)}
-                                andif not(marked(st.pathSlashes e)) andif not(marked(st.pathSlashes p))
-                                andif {cols[k] > l.indent}
+                            andif not(isOneOf(p.kind neverAfter)) andif not(isOperator(p))
+                            andif {not(strutil.startsWith(p.kind "KW_")) orif isOneOf(p.kind keywordsBefore)}
+                            andif not(marked(st.pathSlashes e)) andif not(marked(st.pathSlashes p))
+                            andif {cols[k] > l.indent}
                     end
                 let var least = 1000000
                 for k = 1 upto {n - 1} do if allowed(k) andif {depth[k] < least} then least := depth[k] end end
@@ -989,7 +1021,8 @@ export
                 let a = hashMap.get(lineOf jn.equal)
                 let b = hashMap.get(lineOf jn.first)
                 let c = hashMap.get(lineOf jn.last)
-                if maybe.isSome(a) andif maybe.isSome(b) andif maybe.isSome(c) andif {maybe.unwrap(b) is {maybe.unwrap(a) + 1}}
+                if maybe.isSome(a) andif maybe.isSome(b) andif maybe.isSome(c)
+                        andif {maybe.unwrap(b) is {maybe.unwrap(a) + 1}}
                         andif {maybe.unwrap(c) is maybe.unwrap(b)} then
                     let l1 = vector.get(ls maybe.unwrap(a))
                     let l2 = vector.get(ls maybe.unwrap(b))
@@ -1034,7 +1067,7 @@ export
                     if maybe.isNone(bad)
                             andif not(stringOp.equal(vector.get(p.toks i).lexeme vector.get(expected i).text)) then
                         bad := maybe.some("the output's token " <> vector.get(p.toks i).lexeme <> " should be "
-                                <> vector.get(expected i).text)
+                            <> vector.get(expected i).text)
                     end
                 end
                 bad
@@ -1098,7 +1131,7 @@ export
     let usage(message: String): Ok =
         begin
             writer.putString(writer.err "quest fmt: " <> message
-                    <> "\nusage: quest fmt [-w | --check] [FILE|DIRECTORY...]\n")
+                <> "\nusage: quest fmt [-w | --check] [FILE|DIRECTORY...]\n")
             system.sysexit(2)
         end
 

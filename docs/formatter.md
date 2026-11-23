@@ -6,13 +6,16 @@ the same tokens come out in the same order, with:
 - their spacing and indentation normalized (§2.1–2.8);
 - optional semicolons removed (§2.9);
 - imports sorted, in sections (§2.7);
-- a `then` or `do` that starts a line moved to the end of the line before (§2.0);
+- a `then` or `do` that starts a line moved to the end of the line before, and an infix operator that ends a line
+  moved to the start of the next (§2.0);
 - a broken construct broken throughout: its `end` on a line of its own, and each field of a tuple or arm of an `if`
   on one too (§2.0);
+- a multi-line `if`, `case`, `inspect`, or `try` after `=` or `:=` moved to a line of its own (§2.4);
 - lines over 120 columns broken (§3).
 
-Like go fmt, it keeps the programmer's line breaks: it never joins lines except to move `then` and `do`, and adds
-breaks only to a construct already broken and to lines too long to fit. The tree is not formatted yet (§5).
+Like go fmt, it keeps the programmer's line breaks. It joins lines only to move `then`, `do`, and operators, and to
+put back a short value that was alone after an `=` (§2.0). It adds breaks only to a construct already broken and to
+lines too long to fit. The tree is formatted, and tools/check fails on a file `quest fmt` would change (§5).
 
 ```
 quest fmt FILE...            # print each file formatted
@@ -83,22 +86,36 @@ formatter uses instead. Page numbers are the PDF's.
 
 ### 2.0. What changes and what is kept
 
-Every line break in the source is kept, with one exception: a line that starts with `then` or `do` is joined to the
-line before it. What followed the `then` keeps its own line, as the arm's body:
+Every line break in the source is kept, with these exceptions:
+
+- **`then` and `do`:** a line that starts with `then` or `do` is joined to the line before it. What followed the
+  `then` keeps its own line, as the arm's body.
+- **Operators lead:** an infix operator that ends a line moves to the start of the next, and a line holding nothing
+  but an operator takes the next line onto it.
+- **Values after `=`:** a value alone on the line after an `=` that ends a line goes back onto the `=`'s line if it
+  fits there in 120 columns, with no comment in the way. A `begin`, `if`, or other construct of several lines is not
+  alone on its line, so it stays.
 
 ```
 (* source *)                      (* formatted *)
 if {x > 0}                        if {x > 0} then
 then f(x)                             f(x)
 end                               end
+let s = a <>                      let s = a
+    b                                 <> b
+let n =                           let n = 1
+    1
 ```
 
 Breaks are added, never removed, where a construct is already broken (§2.4, §2.6):
 
 - **An end on its own line:** a body's phrase or a tuple's field that starts a line puts the `end` of its construct
-  on a line of its own, at the construct's column.
-- **Broken throughout:** an `if` whose first arm starts on a line of its own has every arm start on one, and a tuple
-  whose first field does has each field on one.
+  on a line of its own, at the construct's column. So does an `elsif`, `else`, or `when` after the first arm that
+  starts a line, when the construct itself starts one (or follows only an operator that does).
+- **Broken throughout:** an `if` whose first arm starts on a line of its own has every arm start on one. So does a
+  two-arm `if` (no `elsif`) whose `else` body starts a line. An `elsif` or `else` starts a line when its body does,
+  and when one `elsif` or `else` of an `if` starts a line, all do, so no arm follows another on a line. A tuple whose
+  fields take more than one line has each field on one (§2.6).
 
 ```
 (* source *)                      (* formatted *)
@@ -117,7 +134,12 @@ Within that:
 - **Indentation** of each line is computed from the program's structure, not copied (§2.2–2.7). Each level is 4
   spaces.
 - **Continuations:** a line that continues a phrase begun on an earlier line is a *continuation*, indented 8 past
-  that phrase's first line, so it can't be mistaken for a body one level (4) deeper.
+  that phrase's first line, so it can't be mistaken for a body one level (4) deeper. A continuation that starts with
+  an infix operator is indented 4, since the operator already marks it, except in an `if`, `elsif`, or `while`
+  condition, where it stays at 8 past the keyword's line so that the line ending in `then` or `do` stands apart from
+  the body under it.
+- **Brackets:** a continuation inside a bracket that was opened on the phrase's line or after it, on an earlier line
+  than this one, is indented from the line where the bracket opened.
 - **Nested continuations:** a phrase nested in a continued one (a field of a tuple type inside a field's type)
   continues at its line's indentation, without stepping further right on every line.
 - **Long lines:** a line over 120 columns is broken (§3).
@@ -215,15 +237,40 @@ for i = 0 upto n - 1 do total := total + a[i] end
 ```
 
 - **`if`:** `elsif`, `else`, and `end` go at the `if`'s line's column. When its first arm's body starts a line, each
-  arm's does (§2.0); an `if` whose first arm stays on the `if`'s line keeps its arms as written.
+  arm's does (§2.0); an `if` whose first arm stays on the `if`'s line keeps its arms as written, one to a line.
 - **`end`:** a construct (`if`, `case`, `while`, `for`, `begin`, `try`, `tuple`, ...) any of whose bodies or fields
-  starts a line ends with `end` on a line of its own. A `when`, `elsif`, or `else` starting a line does not do this
-  alone, so a compact `if` or a `case` of one-line arms keeps `else z end`.
+  starts a line ends with `end` on a line of its own. So does an `if`, `case`, `inspect`, or `try` that starts a line
+  and has a later `elsif`, `else`, or `when` starting one. A compact `if` in the middle of a line keeps `else z end`.
+- **Lifted:** an `if`, `case`, `inspect`, or `try` of several lines after a `let`'s `=` or an assignment's `:=` starts
+  a line of its own, one level deeper. An `if` qualifies when its first arm's body starts a line; the others when they
+  break anywhere. A compact `if` stays where it is:
+
+  ```
+  let kind =
+      if x > 0 then
+          "positive"
+      else
+          "other"
+      end
+  let sign = if x > 0 then 1 else ~1 end
+  ```
+
+- **After an operator:** an `if` of several lines that is an infix operator's right operand (other than `:=`'s) starts
+  a line with that operator: `<> if c then`. One on a single line stays inline.
 - **`case` and `inspect`:** `when` and `else` go one level deeper than the head, and a `when` arm's body on lines of
   its own goes one level further.
 - **`try`:** `when` and `else` go at the `try` line's column, as the tree writes them.
 - **Loop bodies:** go one level deeper.
-- **Continued conditions:** a condition continued onto a later line is a continuation, at +8, below a body at +4.
+- **Continued conditions:** a condition continued onto a later line is a continuation, at +8, below a body at +4,
+  even when the line starts with an operator:
+
+  ```
+  if {slot >= 0} andif {word.toInt(word.xorBits(t.hashes[slot] h)) is 0}
+          andif m.equal(t.keys[slot] key) then
+      result := slot
+  end
+  ```
+
 - **A compact `if`** is one in the middle of a line whose first arm is on that same line (`let a = if c then x`). It
   continues: its `elsif`, `else`, and `end` go one level deeper than its line, and an arm's body on a later line goes
   one level past its `elsif` or `else`. Whether an `if` is compact depends on the output's lines, not the source's:
@@ -232,17 +279,20 @@ for i = 0 upto n - 1 do total := total + a[i] end
   let a = if c then x
       elsif d then y
       else z end
-  let b = if c then
-      x
-  else
-      y
-  end
   ```
 
 ### 2.5. Expressions
 
 - **Payloads:** the payload after a `raise`'s, an option's, or a variant's `with` on a line of its own is a body, one
   level deeper. A `with let ... end` payload's fields are indented as a tuple's.
+- **Operators** lead their lines: a broken chain has each later operand on a line starting with its operator, 4 past
+  the chain's first line (§2.0).
+
+  ```
+  diagnostics.fail("Case target must have Option or Variant type, got '" <> model.show(targetType)
+      <> "'" target.span.startOffset)
+  ```
+
 - **Call arguments:** an argument on a later line is a continuation. A `fun`'s or a `begin`'s body hangs from the
   line it starts on, and its `end` can close the call (`end)`).
 - **Literals** are copied as written (`0x1F`, `~3`, `1.5e~2`, escapes, strings spanning lines), never re-rendered.
@@ -251,8 +301,8 @@ for i = 0 upto n - 1 do total := total + a[i] end
 ### 2.6. Aggregates
 
 - **`tuple let ... end`:** a broken one has its fields one level deeper and its `end` at the opening line's column.
-  If its first field is on a line after `tuple`, each field gets a line of its own (§2.0); one written on its
-  `tuple`'s line keeps its fields as written.
+  If its fields take more than one line, `tuple` ends its line and each field gets a line of its own (§2.0). The
+  `with let ... end` payload of an option, a variant, or a `raise` is laid out the same way.
 - **`array of ... end`:** items go one level deeper, as many to a line as written.
 
 ### 2.7. Modules, interfaces, imports
@@ -391,12 +441,14 @@ options.
   `else`, an import item) between the nodes around them. A block of phrases the parser makes for a `then`, `when`, or
   `else` has the span of the construct around it, so its own extent is taken from its first and last phrases. The
   same walk records the colons that keep their spaces, the slashes of import paths, the sortable import lists, the
-  `end` that closes each body's or field's construct, and the parts (a tuple's fields, an `if`'s arms) that start
-  lines together.
+  `end` that closes each body's or field's construct, the parts (a tuple's fields, an `if`'s arms, its `elsif`s and
+  `else`) that start lines together, the constructs to lift (§2.4), the values after `=` that may join their line,
+  and the tokens of each condition.
 - **Format** (questlang/format/format) makes one sequence of tokens and comments, each with the line breaks before
-  it. It then removes the semicolons, sorts the imports, moves each `then` and `do`, adds the breaks of §2.0 (again
-  after each round of breaking long lines, since a break after a `then` starts a body), breaks the long lines, cuts the
-  sequence into lines, indents and spaces them, and aligns end-of-line comments.
+  it. It then sorts the imports, removes the semicolons, moves each `then` and `do`, moves operators to lead their
+  lines, adds the breaks of §2.0 and §2.4 (until none is asked for, since one break can call for another, and again
+  after each round of breaking long lines), breaks the long lines, joins values back after `=`, cuts the sequence
+  into lines, indents and spaces them, and aligns end-of-line comments.
 - **Checked before it is returned.** The output must tokenize to exactly the tokens intended, have the same number of
   comments, and parse. If it doesn't, `quest fmt` reports an internal error and leaves the file alone. Semicolons are
   removed only if the program without them parses to the same AST dump.
@@ -405,17 +457,16 @@ options.
 
 - **tests/source/questlang/format_cases.quest** formats one case for each rule above and then formats each result
   again, which must change nothing.
-- **The tree is not formatted yet.** When it is, tools/check will run `quest fmt --check` over questlang/, lib/,
-  tests/source/, and benchmarks/, failing on a file the formatter would change or cannot parse. Until then,
-  `./quest fmt --check questlang lib tests/source benchmarks` shows how far the tree is from the style, and
-  formatting each file a second time must change nothing.
+- **The tree is formatted.** tools/check runs `quest fmt --check` over questlang/, lib/, tests/source/, and
+  benchmarks/. A file the formatter would change fails the check, so formatting must also be idempotent over the
+  whole tree. A file that does not parse fails too.
 - **Generated tests** carry `@no-format` (§2.10) and are left as their generators write them.
 
 ## 6. Out of scope
 
 - Renaming, reordering declarations, or rewriting sugar (`let f = fun ...` stays as written). Imports are the only
   thing reordered.
-- Joining lines (except to move `then` and `do`), and reflowing comments.
+- Joining lines (except as §2.0 says), and reflowing comments.
 - UTF-8: widths count bytes, as in util/prettyPrint. The long-line breaker doesn't use util/prettyPrint: a break added
   to the token sequence and indented by the rules does what a document would, and keeps one source of truth for
   indentation.
