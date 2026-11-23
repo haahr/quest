@@ -1,0 +1,43 @@
+(* Standard library: string.equal and string.precedes: the same string, an
+ * empty one, a first byte that decides, bytes past it, and bytes above 127,
+ * which compare unsigned *)
+
+import conv : Conv
+import string : StringOp
+import writer : Writer
+
+let show(label: String b: Bool): Ok = writer.putString(writer.output label <> " " <> conv.bool(b) <> "\n")
+
+(* A string made at run time, not a literal: "abc" with its last byte set *)
+let made(last: Char): String =
+    begin
+        let s = string.new(3 'a')
+        string.setChar(s 1 'b')
+        string.setChar(s 2 last)
+        s
+    end
+
+let abc = made('c')
+let abd = made('d')
+show("equal same" string.equal(abc abc))
+show("equal copy" string.equal(abc "abc"))
+show("equal other" string.equal(abc abd))
+show("equal length" string.equal("ab" "abc"))
+show("equal empty" string.equal("" string.new(0 'x')))
+show("equal one empty" string.equal("" "a"))
+
+show("precedes same" string.precedes(abc abc))
+show("precedes copy" string.precedes(abc "abc"))
+show("precedes first byte" string.precedes("abc" "bbc"))
+show("precedes first byte back" string.precedes("bbc" "abc"))
+show("precedes past first" string.precedes(abc abd))
+show("precedes past first back" string.precedes(abd abc))
+show("precedes prefix" string.precedes("ab" "abc"))
+show("precedes prefix back" string.precedes("abc" "ab"))
+show("precedes empty" string.precedes("" "a"))
+show("precedes empty back" string.precedes("a" ""))
+show("precedes both empty" string.precedes("" string.new(0 'x')))
+show("precedes high byte" string.precedes("z" "\x80"))
+show("precedes high byte back" string.precedes("\x80" "z"))
+show("precedes nul" string.precedes("a\x00b" "a\x00c"))
+show("precedes as a value" {fun(f: All(a: String b: String) Bool): Bool f("b" "a")}(string.precedes))

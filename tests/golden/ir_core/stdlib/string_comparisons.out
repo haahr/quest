@@ -1,0 +1,78 @@
+import conv = "conv" : Conv
+import string = "string" : StringOp
+import writer = "writer" : Writer
+main {
+  funs {
+    fun show(label: String, b: Bool): Ok {
+      let %1: writer.T = member writer.output @9:56
+      let %2: String = call conv.bool(b) @9:86
+      let %3: String = prim <>(%2, "\n") @9:86
+      let %4: String = prim <>(" ", %3) @9:79
+      let %5: String = prim <>(label, %4) @9:70
+      let %6: Ok = call writer.putString(%1, %5) @9:39
+      return %6
+    }
+  }
+  funs {
+    fun made(last: Char): String {
+      let s: String = call string.new(3, 'a') @14:17
+      do call string.setChar(s, 1, 'b') @15:9
+      do call string.setChar(s, 2, last) @16:9
+      return s
+    }
+  }
+  let abc: String = call made('c') @20:11
+  let abd: String = call made('d') @21:11
+  let %7: Bool = call string.equal(abc, abc) @22:19
+  do call show("equal same", %7) @22:1
+  let %8: Bool = call string.equal(abc, "abc") @23:19
+  do call show("equal copy", %8) @23:1
+  let %9: Bool = call string.equal(abc, abd) @24:20
+  do call show("equal other", %9) @24:1
+  let %10: Bool = call string.equal("ab", "abc") @25:21
+  do call show("equal length", %10) @25:1
+  let %11: String = call string.new(0, 'x') @26:36
+  let %12: Bool = call string.equal("", %11) @26:20
+  do call show("equal empty", %12) @26:1
+  let %13: Bool = call string.equal("", "a") @27:24
+  do call show("equal one empty", %13) @27:1
+  let %14: Bool = call string.precedes(abc, abc) @29:22
+  do call show("precedes same", %14) @29:1
+  let %15: Bool = call string.precedes(abc, "abc") @30:22
+  do call show("precedes copy", %15) @30:1
+  let %16: Bool = call string.precedes("abc", "bbc") @31:28
+  do call show("precedes first byte", %16) @31:1
+  let %17: Bool = call string.precedes("bbc", "abc") @32:33
+  do call show("precedes first byte back", %17) @32:1
+  let %18: Bool = call string.precedes(abc, abd) @33:28
+  do call show("precedes past first", %18) @33:1
+  let %19: Bool = call string.precedes(abd, abc) @34:33
+  do call show("precedes past first back", %19) @34:1
+  let %20: Bool = call string.precedes("ab", "abc") @35:24
+  do call show("precedes prefix", %20) @35:1
+  let %21: Bool = call string.precedes("abc", "ab") @36:29
+  do call show("precedes prefix back", %21) @36:1
+  let %22: Bool = call string.precedes("", "a") @37:23
+  do call show("precedes empty", %22) @37:1
+  let %23: Bool = call string.precedes("a", "") @38:28
+  do call show("precedes empty back", %23) @38:1
+  let %24: String = call string.new(0, 'x') @39:47
+  let %25: Bool = call string.precedes("", %24) @39:28
+  do call show("precedes both empty", %25) @39:1
+  let %26: Bool = call string.precedes("z", "\u0080") @40:27
+  do call show("precedes high byte", %26) @40:1
+  let %27: Bool = call string.precedes("\u0080", "z") @41:32
+  do call show("precedes high byte back", %27) @41:1
+  let %28: Bool = call string.precedes("a\u0000b", "a\u0000c") @42:21
+  do call show("precedes nul", %28) @42:1
+  funs {
+    fun f(f.1: Fun(a: String b: String): Bool): Bool {
+      let %29: Bool = call f.1("b", "a") @43:73
+      return %29
+    }
+  }
+  let %30: Fun(s1: String s2: String): Bool = member string.precedes @43:85
+  let %31: Bool = call f(%30) @43:29
+  do call show("precedes as a value", %31) @43:1
+}
+

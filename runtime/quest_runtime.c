@@ -226,11 +226,18 @@ bool quest_string_precedes(const QString *s1, const QString *s2) {
         quest_raise_string_error();
     }
     int64_t min_len = s1->length < s2->length ? s1->length : s2->length;
-    int cmp = 0;
-    if (min_len > 0) {
-        cmp = memcmp(s1->data, s2->data, (size_t)min_len);
+    /* Strings a sorted structure compares mostly differ within their first
+     * few bytes, where a loop costs less than a call of memcmp */
+    const unsigned char *a = (const unsigned char *)s1->data;
+    const unsigned char *b = (const unsigned char *)s2->data;
+    int64_t prefix = min_len < 16 ? min_len : 16;
+    for (int64_t i = 0; i < prefix; ++i) {
+        if (a[i] != b[i]) return a[i] < b[i];
     }
-    if (cmp != 0) return cmp < 0;
+    if (min_len > 16) {
+        int cmp = memcmp(a + 16, b + 16, (size_t)(min_len - 16));
+        if (cmp != 0) return cmp < 0;
+    }
     return s1->length <= s2->length;
 }
 
