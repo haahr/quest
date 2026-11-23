@@ -335,12 +335,20 @@ address, with no load, where every option of that type that the program makes is
 `dynamic`, deserialization, or the runtime, which `whole` can see). It changes no layout and no ABI. Gain: about 4
 instructions per element of tyan's and lexgen's list walks.
 
-**Step 23, a component that is a `var` tuple made with its owner, flattened into it.** mpuz's `(v, ref false)` is two
-objects, the value and the tuple holding its `used` flag; MLton makes one. In Quest, the inner tuple's identity is
-observable (`is`, aliasing of its `var`), so it is flattened only where escape analysis shows the inner tuple is made
-with the outer one, stored nowhere else, and never compared by `is`, a whole-program fact. The step first finds how
-often the pattern occurs in the suite (a census of tuples stored only as one field of one other tuple made beside
-them); it is designed further only if more than mpuz has it.
+**Step 23, a tuple field made with its owner, allocated inside it.** mpuz's `(v, ref false)` is two objects, the value
+and the tuple holding its `used` flag, and reading the flag loads the inner tuple's address first; MLton makes one
+object. The inner tuple's identity is observable, but only in ways that sharing an allocation keeps: `is` and
+`identityHash` compare and hash its address, which stays its own; and a `var` component is shared by whoever holds the
+tuple (`let r = outer.r` then `r.used := true` shows through `outer.r.used`), which holds while it stays one object.
+What they rule out is copying the inner tuple's components into the outer one, not allocating them together.
+
+So the inner tuple is allocated after its owner, in the owner's allocation, as the represent pass does already for
+records' and variants' boxes (`embedded`, [c-representation.md](c-representation.md) §5.1), reached by an interior
+pointer that the start bitmap resolves. When the field is immutable and every owner is made with a fresh inner tuple
+(a local condition: an immutable tuple-typed field whose value, at every construction of the owner, is a tuple made in
+the same expression), `outer.r` is always `outer + k`, so `outer.r.used` is a load at a constant offset from `outer`,
+with no load of the inner tuple's address. The step first finds how often the pattern occurs in the suite (a census of
+such fields); it is designed further only if more than mpuz has it.
 
 **Step 24, tuple results returned in registers.** `tfoCombine` allocates its 12-real result (43 of its 287
 instructions); workers ([inlining.md](inlining.md) step 5) already return tuples unboxed, as several results. The
