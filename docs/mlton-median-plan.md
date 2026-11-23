@@ -68,7 +68,7 @@ let int(n: Int): String =
         let var m = if n < 0 then n else 0 - n end
         let var digits = 1
         let var rest = m / 10
-        while not(rest is 0) do
+        while rest isnot 0 do
             digits := digits + 1
             rest := rest / 10
         end
