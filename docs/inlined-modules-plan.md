@@ -7,7 +7,9 @@ command-line option that gives a program's own modules the same treatment, marke
 Self-hosted compiler only. The bootstrap is untouched: behavior goldens stay shared, and its output does not change.
 
 **Status (2026-11-23):** steps 1 to 5 are built, uncommitted, and paused while their build cost is weighed. §6 records
-what was built, where it departs from §§3 to 5, what was measured, and what was learned.
+what was built, where it departs from §§3 to 5, what was measured, and what was learned. §7 is a review of the plan
+by another session, with an experiment: most of the build's cost is paid before any function is copied, in the shapes
+of the unit's types.
 
 ## 1. What is measured already
 
@@ -524,3 +526,119 @@ held the machine at a load of 100 and more.
   `append`, `new`, or `toArray`); a back end whose liveness and allocation cost less on big functions, which whole
   programs would gain from too; or C above.
 - Whether whole programs' 3.6 times needs the same attention, now that it has been measured.
+
+## 7. A review, and where the cost is (2026-11-23)
+
+A review of this plan by another session, which then measured its own suggestion. The experiment's code is the WIP
+commit `f81c1591` with the working tree of that time (the no-effect experiments and the first cache reverted, A and B
+not in), uncommitted in the `inlined-modules-plan-review-7d6481` worktree.
+
+### 7.1. The review
+
+- **As built, the feature costs what a whole program costs and gives less.** §6.1's 3.4 times for 2.6 to 4.8%,
+  against `--whole-program`'s 3.6 times for 4.5% (benchmarks.md §36).
+- **The compiler's own gain is there for the asking.** `tools/release --whole-program` exists, and the current
+  release (`63d0105a`) was cut without it. A release pays the 3.6 times once.
+- **Importers depend on sources,** which is more than the bodies in `.qi` files that the tasklist set aside for
+  changing the model of separate compilation. The staleness rule, the loading of sources in C mode, the JIT's
+  failure (§6.3), and §6.6's caches all come from it.
+- **The risk is in the layouts.** Per-application transparency is 342 lines of `repr/shapes`, with records' names,
+  the C printer's aggregates, and the emptied cache. Both crashes of §6.2 were there.
+- **The IR, SSA, and code goldens run with `--no-inline-library`,** so no dump tests what a build does by default.
+- **The numbers disagree.** §6.4's table gives the inlined build 3,156 G, from before the collector's fix, and has
+  no row for §6.1's 3.4 times; benchmarks.md §39 gives the same build 1,442 G, which §6.6 now says was with the
+  first cache; and the whole program's 1,799 G does not say which runtime it had.
+
+The review guessed that the cost was the inliner's growth, and proposed copying only functions about as large as
+their calls. §7.2 shows the guess was mostly wrong.
+
+### 7.2. The floor: sources loaded, nothing copied
+
+`QUEST_COPY_SIZE=N` (an experiment's setting, in `ir/opened.copyOf`) leaves a function larger than N (the inliner's
+size) out of a copy, with the functions that use it, so that its calls stay calls of the compiled module. At 0 no
+function is copied: the unit elaborates and lowers the sources and sees through the abstract types, and that is all.
+One stage 2 built the driver four ways in one process (`-j 1`, arm64); instructions retired, which load does not
+change:
+
+| Build | Instructions | Against off | Peak memory | `__TEXT` |
+|---|---:|---:|---:|---:|
+| Off (`--no-inline-library`) | 491 G | 1.00 | 6.5 GB | 11.4 MB |
+| Floor (`QUEST_COPY_SIZE=0`) | 1,437 G | 2.93 | 6.3 GB | 11.8 MB |
+| Small (`QUEST_COPY_SIZE=15`) | 1,518 G | 3.09 | 6.7 GB | 13.1 MB |
+| Full, as built | 1,808 G | 3.68 | 15.2 GB | 15.5 MB |
+
+Of the 1,317 G that the full build costs over none, 946 G is paid at the floor. The inliner's growth, which §6.5
+calls what is left, is the other 371 G, and most of the memory.
+
+**It is not elaboration.** A program of one unit that uses `vector` and `maybe` costs 2.47 G to build off and 3.06 G
+at the floor: about 0.2 G for each of the three units that load sources. The compiler's 182 such units would cost
+about 36 G at that rate, not 946 G.
+
+**It is the shapes.** Sampled for four minutes (`sample`, whose call tree attributes static functions), the floor
+build spent about 65% of its running samples under `shapes.openedTransparent`, nearly all in
+`model.substituteFiltered`, called from `shapeIn` when a type has no cached shape, on behalf of descriptors,
+represent, describe, and the SSA builder alike. Two things make that dear:
+
+- `shapes.shape` empties its cache whenever `abstractTypes.representationCount()` changes, and each unit that
+  elaborates the three sources registers their representations again. So every unit makes each of its shapes again.
+- A miss walks the whole type (`anyWithin`), substitutes through it, and canonicalizes the new type. The compiler's
+  types are large (`nodes.Op`, the typed AST's), and nearly all of them hold a `vector.T` or a `maybe.T` somewhere.
+
+§6.5 lists the cache's emptying and the repeated substitution as not the cause. Those were judged before the
+collector's fix, when its scan was 65% of the samples, and the memo that "changed nothing" was emptied by the same
+count. This also explains why §6.6's caches save far more than elaboration costs: a hit registers nothing, so the
+shapes survive.
+
+### 7.3. What each compiler gains
+
+Each of the four compilers then built the tree with `--no-inline-library`, the same work, three times (G
+instructions):
+
+| Compiler built | Runs | Median | Against off |
+|---|---|---:|---:|
+| Off | 531.9, 491.3, 490.8 | 491.3 | |
+| Floor | 496.2, 488.1, 493.3 | 493.3 | +0.4% |
+| Small | 477.0, 479.8, 472.2 | 477.0 | −2.9% |
+| Full | 462.3, 458.3, 478.9 | 462.3 | −5.9% |
+
+The runs spread widely (one of Off's is 8% high), so this is an ordering more than a measurement: functions of size
+15 or less (`maybe`'s members, `vector`'s `length`, `get`, `set`, `first`, `last`) give about half of the gain, for
+82 G of build over the floor where the full list takes 371 G.
+
+### 7.4. A fix tried, which is not one
+
+Emptying the cache only when a symbol gets its first representation (`abstractTypes.firstRepresentationCount`), not
+at every registration:
+
+| Build | Before | With it | Against off |
+|---|---:|---:|---:|
+| Off | 491 G | 476 G | 1.00 |
+| Floor | 1,437 G | 1,188 G | 2.50 |
+| Small | 1,518 G | 1,288 G | 2.71 |
+| Full | 1,808 G | 1,611 G | 3.39 |
+
+- **It saves 11 to 17%, and leaves the floor at 2.5 times.** Sampled again, the floor build is still 57% under
+  `openedTransparent`: each unit's types are new nodes, so they miss whether or not the cache was emptied, and a miss
+  is what costs.
+- **It changes the code of 68 units** of the small and full builds, where only the two edited modules' should
+  differ. With shapes kept across units, a unit's code depends on what the process compiled before it, which
+  emptying the cache at every unit was hiding. The fix is not usable as it is, and the dependence is the kind the
+  fixed points forbid between `-j 1` and `-j 8`. Whether §6.6's B has the same exposure, since its hits also keep
+  shapes across units, was not checked.
+
+### 7.5. What this suggests
+
+- **The cost to remove first is transparency's, not elaboration's or the inliner's.** Substituting through a type
+  before taking its shape costs in proportion to the type, at every new type node. A shape built structurally, which
+  takes an opened type's representation where it meets an application whose layouts agree and shares the shapes of
+  the parts, would not. Or no transparency at all outside whole programs: every shape opaque, a copy's body meeting
+  the unit's values through the coercion represent already has, whose plan is none where `genericLayoutAgrees`
+  (`represent.abstractPlan`), and calls left alone where it does not, as `disagreesAt` leaves them now. That is §4's
+  step 3, which was never measured alone; whether the inliner's test of equal shapes passes that way is unchecked.
+- **Whole programs may pay the same way.** `shapes.transparent` substitutes before the cache too. Their 3.6 times was
+  not profiled here.
+- **A small list of small functions is a real option** once the floor is gone: half the gain for a fifth of the
+  growth, and none of the big functions that the back end is slow on.
+- **Unmeasured:** `benchmarks/iter` under the small setting (its `map` and `filter` need bodies larger than 15); any
+  timing, the machine being at a load of 50 to 130 throughout; and no build here ran a test suite.
+
