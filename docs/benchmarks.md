@@ -3768,3 +3768,56 @@ and most variants are within 3%. What is left:
   but of Quest's own loops.
 - **imp-for through arm64** retires 324 times ssac's instructions in all three forms, about 5 an innermost pass: clang
   computes the nest's result without the loops, as it does fib's (§2.3). Not a cost of the form either.
+
+## 43. Library modules inlined into their importers (2026-11-23)
+
+A separately compiled unit copies the small functions of `util/maybe`, `util/iter`, and `collections/vector` from
+their sources, for its inliner and specializer (ir.md §8.6). Counts are instructions retired (`/usr/bin/time -l`), in
+one process (`-j 1`, arm64), which load does not change; the seconds are from a machine other sessions were using.
+
+**The build's cost and the compiler's gain.** Stage 2 building the driver with no inlined modules
+(`--no-inline-library`) and by default, then each of those two compilers building the same tree with no inlined
+modules, three runs:
+
+| | No inlined modules | Default |
+|---|---:|---:|
+| Building the driver | 433.9 G | 577.3 G (1.33×) |
+| Seconds | 66 | 82 |
+| Peak memory | 4.1 GB | 5.6 GB |
+| `__TEXT` | 10.8 MB | 12.0 MB |
+| The compiler built, building the tree | 452.4, 452.6, 481.6 G | 434.2, 436.6, 436.9 G |
+
+3.5% fewer by the medians. A compiler's count varies by 4%, sometimes 8%, with its addresses, and an earlier pair of
+three runs each gave 514 G and 477 G, 7% fewer. The two compilers write the same assembly, objects, and manifests for
+the tree's 216 units.
+
+**The bound on what is copied** (`QUEST_INLINE`'s `copy`, one bound for every module; before the rebase onto
+`f7f14565`, so its counts are a little higher). The build's cost grows with the bound, and most of the gain is in
+the smallest functions:
+
+| `copy` | Building the driver | Peak memory | `__TEXT` | The compiler built, median of 3 |
+|---|---:|---:|---:|---:|
+| no inlined modules | 456 G | 4.4 GB | 11.4 MB | 514 G |
+| 0 (sources loaded, nothing copied) | 510 G (1.12×) | 5.0 GB | 11.4 MB | |
+| 5 | 545 G (1.19×) | 4.9 GB | 12.3 MB | 510 G |
+| 15 | 592 G (1.30×) | 6.2 GB | 12.9 MB | 477 G |
+| 30 | 652 G (1.43×) | 9.3 GB | 13.5 MB | 473 G |
+| 60 | 833 G (1.83×) | 13.2 GB | 15.4 MB | 466 G |
+| none | 840 G (1.84×) | 14.2 GB | 15.4 MB | 463 G |
+
+`maybe` and `vector` are bounded at 15, which leaves `vector.append` a call.
+
+**`benchmarks/iter`,** instructions per element, each build made clean. `util/iter`'s stages are larger than 30, and
+with them copied a separately compiled pipeline is a whole program's, so `util/iter` has no bound:
+
+| Workload | No inlined modules | `copy` 15 | 30 | 60 | Default (`util/iter` unbounded) | Whole program |
+|---|---:|---:|---:|---:|---:|---:|
+| `map` | 83.1 | 29.1 | 15.1 | 9.1 | 9.1 | 9.1 |
+| `filter` | 151.6 | 125.6 | 117.6 | 44.1 | 44.1 | 44.1 |
+| `sumInt` | 140.1 | 125.1 | 117.1 | 44.1 | 44.1 | 44.1 |
+
+**A first design, not kept,** made the unit's shapes see through the modules' abstract types where their layouts
+agree, as a whole program's do. It gained the same and cost 3.4 times a build without copies (1,437 G with the
+sources loaded and nothing copied, 1,808 G with no bound, against 491 G): 65% of that build's samples were in the
+substitution through each type before its shape was taken. Now every shape stays opaque, and a copy's code meets the
+unit's values through represent's conversions, which change no value where the layouts agree.

@@ -20,6 +20,7 @@ import
     questlang/common/location : questlang/common/Location
     questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/inlined : questlang/modules/Inlined
     questlang/modules/paths : questlang/modules/Paths
     questlang/modules/units : questlang/modules/Units
     questlang/repr/externals : questlang/repr/Externals
@@ -644,13 +645,16 @@ export
     (* Declares localName in scope as the module modPath, which implements the
      * interface ifacePath (whose scope is ifaceScope), and returns its symbol,
      * of the module's record type. Its source is loaded first, unless the
-     * unit is compiled to C, where the module is typed through its interface,
-     * or it is typed already. It is registered by its path and its local
-     * name. *)
+     * unit is compiled to C, where the module is typed through its interface
+     * (but for an inlined module's, modules/inlined), or it is typed
+     * already. It is registered by its path and its local name. *)
     let bindImportedModule(localName: String modPath: String ifacePath: String ifaceScope: Scope scope: Scope e: env.T):
             symbols.ValueSymbol =
         begin
-            if not(e.compilingC) andif maybe.isNone(graph.typedModule(e.units modPath)) then
+            (* Compiled to C, an inlined module's source is loaded too, for
+             * the unit to copy from (ir/opened) *)
+            let opened = e.compilingC andif e.openInlined andif inlined.isInlined(modPath)
+            if {not(e.compilingC) orif opened} andif maybe.isNone(graph.typedModule(e.units modPath)) then
                 loadModule(modPath ifacePath e)
                 ok
             end

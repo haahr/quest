@@ -37,6 +37,9 @@ export
         verbose: Bool
         jobs: Int
         wholeProgram: Bool
+        apart: Array(String)
+        inlineModules: Array(String)
+        inlineLibrary: Bool
         backends: choice.T
         wasmEngine: String
         runWasm: Bool
@@ -152,6 +155,8 @@ export
         "  --variant U=V        compile module U from its variant V, U.V.mod.quest"
         "  --wasm-engine E      run a wasm program in E: wasmtime (the default) or node"
         "  --whole-program      compile the program and its modules as one unit"
+        "  --inline-module M    inline module M into the units that import it, compiled separately"
+        "  --no-inline-library  inline none of the library's modules (util/maybe, util/iter, collections/vector)"
         "  -o FILE              write the binary to FILE"
         "  -c                   compile without linking"
         "  -I DIR               look for modules in DIR too"
@@ -199,6 +204,9 @@ export
             let var verbose = false
             let var jobs = 1
             let var wholeProgram = false
+            let apart = vector.new(:String)
+            let inlineModules = vector.new(:String)
+            let var inlineLibrary = true
             let var backend = "arm64"
             let var backendGiven = false
             let var wasmEngine = "wasmtime"
@@ -279,6 +287,17 @@ export
                     i := i + 2
                 elsif strings.isOneOf(arg array of "--whole-program" "--whole_program" end) then
                     wholeProgram := true
+                    i := i + 1
+                elsif stringOp.equal(arg "--apart") andif valued then
+                    (* A module a whole program compiles apart *)
+                    vector.append(apart system.args[i + 1])
+                    i := i + 2
+                elsif stringOp.equal(arg "--inline-module") andif valued then
+                    (* A module its separately compiled importers inline *)
+                    vector.append(inlineModules system.args[i + 1])
+                    i := i + 2
+                elsif stringOp.equal(arg "--no-inline-library") then
+                    inlineLibrary := false
                     i := i + 1
                 elsif stringOp.equal(arg "--backend") andif valued then
                     (* The backend every unit is compiled by (codegen/choice) *)
@@ -483,6 +502,9 @@ export
                 let verbose = verbose
                 let jobs = jobs
                 let wholeProgram = wholeProgram
+                let apart = vector.toArray(apart)
+                let inlineModules = vector.toArray(inlineModules)
+                let inlineLibrary = inlineLibrary
                 let backends = tuple
                     let default = backend
                     let overrides = vector.toArray(unitBackends)

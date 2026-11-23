@@ -1,0 +1,83 @@
+(* Quest Self-Hosted Compiler: Inlined Modules Implementation *)
+
+module inlined : Inlined
+import
+    ascii : Ascii
+    stringOp = string : StringOp
+
+    collections/vector : collections/Vector
+    stringBuilder = util/stringBuilder : util/StringBuilder
+export
+    let library = array of "util/maybe" "util/iter" "collections/vector" end
+    let defaultBound = 15
+    let noBound = ~1
+
+    (* A name's key: a module's canonical name is matched in any case, as
+     * imports name it, and its interface's then names it too
+     * (collections/Vector); modules/paths' lower, which imports this *)
+    let lower(s: String): String =
+        begin
+            let b = stringBuilder.new()
+            for i = 0 upto {stringOp.length(s) - 1} do
+                let ch = stringOp.getChar(s i)
+                let code = ascii.val(ch)
+                stringBuilder.char(b if {code >= 65} andif {code <= 90} then ascii.char(code + 32) else ch end)
+            end
+            stringBuilder.toString(b)
+        end
+
+    (* The names set, each with its key *)
+    let chosen = vector.new(:String)
+    let keys = vector.new(:String)
+
+    let add(name: String): Ok =
+        begin
+            let key = lower(name)
+            let var found = false
+            for i = 0 upto {vector.length(keys) - 1} do
+                if stringOp.equal(vector.get(keys i) key) then found := true end
+            end
+            if not(found) then
+                vector.append(chosen name)
+                vector.append(keys key)
+            end
+        end
+
+    let setInlined(withLibrary: Bool extra: Array(String)): Ok =
+        begin
+            vector.clear(chosen)
+            vector.clear(keys)
+            if withLibrary then
+                for i = 0 upto {extent library - 1} do add(library[i]) end
+            end
+            for i = 0 upto {extent extra - 1} do add(extra[i]) end
+        end
+
+    let copyBound(canonical: String): Int =
+        if stringOp.equal(lower(canonical) "util/iter") then noBound else defaultBound end
+
+    let isInlined(canonical: String): Bool =
+        begin
+            let key = lower(canonical)
+            let var found = false
+            for i = 0 upto {vector.length(keys) - 1} do
+                if stringOp.equal(vector.get(keys i) key) then found := true end
+            end
+            found
+        end
+
+    let names(): Array(String) = vector.toArray(chosen)
+
+    let isIn(names: Array(String) name: String): Bool =
+        begin
+            let key = lower(name)
+            let var found = false
+            for i = 0 upto {extent names - 1} do
+                if stringOp.equal(lower(names[i]) key) then found := true end
+            end
+            found
+        end
+
+    (* The library's, until the driver sets them *)
+    let initialized: Ok = setInlined(true array of :String end)
+end

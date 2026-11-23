@@ -3212,6 +3212,14 @@ export
                 for i = 0 upto {extent p.unit.imports - 1} do
                     add(res "    qv_mod_" <> symbols.mangleModuleName(p.unit.imports[i].canonicalPath) <> "_init();")
                 end
+                (* and the copies of inlined modules the unit holds
+                 * (ir/opened), which read the modules' members *)
+                for i = 0 upto {vector.length(p.unit.modules) - 1} do
+                    let o = vector.get(p.unit.modules i)
+                    if maybe.isSome(nodes.openedModuleName(o)) then
+                        add(res "    qv_mod_" <> symbols.mangleModuleName(o.name) <> "_init();")
+                    end
+                end
             end
             addAll(res top.lines)
             (* The record the initializer made last, if it has one (a whole

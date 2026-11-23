@@ -6,7 +6,7 @@ What a pipeline of iterators costs per element, against a loop written out ([doc
 | Path | What |
 |---|---|
 | `iter.quest` | The workloads: `PROGRAM WORKLOAD N` runs the workload over the integers below N and prints its sum |
-| `run.py` | The runner: it builds `iter.quest` as separate units and with `--whole-program`, runs each workload once in each, checks that both builds print the same sum, and prints the instructions retired per element and the seconds |
+| `run.py` | The runner: it builds `iter.quest` as separate units (inlining `util/maybe`, `util/iter`, and `collections/vector`, docs/ir.md §8.6), as separate units inlining none (`--no-inline-library`), and with `--whole-program`, runs each workload once in each, checks that the builds print the same sum, and prints the instructions retired per element and the seconds |
 
 ```bash
 benchmarks/iter/run.py

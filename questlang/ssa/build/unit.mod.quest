@@ -443,6 +443,15 @@ export
                                         vals.callOwn(fn "qv_mod_"
                                             <> symbols.mangleModuleName(unit.imports[j].canonicalPath) <> "_init")
                                     end
+                                    (* and the copies of inlined modules the unit
+                                     * holds (ir/opened), which read the modules'
+                                     * members *)
+                                    for j = 0 upto {vector.length(unit.modules) - 1} do
+                                        let o = vector.get(unit.modules j)
+                                        if maybe.isSome(ir.openedModuleName(o)) then
+                                            vals.callOwn(fn "qv_mod_" <> symbols.mangleModuleName(o.name) <> "_init")
+                                        end
+                                    end
                                 end
                             end
                         fun(fn: vals.Fn): Ok

@@ -347,8 +347,10 @@ The tree-walking interpreters locate it at the call that would have gone too dee
 offsets, so theirs has no site. The limit is the same in both implementations so that their output agrees, and low
 enough for both to reach it before their own stacks run out: the bootstrap raises Python's recursion limit to 50
 frames per call, and a `RecursionError` that comes first (a body of very deeply nested blocks) is raised as
-`stack.overflow` too; the self-hosted interpreter, compiled code itself, uses about 2 KB of C stack per call of a
-simple function, well within the 8 MB of the main thread's.
+`stack.overflow` too; the self-hosted interpreter, compiled code itself, uses about 10 KB of C stack per call of
+a simple function (with `util/maybe`, `util/iter`, and `collections/vector` inlined into its units), within the main
+thread's stack, which both compilers link every program with at 64 MB on macOS (`-Wl,-stack_size`,
+`compilerRunner.stackFlags`; the system's 8 MB held barely 1,000 such calls).
 
 **Compiled code ends.** Compiled code does not count its calls. Runaway recursion runs into the guard page below the
 main thread's stack, and a handler for the fault, on a signal stack of its own (`quest_install_stack_guard` in

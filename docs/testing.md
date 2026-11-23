@@ -445,7 +445,7 @@ specific to certain phases), tests can include in-file phase skipping directives
 - **Golden Management**: When updating goldens with `--update-golden`, skipped phases are ignored and will not
   generate unexpected `.out` files.
 
-### 2.5. Host-Environment Directives (`@args`, `@env`, `@exit`, `@stdin`, `@echo`)
+### 2.5. Host-Environment Directives (`@args`, `@env`, `@exit`, `@stdin`, `@echo`, `@inline-module`)
 Tests that interact with host OS primitives (command-line arguments, environment variables, exit codes, and standard
 input) can specify host execution requirements via top-level comment directives:
 
@@ -499,6 +499,13 @@ input) can specify host execution requirements via top-level comment directives:
   module's `T`) is `<hidden>`, and an auto value names its type component as its runtime descriptor does. Compiled
   code writes compound values from their type descriptors (`quest_print_typed`), including tuples' type components
   (`Let A = Int`).
+
+- **Inlined Modules (`(* @inline-module: M *)`, `(* @inline-library *)`)**:
+  For the self-hosted driver, `@inline-module` passes `--inline-module M` in every phase, so that the units importing
+  `M` inline it ([inlined-modules-plan.md](inlined-modules-plan.md)). The phases that print what the compiler makes
+  (the IR stages, the SSA, code) run with `--no-inline-library`, so that their goldens do not change with the bodies
+  of `util/maybe`, `util/iter`, and `collections/vector`; `@inline-library` keeps the library's inlined there too. The
+  bootstrap ignores both, so a behavior golden is the same either way.
 
 ### 2.6. Interfaces and Modules Used by Tests
 A test can import interfaces and modules defined in `.int.quest` and `.mod.quest` files beside it, found by the

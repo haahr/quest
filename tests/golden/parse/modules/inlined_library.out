@@ -1,0 +1,310 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+        (ImportItem ('vector') 'Vector' ('collections/vector') 'collections/Vector')
+        (ImportItem ('maybe') 'Maybe' ('util/maybe') 'util/Maybe')
+      )
+    )
+    (LetValueBinding
+      :name 'say'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'total'
+      :value (ExprBlock
+        :bindings (
+          (LetValueBinding
+            :name 'sum'
+            :value (ExprInt 0 '0')
+            :is_var True
+          )
+          (ExprStmt
+            :expr (ExprFor
+              :var_name 'i'
+              :start (ExprInt 0 '0')
+              :stop (ExprInfix
+                :left (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'vector')
+                    :field 'length'
+                  )
+                  :args (
+                    (ExprId 'v')
+                  )
+                )
+                :op '-'
+                :right (ExprInt 1 '1')
+              )
+              :body (ExprInfix
+                :left (ExprId 'sum')
+                :op ':='
+                :right (ExprInfix
+                  :left (ExprId 'sum')
+                  :op '+'
+                  :right (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'vector')
+                      :field 'get'
+                    )
+                    :args (
+                      (ExprId 'v')
+                      (ExprId 'i')
+                    )
+                  )
+                )
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprId 'sum')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'v'
+          :type_annot (TypeApp
+            :constructor (TypePath ('vector' 'T'))
+            :arguments (
+              (TypePath ('Int'))
+            )
+          )
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+    )
+    (LetValueBinding
+      :name 'orZero'
+      :value (ExprIf
+        :cond (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'maybe')
+            :field 'isSome'
+          )
+          :args (
+            (ExprId 'm')
+          )
+        )
+        :then_branch (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'maybe')
+            :field 'unwrap'
+          )
+          :args (
+            (ExprId 'm')
+          )
+        )
+        :else_branch (ExprReal 0.0 '0.0')
+      )
+      :params (
+        (FormalParam
+          :name 'm'
+          :type_annot (TypeApp
+            :constructor (TypePath ('maybe' 'T'))
+            :arguments (
+              (TypePath ('Real'))
+            )
+          )
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Real'))
+    )
+    (LetValueBinding
+      :name 'v'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'new'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprFor
+        :var_name 'i'
+        :start (ExprInt 1 '1')
+        :stop (ExprInt 10 '10')
+        :body (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'vector')
+            :field 'append'
+          )
+          :args (
+            (ExprId 'v')
+            (ExprInfix
+              :left (ExprId 'i')
+              :op '*'
+              :right (ExprId 'i')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'say')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'conv')
+              :field 'int'
+            )
+            :args (
+              (ExprApp
+                :func (ExprId 'total')
+                :args (
+                  (ExprId 'v')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'r'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'new'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('Real'))
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'vector')
+          :field 'append'
+        )
+        :args (
+          (ExprId 'r')
+          (ExprReal 2.5 '2.5')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'say')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'conv')
+              :field 'real'
+            )
+            :args (
+              (ExprInfix
+                :left (ExprApp
+                  :func (ExprId 'orZero')
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'maybe')
+                        :field 'some'
+                      )
+                      :args (
+                        (ExprApp
+                          :func (ExprSelect
+                            :target (ExprId 'vector')
+                            :field 'get'
+                          )
+                          :args (
+                            (ExprId 'r')
+                            (ExprInt 0 '0')
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+                :op '++'
+                :right (ExprApp
+                  :func (ExprId 'orZero')
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'maybe')
+                        :field 'none'
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'say')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'conv')
+              :field 'int'
+            )
+            :args (
+              (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'maybe')
+                  :field 'unwrapOr'
+                )
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'maybe')
+                      :field 'none'
+                    )
+                    :args (
+                      (TypeArgument
+                        :type_val (TypePath ('Int'))
+                      )
+                    )
+                  )
+                  (ExprInt 7 '7')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

@@ -1,0 +1,126 @@
+import openedState = "openedState" : OpenedState
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+module opened/tests/source/modules/openedstate : OpenedState {
+  let error: Exception = member openedState.error @1:3:28
+  let label: String = member openedState.label @1:4:17
+  funs {
+    fun check(n: Int): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        let %1: Bool = prim <(n, 0) @1:5:33
+        if %1 { @1:5:30
+          raise error @1:5:44
+        } else {
+          let %2: Int = prim *(2, n) @1:5:65
+          jump k1(%2) @1:5:30
+        }
+      }
+    }
+  }
+  funs {
+    fun isLabel(s: String): Bool {
+      let %3: Bool = prim is(s, label) @1:6:36
+      return %3
+    }
+  }
+  funs {
+    fun wrap [A::TYPE](x: A): T(A) {
+      funs {
+        fun get(): A {
+          return x
+        }
+      }
+      let %4: Tuple get: Fun(): A end = tuple(get) @1:11:37
+      return %4
+    }
+  }
+  funs {
+    fun apply [A::TYPE](t: T(A)): A {
+      let %5: Fun(): A = tuple_field(t, 0) @1:12:38
+      let %6: A = call %5() @1:12:38
+      return %6
+    }
+  }
+  export error = error, label = label, check = check, isLabel = isLabel, wrap = wrap, apply = apply
+}
+main {
+  funs {
+    fun say(s.1: String): Ok {
+      let %7: writer.T = member writer.output @11:43
+      let %8: String = prim <>(s.1, "\n") @11:57
+      let %9: Ok = call writer.putString(%7, %8) @11:26
+      return %9
+    }
+  }
+  let %10: Int = call opened/tests/source/modules/openedstate.check(21) @12:14
+  let %11: String = call conv.int(%10) @12:5
+  do call say(%11) @12:1
+  join k1(r.1: String) {
+    do call say(r.1) @13:1
+    join k2(r.2: String) {
+      do call say(r.2) @14:1
+      let %12: Int = call openedState.bump() @15:1
+      let %13: Int = call openedState.bump() @16:1
+      let %14: Int = call openedState.counted(5) @17:14
+      let %15: String = call conv.int(%14) @17:5
+      do call say(%15) @17:1
+      join k3(r.3: String) {
+        do call say(r.3) @18:1
+        let %16: openedState.T(Int) = call opened/tests/source/modules/openedstate.wrap [Int](7) @19:32
+        let %17: Int = call opened/tests/source/modules/openedstate.apply [Int](%16) @19:14
+        let %18: String = call conv.int(%17) @19:5
+        do call say(%18) @19:1
+        let %19: openedState.T(Real) = call openedState.wrap [Real](2.5) @20:33
+        let %20: Real = call openedState.apply [Real](%19) @20:15
+        let %21: String = call conv.real(%20) @20:5
+        do call say(%21) @20:1
+        let %22: openedState.T(Real) = call openedState.wrap [Real](1.25) @21:40
+        let %23: Real = call openedState.applyCounted [Real](%22) @21:15
+        let %24: String = call conv.real(%23) @21:5
+        do call say(%24) @21:1
+        let %25: Int = call openedState.bump() @22:14
+        let %26: String = call conv.int(%25) @22:5
+        do call say(%26) @22:1
+      } in {
+        let %27: Exception = member openedState.error @18:47
+        try catching (%27) {
+          let %28: Int = call openedState.counted(1) @18:18
+          let %29: String = call conv.int(%28) @18:9
+          jump k3(%29) @18:5
+        } handle (e: Exception) {
+          let %30: Bool = prim is(e, %27) @18:5
+          if %30 { @18:5
+            jump k3("caught error from compiled code") @18:5
+          } else {
+            reraise e @18:5
+          }
+        }
+      }
+    } in {
+      let %31: String = member openedState.label @14:28
+      let %32: Bool = call opened/tests/source/modules/openedstate.isLabel(%31) @14:8
+      if %32 { @14:5
+        jump k2("label is the module's") @14:5
+      } else {
+        jump k2("label copied") @14:5
+      }
+    }
+  } in {
+    let %33: Exception = member openedState.error @13:46
+    try catching (%33) {
+      let %34: Int = call opened/tests/source/modules/openedstate.check(-1) @13:18
+      let %35: String = call conv.int(%34) @13:9
+      jump k1(%35) @13:5
+    } handle (e.1: Exception) {
+      let %36: Bool = prim is(e.1, %33) @13:5
+      if %36 { @13:5
+        jump k1("caught error from copied code") @13:5
+      } else {
+        reraise e.1 @13:5
+      }
+    }
+  }
+}
+

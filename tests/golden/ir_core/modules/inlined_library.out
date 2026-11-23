@@ -1,0 +1,186 @@
+import conv = "conv" : Conv
+import vector = "collections/vector" : collections/Vector
+import iterLib = "util/iter" : util/Iter
+import stringOp = "string" : StringOp
+import maybe = "util/maybe" : util/Maybe
+import writer = "writer" : Writer
+module opened/util/maybe : Maybe {
+  let error: Exception = member maybe.error @3:2:28
+  funs {
+    fun isSome [A::TYPE](o: T(A)): Bool {
+      let %1: Bool = is_tag(o, some) @3:10:9
+      return %1
+    }
+  }
+  funs {
+    fun unwrap [A::TYPE](o.1: T(A)): A {
+      join k1(r: A) {
+        return r
+      } in {
+        let %2: Bool = is_tag(o.1, some) @3:16:12
+        if %2 { @3:16:9
+          let %3: Tuple Int val: A end = payload(o.1, some) #1 @3:17:13
+          let %4: A = tuple_field(%3, 1) @3:17:13
+          jump k1(%4) @3:16:9
+        } else {
+          raise error @3:19:13
+        }
+      }
+    }
+  }
+  funs {
+    fun unwrapOr [A::TYPE](o.2: T(A), default: A): A {
+      join k2(r.1: A) {
+        return r.1
+      } in {
+        let %5: Bool = is_tag(o.2, some) @3:23:12
+        if %5 { @3:23:9
+          let %6: Tuple Int val: A end = payload(o.2, some) #1 @3:24:13
+          let %7: A = tuple_field(%6, 1) @3:24:13
+          jump k2(%7) @3:23:9
+        } else {
+          jump k2(default) @3:23:9
+        }
+      }
+    }
+  }
+  funs {
+    fun some [A::TYPE](val: A): T(A) {
+      let val.1: A = val @3:30:44
+      let %8: Tuple val: A end = tuple(val.1) @3:30:9
+      let %9: T(A) = option(some, %8) @3:30:9
+      return %9
+    }
+  }
+  funs {
+    fun none [A::TYPE](): T(A) {
+      let %10: T(A) = option(none) @3:33:9
+      return %10
+    }
+  }
+  export error = error, isSome = isSome, unwrap = unwrap, unwrapOr = unwrapOr, some = some, none = none
+}
+module opened/util/iter : Iter {
+  export 
+}
+module opened/collections/vector : Vector {
+  let error.1: Exception = member vector.error @1:36:28
+  funs {
+    fun new [A::TYPE](): T(A) {
+      let data: Array(A) = array() @1:41:24
+      let length: Int = 0 @1:42:26
+      let capacityHint: Int = 0 @1:43:32
+      let %11: Tuple var data: Array(A) var length: Int var capacityHint: Int end = tuple(data, length, capacityHint) @1:40:9
+      return %11
+    }
+  }
+  funs {
+    fun length.1 [A::TYPE](v: T(A)): Int {
+      let %12: Int = tuple_field(v, 1) @1:56:9
+      return %12
+    }
+  }
+  funs {
+    fun get [A::TYPE](v.1: T(A), index: Int): A {
+      join k2(r.2: A) {
+        return r.2
+      } in {
+        let %13: Bool = prim <(index, 0) @1:64:13
+        let %14: Int = tuple_field(v.1, 1) @1:64:37
+        let %15: Bool = prim >=(index, %14) @1:64:28
+        let %16: Bool = prim \/(%13, %15) @1:64:13
+        if %16 { @1:64:9
+          raise error.1 @1:65:13
+        } else {
+          let %17: Array(A) = tuple_field(v.1, 0) @1:67:13
+          let %18: A = index(%17, index) @1:67:13
+          jump k2(%18) @1:64:9
+        }
+      }
+    }
+  }
+  export error = error.1, new = new, length = length.1, get = get
+}
+main {
+  funs {
+    fun say(s: String): Ok {
+      let %19: writer.T = member writer.output @15:43
+      let %20: String = prim <>(s, "\n") @15:57
+      let %21: Ok = call writer.putString(%19, %20) @15:26
+      return %21
+    }
+  }
+  funs {
+    fun total(v.2: vector.T(Int)): Int {
+      var sum: Int = 0 @19:9
+      let %22: Int = call opened/collections/vector.length [Int](v.2) @20:25
+      let %23: Int = prim -(%22, 1) @20:25
+      var i: Int = 0 @20:9
+      let %24: Bool = prim <=(i, %23) @20:9
+      if %24 { @20:9
+        loop L1 {
+          let i.1: Int = i @20:9
+          let %25: Int = call opened/collections/vector.get [Int](v.2, i.1) @20:63
+          let %26: Int = prim +(sum, %25) @20:57
+          sum := %26 @20:50
+          let %27: Bool = prim is(i, %23) @20:9
+          if %27 { @20:9
+            break L1 @20:9
+          }
+          let %28: Int = prim +(i, 1) @20:9
+          i := %28 @20:9
+        }
+      }
+      return sum
+    }
+  }
+  funs {
+    fun orZero(m: maybe.T(Real)): Real {
+      join k1(r.3: Real) {
+        return r.3
+      } in {
+        let %29: Bool = call opened/util/maybe.isSome [Real](m) @24:41
+        if %29 { @24:38
+          let %30: Real = call opened/util/maybe.unwrap [Real](m) @24:62
+          jump k1(%30) @24:38
+        } else {
+          jump k1(0.0) @24:38
+        }
+      }
+    }
+  }
+  let v.3: vector.T(Int) = type_app opened/collections/vector.new [Int] @26:9
+  var i.2: Int = 1 @27:1
+  let %31: Bool = prim <=(i.2, 10) @27:1
+  if %31 { @27:1
+    loop L2 {
+      let i.3: Int = i.2 @27:1
+      let %32: Int = prim *(i.3, i.3) @27:38
+      do call vector.append [Int](v.3, %32) @27:22
+      let %33: Bool = prim is(i.2, 10) @27:1
+      if %33 { @27:1
+        break L2 @27:1
+      }
+      let %34: Int = prim +(i.2, 1) @27:1
+      i.2 := %34 @27:1
+    }
+  }
+  let %35: Int = call total(v.3) @28:14
+  let %36: String = call conv.int(%35) @28:5
+  do call say(%36) @28:1
+  let r.4: vector.T(Real) = type_app opened/collections/vector.new [Real] @29:9
+  do call vector.append [Real](r.4, 2.5) @30:1
+  let %37: Real = call opened/collections/vector.get [Real](r.4, 0) @31:33
+  let %38: maybe.T(Real) = call opened/util/maybe.some [Real](%37) @31:22
+  let %39: Real = call orZero(%38) @31:15
+  let %40: maybe.T(Real) = type_app opened/util/maybe.none [Real] @31:61
+  let %41: Real = call orZero(%40) @31:54
+  let %42: Real = prim ++(%39, %41) @31:15
+  let %43: String = call conv.real(%42) @31:5
+  do call say(%43) @31:1
+  let %44: maybe.T(Int) = type_app opened/util/maybe.none [Int] @32:29
+  let %45: Int = call opened/util/maybe.unwrapOr [Int](%44, 7) @32:14
+  let %46: String = call conv.int(%45) @32:5
+  do call say(%46) @32:1
+}
+

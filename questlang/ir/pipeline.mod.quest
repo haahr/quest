@@ -9,6 +9,7 @@ import
     questlang/ir/closure : questlang/ir/Closure
     questlang/ir/describe : questlang/ir/Describe
     questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/opened : questlang/ir/Opened
     questlang/ir/represent : questlang/ir/Represent
     questlang/ir/simplify : questlang/ir/Simplify
     questlang/ir/specialize : questlang/ir/Specialize
@@ -27,9 +28,15 @@ export
 
     (* The passes of docs/ir.md section 8, in order: simplify, specialize,
      * closure conversion, unbox, represent, describe, and thunks *)
+    (* The simplifier's unit, without what it left of the copies of inlined
+     * modules that nothing calls now (ir/opened): their members are pinned,
+     * as named from outside the unit's bodies, which a copy's are not *)
+    let simplified(unit: nodes.Unit): nodes.Unit =
+        opened.dropUnreachable(simplify.simplifyUnit(unit) fun(m: nodes.Module): Bool opened.isOpened(m))
+
     let runPasses(unit: nodes.Unit): nodes.Unit =
         begin
-            let specialized = checked(specialize.specializeUnit(checked(simplify.simplifyUnit(unit))))
+            let specialized = checked(specialize.specializeUnit(checked(simplified(unit))))
             let represented =
                 checked(represent.representUnit(unbox.unboxUnit(checked(closure.closureConvertUnit(specialized)))))
             checked(thunks.thunkUnit(describe.describeUnit(represented)))

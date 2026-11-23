@@ -20,6 +20,8 @@ EXIT_PATTERN = re.compile(r"\(\*\s*@exit:\s*([0-9]+)\s*\*\)", re.IGNORECASE)
 TIMEOUT_PATTERN = re.compile(r"\(\*\s*@timeout:\s*([0-9.]+)\s*\*\)", re.IGNORECASE)
 ECHO_PATTERN = re.compile(r"\(\*\s*@echo\s*\*\)", re.IGNORECASE)
 LOAD_PATTERN = re.compile(r"\(\*\s*@load:\s*([^*]+?)\s*\*\)", re.IGNORECASE)
+INLINE_LIBRARY_PATTERN = re.compile(r"\(\*\s*@inline-library\s*\*\)", re.IGNORECASE)
+INLINE_MODULE_PATTERN = re.compile(r"\(\*\s*@inline-module:\s*([^*]+?)\s*\*\)", re.IGNORECASE)
 STDIN_PATTERN = re.compile(r"\(\*\s*@stdin:(?:[ \t]*\r?\n)?(.*?)\*\)", re.DOTALL | re.IGNORECASE)
 
 
@@ -33,6 +35,13 @@ class TestDirectives:
     timeout: Optional[float] = None
     stdin_data: Optional[str] = None
     echo: bool = False
+    # For the self-hosted driver: whether the phases that print the compiler's
+    # output (the IR, the SSA, code) inline the library's inlined modules,
+    # which they do not unless asked, so that their goldens do not change with
+    # those modules' bodies; and the modules it inlines besides
+    # (docs/inlined-modules-plan.md section 5)
+    inline_library: bool = False
+    inline_modules: list[str] = field(default_factory=list)
 
 
 def _os_arg(text: str) -> str:
@@ -43,7 +52,7 @@ def _os_arg(text: str) -> str:
 
 def parse_test_directives(source_file: Path) -> TestDirectives:
     """Extracts test directives (@skip-phase, @args, @env, @exit, @timeout,
-    @stdin, @echo) from comments."""
+    @stdin, @echo, @inline-library, @inline-module) from comments."""
     text = source_file.read_text(encoding=BYTE_ENCODING)
 
     skipped: set[str] = set()
@@ -92,6 +101,8 @@ def parse_test_directives(source_file: Path) -> TestDirectives:
         timeout=custom_timeout,
         stdin_data=stdin_data,
         echo=ECHO_PATTERN.search(text) is not None,
+        inline_library=INLINE_LIBRARY_PATTERN.search(text) is not None,
+        inline_modules=[name for match in INLINE_MODULE_PATTERN.finditer(text) for name in match.group(1).split()],
     )
 
 

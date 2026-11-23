@@ -28,9 +28,11 @@ separately, 45 whole), and for 56% of it in the compiler, 2.5% of the separate c
 (whole: 4.5%). Inlining the three into separately compiled units, without the rest of a whole program, may gain
 somewhat less there.
 
-**Plan:** [inlined-modules-plan.md](inlined-modules-plan.md) (2026-11-22). It covers choosing the modules by
-profiling, copying members while each module's state stays single, layouts across the boundary, staleness, the steps,
-and a later `--inline-module` option for a program's own modules, marked in their `.qi` files.
+**Built (2026-11-23)** ([inlined-modules-plan.md](inlined-modules-plan.md), [ir.md](ir.md) §8.6,
+[benchmarks.md](benchmarks.md) §41): importers copy the three modules' small functions (all of `util/iter`'s), with
+every shape still opaque. A build of the compiler costs 1.33 times one without copies, the compiler built retires
+3.5 to 7% fewer instructions, and `benchmarks/iter`'s pipelines run as a whole program's. Left: whether util/iter's
+own slots give way to `util/maybe`, and the plan's open items (its §5).
 
 **Done when.** The listed modules' calls are inlined in separately compiled importers, util/iter's own slots may give
 way to `util/maybe` (iter.md rule 5 then says so), and the driver build's instructions retired and `benchmarks/iter/`

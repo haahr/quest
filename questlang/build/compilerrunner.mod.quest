@@ -296,6 +296,15 @@ export
             objects
         end
 
+    (* The linker flag that gives a program's main thread a 64 MB stack, on
+     * macOS (where /usr/lib/dyld is), which sets it when the program is
+     * linked: room for the self-hosted interpreter's 1,000 interpreted calls
+     * (docs/exceptions.md section 6); the bootstrap's stack_flags *)
+    let stackFlags(): Array(String) =
+        if system.fileExists("/usr/lib/dyld") then array of "-Wl,-stack_size,0x4000000" end
+        else array of :String end
+        end
+
     let compileCSource(source: String output: String nogc: Bool compiler: maybe.T(String)
             extraObjects: Array(String) extraFlags: Array(String) assembly: Bool): Ok =
         begin
@@ -320,6 +329,7 @@ export
             vector.append(command output)
             appendAll(command gcFlags(nogc))
             appendAll(command readlineFlags())
+            appendAll(command stackFlags())
             (* Append extraFlags last, matching the bootstrap, so any library
              * they name comes after the object files that reference it *)
             appendAll(command extraFlags)
@@ -359,6 +369,7 @@ export
              * compiled with the other readline flags *)
             let rl = readlineFlags()
             for i = 0 upto {extent rl - 1} do if isLinkerFlag(rl[i]) then vector.append(command rl[i]) end end
+            appendAll(command stackFlags())
             appendAll(command extraFlags)
             let r = system.run(vector.toArray(command))
             if not(r.code is 0) then

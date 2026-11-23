@@ -12,6 +12,7 @@ import hashlib
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -221,6 +222,7 @@ def compile_c_source(
         ])
         cmd.extend(detect_gc_flags(nogc=nogc))
         cmd.extend(detect_readline_flags())
+        cmd.extend(stack_flags())
         if extra_flags:
             cmd.extend(extra_flags)
 
@@ -302,6 +304,13 @@ def compile_c_to_object(
     return target_obj
 
 
+def stack_flags() -> list[str]:
+    """The linker flag that gives a program's main thread a 64 MB stack, on
+    macOS, which sets it when the program is linked: room for the self-hosted
+    interpreter's 1,000 interpreted calls (docs/exceptions.md section 6)"""
+    return ["-Wl,-stack_size,0x4000000"] if sys.platform == "darwin" else []
+
+
 def link_objects(
     objects: list[Path | str],
     output_binary: Path | str,
@@ -324,6 +333,7 @@ def link_objects(
     # The libraries' linker flags; the runtime's objects were compiled with the
     # rest
     cmd.extend(flag for flag in (*detect_gc_flags(nogc=nogc), *detect_readline_flags()) if flag.startswith(("-L", "-l")))
+    cmd.extend(stack_flags())
     if extra_flags:
         cmd.extend(extra_flags)
 

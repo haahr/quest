@@ -269,6 +269,11 @@ A `.qi` file contains the complete type signature of an interface:
   (§5, Rule 1).
 - Exported type declarations (abstract types, manifest definitions, records, variants, options).
 - Exported value signatures and parameter modes (`val`, `var`, `out`).
+- *The self-hosted compiler:* `inlined`, true in the `.qi` of an inlined module's interface (`util/maybe`,
+  `util/iter`, `collections/vector`, and any the build names with `--inline-module`, `modules/inlined`): its
+  importers copy from its module's source ([ir.md](ir.md) §8.6), so their objects depend on that source too. The
+  field is left out otherwise, and the `.qi` is fresh only while whether it is there agrees with the build's inlined
+  modules, so that adding or dropping `--inline-module` writes it again.
 
 #### 4.2.1. Type Alias Preservation and Size Compactness
 To avoid exponential code expansion and multi-megabyte interface metadata files:
@@ -303,6 +308,11 @@ A `.qm` file records the build manifest for an implementation module or main rou
   It also lists the interfaces the unit depends on through those interfaces' imports (§7.2), each with `dir`, the
   directory of the interface that imports it, which its path is resolved from; for the unit's own imports `dir` is
   absent or empty and the path is resolved from the unit's directory.
+
+- *The self-hosted compiler:* `inlined_modules`, the canonical names of the modules inlined into their importers when
+  the unit was compiled, and `inlined_sources`, the sources of those the unit copied from ([ir.md](ir.md) §8.6). The
+  unit is stale when the build inlines other modules, or when one of those sources is missing or newer than its
+  `.qm`: its object holds that source's code. A manifest written before the fields were is stale too.
 
 The recorded paths let a later build check that each import still resolves to the recorded source (§7.1, rule 4).
 Every entry is written from the unit graph's resolution of the import (§2.1), the one its compilation used.

@@ -86,6 +86,7 @@ import
     questlang/ir/describe : questlang/ir/Describe
     questlang/ir/lower : questlang/ir/Lower
     questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/opened : questlang/ir/Opened
     passes = questlang/ir/pipeline : questlang/ir/Pipeline
     questlang/ir/printer : questlang/ir/Printer
     questlang/ir/represent : questlang/ir/Represent
@@ -99,6 +100,7 @@ import
     questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
     questlang/modules/artifacts/moduleCompiler : questlang/modules/artifacts/ModuleCompiler
     questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/inlined : questlang/modules/Inlined
     questlang/modules/loader : questlang/modules/Loader
     questlang/modules/paths : questlang/modules/Paths
     questlang/modules/stdlib : questlang/modules/Stdlib
@@ -147,6 +149,7 @@ end
 (* A whole program's modules are one unit, so their abstract types are laid out
  * as their representations are, everywhere (docs/ir.md section 4.1) *)
 if options.wholeProgram then shapes.setTransparentAbstractTypes(true) end
+inlined.setInlined(options.inlineLibrary options.inlineModules)
 
 (* The text a reader holds *)
 let readAll(r: reader.T): String =
@@ -317,7 +320,13 @@ let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResul
         let var unit = lower.lowerProgram(program e maybe.some(sm) options.echo printResult)
         (* A whole program is one unit, its modules merged into it, with only
          * the members it can reach *)
-        if options.wholeProgram then unit := whole.dropUnreachable(whole.mergeImports(unit e)) end
+        if options.wholeProgram then
+            unit := whole.dropUnreachable(whole.mergeImports(unit e options.apart))
+        else
+            (* Compiled separately, with copies of the inlined modules it
+             * imports (ir/opened) *)
+            unit := opened.openImports(unit e)
+        end
         let check = fun(u: nodes.Unit at: String): Ok
             begin
                 if verify.irChecksEnabled() then verify.checkUnit(u) end
@@ -325,7 +334,7 @@ let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResul
             end
         check(unit irStages[0])
         let passes = array of
-            fun(u: nodes.Unit): nodes.Unit simplify.simplifyUnit(u)
+            fun(u: nodes.Unit): nodes.Unit passes.simplified(u)
             fun(u: nodes.Unit): nodes.Unit specialize.specializeUnit(u)
             fun(u: nodes.Unit): nodes.Unit closure.closureConvertUnit(u)
             fun(u: nodes.Unit): nodes.Unit represent.representUnit(unbox.unboxUnit(u))
@@ -1114,6 +1123,9 @@ let run(): Ok =
                         let artifacts = if options.jit andif maybe.isNone(options.buildDir) then memoryFiles.root
                             else buildDir end
                         e.compilingC := not(options.wholeProgram)
+                        (* The JIT's units copy no inlined module (ir/opened),
+                         * so their sources are not elaborated *)
+                        e.openInlined := not(options.jit)
                         e.buildDir := maybe.some(artifacts)
                         vector.append(e.includePaths artifacts)
                     end
@@ -1138,6 +1150,18 @@ let run(): Ok =
                         let byName = graph.unit(e.units option moduleUnit of units.UnitKind end
                                 vector.get(strutil.split(files.baseName(o) ".") 0))
                         byName.precompiled := true
+                    end
+                    (* --inline-module's paths name modules as the program's
+                     * imports do, resolved from its directory: by canonical
+                     * name from here on, in workers too *)
+                    if extent options.inlineModules > 0 then
+                        let named = vector.new(:String)
+                        for i = 0 upto {extent options.inlineModules - 1} do
+                            let path = options.inlineModules[i]
+                            vector.append(named try graph.canonicalName(env.resolveModule(e path))
+                            when diagnostics.compilerError then path end)
+                        end
+                        inlined.setInlined(options.inlineLibrary vector.toArray(named))
                     end
                     let result = typecheck.elaborateProgram(desugared e)
                     application.reportInferable(e sm)

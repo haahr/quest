@@ -14,6 +14,7 @@ import
     questlang/common/files : questlang/common/Files
     questlang/common/jsonCache : questlang/common/JSONCache
     questlang/config/abi : questlang/config/ABI
+    questlang/modules/inlined : questlang/modules/Inlined
 export
     Let ImportedModuleRef = Tuple name: String interfaceName: String source: String path: String end
     Let ImportedInterfaceRef = Tuple name: String source: String mtime: Real path: String dir: String end
@@ -27,11 +28,13 @@ export
         abi: maybe.T(Int)
         producer: maybe.T(String)
         backend: String
+        inlined: Array(String)
+        inlinedSources: Array(String)
     end
 
     let newManifest(name: String interfaceName: maybe.T(String) source: String object: String
-            importedModules: Array(ImportedModuleRef) importedInterfaces: Array(ImportedInterfaceRef) backend: String)
-            : ModuleManifest =
+            importedModules: Array(ImportedModuleRef) importedInterfaces: Array(ImportedInterfaceRef) backend: String
+            inlined: Array(String) inlinedSources: Array(String)): ModuleManifest =
         begin
             let version = abi.abiVersion
             let compiler = abi.producer
@@ -45,6 +48,8 @@ export
                 let abi = maybe.some(version)
                 let producer = maybe.some(compiler)
                 let backend = backend
+                let inlined = inlined
+                let inlinedSources = inlinedSources
             end
         end
 
@@ -84,6 +89,14 @@ export
                 vector.append(interfaces json.object(o))
             end
             json.put(top "imported_interfaces" json.arrayValue(interfaces))
+            let strings = fun(xs: Array(String)): json.Value
+                begin
+                    let items = vector.new(:json.Value)
+                    for i = 0 upto {extent xs - 1} do vector.append(items json.string(xs[i])) end
+                    json.arrayValue(items)
+                end
+            json.put(top "inlined_modules" strings(m.inlined))
+            json.put(top "inlined_sources" strings(m.inlinedSources))
             let dir = files.normalize(file <> "/..")
             system.makeDirectory(dir)
             let w = writer.file(file)
@@ -161,6 +174,18 @@ export
                             let dir = stringMember(m "dir" "")
                         end)
                     end
+                    let stringsOf = fun(key: String): Array(String)
+                        begin
+                            let items = itemsOf(member(data key))
+                            let found = vector.new(:String)
+                            for i = 0 upto {vector.length(items) - 1} do
+                                case vector.get(items i)
+                                    when jString with y then vector.append(found y.s)
+                                    else raise malformed end
+                                end
+                            end
+                            vector.toArray(found)
+                        end
                     let a = member(data "abi")
                     let abiVersion = if maybe.isNone(a) then maybe.none(:Int)
                         else case maybe.unwrap(a)
@@ -182,6 +207,8 @@ export
                         let abi = abiVersion
                         let producer = stringValue(member(data "producer"))
                         let backend = stringMember(data "backend" "c")
+                        let inlined = stringsOf("inlined_modules")
+                        let inlinedSources = stringsOf("inlined_sources")
                     end)
                 when json.error then
                     maybe.none()
@@ -214,6 +241,10 @@ export
      *   ways, so that this compiler cannot link with them.
      * - It was written by another compiler (the bootstrap): the compilers
      *   share the ABI version, but each uses only its own artifacts.
+     * - It was compiled with other modules inlined into their importers
+     *   (modules/inlined) than this process inlines, or a source it copied
+     *   from (an inlined module's, ir/opened) is missing or newer than the
+     *   manifest: its object holds that source's code.
      * - The object file it records is missing.
      * - The source it records exists and is newer than the manifest or the
      *   object file.
@@ -225,10 +256,30 @@ export
      * that of a prebuilt unit distributed without its source (an object and
      * its .qm), which is up to date as long as its object and ABI version
      * are, and this compiler wrote it. *)
+    (* Whether a unit was compiled with the modules inlined that this process
+     * inlines, and none of the sources it copied from is newer than its
+     * manifest *)
+    let inlinedCurrent(m: ModuleManifest qm: String): Bool =
+        begin
+            let now = inlined.names()
+            let var same = extent now is extent m.inlined
+            for i = 0 upto {extent now - 1} do
+                if same andif not(inlined.isIn(m.inlined now[i])) then same := false end
+            end
+            for i = 0 upto {extent m.inlinedSources - 1} do
+                if same andif {not(system.isFile(m.inlinedSources[i])) orif newerFile(m.inlinedSources[i] qm)} then
+                    same := false
+                end
+            end
+            same
+        end
+
     let isManifestStale(m: ModuleManifest qm: String): Bool =
         if not(maybe.isSome(m.abi) andif {maybe.unwrap(m.abi) is abi.abiVersion}) then
             true
         elsif not(writtenHere(m)) then
+            true
+        elsif not(inlinedCurrent(m qm)) then
             true
         elsif not(system.isFile(m.object)) then
             true

@@ -1,0 +1,175 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+        (TypedImportItem ('vector') : 'Vector')
+        (TypedImportItem ('maybe') : 'Maybe')
+      ))
+    (TypedLetValue 'say' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'total' :type Fun(v: vector.T(Int)): Int
+      :value (TypedFun :params (('v' : vector.T(Int))) :type Fun(v: vector.T(Int)): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'sum' :type Int
+              :value (TypedInt 0 :type Int))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int)): Int
+                      :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                        :target (TypedVar 'vector' :type Module 'vector')))
+                    :args (
+                      (TypedVar 'v' :type vector.T(Int))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedAssign
+                  :target (TypedVar 'sum' :type Var(Int))
+                  :value (TypedInfix '+' :type Int
+                    :left (TypedDerefCell :type Int
+                      :target (TypedVar 'sum' :type Var(Int)))
+                    :right (TypedApp :type Int
+                      :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) index: Int): Int
+                        :func (TypedSelect 'get' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): A
+                          :target (TypedVar 'vector' :type Module 'vector')))
+                      :args (
+                        (TypedVar 'v' :type vector.T(Int))
+                        (TypedVar 'i' :type Int)
+                      ))))))
+          )
+          :result (TypedDerefCell :type Int
+            :target (TypedVar 'sum' :type Var(Int))))))
+    (TypedLetValue 'orZero' :type Fun(m: maybe.T(Real)): Real
+      :value (TypedFun :params (('m' : maybe.T(Real))) :type Fun(m: maybe.T(Real)): Real
+        :body (TypedIf :type Real
+          :cond (TypedApp :type Bool
+            :func (TypedTypeApp [Real] :type Fun(o: maybe.T(Real)): Bool
+              :func (TypedSelect 'isSome' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                :target (TypedVar 'maybe' :type Module 'maybe')))
+            :args (
+              (TypedVar 'm' :type maybe.T(Real))
+            ))
+          :then (TypedApp :type Real
+            :func (TypedTypeApp [Real] :type Fun(o: maybe.T(Real)): Real
+              :func (TypedSelect 'unwrap' :type All(A :: TYPE) Fun(o: maybe.T(A)): A
+                :target (TypedVar 'maybe' :type Module 'maybe')))
+            :args (
+              (TypedVar 'm' :type maybe.T(Real))
+            ))
+          :else (TypedReal 0.0 :type Real))))
+    (TypedLetValue 'v' :type vector.T(Int)
+      :value (TypedTypeApp [Int] :type vector.T(Int)
+        :func (TypedSelect 'new' :type All(A :: TYPE) vector.T(A)
+          :target (TypedVar 'vector' :type Module 'vector'))))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 1 :type Int)
+        :stop (TypedInt 10 :type Int)
+        :body (TypedApp :type Ok
+          :func (TypedTypeApp [Int] :type Fun(v: vector.T(Int) value: Int): Ok
+            :func (TypedSelect 'append' :type All(A :: TYPE) Fun(v: vector.T(A) value: A): Ok
+              :target (TypedVar 'vector' :type Module 'vector')))
+          :args (
+            (TypedVar 'v' :type vector.T(Int))
+            (TypedInfix '*' :type Int
+              :left (TypedVar 'i' :type Int)
+              :right (TypedVar 'i' :type Int))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedVar 'total' :type Fun(v: vector.T(Int)): Int)
+                :args (
+                  (TypedVar 'v' :type vector.T(Int))
+                ))
+            ))
+        )))
+    (TypedLetValue 'r' :type vector.T(Real)
+      :value (TypedTypeApp [Real] :type vector.T(Real)
+        :func (TypedSelect 'new' :type All(A :: TYPE) vector.T(A)
+          :target (TypedVar 'vector' :type Module 'vector'))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedTypeApp [Real] :type Fun(v: vector.T(Real) value: Real): Ok
+          :func (TypedSelect 'append' :type All(A :: TYPE) Fun(v: vector.T(A) value: A): Ok
+            :target (TypedVar 'vector' :type Module 'vector')))
+        :args (
+          (TypedVar 'r' :type vector.T(Real))
+          (TypedReal 2.5 :type Real)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'real' :type Fun(r: Real): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedInfix '++' :type Real
+                :left (TypedApp :type Real
+                  :func (TypedVar 'orZero' :type Fun(m: maybe.T(Real)): Real)
+                  :args (
+                    (TypedApp :type maybe.T(Real)
+                      :func (TypedTypeApp [Real] :type Fun(val: Real): maybe.T(Real)
+                        :func (TypedSelect 'some' :type All(A :: TYPE) Fun(val: A): maybe.T(A)
+                          :target (TypedVar 'maybe' :type Module 'maybe')))
+                      :args (
+                        (TypedApp :type Real
+                          :func (TypedTypeApp [Real] :type Fun(v: vector.T(Real) index: Int): Real
+                            :func (TypedSelect 'get' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): A
+                              :target (TypedVar 'vector' :type Module 'vector')))
+                          :args (
+                            (TypedVar 'r' :type vector.T(Real))
+                            (TypedInt 0 :type Int)
+                          ))
+                      ))
+                  ))
+                :right (TypedApp :type Real
+                  :func (TypedVar 'orZero' :type Fun(m: maybe.T(Real)): Real)
+                  :args (
+                    (TypedTypeApp [Real] :type maybe.T(Real)
+                      :func (TypedSelect 'none' :type All(A :: TYPE) maybe.T(A)
+                        :target (TypedVar 'maybe' :type Module 'maybe')))
+                  )))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedTypeApp [Int] :type Fun(o: maybe.T(Int) default: Int): Int
+                  :func (TypedSelect 'unwrapOr' :type All(A :: TYPE) Fun(o: maybe.T(A) default: A): A
+                    :target (TypedVar 'maybe' :type Module 'maybe')))
+                :args (
+                  (TypedTypeApp [Int] :type maybe.T(Int)
+                    :func (TypedSelect 'none' :type All(A :: TYPE) maybe.T(A)
+                      :target (TypedVar 'maybe' :type Module 'maybe')))
+                  (TypedInt 7 :type Int)
+                ))
+            ))
+        )))
+  ))

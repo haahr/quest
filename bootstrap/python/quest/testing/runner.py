@@ -343,6 +343,13 @@ def golden_environment() -> dict[str, str]:
     return environment
 
 
+def prints_compiler_output(phase_name: str) -> bool:
+    """Whether a phase prints what the compiler makes of a unit (an IR
+    stage, the SSA, or code), rather than running it or printing the front
+    end's output"""
+    return phase_name.startswith(("ir_", "ssa", "codegen"))
+
+
 def run_single_golden_test(
     source_file: Path,
     phase_name: str,
@@ -374,6 +381,12 @@ def run_single_golden_test(
             command.extend(["--build-dir", str(self_hosted_units_dir(build_dir))])
         if driver_args:
             command.extend(driver_args)
+        # The phases that print what the compiler makes see the library's
+        # inlined modules as imports, unless the test asks
+        if prints_compiler_output(phase_name) and not directives.inline_library:
+            command.append("--no-inline-library")
+        for name in directives.inline_modules:
+            command.extend(["--inline-module", name])
     else:
         command = [
             python_executable,

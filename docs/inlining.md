@@ -17,8 +17,10 @@ The growth bound was raised from half the unit to three quarters on 2026-11-05 (
 
 `QUEST_INLINE` overrides them for measuring, as a list of `name=value` separated by commas, read by `ir/simplify`
 (`setting`) when the compiler starts: `size` (30), `polymorphic` (30), `function` (10), `constant` (5), `growth` (the
-percent of the unit it may grow by, 75), `budget` (the least growth, 1000), and `rounds` (6). A build's workers
-inherit it, so `QUEST_INLINE=size=60 run.py time --clean` measures the suite with that setting.
+percent of the unit it may grow by, 75), `budget` (the least growth, 1000), `rounds` (6), and `copy` (the largest
+function an importer copies from an inlined module, in place of each module's own bound, `inlined.copyBound`; -1 for
+no bound; ir.md §8.6). A build's workers inherit it, so `QUEST_INLINE=size=60 run.py time --clean` measures the
+suite with that setting.
 
 Whole programs and separate builds compare at [benchmarks.md](benchmarks.md) §8.2 (2026-11-01), measured once
 abstract types were transparent in whole programs (ir.md §4.1): a whole program took 0.94 times as long as a separate

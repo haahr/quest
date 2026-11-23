@@ -4,10 +4,13 @@ docs/iter.md section 2).
 
     benchmarks/iter/run.py [--elements N] [--only NAME,...]
 
-It builds iter.quest twice with ./quest, as separate units (the default) and
-with --whole-program, runs each workload once in each under /usr/bin/time -l,
-checks that both builds print the same sum, and prints the instructions
-retired per element, which load barely changes, and the seconds.
+It builds iter.quest three times with ./quest: as separate units (the
+default, which inlines util/maybe, util/iter, and collections/vector into
+their importers, docs/inlined-modules-plan.md), as separate units inlining
+none of them (--no-inline-library), and with --whole-program. It runs each
+workload once in each under /usr/bin/time -l, checks that the builds print
+the same sum, and prints the instructions retired per element, which load
+barely changes, and the seconds.
 """
 
 import argparse
@@ -27,7 +30,7 @@ WORKLOADS = [
     ("sumInt", "range, map, filter, and iter.sumInt, which reads the closures in place"),
 ]
 
-BUILDS = [("separate", []), ("whole", ["--whole-program"])]
+BUILDS = [("separate", []), ("no-inline", ["--no-inline-library"]), ("whole", ["--whole-program"])]
 
 
 def build() -> dict[str, Path]:

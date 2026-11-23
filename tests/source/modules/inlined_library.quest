@@ -1,0 +1,32 @@
+(* The library's inlined modules in a separately compiled unit (ir.md section
+   8.6): the unit copies the small functions of util/maybe and
+   collections/vector, and its dumps show them inlined (isSome, unwrapOr,
+   length, get) where an abstract type's layouts agree, at Int and at Real,
+   while vector.append, larger than the copy's bound, stays a call of the
+   compiled module. *)
+(* @inline-library *)
+
+import
+    conv : Conv
+
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+
+let say(s: String): Ok = writer.putString(writer.output s <> "\n")
+
+let total(v: vector.T(Int)): Int =
+    begin
+        let var sum = 0
+        for i = 0 upto {vector.length(v) - 1} do sum := sum + vector.get(v i) end
+        sum
+    end
+
+let orZero(m: maybe.T(Real)): Real = if maybe.isSome(m) then maybe.unwrap(m) else 0.0 end
+
+let v = vector.new(:Int)
+for i = 1 upto 10 do vector.append(v i * i) end
+say(conv.int(total(v)))
+let r = vector.new(:Real)
+vector.append(r 2.5)
+say(conv.real(orZero(maybe.some(vector.get(r 0))) ++ orZero(maybe.none())))
+say(conv.int(maybe.unwrapOr(maybe.none(:Int) 7)))

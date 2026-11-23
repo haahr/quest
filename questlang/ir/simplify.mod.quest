@@ -709,7 +709,11 @@ export
                     let v = free[i]
                     let name = memberName(r.m v)
                     let sh = shapes.shape(v.type)
+                    (* A copy of an inlined module's (ir/opened) is the
+                     * unit's own code, which reads its members at their
+                     * own types *)
                     let laidOut = shapes.transparentAbstractTypes() orif shapes.kindIs(sh shapes.shapeException)
+                        orif maybe.isSome(nodes.openedModuleName(r.m))
                     if v.isMutable orif shapes.isFunction(v.type) orif not(laidOut) orif maybe.isNone(name) then
                         all := false
                     else
@@ -774,8 +778,23 @@ export
         if maybe.isSome(x.callee) then
             maybe.some(array of :inline.Read end)
         else
+            (* A copy of an inlined module's member (ir/opened) is called at
+             * its interface's type, where the copy's own names its abstract
+             * types' representations: the body's parameters and result meet
+             * the unit's values through represent's conversions, as a call
+             * of it does (represent.call). They change no value where the
+             * abstract types' layouts agree; where one's does not, at the
+             * call's type arguments, converting would copy the value, and
+             * the call is left *)
+            let copied =
+                case maybe.unwrap(x.moduleRef)
+                    when refModule with r then maybe.isSome(nodes.openedModuleName(r.m))
+                    when refImport then false
+                end
             let sameShape = maybe.isNone(x.calleeType)
                 orif {shapes.shape(maybe.unwrap(x.calleeType)).id is shapes.shape(f.v.type).id}
+                orif {copied
+                    andif not(genericLayout.abstractLayoutsDifferAt(maybe.unwrap(x.calleeType) x.typeArgs))}
                 orif {shapes.transparentAbstractTypes()
                     andif eq(genericLayout.signatureRepresentation(maybe.unwrap(x.calleeType))
                             genericLayout.signatureRepresentation(f.v.type))}

@@ -20,6 +20,7 @@ import
     questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
     questlang/modules/elaboration : questlang/modules/Elaboration
     questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/inlined : questlang/modules/Inlined
     questlang/modules/paths : questlang/modules/Paths
     questlang/modules/units : questlang/modules/Units
     questlang/syntax/ast : questlang/syntax/AST
@@ -329,10 +330,16 @@ export
                         u.typedModule := maybe.some(typed)
                         typed
                     end
-                if u.precompiled then
+                (* An inlined module with a source is elaborated from it when
+                 * compiling to C, for importers to copy from (ir/opened),
+                 * though its object is built apart, as the build has marked
+                 * it *)
+                let opened =
+                    e.compilingC andif e.openInlined andif inlined.isInlined(canon) andif maybe.isSome(filePath)
+                if u.precompiled andif not(opened) then
                     synthesizePrecompiled()
                 elsif e.compilingC andif {strutil.contains(canon "/") orif strutil.contains(name "/")}
-                        andif maybe.isSome(filePath) then
+                        andif maybe.isSome(filePath) andif not(opened) then
                     (* Separate compilation of hierarchical modules: importers
                      * are typed against the module's interface, and building
                      * its object is left to the build (docs/build-process.md

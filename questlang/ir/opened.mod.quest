@@ -1,0 +1,596 @@
+(* Quest Self-Hosted Compiler: Opened Modules Implementation *)
+
+module opened : Opened
+import
+    stringOp = string : StringOp
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+
+    questlang/common/files : questlang/common/Files
+    questlang/common/location : questlang/common/Location
+    questlang/ir/inline : questlang/ir/Inline
+    questlang/ir/lower : questlang/ir/Lower
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/simplify : questlang/ir/Simplify
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/inlined : questlang/modules/Inlined
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/repr/genericLayout : questlang/repr/GenericLayout
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+export
+    Let Module = nodes.Module
+
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+    let same(a: Int b: Int): Bool = a is b
+
+    (* The key of a module's canonical name, which imports may spell in any
+     * case (driver/whole's) *)
+    let key(canonical: String): String = paths.lower(canonical)
+
+    (* QUEST_INLINE's copy, which bounds every module's copies in place of
+     * its own bound (inlined.copyBound) when given, for measuring: -1 for no
+     * bound *)
+    let unset = ~2
+    let copyOverride = simplify.setting("copy" unset)
+
+    let openedName(m: Module): maybe.T(String) = nodes.openedModuleName(m)
+
+    let isOpened(m: Module): Bool = maybe.isSome(openedName(m))
+
+    let openedModules(unit: nodes.Unit): Array(String) =
+        begin
+            let names = vector.new(:String)
+            for k = 0 upto {vector.length(unit.modules) - 1} do
+                let n = openedName(vector.get(unit.modules k))
+                if maybe.isSome(n) then vector.append(names maybe.unwrap(n)) end
+            end
+            vector.toArray(names)
+        end
+
+    (* The source file the resolver resolved the module named canonical to *)
+    let sourceFileOf(e: env.T canonical: String): maybe.T(String) =
+        begin
+            let var found = maybe.none(:String)
+            let resolved = hashMap.values(e.units.resolver.memo)
+            for k = 0 upto {vector.length(resolved) - 1} do
+                let r = vector.get(resolved k)
+                if maybe.isNone(found) andif maybe.isSome(r.source)
+                        andif maybe.isSome(r.canonical) andif eq(maybe.unwrap(r.canonical) canonical)
+                        andif case r.kind when moduleUnit then true when interfaceUnit, programUnit then false end then
+                    found := maybe.some(files.absolute(maybe.unwrap(r.source)))
+                end
+            end
+            found
+        end
+
+    (* The source map of a module's source file: what its raises' sites
+     * name *)
+    let sourceMapOf(file: maybe.T(String)): maybe.T(location.SourceMap) =
+        if maybe.isNone(file) then
+            maybe.none(:location.SourceMap)
+        else
+            let text = files.readText(maybe.unwrap(file))
+            if maybe.isNone(text) then maybe.none(:location.SourceMap)
+            else maybe.some(location.newSourceMap(maybe.unwrap(file) maybe.unwrap(text)))
+            end
+        end
+
+    (* i, with its interface's record type if it was lowered without one (an
+     * import a module makes through an alias, such as vector's iterLib),
+     * from the interface's scope *)
+    let withRecordType(e: env.T i: nodes.Import): nodes.Import =
+        if maybe.isSome(i.recordType) then
+            i
+        else
+            let var scope = graph.interfaceScope(e.units i.canonicalPath)
+            if maybe.isNone(scope) then scope := graph.interfaceScope(e.units i.interfacePath) end
+            if maybe.isNone(scope) then
+                i
+            else
+                nodes.newImport(i.name i.modulePath i.canonicalPath i.interfacePath
+                        maybe.some(elaboration.buildRecordTypeFromScope(maybe.unwrap(scope) maybe.none(:String)))
+                        i.libPath)
+            end
+        end
+
+    (* Whether a top-level let's value may be made again in a copy: a scalar
+     * constant, whose identity nothing can see, or a copy of a variable that
+     * is one (by id, in kept) *)
+    let remade(o: nodes.Op kept: hashMap.T(Int Bool)): Bool =
+        case o
+            when opAtom with x then
+                case x.atom
+                    when atomConst with c then
+                        case c.c.value
+                            when constString then false
+                            else true
+                        end
+                    when atomVar with v then hashMap.contains(kept v.v.id)
+                end
+            else false
+        end
+
+    (* The ids of the variables a function's body uses, its callees', the
+     * variables it assigns, and those whose addresses it takes included *)
+    let usedIds(f: nodes.Function): hashMap.T(Int Bool) =
+        begin
+            let ids = hashMap.new(:Int :Bool same hash.int)
+            let note = fun(v: nodes.Variable): Ok begin hashMap.insert(ids v.id true) ok end
+            let all = walk.walkStatements(f.body true)
+            for i = 0 upto {vector.length(all) - 1} do
+                let s = vector.get(all i)
+                let used = walk.statementUses(s)
+                for j = 0 upto {extent used - 1} do
+                    case used[j]
+                        when atomVar with x then note(x.v)
+                        when atomConst then ok
+                    end
+                end
+                let op =
+                    case s
+                        when sLet with x then maybe.some(x.value)
+                        when sDo with x then maybe.some(x.value)
+                        when sAssign with x then begin note(x.v) maybe.none(:nodes.Op) end
+                        else maybe.none(:nodes.Op)
+                    end
+                if maybe.isSome(op) then
+                    case maybe.unwrap(op)
+                        when opAddrVar with x then note(x.v)
+                        when opIsSet with x then note(x.v)
+                        else ok
+                    end
+                end
+            end
+            ids
+        end
+
+    (* The copy of m, lowered from inlined module i's source: its functions
+     * that reach no state of its own but its exported members', its scalar
+     * constants, and its exported members with identity bound to the
+     * compiled module's *)
+    let copyOf(m: Module i: nodes.Import): Module =
+        begin
+            let exports = maybe.unwrapOr(m.exports m.members)
+            (* The name each exported variable is exported by, by id *)
+            let exportedAs = hashMap.new(:Int :String same hash.int)
+            for k = 0 upto {vector.length(exports.names) - 1} do
+                let name = vector.get(exports.names k)
+                begin hashMap.insert(exportedAs hashMap.find(exports.vars name).id name) ok end
+            end
+            (* The variables the copy binds (kept), and those it does not,
+             * which a function using them cannot be copied for (lost) *)
+            let kept = hashMap.new(:Int :Bool same hash.int)
+            let lost = hashMap.new(:Int :Bool same hash.int)
+            let lets = vector.new(:nodes.Stmt)
+            let groups = vector.new(:nodes.Stmt)
+            let ref = option refImport of nodes.ModuleRef with let i = i end
+            for k = 0 upto {vector.length(m.init.statements) - 1} do
+                let st = vector.get(m.init.statements k)
+                case st
+                    when sLet with x then
+                        let name = hashMap.get(exportedAs x.v.id)
+                        if remade(x.value kept) then
+                            hashMap.insert(kept x.v.id true)
+                            vector.append(lets st)
+                        elsif maybe.isSome(name) then
+                            (* The compiled module's own member *)
+                            x.value := option opModuleMember of nodes.Op with
+                                let var moduleRef = ref
+                                let var member = name
+                            end
+                            hashMap.insert(kept x.v.id true)
+                            vector.append(lets st)
+                        else
+                            begin hashMap.insert(lost x.v.id true) ok end
+                        end
+                    when sVarDecl with x then begin hashMap.insert(lost x.v.id true) ok end
+                    when sFuns then vector.append(groups st)
+                    (* What the initializer does is the compiled module's to
+                     * do, once *)
+                    else ok
+                end
+            end
+            (* A group is copied unless one of its functions uses a variable
+             * the copy does not bind, or a function not copied *)
+            let live = vector.new(:Bool)
+            let uses = vector.new(:Array(hashMap.T(Int Bool)))
+            for k = 0 upto {vector.length(groups) - 1} do
+                vector.append(live true)
+                case vector.get(groups k)
+                    when sFuns with x then
+                        let u = vector.new(:hashMap.T(Int Bool))
+                        for j = 0 upto {extent x.functions - 1} do vector.append(u usedIds(x.functions[j])) end
+                        vector.append(uses vector.toArray(u))
+                    else vector.append(uses array of :hashMap.T(Int Bool) end)
+                end
+            end
+            (* A function larger than the module's bound is left out, with the
+             * functions that use it (lost), and its calls stay calls of the
+             * compiled module *)
+            let copySize = if copyOverride is unset then inlined.copyBound(i.canonicalPath) else copyOverride end
+            if copySize >= 0 then
+                let sizes = inline.analyze(array of(1 m.init)).sizes
+                for k = 0 upto {vector.length(groups) - 1} do
+                    case vector.get(groups k)
+                        when sFuns with x then
+                            let var large = false
+                            for j = 0 upto {extent x.functions - 1} do
+                                let size = hashMap.get(sizes x.functions[j].v.id)
+                                if maybe.isNone(size) orif {maybe.unwrap(size) > copySize} then large := true end
+                            end
+                            if large then
+                                vector.set(live k false)
+                                for j = 0 upto {extent x.functions - 1} do
+                                    begin hashMap.insert(lost x.functions[j].v.id true) ok end
+                                end
+                            end
+                        else ok
+                    end
+                end
+            end
+            let var changed = true
+            while changed do
+                changed := false
+                for k = 0 upto {vector.length(groups) - 1} do
+                    if vector.get(live k) then
+                        let u = vector.get(uses k)
+                        let var reaches = false
+                        for j = 0 upto {extent u - 1} do
+                            let ids = hashMap.keys(u[j])
+                            for n = 0 upto {vector.length(ids) - 1} do
+                                if hashMap.contains(lost vector.get(ids n)) then reaches := true end
+                            end
+                        end
+                        if reaches then
+                            vector.set(live k false)
+                            changed := true
+                            case vector.get(groups k)
+                                when sFuns with x then
+                                    for j = 0 upto {extent x.functions - 1} do
+                                        begin hashMap.insert(lost x.functions[j].v.id true) ok end
+                                    end
+                                else ok
+                            end
+                        end
+                    end
+                end
+            end
+            let statements = vector.new(:nodes.Stmt)
+            for k = 0 upto {vector.length(lets) - 1} do vector.append(statements vector.get(lets k)) end
+            for k = 0 upto {vector.length(groups) - 1} do
+                if vector.get(live k) then
+                    let st = vector.get(groups k)
+                    case st
+                        when sFuns with x then
+                            for j = 0 upto {extent x.functions - 1} do
+                                begin hashMap.insert(kept x.functions[j].v.id true) ok end
+                            end
+                        else ok
+                    end
+                    vector.append(statements st)
+                end
+            end
+            (* Statements keep their order: lets first is safe, since a kept
+             * let binds a constant or a member of the compiled module, which
+             * no function of the copy's need run first *)
+            let members = nodes.newMembers()
+            for k = 0 upto {vector.length(m.members.names) - 1} do
+                let name = vector.get(m.members.names k)
+                let v = hashMap.find(m.members.vars name)
+                if hashMap.contains(kept v.id) then nodes.addMember(members name v) end
+            end
+            m.init.statements := statements
+            tuple
+                let id = m.id
+                let name = nodes.openedModuleNameFor(m.name)
+                let interfaceName = m.interfaceName
+                let var init = m.init
+                let var members = members
+                let var exports = maybe.none(:nodes.Members)
+                let var recordVar = maybe.none(:nodes.Variable)
+                let var abstractTypes = array of :nodes.AbstractTypeEntry end
+            end
+        end
+
+    (* Each call of a copied module's member in body made a call of the copy,
+     * by canonical name (copies); every other reference to an imported
+     * module made one to the import the unit keeps for it (imports) *)
+    let rewriteRefs(body: nodes.Body copies: hashMap.T(String Module) imports: hashMap.T(String nodes.Import)): Ok =
+        begin
+            let toImport(r: nodes.ModuleRef): nodes.ModuleRef =
+                case r
+                    when refImport with x then
+                        let i = hashMap.get(imports key(x.i.canonicalPath))
+                        if maybe.isSome(i) then option refImport of nodes.ModuleRef with let i = maybe.unwrap(i) end
+                        else r
+                        end
+                    when refModule then r
+                end
+            (* A call is of the copy only where the member's interface type, at
+             * the call's type arguments, holds no instance of an inlined
+             * abstract type whose layouts disagree there: the unit holds
+             * such a value in the module's generic layout and the copy's
+             * code, at those arguments, in its native one, and converting
+             * between them copies the value (c-representation.md section
+             * 5.1) *)
+            let called(r: maybe.T(nodes.ModuleRef) member: maybe.T(String) calleeType: maybe.T(nodes.Type)
+                    typeArgs: Array(nodes.Type)): maybe.T(nodes.ModuleRef) =
+                if maybe.isNone(r) then
+                    r
+                else
+                    let ref = maybe.unwrap(r)
+                    case ref
+                        when refImport with x then
+                            let m = hashMap.get(copies key(x.i.canonicalPath))
+                            let agrees = maybe.isNone(calleeType)
+                                orif not(genericLayout.abstractLayoutsDifferAt(maybe.unwrap(calleeType) typeArgs))
+                            if maybe.isSome(m) andif maybe.isSome(member) andif agrees
+                                    andif maybe.isSome(nodes.member(maybe.unwrap(m).members maybe.unwrap(member))) then
+                                maybe.some(option refModule of nodes.ModuleRef with let m = maybe.unwrap(m) end)
+                            else
+                                maybe.some(toImport(ref))
+                            end
+                        when refModule then r
+                    end
+                end
+            let op(o: nodes.Op): Ok =
+                case o
+                    when opCall with x then x.moduleRef := called(x.moduleRef x.member x.calleeType x.typeArgs)
+                    when opTypeApp with x then x.moduleRef := called(x.moduleRef x.member x.calleeType x.typeArgs)
+                    when opModuleMember with x then x.moduleRef := toImport(x.moduleRef)
+                    else ok
+                end
+            let stmts = walk.walkStatements(body true)
+            for k = 0 upto {vector.length(stmts) - 1} do
+                case vector.get(stmts k)
+                    when sLet with x then op(x.value)
+                    when sDo with x then op(x.value)
+                    else ok
+                end
+            end
+        end
+
+    let dropUnreachable(unit: nodes.Unit prunable: All(m: Module) Bool): nodes.Unit =
+        begin
+            let same = fun(a: Int b: Int): Bool a is b
+            (* The statement of an initializer's top level that binds each
+             * variable a module may drop, by the variable's id: a let of a
+             * pure operation, or a function of a funs statement *)
+            let binding = hashMap.new(:Int :nodes.Stmt same hash.int)
+            let roots = vector.new(:nodes.Stmt)
+            for k = 0 upto {vector.length(unit.modules) - 1} do
+                let init = vector.get(unit.modules k).init
+                let prune = prunable(vector.get(unit.modules k))
+                for j = 0 upto {vector.length(init.statements) - 1} do
+                    let st = vector.get(init.statements j)
+                    if not(prune) then vector.append(roots st) else case st
+                        when sLet with x then
+                            if simplify.pure(x.value) then begin hashMap.insert(binding x.v.id st) ok end
+                            else vector.append(roots st)
+                            end
+                        when sFuns with x then
+                            for i = 0 upto {extent x.functions - 1} do
+                                begin hashMap.insert(binding x.functions[i].v.id st) ok end
+                            end
+                        else vector.append(roots st)
+                    end end
+                end
+            end
+            (* The main body and every function's body are roots too (the
+             * unit's functions are not pruned), each wrapped in a letrec of no
+             * variables so that visit can walk it as a statement *)
+            vector.append(roots option sLetRec of nodes.Stmt with
+                let var vars = array of :nodes.Variable end
+                let var body = unit.main
+            end)
+            for k = 0 upto {vector.length(unit.functions) - 1} do
+                vector.append(roots option sLetRec of nodes.Stmt with
+                    let var vars = array of :nodes.Variable end
+                    let var body = vector.get(unit.functions k).body
+                end)
+            end
+            (* The variables reached, by id, and the modules whose records are
+             * read, by their ids *)
+            let reached = hashMap.new(:Int :Bool same hash.int)
+            let records = hashMap.new(:Int :Bool same hash.int)
+            let pending = vector.new(:nodes.Stmt)
+            let reach = fun(v: nodes.Variable): Ok
+                if not(hashMap.contains(reached v.id)) then
+                    begin
+                        hashMap.insert(reached v.id true)
+                        let st = hashMap.get(binding v.id)
+                        if maybe.isSome(st) then vector.append(pending maybe.unwrap(st)) end
+                    end
+                end
+            let named = fun(r: maybe.T(nodes.ModuleRef) member: maybe.T(String)): Ok
+                if maybe.isSome(r) then
+                    case maybe.unwrap(r)
+                        when refModule with x then
+                            if maybe.isSome(member) then
+                                let v = nodes.member(x.m.members maybe.unwrap(member))
+                                if maybe.isSome(v) then reach(maybe.unwrap(v)) end
+                            elsif not(hashMap.contains(records x.m.id)) then
+                                hashMap.insert(records x.m.id true)
+                                if maybe.isSome(x.m.recordVar) then
+                                    reach(maybe.unwrap(x.m.recordVar))
+                                end
+                            end
+                        when refImport then ok
+                    end
+                end
+            let visit = fun(st: nodes.Stmt): Ok
+                begin
+                    let all = walk.walkStatements(nodes.bodyOf(array of st end) true)
+                    for i = 0 upto {vector.length(all) - 1} do
+                        let s = vector.get(all i)
+                        let used = walk.statementUses(s)
+                        for j = 0 upto {extent used - 1} do
+                            case used[j]
+                                when atomVar with x then reach(x.v)
+                                when atomConst then ok
+                            end
+                        end
+                        let op =
+                            case s
+                                when sLet with x then maybe.some(x.value)
+                                when sDo with x then maybe.some(x.value)
+                                else maybe.none(:nodes.Op)
+                            end
+                        if maybe.isSome(op) then
+                            case maybe.unwrap(op)
+                                when opCall with x then named(x.moduleRef x.member)
+                                when opTypeApp with x then named(x.moduleRef x.member)
+                                when opModuleMember with x then named(maybe.some(x.moduleRef) x.member)
+                                else ok
+                            end
+                        end
+                    end
+                end
+            for k = 0 upto {vector.length(roots) - 1} do visit(vector.get(roots k)) end
+            (* A funs statement is visited once, whichever function reaches
+             * it, and reaches all its functions *)
+            let visited = hashMap.new(:Int :Bool same hash.int)
+            while not(vector.empty(pending)) do
+                let st = vector.pop(pending)
+                let key =
+                    case st
+                        when sLet with x then x.v.id
+                        when sFuns with x then x.functions[0].v.id
+                        else 0
+                    end
+                if not(hashMap.contains(visited key)) then
+                    hashMap.insert(visited key true)
+                    visit(st)
+                end
+            end
+            let kept = fun(ms: nodes.Members): nodes.Members
+                begin
+                    let result = nodes.newMembers()
+                    for i = 0 upto {vector.length(ms.names) - 1} do
+                        let name = vector.get(ms.names i)
+                        let v = hashMap.find(ms.vars name)
+                        if hashMap.contains(reached v.id) orif not(hashMap.contains(binding v.id)) then
+                            nodes.addMember(result name v)
+                        end
+                    end
+                    result
+                end
+            for k = 0 upto {vector.length(unit.modules) - 1} do
+                let m = vector.get(unit.modules k)
+                if prunable(m) then
+                    let left = vector.new(:nodes.Stmt)
+                    for j = 0 upto {vector.length(m.init.statements) - 1} do
+                        let st = vector.get(m.init.statements j)
+                        let live =
+                            case st
+                                when sLet with x then
+                                    hashMap.contains(reached x.v.id)
+                                        orif not(hashMap.contains(binding x.v.id))
+                                when sFuns with x then hashMap.contains(visited x.functions[0].v.id)
+                                else true
+                            end
+                        if live then vector.append(left st) end
+                    end
+                    m.init.statements := left
+                    m.members := kept(m.members)
+                    if maybe.isSome(m.exports) then
+                        m.exports := maybe.some(kept(maybe.unwrap(m.exports)))
+                    end
+                    if not(hashMap.contains(records m.id)) then m.recordVar := maybe.none() end
+                end
+            end
+            unit
+        end
+
+    let lastSources = vector.new(:String)
+    let lastOpenedSources(): Array(String) = vector.toArray(lastSources)
+
+    let openImports(unit: nodes.Unit e: env.T): nodes.Unit =
+        begin
+            vector.clear(lastSources)
+            let copies = hashMap.new(:String :Module eq hash.string)
+            let visiting = hashMap.new(:String :Bool eq hash.string)
+            (* The copies, each after those it calls into *)
+            let order = vector.new(:Module)
+            let functions = vector.new(:nodes.Function)
+            (* The unit's imports, one for each module, and the copies' too *)
+            let imports = vector.new(:nodes.Import)
+            let importByKey = hashMap.new(:String :nodes.Import eq hash.string)
+            let rec visit(i0: nodes.Import): Ok =
+                begin
+                    let k = key(i0.canonicalPath)
+                    let held = hashMap.get(importByKey k)
+                    let i =
+                        if maybe.isNone(held) then
+                            let i = withRecordType(e i0)
+                            begin hashMap.insert(importByKey k i) ok end
+                            vector.append(imports i)
+                            i
+                        elsif maybe.isNone(maybe.unwrap(held).recordType) andif maybe.isSome(i0.recordType) then
+                            (* One import of a module stands for all, the one with
+                             * its interface's record type if any has it *)
+                            let h = maybe.unwrap(held)
+                            begin hashMap.insert(importByKey k i0) ok end
+                            for n = 0 upto {vector.length(imports) - 1} do
+                                if vector.get(imports n) is h then vector.set(imports n i0) end
+                            end
+                            i0
+                        else
+                            maybe.unwrap(held)
+                        end
+                    if inlined.isInlined(i.canonicalPath) andif not(hashMap.contains(visiting k)) then
+                        hashMap.insert(visiting k true)
+                        let typed = graph.typedModule(e.units i.canonicalPath)
+                        let fromSource = if maybe.isNone(typed) then false
+                            else case maybe.unwrap(typed).form
+                                when bindModule with x then not(x.isPrecompiled)
+                                else false
+                            end end
+                        if fromSource then open(i maybe.unwrap(typed)) end
+                    end
+                end
+            and open(i: nodes.Import typed: typedAst.Binding): Ok =
+                begin
+                    let file = sourceFileOf(e i.canonicalPath)
+                    if maybe.isSome(file) then vector.append(lastSources maybe.unwrap(file)) end
+                    let sm = sourceMapOf(file)
+                    vector.append(unit.mergedSources sm)
+                    let file = vector.length(unit.mergedSources)
+                    let mu = lower.lowerModuleFile(typed e sm file)
+                    for k = 0 upto {extent mu.imports - 1} do visit(mu.imports[k]) end
+                    for k = 0 upto {vector.length(mu.functions) - 1} do
+                        vector.append(functions vector.get(mu.functions k))
+                    end
+                    let copy = copyOf(vector.get(mu.modules 0) i)
+                    hashMap.insert(copies key(i.canonicalPath) copy)
+                    vector.append(order copy)
+                end
+            for k = 0 upto {extent unit.imports - 1} do visit(unit.imports[k]) end
+            if vector.empty(order) then
+                unit
+            else
+                for k = 0 upto {vector.length(unit.modules) - 1} do vector.append(order vector.get(unit.modules k)) end
+                for k = 0 upto {vector.length(unit.functions) - 1} do
+                    vector.append(functions vector.get(unit.functions k))
+                end
+                rewriteRefs(unit.main copies importByKey)
+                for k = 0 upto {vector.length(order) - 1} do
+                    rewriteRefs(vector.get(order k).init copies importByKey)
+                end
+                for k = 0 upto {vector.length(functions) - 1} do
+                    rewriteRefs(vector.get(functions k).body copies importByKey)
+                end
+                unit.modules := order
+                unit.functions := functions
+                unit.imports := vector.toArray(imports)
+                (* Only what the unit reaches of each copy *)
+                dropUnreachable(unit isOpened)
+            end
+        end
+end

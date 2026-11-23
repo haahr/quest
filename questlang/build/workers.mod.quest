@@ -20,6 +20,7 @@ import
     questlang/common/location : questlang/common/Location
     questlang/modules/artifacts/moduleCompiler : questlang/modules/artifacts/ModuleCompiler
     questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/inlined : questlang/modules/Inlined
     questlang/modules/stdlib : questlang/modules/Stdlib
     questlang/typechecker/typecheck : questlang/typechecker/Typecheck
 export
@@ -215,6 +216,15 @@ export
                 add("--report-inferable")
                 add(job.reportInferable)
             end
+            (* The process's inlined modules, every one named, so that a worker
+             * opens the modules its parent does (modules/inlined) *)
+            add("--inline-library")
+            add("no")
+            let names = inlined.names()
+            for i = 0 upto {extent names - 1} do
+                add("--inline-module")
+                add(names[i])
+            end
             vector.toArray(args)
         end
 
@@ -311,6 +321,8 @@ export
             let var backend = "c"
             let overrides = vector.new(:choice.Override)
             let variants = vector.new(:choice.Alternative)
+            let var inlineLibrary = true
+            let inlinedNames = vector.new(:String)
             let var i = 1
             (* Each option but --nogc takes a value *)
             while i < extent args do
@@ -338,6 +350,10 @@ export
                     backend := value
                 elsif eq(arg "--report-inferable") then
                     reportInferable := value
+                elsif eq(arg "--inline-library") then
+                    inlineLibrary := not(eq(value "no"))
+                elsif eq(arg "--inline-module") then
+                    vector.append(inlinedNames value)
                 elsif eq(arg "--unit-backend") then
                     let o = choice.parseOverride(value)
                     if maybe.isSome(o) then vector.append(overrides maybe.unwrap(o)) end
@@ -350,6 +366,7 @@ export
                 let step = if eq(arg "--nogc") then 1 else 2 end
                 i := i + step
             end
+            inlined.setInlined(inlineLibrary vector.toArray(inlinedNames))
             (* Give this worker a distinct tag for files.writeAtomically temp
              * files *)
             files.setWorkerTag("." <> worker)

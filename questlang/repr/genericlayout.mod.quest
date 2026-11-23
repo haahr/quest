@@ -318,6 +318,25 @@ export
                 end
             visit(shapes.shape(t))
         end
+    let abstractLayoutsDifferAt(t0: Type typeArgs: Array(Type)): Bool =
+        begin
+            let t = model.stripAliases(model.prune(t0))
+            let applied =
+                case t.form
+                    when typeAll with x then
+                        if extent x.quantifiers isnot extent typeArgs then
+                            t
+                        else
+                            let subst = model.newSubst()
+                            for i = 0 upto {extent typeArgs - 1} do
+                                hashMap.insert(subst x.quantifiers[i].symbolId typeArgs[i])
+                            end
+                            model.substitute(x.body subst)
+                        end
+                    else t
+                end
+            abstractLayoutsDiffer(applied)
+        end
     let signatureRepresentation(t: Type): String =
         begin
             let var s = shapes.shape(t)

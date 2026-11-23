@@ -666,9 +666,26 @@ the runtime's helpers inline ([ssa.md](ssa.md) §4); clang inlines within a C un
 
 - **Always on.** No option enables or disables it (`QUEST_SKIP_PASSES` leaves out only the SSA's passes,
   [ssa.md](ssa.md) §4.1); `QUEST_INLINE` overrides its bounds for measuring ([inlining.md](inlining.md) §1).
-- **Across modules only in whole programs** (`--whole-program`, [build-process.md](build-process.md) §1.2), whose
-  modules are one unit (`driver/whole`). Separate compilation gets no unfoldings: `.qi` files and manifests carry no
-  bodies, so an importer depends on interfaces alone and builds keep their parallelism.
+- **Across modules in whole programs** (`--whole-program`, [build-process.md](build-process.md) §1.2), whose
+  modules are one unit (`driver/whole`), **and from a few inlined modules.** Separate compilation gets no unfoldings:
+  `.qi` files and manifests carry no bodies, so an importer depends on interfaces alone and builds keep their
+  parallelism. The exception is the inlined modules (`modules/inlined`: `util/maybe`, `util/iter`, and
+  `collections/vector`, and any `--inline-module` names): an importer elaborates such a module's source and holds a
+  copy of what it reaches of it, an opened module (`ir/opened`), with no exports, its symbols the unit's own. The copy
+  keeps the module's functions and scalar constants; a member with identity (an exception, a string, a variable,
+  anything computed) is read from the compiled module's record, and a function that reaches a private one is not
+  copied, so the module's state stays single. Nor is a function whose body is larger than the module's bound
+  (`inlined.copyBound`: 15, none for `util/iter`), or one that uses such a function: what a unit copies it compiles
+  again, so the bound keeps a build's cost near that of one without copies. The unit's shapes stay as they are without
+  copies, every abstract type opaque: a copy's code, which names the representations, meets the unit's values
+  through represent's conversions between an abstract type and its representation (§8.3), which change no value
+  where the type's generic and native layouts agree, as at `vector.T(Int)` and `maybe.T(Real)`. A call goes to the
+  copy, and may be inlined, only where the member's interface type, at the call's type arguments, holds no abstract
+  type whose layouts disagree (`genericLayout.abstractLayoutsDifferAt`; `iter.T(Real)`, whose closures' signatures
+  change with `Real`); others stay calls of the compiled module, as the specializer leaves them generic (§8.1).
+  Units that copy a module and units that do not link together. The copies are pruned to what the unit reaches
+  before the simplifier and again after it. The unit's manifest records the sources it copied from
+  ([build-process.md](build-process.md) §4.3).
 - **Deterministic:** sizes, counts, and source order, never a hash table's iteration order, so that the self-hosting
   fixed point holds.
 - **Tracebacks lose inlined frames,** as they lose frames clang removes ([exceptions.md](exceptions.md) §2.4).

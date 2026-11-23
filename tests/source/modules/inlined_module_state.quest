@@ -1,0 +1,22 @@
+(* A module inlined into its importer (--inline-module, docs/inlined-modules-plan.md):
+   the importer copies its functions, but its state stays single, the compiled
+   module's. An exception raised in copied code is caught by the module's own
+   handlers' identity and the reverse, a string is the module's, a variable the
+   copies do not touch is the module's, and an abstract type of closures
+   crosses between copied and compiled code at Int, where it is seen through,
+   and at Real, where it stays opaque. *)
+(* @inline-module: openedState *)
+
+import openedState : OpenedState
+let say(s: String): Ok = writer.putString(writer.output s <> "\n")
+say(conv.int(openedState.check(21)))
+say(try conv.int(openedState.check(~1)) when openedState.error then "caught error from copied code" end)
+say(if openedState.isLabel(openedState.label) then "label is the module's" else "label copied" end)
+openedState.bump()
+openedState.bump()
+say(conv.int(openedState.counted(5)))
+say(try conv.int(openedState.counted(1)) when openedState.error then "caught error from compiled code" end)
+say(conv.int(openedState.apply(openedState.wrap(7))))
+say(conv.real(openedState.apply(openedState.wrap(2.5))))
+say(conv.real(openedState.applyCounted(openedState.wrap(1.25))))
+say(conv.int(openedState.bump()))

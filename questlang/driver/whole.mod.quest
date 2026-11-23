@@ -13,8 +13,9 @@ import
     questlang/common/location : questlang/common/Location
     questlang/ir/lower : questlang/ir/Lower
     questlang/ir/nodes : questlang/ir/Nodes
-    questlang/ir/simplify : questlang/ir/Simplify
+    questlang/ir/opened : questlang/ir/Opened
     questlang/ir/walk : questlang/ir/Walk
+    questlang/modules/elaboration : questlang/modules/Elaboration
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/paths : questlang/modules/Paths
     questlang/modules/units : questlang/modules/Units
@@ -53,15 +54,19 @@ export
         end
 
     (* Rewrites references to imported modules in body (and any nested bodies
-     * or functions) to point to the corresponding merged module in merged *)
-    let rewriteRefs(body: nodes.Body merged: hashMap.T(String Module)): Ok =
+     * or functions) to point to the corresponding merged module in merged,
+     * or to the one import kept for a module compiled apart (kept) *)
+    let rewriteRefs(body: nodes.Body merged: hashMap.T(String Module) kept: hashMap.T(String nodes.Import)): Ok =
         begin
             let ref(r: nodes.ModuleRef): nodes.ModuleRef =
                 case r
                     when refImport with x then
                         let m = hashMap.get(merged key(x.i.canonicalPath))
+                        let k = hashMap.get(kept key(x.i.canonicalPath))
                         if maybe.isSome(m) then
                             option refModule of nodes.ModuleRef with let m = maybe.unwrap(m) end
+                        elsif maybe.isSome(k) then
+                            option refImport of nodes.ModuleRef with let i = maybe.unwrap(k) end
                         else
                             r
                         end
@@ -90,7 +95,7 @@ export
             end
         end
 
-    let mergeImports(unit: nodes.Unit e: env.T): nodes.Unit =
+    let mergeImports(unit: nodes.Unit e: env.T apart: Array(String)): nodes.Unit =
         begin
             let merged = hashMap.new(:String :Module eq hash.string)
             (* The modules merged, each after those it imports *)
@@ -100,19 +105,54 @@ export
              * library's), which stay imported *)
             let kept = vector.new(:nodes.Import)
             let keptNames = hashMap.new(:String :Bool eq hash.string)
+            let keptByKey = hashMap.new(:String :nodes.Import eq hash.string)
             let rec visit(i: nodes.Import): Ok =
-                if hashMap.contains(merged key(i.canonicalPath))
-                        orif hashMap.contains(keptNames key(i.canonicalPath)) then
-                    ok
+                if hashMap.contains(merged key(i.canonicalPath)) then ok
+                elsif hashMap.contains(keptNames key(i.canonicalPath)) then
+                    (* One import of a kept module stands for all, the one
+                     * with its interface's record type if any has it *)
+                    let held = hashMap.find(keptByKey key(i.canonicalPath))
+                    if maybe.isNone(held.recordType) andif maybe.isSome(i.recordType) then
+                        begin hashMap.insert(keptByKey key(i.canonicalPath) i) ok end
+                        for k = 0 upto {vector.length(kept) - 1} do
+                            if vector.get(kept k) is held then vector.set(kept k i) end
+                        end
+                    end
                 else
                     let typed = graph.typedModule(e.units i.canonicalPath)
-                    let precompiled = if maybe.isNone(typed) then true
+                    let named = begin
+                        let var found = false
+                        for k = 0 upto {extent apart - 1} do
+                            if eq(key(apart[k]) key(i.canonicalPath)) then found := true end
+                        end
+                        found
+                    end
+                    let precompiled = if maybe.isNone(typed) orif named then true
                         else case maybe.unwrap(typed).form
                             when bindModule with x then x.isPrecompiled
                             else true
                         end end
                     if precompiled then
+                        (* An import lowered without its interface's record
+                         * type (one a merged module makes through an alias
+                         * of a module kept apart) is given it from the
+                         * interface's scope *)
+                        let i =
+                            if maybe.isSome(i.recordType) then
+                                i
+                            else
+                                let var scope = graph.interfaceScope(e.units i.canonicalPath)
+                                if maybe.isNone(scope) then scope := graph.interfaceScope(e.units i.interfacePath) end
+                                if maybe.isNone(scope) then
+                                    i
+                                else
+                                    nodes.newImport(i.name i.modulePath i.canonicalPath i.interfacePath
+                                            maybe.some(elaboration.buildRecordTypeFromScope(maybe.unwrap(scope)
+                                                    maybe.none(:String))) i.libPath)
+                                end
+                            end
                         hashMap.insert(keptNames key(i.canonicalPath) true)
+                        begin hashMap.insert(keptByKey key(i.canonicalPath) i) ok end
                         vector.append(kept i)
                     else
                         merge(i maybe.unwrap(typed))
@@ -141,12 +181,12 @@ export
             for k = 0 upto {vector.length(unit.functions) - 1} do
                 vector.append(functions vector.get(unit.functions k))
             end
-            rewriteRefs(unit.main merged)
+            rewriteRefs(unit.main merged keptByKey)
             for k = 0 upto {vector.length(order) - 1} do
-                rewriteRefs(vector.get(order k).init merged)
+                rewriteRefs(vector.get(order k).init merged keptByKey)
             end
             for k = 0 upto {vector.length(functions) - 1} do
-                rewriteRefs(vector.get(functions k).body merged)
+                rewriteRefs(vector.get(functions k).body merged keptByKey)
             end
             unit.modules := order
             unit.functions := functions
@@ -154,151 +194,5 @@ export
             unit
         end
 
-    let dropUnreachable(unit: nodes.Unit): nodes.Unit =
-        begin
-            let same = fun(a: Int b: Int): Bool a is b
-            (* Maps each droppable variable's id to the top-level initializer
-             * statement that defines it (a pure sLet or an sFuns group) *)
-            let binding = hashMap.new(:Int :nodes.Stmt same hash.int)
-            let roots = vector.new(:nodes.Stmt)
-            for k = 0 upto {vector.length(unit.modules) - 1} do
-                let init = vector.get(unit.modules k).init
-                for j = 0 upto {vector.length(init.statements) - 1} do
-                    let st = vector.get(init.statements j)
-                    case st
-                        when sLet with x then
-                            if simplify.pure(x.value) then begin hashMap.insert(binding x.v.id st) ok end
-                            else vector.append(roots st)
-                            end
-                        when sFuns with x then
-                            for i = 0 upto {extent x.functions - 1} do
-                                begin hashMap.insert(binding x.functions[i].v.id st) ok end
-                            end
-                        else vector.append(roots st)
-                    end
-                end
-            end
-            (* The main body and every function's body are roots too (the
-             * unit's functions are not pruned), each wrapped in a letrec of no
-             * variables so that visit can walk it as a statement *)
-            vector.append(roots option sLetRec of nodes.Stmt with
-                let var vars = array of :nodes.Variable end
-                let var body = unit.main
-            end)
-            for k = 0 upto {vector.length(unit.functions) - 1} do
-                vector.append(roots option sLetRec of nodes.Stmt with
-                    let var vars = array of :nodes.Variable end
-                    let var body = vector.get(unit.functions k).body
-                end)
-            end
-            (* The variables reached, by id, and the modules whose records are
-             * read, by their ids *)
-            let reached = hashMap.new(:Int :Bool same hash.int)
-            let records = hashMap.new(:Int :Bool same hash.int)
-            let pending = vector.new(:nodes.Stmt)
-            let reach = fun(v: nodes.Variable): Ok
-                if not(hashMap.contains(reached v.id)) then
-                    begin
-                        hashMap.insert(reached v.id true)
-                        let st = hashMap.get(binding v.id)
-                        if maybe.isSome(st) then vector.append(pending maybe.unwrap(st)) end
-                    end
-                end
-            let named = fun(r: maybe.T(nodes.ModuleRef) member: maybe.T(String)): Ok
-                if maybe.isSome(r) then
-                    case maybe.unwrap(r)
-                        when refModule with x then
-                            if maybe.isSome(member) then
-                                let v = nodes.member(x.m.members maybe.unwrap(member))
-                                if maybe.isSome(v) then reach(maybe.unwrap(v)) end
-                            elsif not(hashMap.contains(records x.m.id)) then
-                                hashMap.insert(records x.m.id true)
-                                if maybe.isSome(x.m.recordVar) then
-                                    reach(maybe.unwrap(x.m.recordVar))
-                                end
-                            end
-                        when refImport then ok
-                    end
-                end
-            let visit = fun(st: nodes.Stmt): Ok
-                begin
-                    let all = walk.walkStatements(nodes.bodyOf(array of st end) true)
-                    for i = 0 upto {vector.length(all) - 1} do
-                        let s = vector.get(all i)
-                        let used = walk.statementUses(s)
-                        for j = 0 upto {extent used - 1} do
-                            case used[j]
-                                when atomVar with x then reach(x.v)
-                                when atomConst then ok
-                            end
-                        end
-                        let op =
-                            case s
-                                when sLet with x then maybe.some(x.value)
-                                when sDo with x then maybe.some(x.value)
-                                else maybe.none(:nodes.Op)
-                            end
-                        if maybe.isSome(op) then
-                            case maybe.unwrap(op)
-                                when opCall with x then named(x.moduleRef x.member)
-                                when opTypeApp with x then named(x.moduleRef x.member)
-                                when opModuleMember with x then named(maybe.some(x.moduleRef) x.member)
-                                else ok
-                            end
-                        end
-                    end
-                end
-            for k = 0 upto {vector.length(roots) - 1} do visit(vector.get(roots k)) end
-            (* A funs statement is visited once, whichever function reaches
-             * it, and reaches all its functions *)
-            let visited = hashMap.new(:Int :Bool same hash.int)
-            while not(vector.empty(pending)) do
-                let st = vector.pop(pending)
-                let key =
-                    case st
-                        when sLet with x then x.v.id
-                        when sFuns with x then x.functions[0].v.id
-                        else 0
-                    end
-                if not(hashMap.contains(visited key)) then
-                    hashMap.insert(visited key true)
-                    visit(st)
-                end
-            end
-            let kept = fun(ms: nodes.Members): nodes.Members
-                begin
-                    let result = nodes.newMembers()
-                    for i = 0 upto {vector.length(ms.names) - 1} do
-                        let name = vector.get(ms.names i)
-                        let v = hashMap.find(ms.vars name)
-                        if hashMap.contains(reached v.id) orif not(hashMap.contains(binding v.id)) then
-                            nodes.addMember(result name v)
-                        end
-                    end
-                    result
-                end
-            for k = 0 upto {vector.length(unit.modules) - 1} do
-                let m = vector.get(unit.modules k)
-                let left = vector.new(:nodes.Stmt)
-                for j = 0 upto {vector.length(m.init.statements) - 1} do
-                    let st = vector.get(m.init.statements j)
-                    let live =
-                        case st
-                            when sLet with x then
-                                hashMap.contains(reached x.v.id)
-                                    orif not(hashMap.contains(binding x.v.id))
-                            when sFuns with x then hashMap.contains(visited x.functions[0].v.id)
-                            else true
-                        end
-                    if live then vector.append(left st) end
-                end
-                m.init.statements := left
-                m.members := kept(m.members)
-                if maybe.isSome(m.exports) then
-                    m.exports := maybe.some(kept(maybe.unwrap(m.exports)))
-                end
-                if not(hashMap.contains(records m.id)) then m.recordVar := maybe.none() end
-            end
-            unit
-        end
+    let dropUnreachable(unit: nodes.Unit): nodes.Unit = opened.dropUnreachable(unit fun(m: Module): Bool true)
 end

@@ -1,0 +1,52 @@
+(* Quest Self-Hosted Compiler: Opened Modules Interface
+ *
+ * A separately compiled unit's Core IR with a copy of each inlined module it
+ * imports (questlang/modules/inlined, docs/inlined-modules-plan.md section
+ * 3.2), so that the simplifier can inline and specialize the module's
+ * functions there as a whole program's would. The copy is an opened module:
+ * a module of the unit's own, with no exports (so its symbols are the unit's
+ * own, static), lowered from the module's source as a whole program lowers a
+ * module it merges. It keeps the module's functions and its members bound to
+ * scalar constants. A member with identity or effects (an exception, a
+ * string, a variable, anything computed) is not made again: the copy binds
+ * an exported one to the member the compiled module's record holds, and a
+ * function that reaches a private one is not copied, so the module's state
+ * is single, its compiled object's. The unit's calls of a copied function call
+ * the copy; every other reference to the module stays an import of its
+ * object, which is built and linked as before. *)
+interface Opened
+import
+    util/maybe : util/Maybe
+
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/types/env : questlang/types/Env
+export
+    (* unit, separately compiled, with a copy of each inlined module it
+     * imports, and of each inlined module those copies import, made before
+     * the unit's own modules and each after the copies it calls into. An
+     * inlined module that was not elaborated from its source (a precompiled
+     * one) stays only an import *)
+    openImports(unit: nodes.Unit e: env.T): nodes.Unit
+    (* The canonical names of the modules unit has opened, those it copied
+     * from, in the order copied: what a build records as the sources the
+     * unit's object depends on *)
+    openedModules(unit: nodes.Unit): Array(String)
+    (* The source files of the modules openImports last copied from, in the
+     * order copied: what the manifest of the unit it opened them in records,
+     * as sources its object depends on (modules/artifacts/manifest) *)
+    lastOpenedSources(): Array(String)
+    (* unit with only the members of its modules for which prunable holds
+     * that its code can reach: from its main body, from its other modules,
+     * and from what those modules' initializers do other than bind a member
+     * to a pure operation or a function, through the variables each uses and
+     * the members it names. The others' bindings are deleted, and they leave
+     * their modules' members and exports, and a module whose record nothing
+     * reads (as a value, member reads being of the members' variables) is
+     * left without one (docs/ir.md section 8.6). A whole program prunes every
+     * module (driver/whole); a unit compiled separately, its copies *)
+    dropUnreachable(unit: nodes.Unit prunable: All(m: nodes.Module) Bool): nodes.Unit
+    (* Whether m is an opened module, a copy of an inlined one *)
+    isOpened(m: nodes.Module): Bool
+    (* The canonical name of the inlined module m copies, if it is a copy *)
+    openedName(m: nodes.Module): maybe.T(String)
+end

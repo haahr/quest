@@ -1043,6 +1043,18 @@ export
             when refImport with x then x.i.name
         end
 
+    let openedPrefix = "opened/"
+    let openedModuleNameFor(canonical: String): String = openedPrefix <> canonical
+    let openedModuleName(m: Module): maybe.T(String) =
+        begin
+            let n = stringOp.length(openedPrefix)
+            if {stringOp.length(m.name) > n} andif stringOp.equal(stringOp.getSub(m.name 0 n) openedPrefix) then
+                maybe.some(stringOp.getSub(m.name n stringOp.length(m.name) - n))
+            else
+                maybe.none(:String)
+            end
+        end
+
     let sameModuleRef(a: ModuleRef b: ModuleRef): Bool =
         case a
             when refModule with x then case b when refModule with y then x.m.id is y.m.id else false end
