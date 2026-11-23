@@ -11,8 +11,33 @@ export
     (* Return "true" or "false" string representation of a boolean *)
     let bool(b: Bool): String = if b then "true" else "false" end
 
-    (* Return decimal string representation of an integer *)
-    let int(n: Int): String = external "quest_conv_int"
+    (* Return decimal string representation of an integer, ~ for a negative
+     * one. Written in Quest rather than as a call of the runtime's
+     * snprintf, which took about twice the instructions: it works on the
+     * negative magnitude, which holds every Int, the least included; counts
+     * the digits by comparing it with powers of ten; and writes them from
+     * the right, one division each. *)
+    let int(n: Int): String =
+        begin
+            let var m = if n < 0 then n else 0 - n end
+            (* p is minus 10 to the power digits, while that is an Int *)
+            let var digits = 1
+            let var p = ~10
+            while {digits < 19} andif {m <= p} do
+                digits := digits + 1
+                (* not past 10 to the 18th, which would overflow *)
+                if digits < 19 then p := p * 10 end
+            end
+            let sign = if n < 0 then 1 else 0 end
+            let s = stringOp.new({digits + sign} '0')
+            if n < 0 then stringOp.setChar(s 0 '~') end
+            for i = {{digits + sign} - 1} downto sign do
+                let q = m / 10
+                stringOp.setChar(s i ascii.char(48 + {{q * 10} - m}))
+                m := q
+            end
+            s
+        end
 
     (* Return string representation of a real number: the shortest digits
      * that read back as r (util/realconv) *)

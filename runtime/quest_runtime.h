@@ -515,7 +515,6 @@ void     quest_reader_close(QReader *r);
 /* Conv module primitives */
 QString *quest_conv_okay(void);
 QString *quest_conv_bool(bool b);
-QString *quest_conv_int(int64_t n);
 
 /* Strutil module primitives */
 double   quest_strutil_to_real(const QString *s);

@@ -4,6 +4,7 @@
 
 import conv : Conv
 import list : List
+import word : Word
 import writer : Writer
 
 let p(n: Int): Ok = writer.putString(writer.output conv.int(n) <> "\n")
@@ -86,13 +87,13 @@ let nilInt = list.nil(:Int)
 p(list.length(:Int consInt(1 consInt(2 nilInt))))
 
 (* 10. An external C function, bound in an unsound module: called directly, and as a value passed to a function *)
-interface Show export show: All(n: Int) String end
-unsound module shows : Show export
-    let show: All(n: Int) String = external "quest_conv_int"
+interface Count export count: All(w: word.T) Int end
+unsound module counts : Count export
+    let count: All(w: word.T) Int = external "quest_word_pop_count_val"
 end
-let show = shows.show
-s(show(~4))
-let applyTo(f: All(n: Int) String n: Int): String = f(n)
-s(applyTo(show 9))
-let fns = array of show conv.int end
-s(fns[0](~13) <> fns[1](0))
+let count = counts.count
+p(count(word.fromInt(~4)))
+let applyTo(f: All(w: word.T) Int w: word.T): Int = f(w)
+p(applyTo(count word.fromInt(9)))
+let fns = array of count word.popCount end
+p(fns[0](word.fromInt(~13)) + fns[1](word.fromInt(255)))

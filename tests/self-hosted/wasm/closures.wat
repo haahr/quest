@@ -57,17 +57,18 @@
   (type (func (param (ref $clos) eqref) (result eqref)))
   (type (func (param (ref $clos) eqref) (result i64)))
   (type (func (param (ref $clos) eqref i64) (result eqref)))
+  (type (func (param (ref $clos) i64) (result eqref)))
   (type (func (param (ref $clos)) (result eqref)))
   (type (func (param (ref $clos) i64) (result i64)))
   (type (func (param (ref $clos) i64 eqref) (result i64)))
   (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 53)))))
-  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 57)))))
-  (type $f.closure (sub final 60 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 57)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 58)))))
+  (type $f.closure (sub final 61 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 58)))))
   (type $closU2 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 52)))))
-  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 58)))))
-  (type $countDown.closure (sub final 63 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 58)))))
+  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 59)))))
+  (type $countDown.closure (sub final 64 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 59)))))
   (type (func (param (ref $clos) i64 i64) (result i64)))
-  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 65)))))
+  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 66)))))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
   (import "quest.runtime" "exception:real.error" (global $real.error (ref $exception)))
   (import "quest.runtime" "exception:word.error" (global $word.error (ref $exception)))
@@ -153,8 +154,9 @@
   (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 55)))
   (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 55)))
   (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 53)))
+  (import "conv" "int" (func $conv.int (type 56)))
   (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 52)))
-  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 56)))
+  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 57)))
   (import "wasm/core" "init" (func $wasm/core.init (type 51)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $f.static (ref $f.closure) i32.const 0 ref.func $f.uniform ref.func $f struct.new $f.closure)
@@ -170,11 +172,11 @@
   (global $literal.7 (mut eqref) ref.null none)
   (global $literal.8 (mut eqref) ref.null none)
   (global $literal.9 (mut eqref) ref.null none)
-  (global $builtin+.static (ref 66) i32.const 0 ref.func $builtin+.uniform ref.func $builtin+ struct.new 66)
-  (global $builtin-.static (ref 66) i32.const 0 ref.func $builtin-.uniform ref.func $builtin- struct.new 66)
+  (global $builtin+.static (ref 67) i32.const 0 ref.func $builtin+.uniform ref.func $builtin+ struct.new 67)
+  (global $builtin-.static (ref 67) i32.const 0 ref.func $builtin-.uniform ref.func $builtin- struct.new 67)
   (export "_start" (func $_start))
   (elem declare func $f.uniform $f $countDown.uniform $countDown $builtin+ $builtin+.uniform $builtin- $builtin-.uniform)
-  (func $f (type 57) (param $closure (ref $clos)) (param $x i64) (result i64)
+  (func $f (type 58) (param $closure (ref $clos)) (param $x i64) (result i64)
     (local $v i64)
     local.get $x
     i64.const 5
@@ -184,7 +186,7 @@
     return
     unreachable
   )
-  (func $countDown (type 58) (param $closure (ref $clos)) (param $n i64) (param $k eqref) (result i64)
+  (func $countDown (type 59) (param $closure (ref $clos)) (param $n i64) (param $k eqref) (result i64)
     (local $v i32)
     (local $t eqref)
     (local $v.1 i64)
@@ -198,15 +200,15 @@
         local.get $k
         local.set $t
         local.get $t
-        ref.test (ref 60)
+        ref.test (ref 61)
         if
           local.get $t
           ref.cast (ref $clos)
           i64.const 0
           local.get $t
-          ref.cast (ref 60)
-          struct.get 60 $native
-          return_call_ref 57
+          ref.cast (ref 61)
+          struct.get 61 $native
+          return_call_ref 58
         else
           local.get $t
           ref.cast (ref $clos)
@@ -252,11 +254,13 @@
     call $string.init
     global.get $f.static
     local.set $f
+    global.get $noClosure
     i64.const 15
-    call $convInt
+    call $conv.int
     local.set $v
+    global.get $noClosure
     i64.const 17
-    call $convInt
+    call $conv.int
     local.set $v.1
     block $contified7.after
       block $contified7 (result i64)
@@ -286,15 +290,15 @@
               local.get $f.2
               local.set $t
               local.get $t
-              ref.test (ref 60)
+              ref.test (ref 61)
               if (result i64)
                 local.get $t
                 ref.cast (ref $clos)
                 local.get $x.1
                 local.get $t
-                ref.cast (ref 60)
-                struct.get 60 $native
-                call_ref 57
+                ref.cast (ref 61)
+                struct.get 61 $native
+                call_ref 58
               else
                 local.get $t
                 ref.cast (ref $clos)
@@ -325,8 +329,9 @@
         br $contified7.after
       end
       local.set $x
+      global.get $noClosure
       local.get $x
-      call $convInt
+      call $conv.int
       local.set $f
       local.get $v
       global.get $literal
@@ -523,8 +528,9 @@
       end
       local.get $x
       local.set $x
+      global.get $noClosure
       local.get $x
-      call $convInt
+      call $conv.int
       local.set $f
       i32.const 1
       ref.i31
@@ -558,11 +564,13 @@
         call $wasm/core.writerPutString
       end
       local.set $f
+      global.get $noClosure
       i64.const 13
-      call $convInt
+      call $conv.int
       local.set $f
+      global.get $noClosure
       i64.const 106
-      call $convInt
+      call $conv.int
       local.set $v
       local.get $f
       global.get $literal
@@ -649,8 +657,9 @@
           br $contified9.after
         end
         local.set $x
+        global.get $noClosure
         local.get $x
-        call $convInt
+        call $conv.int
         local.set $f
         i32.const 1
         ref.i31
@@ -865,16 +874,16 @@
               local.get $f
               local.set $v.1
               local.get $v.1
-              ref.test (ref 66)
+              ref.test (ref 67)
               if (result i64)
                 local.get $v.1
                 ref.cast (ref $clos)
                 local.get $x
                 local.get $n.1
                 local.get $v.1
-                ref.cast (ref 66)
-                struct.get 66 $native
-                call_ref 65
+                ref.cast (ref 67)
+                struct.get 67 $native
+                call_ref 66
               else
                 local.get $v.1
                 ref.cast (ref $clos)
@@ -913,8 +922,9 @@
         end
         local.get $x
         local.set $x
+        global.get $noClosure
         local.get $x
-        call $convInt
+        call $conv.int
         local.set $f
         global.get $builtin-.static
         local.set $v
@@ -993,16 +1003,16 @@
               local.get $v
               local.set $f.2
               local.get $f.2
-              ref.test (ref 66)
+              ref.test (ref 67)
               if (result i64)
                 local.get $f.2
                 ref.cast (ref $clos)
                 local.get $x
                 local.get $n.1
                 local.get $f.2
-                ref.cast (ref 66)
-                struct.get 66 $native
-                call_ref 65
+                ref.cast (ref 67)
+                struct.get 67 $native
+                call_ref 66
               else
                 local.get $f.2
                 ref.cast (ref $clos)
@@ -1041,8 +1051,9 @@
         end
         local.get $x
         local.set $x
+        global.get $noClosure
         local.get $x
-        call $convInt
+        call $conv.int
         local.set $v
         local.get $f
         global.get $literal
@@ -1172,7 +1183,7 @@
     call $countDown
     call $boxInt.1
   )
-  (func $builtin+ (type 65) (param $closure (ref $clos)) (param $a i64) (param $b i64) (result i64)
+  (func $builtin+ (type 66) (param $closure (ref $clos)) (param $a i64) (param $b i64) (result i64)
     local.get $a
     local.get $b
     i64.add
@@ -1186,7 +1197,7 @@
     call $builtin+
     call $boxInt.1
   )
-  (func $builtin- (type 65) (param $closure (ref $clos)) (param $a i64) (param $b i64) (result i64)
+  (func $builtin- (type 66) (param $closure (ref $clos)) (param $a i64) (param $b i64) (result i64)
     local.get $a
     local.get $b
     i64.sub

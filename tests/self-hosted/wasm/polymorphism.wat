@@ -201,6 +201,7 @@
   (import "wasm/core" "viewOptionComponent" (func $wasm/core.viewOptionComponent (type 69)))
   (import "wasm/core" "viewOptionPayload" (func $wasm/core.viewOptionPayload (type 52)))
   (import "units/gen" "count" (func $units/gen.count (type 70)))
+  (import "conv" "int" (func $conv.int (type 56)))
   (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 52)))
   (import "units/gen" "pick" (func $units/gen.pick (type 71)))
   (import "units/gen" "twice" (func $units/gen.twice (type 52)))
@@ -398,8 +399,9 @@
     local.get $pos.1
     call $units/gen.count
     local.set $v.1
+    global.get $noClosure
     local.get $v.1
-    call $convInt
+    call $conv.int
     local.set $v
     i32.const 1
     ref.i31
@@ -490,8 +492,9 @@
     local.get $pos
     call $units/gen.count
     local.set $v.1
+    global.get $noClosure
     local.get $v.1
-    call $convInt
+    call $conv.int
     local.set $pos
     i32.const 1
     ref.i31
@@ -612,8 +615,9 @@
     local.set $v.1
     local.get $v.1
     local.set $v.1
+    global.get $noClosure
     local.get $v.1
-    call $convInt
+    call $conv.int
     local.set $pos
     i32.const 1
     ref.i31
@@ -688,8 +692,9 @@
       call $unboxInt.1
     end
     local.set $v.1
+    global.get $noClosure
     local.get $v.1
-    call $convInt
+    call $conv.int
     local.set $pos
     i32.const 1
     ref.i31
@@ -848,8 +853,9 @@
     array.get $slots
     call $unboxInt.1
     local.set $v.1
+    global.get $noClosure
     local.get $v.1
-    call $convInt
+    call $conv.int
     local.set $v
     local.get $pos
     ref.cast (ref $tuple)

@@ -57,18 +57,19 @@
   (type (func (param (ref $clos) eqref) (result eqref)))
   (type (func (param (ref $clos) eqref) (result i64)))
   (type (func (param (ref $clos) eqref i64) (result eqref)))
+  (type (func (param (ref $clos) i64) (result eqref)))
   (type (func (param (ref $clos) i32) (result eqref)))
   (type (func (param (ref $clos)) (result eqref)))
   (type (func (param (ref $clos) i64 i64) (result i64)))
   (type (func (param (ref $clos) i64) (result i32)))
   (type $closU2 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 52)))))
-  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 58)))))
-  (type $sum.closure (sub final 61 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 58)))))
+  (type (sub $closU2 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 59)))))
+  (type $sum.closure (sub final 62 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 59)))))
   (type $closU1 (sub $clos (struct (field $hash (mut i32)) (field $uniform (ref 53)))))
-  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 59)))))
-  (type $isEven.closure (sub final 64 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 59)))))
-  (type $isOdd.closure (sub final 64 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 59)))))
-  (type $count.closure (sub final 61 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 58)))))
+  (type (sub $closU1 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 60)))))
+  (type $isEven.closure (sub final 65 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 60)))))
+  (type $isOdd.closure (sub final 65 (struct (field $hash (mut i32)) (field $uniform (ref 53)) (field $native (ref 60)))))
+  (type $count.closure (sub final 62 (struct (field $hash (mut i32)) (field $uniform (ref 52)) (field $native (ref 59)))))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
   (import "quest.runtime" "exception:real.error" (global $real.error (ref $exception)))
   (import "quest.runtime" "exception:word.error" (global $word.error (ref $exception)))
@@ -151,9 +152,10 @@
   (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 55)))
   (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 55)))
   (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 53)))
+  (import "conv" "int" (func $conv.int (type 56)))
   (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 52)))
-  (import "conv" "bool" (func $conv.bool (type 56)))
-  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 57)))
+  (import "conv" "bool" (func $conv.bool (type 57)))
+  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 58)))
   (import "wasm/core" "init" (func $wasm/core.init (type 51)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $sum.static (ref $sum.closure) i32.const 0 ref.func $sum.uniform ref.func $sum struct.new $sum.closure)
@@ -167,7 +169,7 @@
   (global $literal (mut eqref) ref.null none)
   (export "_start" (func $_start))
   (elem declare func $sum.uniform $sum $isEven.uniform $isEven $isOdd.uniform $isOdd $count.uniform $count)
-  (func $sum (type 58) (param $closure (ref $clos)) (param $n i64) (param $acc i64) (result i64)
+  (func $sum (type 59) (param $closure (ref $clos)) (param $n i64) (param $acc i64) (result i64)
     (local $v i32)
     (local $v.1 i64)
     (local $v.2 i64)
@@ -200,7 +202,7 @@
     end
     unreachable
   )
-  (func $isEven (type 59) (param $closure (ref $clos)) (param $n i64) (result i32)
+  (func $isEven (type 60) (param $closure (ref $clos)) (param $n i64) (result i32)
     (local $v i32)
     (local $v.1 i64)
     local.get $n
@@ -222,7 +224,7 @@
     end
     unreachable
   )
-  (func $isOdd (type 59) (param $closure (ref $clos)) (param $n i64) (result i32)
+  (func $isOdd (type 60) (param $closure (ref $clos)) (param $n i64) (result i32)
     (local $v i32)
     (local $v.1 i64)
     local.get $n
@@ -244,7 +246,7 @@
     end
     unreachable
   )
-  (func $count (type 58) (param $closure (ref $clos)) (param $n i64) (param $acc i64) (result i64)
+  (func $count (type 59) (param $closure (ref $clos)) (param $n i64) (param $acc i64) (result i64)
     (local $v i64)
     (local $v.1 i32)
     (local $v.4 i64)
@@ -349,8 +351,9 @@
     i64.const 0
     call $sum
     local.set $v
+    global.get $noClosure
     local.get $v
-    call $convInt
+    call $conv.int
     local.set $v.1
     i32.const 1
     ref.i31
@@ -389,8 +392,9 @@
     i64.const 0
     call $sum
     local.set $v
+    global.get $noClosure
     local.get $v
-    call $convInt
+    call $conv.int
     local.set $v.1
     i32.const 1
     ref.i31
@@ -509,8 +513,9 @@
     i64.const 0
     call $count
     local.set $v
+    global.get $noClosure
     local.get $v
-    call $convInt
+    call $conv.int
     local.set $v.1
     i32.const 1
     ref.i31
@@ -549,8 +554,9 @@
     i64.const 0
     call $count
     local.set $v
+    global.get $noClosure
     local.get $v
-    call $convInt
+    call $conv.int
     local.set $v.1
     i32.const 1
     ref.i31

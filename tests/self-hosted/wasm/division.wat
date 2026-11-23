@@ -57,6 +57,7 @@
   (type (func (param (ref $clos) eqref) (result eqref)))
   (type (func (param (ref $clos) eqref) (result i64)))
   (type (func (param (ref $clos) eqref i64) (result eqref)))
+  (type (func (param (ref $clos) i64) (result eqref)))
   (type (func (param (ref $clos)) (result eqref)))
   (import "quest.runtime" "exception:int.error" (global $int.error (ref $exception)))
   (import "quest.runtime" "exception:real.error" (global $real.error (ref $exception)))
@@ -140,8 +141,9 @@
   (import "wasm/core" "proxyElement" (func $wasm/core.proxyElement (type 55)))
   (import "wasm/core" "proxyOptionElement" (func $wasm/core.proxyOptionElement (type 55)))
   (import "wasm/core" "proxyOptionPayload" (func $wasm/core.proxyOptionPayload (type 53)))
+  (import "conv" "int" (func $conv.int (type 56)))
   (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 52)))
-  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 56)))
+  (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 57)))
   (import "wasm/core" "init" (func $wasm/core.init (type 51)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $literal (mut eqref) ref.null none)
@@ -159,17 +161,21 @@
     call $wasm/core.init
     call $writer.init
     call $conv.init
+    global.get $noClosure
     i64.const 7
-    call $convInt
+    call $conv.int
     local.set $v
+    global.get $noClosure
     i64.const 2
-    call $convInt
+    call $conv.int
     local.set $v.1
+    global.get $noClosure
     i64.const 3
-    call $convInt
+    call $conv.int
     local.set $v.2
+    global.get $noClosure
     i64.const 1
-    call $convInt
+    call $conv.int
     local.set $v.3
     local.get $v
     global.get $literal
@@ -245,17 +251,21 @@
       call $wasm/core.writerPutString
     end
     local.set $v
+    global.get $noClosure
     i64.const -7
-    call $convInt
+    call $conv.int
     local.set $v
+    global.get $noClosure
     i64.const 2
-    call $convInt
+    call $conv.int
     local.set $v.1
+    global.get $noClosure
     i64.const -3
-    call $convInt
+    call $conv.int
     local.set $v.2
+    global.get $noClosure
     i64.const -1
-    call $convInt
+    call $conv.int
     local.set $v.3
     local.get $v
     global.get $literal
@@ -331,17 +341,21 @@
       call $wasm/core.writerPutString
     end
     local.set $v
+    global.get $noClosure
     i64.const 7
-    call $convInt
+    call $conv.int
     local.set $v
+    global.get $noClosure
     i64.const -2
-    call $convInt
+    call $conv.int
     local.set $v.1
+    global.get $noClosure
     i64.const -3
-    call $convInt
+    call $conv.int
     local.set $v.2
+    global.get $noClosure
     i64.const 1
-    call $convInt
+    call $conv.int
     local.set $v.3
     local.get $v
     global.get $literal
@@ -417,17 +431,21 @@
       call $wasm/core.writerPutString
     end
     local.set $v
+    global.get $noClosure
     i64.const -9223372036854775808
-    call $convInt
+    call $conv.int
     local.set $v
+    global.get $noClosure
     i64.const -1
-    call $convInt
+    call $conv.int
     local.set $v.1
+    global.get $noClosure
     i64.const -9223372036854775808
-    call $convInt
+    call $conv.int
     local.set $v.2
+    global.get $noClosure
     i64.const 0
-    call $convInt
+    call $conv.int
     local.set $v.3
     local.get $v
     global.get $literal
@@ -503,17 +521,21 @@
       call $wasm/core.writerPutString
     end
     local.set $v
+    global.get $noClosure
     i64.const -9223372036854775808
-    call $convInt
+    call $conv.int
     local.set $v
+    global.get $noClosure
     i64.const 1
-    call $convInt
+    call $conv.int
     local.set $v.1
+    global.get $noClosure
     i64.const -9223372036854775808
-    call $convInt
+    call $conv.int
     local.set $v.2
+    global.get $noClosure
     i64.const 0
-    call $convInt
+    call $conv.int
     local.set $v.3
     local.get $v
     global.get $literal
@@ -589,17 +611,21 @@
       call $wasm/core.writerPutString
     end
     local.set $v
+    global.get $noClosure
     i64.const 0
-    call $convInt
+    call $conv.int
     local.set $v
+    global.get $noClosure
     i64.const -1
-    call $convInt
+    call $conv.int
     local.set $v.1
+    global.get $noClosure
     i64.const 0
-    call $convInt
+    call $conv.int
     local.set $v.2
+    global.get $noClosure
     i64.const 0
-    call $convInt
+    call $conv.int
     local.set $v.3
     local.get $v
     global.get $literal
@@ -675,11 +701,13 @@
       call $wasm/core.writerPutString
     end
     local.set $v
+    global.get $noClosure
     i64.const 1
-    call $convInt
+    call $conv.int
     local.set $v
+    global.get $noClosure
     i64.const 0
-    call $convInt
+    call $conv.int
     local.set $v.1
     i64.const 0
     i64.eqz
@@ -716,8 +744,9 @@
       i64.div_s
     end
     local.set $v.50
+    global.get $noClosure
     local.get $v.50
-    call $convInt
+    call $conv.int
     local.set $v.2
     i64.const 0
     i64.eqz
@@ -752,8 +781,9 @@
       i64.rem_s
     end
     local.set $v.50
+    global.get $noClosure
     local.get $v.50
-    call $convInt
+    call $conv.int
     local.set $v.3
     local.get $v
     global.get $literal

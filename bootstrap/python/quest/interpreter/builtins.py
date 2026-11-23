@@ -1135,7 +1135,6 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_reader_close": _reader_close,
 
     # Conv
-    "quest_conv_int": _conv_int,
     "quest_conv_bool": lambda b: QString("true" if isinstance(b, QBool) and b.value else "false"),
     "quest_conv_okay": lambda _: QString("ok"),
 

@@ -184,6 +184,7 @@
   (import "wasm/core" "viewRecordField" (func $wasm/core.viewRecordField (type 68)))
   (import "wasm/core" "viewOptionComponent" (func $wasm/core.viewOptionComponent (type 69)))
   (import "wasm/core" "viewOptionPayload" (func $wasm/core.viewOptionPayload (type 52)))
+  (import "conv" "int" (func $conv.int (type 56)))
   (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 52)))
   (import "conv" "bool" (func $conv.bool (type 70)))
   (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 71)))
@@ -444,8 +445,9 @@
         br $k2.after
       end
       local.set $x
+      global.get $noClosure
       local.get $x
-      call $convInt
+      call $conv.int
       local.set $e
       i32.const 1
       ref.i31
@@ -545,8 +547,9 @@
           br $inlined1.after
         end
         local.set $x
+        global.get $noClosure
         local.get $x
-        call $convInt
+        call $conv.int
         local.set $e
         block $inlined2.after
           block $inlined2 (result i64)
@@ -579,8 +582,9 @@
             br $inlined2.after
           end
           local.set $x
+          global.get $noClosure
           local.get $x
-          call $convInt
+          call $conv.int
           local.set $v.4
           local.get $e
           global.get $literal.1
@@ -667,8 +671,9 @@
               br $inlined3.after
             end
             local.set $x
+            global.get $noClosure
             local.get $x
-            call $convInt
+            call $conv.int
             local.set $e
             i32.const 1
             ref.i31
@@ -779,8 +784,9 @@
                 br $inlined6.after
               end
               local.set $x
+              global.get $noClosure
               local.get $x
-              call $convInt
+              call $conv.int
               local.set $e
               i32.const 1
               ref.i31
@@ -920,8 +926,9 @@
                 end
               else
               end
+              global.get $noClosure
               local.get $x
-              call $convInt
+              call $conv.int
               local.set $bad
               i32.const 1
               ref.i31
@@ -1012,8 +1019,9 @@
               i64.const 0
               call $tries
               local.set $x
+              global.get $noClosure
               local.get $x
-              call $convInt
+              call $conv.int
               local.set $bad
               global.get $tries.static.1
               global.set $tries.3
@@ -1021,8 +1029,9 @@
               i64.const 0
               call $tries.1
               local.set $x
+              global.get $noClosure
               local.get $x
-              call $convInt
+              call $conv.int
               local.set $other
               local.get $bad
               global.get $literal.1

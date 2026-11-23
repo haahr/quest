@@ -181,6 +181,7 @@
   (import "wasm/core" "viewRecordField" (func $wasm/core.viewRecordField (type 68)))
   (import "wasm/core" "viewOptionComponent" (func $wasm/core.viewOptionComponent (type 69)))
   (import "wasm/core" "viewOptionPayload" (func $wasm/core.viewOptionPayload (type 52)))
+  (import "conv" "int" (func $conv.int (type 56)))
   (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 52)))
   (import "conv" "bool" (func $conv.bool (type 70)))
   (import "conv" "char" (func $conv.char (type 70)))
@@ -536,8 +537,9 @@
               br $inlined1.after
             end
             local.set $i.1
+            global.get $noClosure
             local.get $i.1
-            call $convInt
+            call $conv.int
             local.set $v.2
             i32.const 1
             ref.i31
@@ -697,8 +699,9 @@
     array.get $slots
     call $unboxInt.1
     local.set $v.7
+    global.get $noClosure
     local.get $v.7
-    call $convInt
+    call $conv.int
     local.set $v.4
     local.get $v.2
     ref.cast (ref $tuple)
@@ -707,8 +710,9 @@
     array.get $slots
     call $unboxInt.1
     local.set $v.7
+    global.get $noClosure
     local.get $v.7
-    call $convInt
+    call $conv.int
     local.set $v.2
     local.get $v.4
     global.get $literal.1
@@ -938,8 +942,9 @@
     end
     i64.extend_i32_u
     local.set $v.7
+    global.get $noClosure
     local.get $v.7
-    call $convInt
+    call $conv.int
     local.set $v.5
     i64.const 0
     local.get $v
@@ -1195,8 +1200,9 @@
     end
     i64.extend_i32_u
     local.set $v.7
+    global.get $noClosure
     local.get $v.7
-    call $convInt
+    call $conv.int
     local.set $v
     local.get $v.2
     global.get $literal.1
@@ -1437,8 +1443,9 @@
     i32.const 1
     local.get $v.2
     array.set $slots
+    global.get $noClosure
     i64.const 1
-    call $convInt
+    call $conv.int
     local.set $v.2
     local.get $v
     ref.cast (ref $tuple)
@@ -1507,23 +1514,27 @@
     local.set $v.17
     local.get $i
     local.set $i
+    global.get $noClosure
     local.get $i
-    call $convInt
+    call $conv.int
     local.set $v
     local.get $v.7
     local.set $v.7
+    global.get $noClosure
     local.get $v.7
-    call $convInt
+    call $conv.int
     local.set $v.2
     local.get $v.17
     local.set $v.7
+    global.get $noClosure
     local.get $v.7
-    call $convInt
+    call $conv.int
     local.set $v.4
     local.get $i.1
     local.set $v.7
+    global.get $noClosure
     local.get $v.7
-    call $convInt
+    call $conv.int
     local.set $v.5
     local.get $v
     global.get $literal.1
@@ -1752,8 +1763,9 @@
     array.get $slots
     call $unboxInt.1
     local.set $v.7
+    global.get $noClosure
     local.get $v.7
-    call $convInt
+    call $conv.int
     local.set $v.2
     local.get $v
     ref.cast (ref $array)
@@ -1761,8 +1773,9 @@
     array.len
     i64.extend_i32_u
     local.set $v.7
+    global.get $noClosure
     local.get $v.7
-    call $convInt
+    call $conv.int
     local.set $v.4
     local.get $v.2
     global.get $literal.1
@@ -2054,8 +2067,9 @@
     array.get $slots
     call $unboxInt.1
     local.set $v.7
+    global.get $noClosure
     local.get $v.7
-    call $convInt
+    call $conv.int
     local.set $t.43
     local.get $v.5
     local.get $v.4
@@ -2070,8 +2084,9 @@
     array.get $slots
     call $unboxInt.1
     local.set $v.7
+    global.get $noClosure
     local.get $v.7
-    call $convInt
+    call $conv.int
     local.set $t.44
     local.get $v.45
     global.get $literal.1
@@ -2339,8 +2354,9 @@
     local.get $i
     i64.mul
     local.set $v.7
+    global.get $noClosure
     local.get $v.7
-    call $convInt
+    call $conv.int
     local.set $v.2
     local.get $v.5
     local.get $v.4
@@ -2406,8 +2422,9 @@
     local.get $i
     i64.mul
     local.set $v.7
+    global.get $noClosure
     local.get $v.7
-    call $convInt
+    call $conv.int
     local.set $t.43
     local.get $v.45
     local.get $v.2
@@ -2473,8 +2490,9 @@
     array.get $i32s
     array.get $slots
     local.set $v.2
+    global.get $noClosure
     i64.const 9
-    call $convInt
+    call $conv.int
     local.set $v.4
     local.get $v.2
     local.get $v.4
@@ -2548,8 +2566,9 @@
     array.get $slots
     call $unboxInt.1
     local.set $v.7
+    global.get $noClosure
     local.get $v.7
-    call $convInt
+    call $conv.int
     local.set $v
     i32.const 1
     ref.i31

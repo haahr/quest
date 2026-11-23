@@ -257,20 +257,6 @@ QString *quest_conv_bool(bool b) {
     return b ? quest_string_new("true", 4) : quest_string_new("false", 5);
 }
 
-QString *quest_conv_int(int64_t n) {
-    char buf[64];
-    if (n < 0) {
-        if (n == QUEST_INT_MIN) {
-            snprintf(buf, sizeof(buf), "~9223372036854775808");
-        } else {
-            snprintf(buf, sizeof(buf), "~%lld", (long long)-n);
-        }
-    } else {
-        snprintf(buf, sizeof(buf), "%lld", (long long)n);
-    }
-    return quest_string_new(buf, (int64_t)strlen(buf));
-}
-
 /* Strutil module primitives */
 double quest_strutil_to_real(const QString *s) {
     /* strutil.tryToReal has checked the syntax; strtod rounds correctly, and
