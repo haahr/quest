@@ -23,8 +23,9 @@ the arm64 performance review (§24), measures the compiler compiled to WebAssemb
 measures the collections tuned on the compiler (§28), the compiler on `util/json` (§29), scalar replacement
 through a loop's parameters (§30), character I/O without a lock per character (§31), one object per closure (§32),
 ssac's `volatile` locals (§33) and adapter closures made once (§34), times every backend again, arm64 whole
-program included (§35), measures what inlining three library modules into their importers would gain (§36), and
-makes whole program as fast as unit by unit (§37).
+program included (§35), measures what inlining three library modules into their importers would gain (§36),
+makes whole program as fast as unit by unit (§37), and counts where the median programs' instructions go against
+MLton's (§38).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -3429,3 +3430,118 @@ Over all 46, by geometric mean: the first fix's whole-program times are 1.007 of
 whole program (count-graphs 0.80, vliw 0.83). With both, whole program takes 0.977 of unit by unit's time, no program
 more than 1.06 (DLXSimulator; boyer 1.04), and is faster for ratio-regions (0.67), peek (0.75), and zebra (0.76), for
 the inlining across modules that units cannot do.
+
+## 38. The median programs against MLton, by counts (2026-11-23)
+
+The middle of the suite runs at about 1.5 times MLton's time through arm64 and 1.2 through ssac (§35.3, medians;
+the geometric means are pulled up by a few programs far out). Eight programs near the median were taken apart by
+counts, which a loaded machine barely changes, rather than by time: tyan, nucleic, logic, fft, matrix-multiply,
+mandelbrot, mpuz, and lexgen.
+
+### 38.1. How they were taken
+
+At `7ab07bdc`, each program built as a whole program by `tools/perf/variants.py --backends ssac,arm64` and by MLton
+20241230 (`run.py`'s build, its C code generator through clang), run at §35's count (the suite's over 4):
+
+- **Instructions retired and cycles,** from `/usr/bin/time -l`, which counts the process's own.
+- **Allocation and the collector's time,** from `QUEST_GC_STATS=1` and MLton's `@MLton gc-summary --`.
+- **Where the instructions are:** `tools/perf/profile.py` for the hot functions and their hottest instructions (MLton's
+  code is a few `Chunk_N` functions, its loops found by their addresses), then each hot loop's instructions per
+  iteration read from the listings of all three, and checked against the totals.
+
+### 38.2. The counts
+
+| Benchmark | MLton (G instructions) | ssac / MLton | arm64 / MLton | arm64 / ssac | Allocated, Quest / MLton | Hot code |
+|---|--:|--:|--:|--:|--:|---|
+| tyan | 54.6 | 1.12 | 1.42 | 1.27 | 0.85 | `M.compare` on `int list`s, `P.plus` |
+| nucleic | 33.6 | 1.92 | 2.39 | 1.25 | 1.35 | `tfoCombine`, `tfoApply` |
+| logic | 71.0 | 1.39 | 1.84 | 1.32 | 1.55 | `oc`, `unify1`, `deref` |
+| fft | 17.9 | 1.19 | 2.10 | 1.76 | 0.95 | the radix-4 butterfly |
+| matrix-multiply | 48.4 | 1.99 | 3.73 | 1.87 | 0.95 | `dot`'s inner loop |
+| mandelbrot | 27.3 | 1.30 | 1.66 | 1.28 | none | the iteration of one point |
+| mpuz | 60.3 | 0.94 | 1.67 | 1.77 | none | `assign`'s loops |
+| lexgen | 43.5 | 1.79 | 1.95 | 1.09 | 1.34 | `Dict` lookups on string keys |
+
+Quest's collector paused for less time than MLton's spent collecting in every one (logic 1.4 s against 2.1 s, tyan
+0.08 against 1.1), so collection is not the gap; allocating is. Quest's code runs at a higher rate (instructions
+per cycle) than MLton's, so its time ratios are smaller than its instruction ratios.
+
+Instructions per iteration of the hottest loops:
+
+| Loop | MLton | ssac | arm64 |
+|---|--:|--:|--:|
+| mandelbrot, one step of a point | 13 | | 35 |
+| matrix-multiply, `dot` | 8 | 16 | 30 |
+| fft, one butterfly | 77 | 110 | 228 |
+| nucleic, `tfoCombine` (a call) | 84 | 268 | 287 |
+| tyan, `M.compare`, an element | 10 | 25 | 36 |
+| logic, a `deref` step | 12 | 16 | 29 |
+| mpuz, its skip loop | 7 | 10 | 18 |
+| lexgen, a `Dict` key compared | 38 | 72 | 80 |
+
+### 38.3. Where the instructions go
+
+None of it is a single missing pass. In order of how much of the eight it explains:
+
+1. **A NaN check after every real operation** (a language rule: `Real` arithmetic raises `real.error` on a NaN
+   result, arm64.md §3). `fcmp d,d` and `b.vs` after each `++`, `--`, `**`, `//`: 126 of `tfoCombine`'s 203
+   instructions over MLton's, 48 of fft's butterfly, 16 of mandelbrot's 22, 4 of matrix-multiply's 22. A NaN
+   propagates through all four operations, so a check where a value is observed (a comparison, a store, an argument,
+   a return, a conversion) would raise for the same programs, later and at another site: `tfoCombine`'s 63 checks
+   would be 12.
+2. **The allocation fast path,** about 22 instructions through ssac and 30 through arm64 against MLton's 3 to 8
+   (`quest_gc_bump` and `quest_gc_note_start`, runtime/quest_gc.h; `ssa/passes/allocations`). It reads the cursor,
+   the limit, and the collector's flags as globals (arm64: an `adrp` and `add` for each, every time), tests the limit
+   and the flags with `cset`, `cset`, `orr`, `cbnz`, and sets the object's bit in the start bitmap by a
+   read-modify-write of a byte (11 to 13 instructions). MLton keeps its frontier in a register and its limit a load
+   away. About 550 M of logic's 860 M (ssac) per iteration, 43 of `tfoCombine`'s instructions (MLton returns the
+   tuple flattened, allocating nothing), and about 23 per term of tyan's `plus`.
+3. **Checks that dominating ones make redundant are kept,** with the loads after them. Every array access checks
+   for a null array and its bounds (`elementAddress`, `ssa/build/aggregates`); a check ends a block, and value
+   numbering removes repeated comparisons only within a block and repeated loads only up to a branch. fft's
+   butterfly makes 24 null checks and 24 bounds checks for its 8 elements, and loads 16 where it reads 8: 64 of its
+   228 instructions on arm64 (clang removes them in ssac). With no loop-invariant motion and no strength reduction,
+   matrix-multiply reloads its array's length, checks it for null twice, and multiplies out `r * cols + i` on every
+   step (9 of its 30); mpuz reloads a string's length, data, and null checks on every character.
+4. **Tests for proxies** (data representation). `lists.T(Int)`, logic's `Term`, and the like may hold a proxy
+   (`mayBeProxied`, `repr/layout`; runtime-design.md §2.3), so each tag, payload, or field read is preceded by
+   `tbnz wN, #0` and a cold call: 8 of the 25 instructions per element of tyan's compare through ssac, 5 to 8 per
+   step of logic's walks, 5 in mpuz's skip loop, about a tenth of lexgen's gap. None of these programs makes a proxy
+   of those types; the sites that could are in shared library code. A whole program could prove that none is made.
+5. **Small operations made as runtime calls.** lexgen's keys are strings: `stringOp.precedes` is
+   `quest_string_precedes` (a frame, a null check, and a `memcmp` call, where the strings differ at their first
+   byte 90% of the time), reached through a `Dict`'s `leq` closure, about 45% of lexgen's gap; and `conv.int` is
+   `snprintf` (`quest_conv_int`, runtime/quest_stdlib.c), about 500 instructions a call against a digit loop's 25, a
+   further 23%. logic's `quest_string_equal` is a call MLton makes `cmp` and `b.eq`. `real.int` is a call
+   (`quest_real_from_int`), as MLton's `WordS32_rndToReal64` is: no gap there.
+6. **Representation's size.** logic allocates 1.55 times MLton's bytes for the same objects: an option carries its
+   tag in a word of its own, where MLton's is in the header, and every case is as large as the largest (a `Term`
+   `ref` is 32 bytes against 16). A cons cell is three words and `nil` an object in the heap, where MLton's cell is
+   two and its nil an immediate: 4 instructions per element of tyan's walks. mpuz's `(v, ref false)` is two objects
+   where MLton flattens it into one.
+7. **The arm64 code generator,** 1.09 to 1.87 of ssac's instructions: a load into a scratch register and then a
+   move; a real element loaded as an integer word and moved with `fmov` (and stored likewise), and the `+8` of an
+   array's data not folded into the address (48 of fft's butterfly); constants made again in the loop (mandelbrot's
+   4.0, mpuz's 10); a closure argument nothing reads passed on a back edge; a loop not rotated; the common path of a
+   proxy test laid out of line; and a value live only across a cold call stored and reloaded on the hot path.
+
+In Quest's favour, MLton checks `Int` arithmetic for overflow (7 of fft's 77, 4 of mpuz's 13) and Quest does not,
+which is why ssac retires fewer instructions than MLton on mpuz; and MLton's copying collector takes a sixth to a
+quarter of its samples in tyan and logic.
+
+### 38.4. What the cheapest changes would remove
+
+Estimated from the counts, not measured:
+
+| Change | Where | Removes |
+|---|---|---|
+| `conv.int` by a digit loop | runtime | about 1.1 G of lexgen's 10.6 G (arm64), measured by interposing `snprintf` |
+| `stringOp.precedes` and `equal` inline, calling the runtime past the first word | `externalOperation`, `ssa/build/calls` | about 40 of each of lexgen's 59 M compares |
+| A check removed when an identical one dominates it, and the loads after | value numbering, across blocks | 64 of fft's 228; part of matrix-multiply's and mpuz's |
+| NaN checks only where a value is observed | the SSA builder | 102 of `tfoCombine`'s 287, 32 of fft's 228 |
+| No proxy tests for a type no proxy of which is made | whole program, `ir/represent` | every proxy test in tyan, logic, mpuz, lexgen |
+| The allocation state in one place, the flags folded into the limit, the start bit cheaper | runtime and `ssa/passes/allocations` | about 25 instructions an object |
+| A real element loaded and stored as a real, the data offset folded | arm64 instruction selection | 48 of fft's 228, 4 of matrix-multiply's 30 |
+
+The NaN rule and the start bitmap are design choices (the bitmap is how the collector checks an ambiguous word and
+resolves an interior pointer, collector.md §3.1); the others change no behavior.
