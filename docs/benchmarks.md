@@ -25,8 +25,8 @@ through a loop's parameters (§30), character I/O without a lock per character (
 ssac's `volatile` locals (§33) and adapter closures made once (§34), times every backend again, arm64 whole
 program included (§35), measures what inlining three library modules into their importers would gain (§36),
 makes whole program as fast as unit by unit (§37), counts where the median programs' instructions go against
-MLton's (§38), takes one-block large objects from the collector's free list (§39), and counts the first fixes for
-the median programs (§40).
+MLton's (§38), takes one-block large objects from the collector's free list (§39), counts the first fixes for
+the median programs (§40), and times them, with two regressions the timing found and fixed (§41).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -3575,7 +3575,7 @@ The first part of the plan for §38's findings (`docs/mlton-median-plan.md`), an
 by instructions retired (`tools/perf/counts.py`, profiling.md §3.1) against the baseline at `73bb9e45`, whole programs
 at a thirty-second of the suite's counts. The counts are in `benchmarks/mlton/baselines/2026-11-23/`: `counts-73bb9e45`
 before, `counts-5e9365cc` after, both named by commits before the steps were rebased onto `6921cbe2` (the
-commits below are the rebased ones). Not timed: that waits for a quiet machine at the end of the part.
+commits below are the rebased ones). Timed in §41.
 
 | Step | What | Commit |
 |---|---|---|
@@ -3630,3 +3630,76 @@ walks lists and trees; the plan has two designs for removing them.
 
 checksum and wc-input1 retire 4 to 8 times MLton's instructions but take 1.2 to 1.35 times its time (§35.3): their
 extra instructions are cheap ones, and none of these steps was aimed at them.
+
+## 41. The median programs' first fixes, timed (2026-11-23)
+
+§40's steps, timed twice: at `f7f14565`, as pushed, and at `69f83386`, with two fixes for regressions the first timing
+found. Each regression's commit was found by timing the two programs at each of §40's commits, five runs each.
+
+| Commit | What |
+|---|---|
+| `82cc5e55` | nanChecks' replay stops before the last check's block, so it keeps no value live that only that block reads |
+| `69f83386` | the runtime's cache of function starts, for a raise's frames, has two ways a set, indexed by offset |
+
+- **matrix-multiply took 1.31 times as long after step 4** (`1ad39002`), though it retired 0.93 of the instructions:
+  7.2 s before, 9.45 s after, through arm64. The replay read the dot loop's running sum, so the sum stayed live past
+  the next one, and arm64 computed the next in another register and moved it back: an `fmov` on the chain of `fadd`s
+  that bounds the loop. With the replay stopping before the last check (when every earlier check passes, the last is
+  the one that failed), it takes 6.3 s.
+- **zebra took twice as long in some runs:** 25.4 s rather than 12.8, in two runs of ten at `f7f14565` and in one of
+  five at `883a870d` (79 billion cycles rather than 40). Its search raises often, and a raise that a handler might
+  catch walks the stack's frames, looking up each return address's function in a cache. The cache had one way a set
+  and was indexed by the address itself, so which return addresses shared a slot moved with the address space's random
+  slide; when two that every raise walks shared one, each raise called `dladdr` for both. §40's code changes made such
+  a collision likelier in zebra without causing it. Indexed by the offset from the runtime's code, with two ways, zebra
+  takes 12.6 to 12.8 s in each of fifteen runs.
+
+### 41.1. How they were taken
+
+`run.py time --scale 0.25`, one run each: with `--clean` and `--mlton` (arm64), then `--backend ssac`, then
+`--whole-program`, in a separate worktree at each commit, each run waiting for the load to stay under 5 for 180 s.
+MLton's times in the two differ by 0.1% (geometric mean). The times are in
+`benchmarks/mlton/baselines/2026-11-23/`: `mlton-{f7f14565,69f83386}.jsonl` and
+`quest-{arm64,ssac,arm64-whole}-{f7f14565,69f83386}.jsonl`.
+
+### 41.2. Programs
+
+Geometric mean of time over MLton's, over all 46 and over §40's eleven programs:
+
+| System | §35 (`7dfe1ddb`) | `f7f14565` | `69f83386` | Eleven, §35 | `f7f14565` | `69f83386` |
+|---|--:|--:|--:|--:|--:|--:|
+| ssac | 1.25 | **1.21** | **1.21** | 1.16 | 1.11 | 1.10 |
+| arm64 | 1.79 | **1.71** | **1.68** | 1.37 | 1.31 | 1.25 |
+| arm64, whole program | 1.85 | **1.68** | **1.64** | 1.49 | 1.33 | 1.26 |
+
+Against §35, program by program, `69f83386` takes 0.97 of the time through ssac, 0.94 through arm64, and 0.89 whole
+program (some of it from the work on main between them: §37's, for whole program). Against `f7f14565`, 1.01, 0.98, and
+0.97: matrix-multiply 0.66 and 0.64 through arm64 and whole program, tensor 0.92 and 0.89 (its inner loop sums products,
+as matrix-multiply's does), and zebra 0.51 through arm64 and 0.87 through ssac. The other programs that moved by 7% or
+more are ones neither fix touches, likely noise: even-odd 1.10 through arm64 (2.1 s), wc-input1 1.09 whole program, and
+imp-for 1.28 through ssac (0.26 s).
+
+### 41.3. Each program
+
+§40's eleven and zebra, time over MLton's:
+
+| Benchmark | ssac, §35 | `f7f14565` | `69f83386` | arm64, §35 | `f7f14565` | `69f83386` | whole, §35 | `f7f14565` | `69f83386` |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| tyan | 1.13 | 1.08 | 1.09 | 1.24 | 1.14 | 1.14 | 1.19 | 1.12 | 1.18 |
+| nucleic | 1.16 | 0.96 | 0.98 | 1.27 | 1.05 | 1.06 | 1.27 | 1.07 | 1.03 |
+| logic | 1.25 | 1.24 | 1.23 | 1.30 | 1.23 | 1.23 | 1.27 | 1.24 | 1.21 |
+| fft | 1.18 | 1.12 | 1.12 | 1.32 | 1.17 | 1.16 | 1.34 | 1.17 | 1.16 |
+| matrix-multiply | 1.12 | 1.13 | 1.07 | 1.42 | 1.85 | 1.15 | 1.43 | 1.93 | 1.16 |
+| mandelbrot | 1.52 | 1.53 | 1.52 | 1.55 | 1.60 | 1.63 | 1.59 | 1.65 | 1.61 |
+| mpuz | 1.02 | 1.02 | 1.03 | 1.58 | 1.56 | 1.55 | 1.81 | 1.62 | 1.54 |
+| lexgen | 1.69 | 1.40 | 1.38 | 1.67 | 1.37 | 1.37 | 1.67 | 1.45 | 1.38 |
+| checksum | 0.85 | 0.83 | 0.84 | 1.35 | 1.25 | 1.25 | 2.95 | 1.29 | 1.26 |
+| zern | 0.91 | 0.86 | 0.85 | 1.26 | 1.13 | 1.12 | 1.26 | 1.14 | 1.11 |
+| wc-input1 | 1.22 | 1.23 | 1.22 | 1.22 | 1.22 | 1.22 | 1.21 | 1.25 | 1.36 |
+| zebra | 5.03 | 5.94 | 5.18 | 4.96 | 9.03 | 4.67 | 3.81 | 3.62 | 3.58 |
+
+- **The counts' gains held as times** for nucleic, fft, lexgen, zern, and tyan (0.82 to 0.92 of §35's through arm64);
+  logic's and mpuz's were smaller in time than in counts (0.95 and 0.98).
+- **mandelbrot is 5% slower than at §35 through arm64,** though it retires 0.95 of the baseline's instructions (§40).
+  It was not taken apart.
+

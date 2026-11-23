@@ -15,7 +15,16 @@ backend too, in the same step ([wasm.md](wasm.md)); the SSA's passes do not reac
 Done and pushed, counted in [benchmarks.md](benchmarks.md) §40: steps 0, 1, 2, 3, 4, 6a, 7, and part of 13 and 16
 (a proxy's slow path cold, a join taking its hot predecessor's register). Tried and not kept: `precedes` and `equal`
 expanded inline (step 2), and the entry's unread parameters left out (step 15). Step 5 is measured and has two designs;
-the user chose neither for now. Not started: 6b, 8 to 12, 14, 17, 18, and §4.3. Not yet timed.
+the user chose neither for now.
+
+Timed in [benchmarks.md](benchmarks.md) §41, which found two regressions, fixed in local commits not yet pushed: step
+4's replay put a move on matrix-multiply's loop chain (`82cc5e55`, see step 4), and the runtime's frame cache made
+zebra take twice as long in some runs (`69f83386`). With both, against MLton's time: ssac 1.21, arm64 1.68, arm64
+whole program 1.64 (§35's 1.25, 1.79, 1.85).
+
+Part 2, analyzed and not made (local, not pushed): steps 11 and 24, under the plan's threshold; step 12, worth 6 to 9%
+on lexgen but needing a whole-program analysis of a field's values (the user to decide); step 19's census
+(`allocations.py --by-layout`), which supports steps 20 and 21. Not started: 6b, 8 to 10, 14, 17, 18, 20 to 23.
 
 ## 1. Decisions
 
@@ -213,6 +222,12 @@ use is such an operation in the region. A failing check jumps to the region's re
 site. The pass, `ssa/passes/nanChecks`, runs before value numbering. Tests: `tests/errors/run/nan_chain_1` to `3`,
 which raise at each operation of a chain, in every mode. Against the baseline, through ssac and arm64: nucleic 0.824
 and 0.864, matrix-multiply 0.876 and 0.934, zern 0.964 and 0.936, mandelbrot 0.994 and 0.947.
+
+**Fixed after timing** (`82cc5e55`). The replay read every value the region's blocks read, the running sum of
+matrix-multiply's dot loop among them, so that sum stayed live past the next and arm64 moved the next sum back into
+its register on each iteration: 1.31 times the time, with fewer instructions. The replay now stops before the last
+check's block and jumps to its raise, since when every earlier check passes, the last is the one that failed.
+matrix-multiply takes 0.66 of the step's time through arm64 ([benchmarks.md](benchmarks.md) §41).
 
 ### 3.5. Step 5: fewer proxy tests (two designs, the user to choose)
 
