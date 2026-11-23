@@ -10,20 +10,21 @@ backend share. The two-compilers policy holds: behavior goldens stay shared and 
 and C goldens are each compiler's own. A step that changes the runtime or a library module changes the WebAssembly
 backend too, in the same step ([wasm.md](wasm.md)); the SSA's passes do not reach it, since it starts from the IR.
 
-## 1. Decisions for the user
+## 1. Decisions
 
-Each is marked where it arises; none blocks the steps before it.
+Made by the user on 2026-11-23:
 
-- **D1, `conv.int` in Quest or in C** (step 1). Recommended: Quest. A first version already retires 0.62 of the
-  native one's instructions per call (§3.1); it is kept if it is within about 1.5 times a C digit loop's.
-- **D2, NaN checks deferred** (step 4). Recommended: deferred with the exact site recovered on the cold path (§3.4), so
-  that no program's behavior changes. The alternative, raising at the observation point, would change the language's
-  rule.
-- **D3, the object-start bitmap** (step 6). Whether a start bit is still set by every allocation (cheaper, step 6a) or
-  the bitmap is built for each region at collection from the objects' headers (step 6b, a collector design change).
-- **D4, data representation** (§4.3). Each item there changes how values are laid out across every backend and the
-  runtime; each needs its own plan, and the user's go-ahead, before it starts.
-- **Pushing.** Recommended: commit each step, run `tools/check` at the end of each part, and push when the user says.
+- **D1, `conv.int` in Quest,** not C (step 1).
+- **D2, NaN checks deferred, with the exact site recovered** on the cold path (step 4), so that no program's behavior
+  changes.
+- **D3, the start bit still set by each allocation, more cheaply** (step 6a). The bitmap built at collection (6b) is
+  taken only if 6a's counts show that the bit is still a large part of the fast path and 6b's design looks meaningfully
+  cheaper; the step reports which.
+- **D4, the representation changes as specific steps** (§4.3), each measured before it is made, each stopping the
+  section if it does not pay.
+
+Open: **pushing.** Each step is committed; `tools/check` runs at the end of each part (and after each step of §4.3,
+which change the ABI); pushing waits for the user.
 
 ## 2. Measuring
 
@@ -97,7 +98,7 @@ around it included:
 So the Quest version costs about 390 instructions beyond its allocation against the native one's 770: about 37 a digit,
 since it divides twice per digit. The step tries one division per digit (the count by comparisons with powers of ten,
 or digits written right to left into a string of the greatest length and copied with `getSub`) and writes a C digit
-loop as a yardstick (**D1**), keeping the Quest version if it is within about 1.5 times the C loop's count.
+loop as a yardstick, only to record how close the Quest version comes (D1 keeps Quest).
 
 The Quest version also changes:
 
@@ -152,7 +153,7 @@ than equal value numbers is attempted in this step.
 another array kept, a check not dominated kept); `language/*` SSA goldens regenerated. **Measure:** fft, mpuz,
 matrix-multiply.
 
-### 3.4. Step 4: NaN checks where a value is observed (D2)
+### 3.4. Step 4: NaN checks where a value is observed
 
 `Real` arithmetic raises `real.error` on a NaN result ([arm64.md](arm64.md) §3, `ssa/build/calls`: `opIsNaN` and a
 check after each `++`, `--`, `**`, `//`). That is 126 of `tfoCombine`'s 203 instructions over MLton's, 48 of fft's
@@ -189,7 +190,7 @@ Unit by unit it cannot know, and nothing changes.
 **Tests:** a whole-program SSA golden of a list walk with no proxy test; `language/proxies` (or its equivalent) in
 whole-program mode, unchanged. **Measure:** tyan, logic, lexgen, mpuz, as whole programs.
 
-### 3.6. Step 6: a cheaper allocation (D3)
+### 3.6. Step 6: a cheaper allocation
 
 The fast path (`quest_gc_bump` and `quest_gc_note_start`, runtime/quest_gc.h; `ssa/passes/allocations`) is about 22
 instructions through ssac and 30 through arm64, against MLton's 3 to 8: the cursor, the limit, and
@@ -208,11 +209,12 @@ and the flags tested with `cset`, `cset`, `orr`, `cbnz`, and the start bit set b
 Both backends emit the sequence (arm64 from `ssa/passes/allocations`, ssac from the inline functions), so both change
 together; the WebAssembly runtime's allocator has its own fast path, which gets the same flags-in-limit change.
 
-**6b, the bitmap built at collection (D3, a design change):** every object begins with its layout (or a size word and
-its layout), so the objects in the space allocated since the last collection can be walked from each region's start,
-and their bits set then, before marking needs them. The allocation then sets no bit at all. This would need
-[collector.md](collector.md) changed first (every allocation must leave a parsable region, including the runtime's
-own), and is a step of its own if the user wants it.
+**6b, the bitmap built at collection, only if 6a leaves the bit a large part of the path (D3):** every object begins
+with its layout (or a size word and its layout), so the objects in the space allocated since the last collection can be
+walked from each region's start, and their bits set then, before marking needs them. The allocation then sets no bit at
+all. This would need [collector.md](collector.md) changed first (every allocation must leave a parsable region,
+including the runtime's own), so 6a reports the bit's share of the fast path after its changes and, if it is large, a
+sketch of 6b's cost: the walk at each collection over the objects allocated since the last.
 
 **Tests:** the stress tier (`tools/check --stress`), which allocates through every path; the collector's own tests.
 **Measure:** logic, tyan, nucleic.
@@ -272,25 +274,84 @@ cases:
 - **Step 18, `cset`/`orr` sequences as branches:** a conjunction of comparisons that feeds only a branch becomes `ccmp`
   and one branch (logic's 1,563 `cset`/`csel` against ssac's 19).
 
-### 4.3. Data representation (D4: each its own plan)
+### 4.3. Data representation
 
-Investigations, not steps: each says what it would gain, from counts of the programs built by hand where possible, and
-what it would cost across the runtime, every backend, and the interpreters.
+Today ([c-representation.md](c-representation.md) §5.1, §5.3; [collector.md](collector.md) §3.2):
 
-- **An option's tag in its header word:** today a word of its own (`str` and cons cells 32 bytes against MLton's 24);
-  logic allocates 1.55 times MLton's bytes for the same objects.
-- **Each case of an option sized to itself:** today every case is as large as the largest (a `Term`'s `ref` 32 bytes
-  against 16).
-- **Payload-free cases as immediates, and two-word cons cells:** `nil` is an object in the heap and a cons three words
-  where MLton's nil is an immediate and its cell two; 4 instructions per element of tyan's walks.
-- **A tuple of a value and a `var` flattened:** mpuz's `(v, ref false)`, two objects where MLton makes one.
-- **Tuples returned in registers:** `tfoCombine` allocates its result, 43 of its instructions, where MLton returns
-  the tuple flattened. Workers (inlining.md step 5) carry tuple results unboxed already; the step finds why
-  `tfoCombine`'s are not.
+- every object has a header word before it: its layout's address in the low 48 bits, and two bytes of flags above;
+- an option is a tag word and then a union of its cases' payloads, as large as the largest; its layout describes the
+  union as a whole, and a case's payload is a tuple at the option's address plus 8, which a case binder points to;
+- a case without components is the address of a constant in its unit's table, one object per tag;
+- an option's tag is read with a load, `is` on options compares by case, and the write barrier tells an option's
+  payload from an object by the word before it (a tag is under 65536, `Q_BARRIER_TAG_LIMIT`).
+
+logic allocates 1.55 times MLton's bytes for the same objects, and a list cell is 32 bytes to MLton's 24 with its nil
+tested by a load.
+
+Every step here changes the ABI (an ABI bump, both compilers' C, the runtime, the arm64 and ssac backends, the JIT),
+except where it says otherwise. The WebAssembly backend keeps its own layout (wasm.md §2.3: slots in an array inside
+one struct type) and changes only where the runtime it shares does. The bootstrap emits the same layouts as the
+self-hosted compiler, so it follows every layout step, behavior goldens unchanged.
+
+**Step 19, a census before any design.** `QUEST_GC_CHECK=allocations` (`benchmarks/mlton/allocations.py`) counts
+allocations by function; it gains `--by-layout`: the count and bytes of each layout, and for options of each case.
+Run over the whole suite and the compiler's own build, it gives each of steps 20 to 24 its gain in bytes before it is
+designed further. Each step below states the gain it needs: a step whose census gain is under 3% of the bytes
+allocated on every program, with no program's instructions moved by 1% in a hand-built experiment, is not made.
+
+**Step 20, each case of an option sized to itself.** An option's object is its tag and then its own case's payload,
+not the largest case's. That needs a layout for each case (a tag, then the case's words, with their kinds), so that
+the collector and the barrier find an object's size and pointers from its header as they do now:
+
+- `repr/layout` gives an option shape a layout per case, with the union's layout kept for generic code
+  (`QOptionHeader`), which reads only the tag and the case's own words;
+- the allocation of `option c of T with ... end` uses case `c`'s size and layout; a payload-free case stays a constant;
+- nothing reads past a case's own words today, which the step checks first: copying (`opt!tag` copies only the case),
+  generic conversion between layouts (§5.1's polymorphic calls), serialization, `dynamic`, and the runtime's
+  `quest_view_*` and proxy functions, each listed and fixed before the change;
+- the collector's layout table gains the cases; the barrier is unchanged.
+
+Gain to check: logic's `Term`, a `ref` of 32 bytes to 16; the census over the suite.
+
+**Step 21, the tag in the header, not a word of its own (only after step 20).** With a layout per case, the tag is a
+property of the layout: the case's layouts for one option type are made consecutive (one table per option shape),
+so the tag is `(header & mask) - table` divided by the layout's size, a load, an `and`, a subtraction and a shift,
+where today it is a load. The object loses its tag word (a cons cell 24 bytes, as MLton's), and the payload is at the
+object's address:
+
+- a case binder points to the object itself, which changes every case's offsets in the SSA builder, both C emitters,
+  and the runtime;
+- the barrier's test on the word before a payload goes: the payload is the object, and its header is the word before
+  it;
+- the constants of payload-free cases keep a header too (they are objects in static data with the case's layout), so
+  that reading a tag is the same for every option;
+- the arm64 backend reads a tag in one more instruction than now, so the step first counts, in a hand-edited build of
+  tyan and logic, whether the bytes saved (fewer collections, better density) pay for it; it is not made if not.
+
+**Step 22, payload-free cases tested by address (whole programs).** Today a payload-free case is a constant in each
+unit's table, so `is` cannot compare addresses across units and a test for `nil` loads the tag. In a whole program
+there is one unit, so one table: a case test for a payload-free case is the pointer compared with the constant's
+address, with no load, where every option of that type that the program makes is made by compiled code (not by
+`dynamic`, deserialization, or the runtime, which `whole` can see). It changes no layout and no ABI. Gain: about 4
+instructions per element of tyan's and lexgen's list walks.
+
+**Step 23, a component that is a `var` tuple made with its owner, flattened into it.** mpuz's `(v, ref false)` is two
+objects, the value and the tuple holding its `used` flag; MLton makes one. In Quest, the inner tuple's identity is
+observable (`is`, aliasing of its `var`), so it is flattened only where escape analysis shows the inner tuple is made
+with the outer one, stored nowhere else, and never compared by `is`, a whole-program fact. The step first finds how
+often the pattern occurs in the suite (a census of tuples stored only as one field of one other tuple made beside
+them); it is designed further only if more than mpuz has it.
+
+**Step 24, tuple results returned in registers.** `tfoCombine` allocates its 12-real result (43 of its 287
+instructions); workers ([inlining.md](inlining.md) step 5) already return tuples unboxed, as several results. The
+step finds why `tfoCombine`'s callers do not get a worker (its size, its being exported, or a caller that stores the
+result), and widens the rule; a result that is stored is still allocated, but at the store, not in the callee. This
+changes no layout and no ABI.
 
 ## 5. Order and stopping
 
-Part 1's steps in order 1 to 7, then the part's counts and timings (§2) into benchmarks.md, then Part 2's sections in
-order. A step that saves less than 1% of instructions on every program it was aimed at is reverted and recorded as
-tried in benchmarks.md, as §37.1 records the budgets. The plan is deleted when done, its findings kept in benchmarks.md
-and the design docs the steps change.
+Part 1's steps in order 1 to 7, then the part's counts and timings (§2) into benchmarks.md. Then Part 2: §4.1 and §4.2
+in order; then §4.3, starting with the census (step 19) and the two steps that change no ABI (24, then 22), then 20, 21
+(only after 20), and 23, each gated by its census gain. A step that saves less than 1% of instructions on every program
+it was aimed at is reverted and recorded as tried in benchmarks.md, as §37.1 records the budgets. The plan is deleted
+when done, its findings kept in benchmarks.md and the design docs the steps change.
