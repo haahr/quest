@@ -11,7 +11,10 @@ their bytes, in all and by function, most first. An allocation the runtime
 makes for compiled code (through quest_alloc, or a quest_ function such as a
 conversion or a string operation) is counted to the compiled function that
 called it, the runtime's function named after it. --sites also lists the
-allocating call sites.
+allocating call sites. --by-layout lists them by layout instead: each layout's
+allocations and bytes, and its sizes when it has several (the runtime's
+census, written to $QUEST_LAYOUTS_OUT); an option made at a known case has
+that case's layout, so its cases are apart.
 docs/benchmarks.md section 9 records them.
 """
 
@@ -29,38 +32,51 @@ from pathlib import Path
 import run
 
 HERE = Path(__file__).resolve().parent
-def counted(binary: Path, count: int, timeout: float) -> list[tuple[str, str, int, int]]:
+def counted(binary: Path, count: int, timeout: float) -> tuple[list[tuple[str, str, int, int]], list[str]]:
     """The runtime's lines from running binary with count in a scratch
     directory holding a copy of DATA/: two return addresses, a count, and
-    bytes."""
+    bytes; and its census's lines by layout (quest_gc_dump_layouts)."""
     with tempfile.TemporaryDirectory() as d:
         work = Path(d)
         shutil.copytree(run.DATA_DIR, work / "DATA")
         out = work / "allocations.txt"
-        env = dict(os.environ, QUEST_GC_CHECK="allocations", QUEST_ALLOCATIONS_OUT=str(out))
+        layouts = work / "layouts.txt"
+        env = dict(os.environ, QUEST_GC_CHECK="allocations", QUEST_ALLOCATIONS_OUT=str(out),
+                   QUEST_LAYOUTS_OUT=str(layouts))
         subprocess.run([str(binary), str(count)], cwd=work, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                        preexec_fn=run.deep_stack, env=env, timeout=timeout, check=True)
         rows = [line.split() for line in out.read_text().splitlines()]
-    return [(r[0], r[1], int(r[2]), int(r[3])) for r in rows]
+        census = layouts.read_text().splitlines() if layouts.exists() else []
+    return [(r[0], r[1], int(r[2]), int(r[3])) for r in rows], census
 
 
-def symbolize(binary: Path, addresses: list[str]) -> dict[str, tuple[str, str]]:
-    """Each address's function and source position (or offset), by atos."""
-    names = {"0x0": ("(outside the program)", "")}
-    wanted = sorted(set(addresses) - set(names))
-    for start in range(0, len(wanted), 2000):
-        chunk = wanted[start:start + 2000]
-        lines = subprocess.run(["atos", "-o", str(binary), "-l", "0x100000000", *chunk],
-                               capture_output=True, text=True, check=True).stdout.splitlines()
-        for address, line in zip(chunk, lines):
-            function, _, rest = line.partition(" (in ")
-            where = rest.partition(") ")[2] or address
-            names[address] = (function, where.strip("()"))
-    return names
+def by_layout(name: str, census: list[str], args: argparse.Namespace) -> None:
+    """The census by layout, the most bytes first, with each size of a layout
+    made at several"""
+    rows = []
+    for line in census:
+        total, n, size, layout = line.split(" ", 3)
+        rows.append((int(total), int(n), int(size), layout))
+    bytes_all = sum(r[2] for r in rows)
+    by_name: Counter[str] = Counter()
+    for r in rows:
+        by_name[r[3]] += r[2]
+    print(f"{name}: {sum(r[1] for r in rows):,} allocations by layout, {bytes_all:,} bytes")
+    for layout, size in by_name.most_common(args.top):
+        mine = sorted((r for r in rows if r[3] == layout), key=lambda r: -r[2])
+        n = sum(r[1] for r in mine)
+        each = f"{mine[0][0]} B each" if len(mine) == 1 else "sizes below"
+        print(f"  {size:17,} B {100 * size / max(bytes_all, 1):5.1f}% {n:15,}  {each:>12}  {layout}")
+        if len(mine) > 1:
+            for total, k, s, _ in mine[:4]:
+                print(f"  {s:17,} B {100 * s / max(bytes_all, 1):5.1f}% {k:15,}  {total:>5} B each")
 
 
 def report(name: str, binary: Path, count: int, args: argparse.Namespace) -> None:
-    rows = counted(binary, count, args.timeout)
+    rows, census = counted(binary, count, args.timeout)
+    if args.by_layout:
+        by_layout(name, census, args)
+        return
     names = symbolize(binary, [a for r in rows for a in r[:2]])
     by_function: Counter[str] = Counter()
     bytes_by_function: Counter[str] = Counter()
@@ -94,6 +110,7 @@ def main() -> int:
     parser.add_argument("--count", type=int, help="run every program at this count")
     parser.add_argument("--top", type=int, default=12, help="list this many functions (default 12)")
     parser.add_argument("--sites", action="store_true", help="also list the allocating call sites")
+    parser.add_argument("--by-layout", action="store_true", help="list allocations by layout instead")
     parser.add_argument("--timeout", type=float, default=3600.0, help="seconds a run may take")
     parser.add_argument("--clean", action="store_true", help="remove .build/ first, as run.py --clean does")
     args = parser.parse_args()

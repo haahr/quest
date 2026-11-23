@@ -671,6 +671,7 @@ static void *quest_gc_alloc_medium(size_t total, unsigned k) {
 
 static void quest_gc_check_tick(size_t sz, size_t header);
 static void quest_gc_note_site(uintptr_t obj);
+static void quest_gc_note_layout(const QLayout *layout, size_t total);
 /* The checking modes only the collector reads, with quest_runtime.h's:
  * `stress` (quest_gc_stress_tick) and `sites` (quest_gc_note_site) */
 #define QUEST_GC_CHECK_STRESS 128
@@ -738,6 +739,7 @@ void *quest_gc_alloc_slow(size_t total, const QLayout *layout) {
      * every allocation, hides it too */
     if (quest_gc_cycle || quest_gc_check_flags != 0) quest_gc_hide_limits();
     if ((quest_gc_check_flags & QUEST_GC_CHECK_SITES) != 0) quest_gc_note_site((uintptr_t)p + prefix);
+    if ((quest_gc_check_flags & QUEST_GC_CHECK_ALLOCATIONS) != 0) quest_gc_note_layout(layout, total);
     return p;
 }
 
@@ -2423,6 +2425,55 @@ static void quest_gc_dump_allocations(void) {
     fclose(f);
 }
 
+/* The `allocations` mode's census by layout (allocations.py --by-layout): the
+ * allocations and their bytes by layout and total size. An option made at a
+ * known case has that case's own layout (repr/objectlayout), so the census
+ * tells its cases apart. At exit a line "total count bytes name" per entry
+ * goes to $QUEST_LAYOUTS_OUT */
+#define Q_GC_LAYOUT_SLOTS (1 << 14)
+typedef struct {
+    const QLayout *layout;
+    size_t         total;
+    unsigned long  count, bytes;
+} QGcLayoutCount;
+static QGcLayoutCount *quest_gc_layout_counts;
+
+static void quest_gc_note_layout(const QLayout *layout, size_t total) {
+    if (quest_gc_layout_counts == NULL) {
+        quest_gc_layout_counts = (QGcLayoutCount *)calloc(Q_GC_LAYOUT_SLOTS, sizeof(QGcLayoutCount));
+        if (quest_gc_layout_counts == NULL) quest_gc_fatal("gc check: out of memory");
+    }
+    size_t i = (((uintptr_t)layout >> 3) ^ (total * 31)) & (Q_GC_LAYOUT_SLOTS - 1);
+    for (size_t probes = 0;; ++probes) {
+        QGcLayoutCount *c = &quest_gc_layout_counts[i];
+        if (c->layout == NULL) {
+            c->layout = layout;
+            c->total = total;
+        }
+        if (c->layout == layout && c->total == total) {
+            c->count++;
+            c->bytes += total;
+            return;
+        }
+        if (probes == Q_GC_LAYOUT_SLOTS) quest_gc_fatal("gc check: too many layouts");
+        i = (i + 1) & (Q_GC_LAYOUT_SLOTS - 1);
+    }
+}
+
+static void quest_gc_dump_layouts(void) {
+    const char *path = getenv("QUEST_LAYOUTS_OUT");
+    if (path == NULL || quest_gc_layout_counts == NULL) return;
+    FILE *f = fopen(path, "w");
+    if (f == NULL) return;
+    for (size_t i = 0; i < Q_GC_LAYOUT_SLOTS; ++i) {
+        const QGcLayoutCount *c = &quest_gc_layout_counts[i];
+        if (c->layout == NULL) continue;
+        fprintf(f, "%zu %lu %lu %s\n", c->total, c->count, c->bytes,
+                c->layout->name != NULL ? c->layout->name : "?");
+    }
+    fclose(f);
+}
+
 /* The `collect` mode's forcing by count (tools/perf/retention.py): a
  * collection every QUEST_GC_COLLECT_EVERY allocations, "FORCED k" on standard
  * error before the kth, and with QUEST_GC_COLLECT_TRAP=k a call of
@@ -2606,7 +2657,10 @@ static void quest_gc_at_exit(void) {
         abort();
     }
     if (quest_gc_stats != 0) quest_gc_print_stats();
-    if ((quest_gc_check_flags & QUEST_GC_CHECK_ALLOCATIONS) != 0) quest_gc_dump_allocations();
+    if ((quest_gc_check_flags & QUEST_GC_CHECK_ALLOCATIONS) != 0) {
+        quest_gc_dump_allocations();
+        quest_gc_dump_layouts();
+    }
     if ((quest_gc_check_flags & QUEST_GC_CHECK_REPORT) == 0) return;
     fprintf(stderr, "quest: gc barriers: %" PRIu64 " objects logged, %" PRIu64 " cards marked\n", quest_gc_logged,
             quest_gc_cards_dirtied);
