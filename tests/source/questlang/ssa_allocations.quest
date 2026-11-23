@@ -10,15 +10,16 @@
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
-    questlang/ssa/parser : questlang/ssa/Parser
-    questlang/ssa/printer : questlang/ssa/Printer
-    questlang/ssa/passes/allocations : questlang/ssa/passes/Allocations
-    questlang/ssa/verify : questlang/ssa/Verify
-    util/strutil : util/Strutil
     writer : Writer
-;
 
-let emit(s: String): Ok = writer.putString(writer.output s);
+    util/strutil : util/Strutil
+
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/passes/allocations : questlang/ssa/passes/Allocations
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/verify : questlang/ssa/Verify
+
+let emit(s: String): Ok = writer.putString(writer.output s)
 
 (* The unit's layouts: pair, of a scalar and a pointer, and ints, of two
  * scalars, whose flags (in the high half of its second word) say noscan *)
@@ -27,7 +28,7 @@ let layouts = array of
     "data quest_layout_pair words [0, 0, 16, 2, qlk_pair]"
     "data qlk_ints words [0]"
     "data quest_layout_ints words [0, 4294967296, 16, 2, qlk_ints]"
-end;
+end
 
 let show(title: String lines: Array(String)): Ok =
     begin
@@ -38,7 +39,7 @@ let show(title: String lines: Array(String)): Ok =
         emit("-- after inlineAllocation\n")
         emit(printer.formatUnit(u))
         try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
-    end;
+    end
 
 show("a pair of the unit's, in the scanned space" array of
     "function pair(%0: int, %1: ptr): ptr {"
@@ -50,7 +51,7 @@ show("a pair of the unit's, in the scanned space" array of
     "  store8 %4 + 8, %1"
     "  return %4"
     "}"
-end);
+end)
 
 show("two ints, in the noscan space" array of
     "function ints(%0: int): ptr {"
@@ -62,7 +63,7 @@ show("two ints, in the noscan space" array of
     "  store8 %3 + 8, %0"
     "  return %3"
     "}"
-end);
+end)
 
 show("a closure, whose layout is the runtime's, and a second allocation after it" array of
     "function closure(%0: ptr, %1: ptr): ptr {"
@@ -78,7 +79,7 @@ show("a closure, whose layout is the runtime's, and a second allocation after it
     "  store8 %7 + 8, %4"
     "  return %7"
     "}"
-end);
+end)
 
 show("a size that is not a constant, left to the runtime" array of
     "function sized(%0: int): ptr {"

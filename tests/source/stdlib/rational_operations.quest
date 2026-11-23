@@ -6,111 +6,112 @@
  * toDecimal, hash agreeing with equal, and the errors; each line as Python's
  * fractions gives it *)
 
-import util/rational : util/Rational;
-import util/bignum : util/Bignum;
-import util/maybe : util/Maybe;
-import util/random : util/Random;
-import writer: Writer;
-import conv: Conv;
-import real: RealOp;
+import conv : Conv
+import real : RealOp
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
-let r(n: Int d: Int): rational.T = rational.make(n d);
-let s(t: rational.T): String = rational.toString(t);
-let b(n: bignum.T): String = bignum.toString(n);
+import util/bignum : util/Bignum
+import util/maybe : util/Maybe
+import util/random : util/Random
+import util/rational : util/Rational
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+let r(n: Int d: Int): rational.T = rational.make(n d)
+let s(t: rational.T): String = rational.toString(t)
+let b(n: bignum.T): String = bignum.toString(n)
 let parsed(text: String): String =
     begin
         let t = rational.fromString(text)
         if maybe.isSome(t) then s(maybe.unwrap(t)) else "none" end
-    end;
+    end
 
 (* Lowest terms, signs, and the arithmetic *)
 print("make " <> s(r(6 8)) <> " " <> s(r(~6 8)) <> " " <> s(r(6 ~8)) <> " " <> s(r(~6 ~8)) <> " " <> s(r(0 ~5)) <> " "
-    <> s(r(10 5)));
-print("parts " <> b(rational.numerator(r(~6 8))) <> " " <> b(rational.denominator(r(~6 8))));
+    <> s(r(10 5)))
+print("parts " <> b(rational.numerator(r(~6 8))) <> " " <> b(rational.denominator(r(~6 8))))
 print("add " <> s(rational.add(r(1 3) r(1 6))) <> " sub " <> s(rational.sub(r(1 3) r(1 2))) <> " mul "
-    <> s(rational.mul(r(2 3) r(9 4))) <> " div " <> s(rational.div(r(2 3) r(~4 9))));
-print("neg " <> s(rational.neg(r(3 4))) <> " abs " <> s(rational.abs(r(~3 4))) <> " inv " <> s(rational.inv(r(~3 4))));
+    <> s(rational.mul(r(2 3) r(9 4))) <> " div " <> s(rational.div(r(2 3) r(~4 9))))
+print("neg " <> s(rational.neg(r(3 4))) <> " abs " <> s(rational.abs(r(~3 4))) <> " inv " <> s(rational.inv(r(~3 4))))
 print("pow " <> s(rational.pow(r(2 3) 3)) <> " " <> s(rational.pow(r(2 3) ~2)) <> " " <> s(rational.pow(r(~2 3) 0))
     <> " "
-    <> s(rational.pow(r(~1 2) ~3)));
-let big = rational.pow(r(10 3) 40);
-print("big " <> s(rational.add(big r(1 7))));
+    <> s(rational.pow(r(~1 2) ~3)))
+let big = rational.pow(r(10 3) 40)
+print("big " <> s(rational.add(big r(1 7))))
 print("compare " <> conv.int(rational.compare(r(1 3) r(1 2))) <> " " <> conv.int(rational.compare(r(2 4) r(1 2))) <> " "
     <> conv.int(rational.compare(r(~1 2) r(~2 3))) <> ", equal " <> conv.bool(rational.equal(r(2 4) r(1 2)))
     <> ", less "
-    <> conv.bool(rational.less(r(~1 2) r(1 3))));
+    <> conv.bool(rational.less(r(~1 2) r(1 3))))
 print("sign " <> conv.int(rational.sign(r(~3 4))) <> conv.int(rational.sign(rational.zero))
     <> conv.int(rational.sign(r(3 4)))
-    <> ", isInteger " <> conv.bool(rational.isInteger(r(10 5))) <> conv.bool(rational.isInteger(r(10 4))));
+    <> ", isInteger " <> conv.bool(rational.isInteger(r(10 5))) <> conv.bool(rational.isInteger(r(10 4))))
 
 (* Roundings *)
 let rounds(t: rational.T): String =
     s(t) <> ":" <> b(rational.floor(t)) <> "," <> b(rational.ceil(t)) <> "," <> b(rational.trunc(t)) <> ","
-    <> b(rational.round(t));
+        <> b(rational.round(t))
 print("round " <> rounds(r(7 2)) <> " " <> rounds(r(5 2)) <> " " <> rounds(r(~7 2)) <> " " <> rounds(r(~5 2)) <> " "
-    <> rounds(r(7 3)) <> " " <> rounds(r(~7 3)) <> " " <> rounds(r(4 1)));
+    <> rounds(r(7 3)) <> " " <> rounds(r(~7 3)) <> " " <> rounds(r(4 1)))
 
 (* Reals *)
-let fromR(x: Real): String = s(rational.fromReal(x));
+let fromR(x: Real): String = s(rational.fromReal(x))
 print("fromReal " <> fromR(0.1) <> " " <> fromR(~2.5) <> " " <> fromR(0.0) <> " " <> fromR(1.0e22) <> " "
-    <> fromR(3.0));
+    <> fromR(3.0))
 print("fromReal tiny "
-    <> conv.bool(rational.equal(rational.fromReal(5.0e~324) rational.inv(rational.pow(r(2 1) 1074)))));
+    <> conv.bool(rational.equal(rational.fromReal(5.0e~324) rational.inv(rational.pow(r(2 1) 1074)))))
 print("toReal " <> conv.real(rational.toReal(r(1 3))) <> " " <> conv.real(rational.toReal(r(2 3))) <> " "
     <> conv.real(rational.toReal(r(~1 10))) <> " " <> conv.real(rational.toReal(r(22 7))) <> " "
-    <> conv.real(rational.toReal(rational.zero)));
-let twoTo53 = rational.pow(r(2 1) 53);
+    <> conv.real(rational.toReal(rational.zero)))
+let twoTo53 = rational.pow(r(2 1) 53)
 print("ties " <> conv.real(rational.toReal(rational.add(twoTo53 r(1 1)))) <> " "
     <> conv.real(rational.toReal(rational.add(twoTo53 r(3 1)))) <> " "
-    <> conv.real(rational.toReal(rational.add(twoTo53 r(5 2)))));
+    <> conv.real(rational.toReal(rational.add(twoTo53 r(5 2)))))
 print("huge " <> conv.real(rational.toReal(rational.pow(r(10 1) 400))) <> " "
     <> conv.real(rational.toReal(rational.pow(r(10 1) 300)))
-    <> " " <> conv.real(rational.toReal(rational.inv(rational.pow(r(10 1) 300)))));
-let g = random.new(12345);
-let var trips = 0;
+    <> " " <> conv.real(rational.toReal(rational.inv(rational.pow(r(10 1) 300)))))
+let g = random.new(12345)
+let var trips = 0
 let roundTrips(x: Real): Bool =
     begin
         let back = rational.toReal(rational.fromReal(x))
         {back <<= x} andif {back >>= x}
-    end;
+    end
 for i = 1 upto 100 do
     let x = random.normal(g) ** real.exp(10.0 {random.fraction(g) ** 40.0} -- 20.0)
     let y = random.fraction(g)
     if roundTrips(x) then trips := trips + 1 end
     if roundTrips(y) then trips := trips + 1 end
-end;
-print("round trips " <> conv.int(trips) <> " of 200");
+end
+print("round trips " <> conv.int(trips) <> " of 200")
 
 (* limitDenominator *)
-let pi = rational.fromReal(3.141592653589793);
+let pi = rational.fromReal(3.141592653589793)
 print("limit " <> s(rational.limitDenominator(pi 1000)) <> " " <> s(rational.limitDenominator(pi 10)) <> " "
     <> s(rational.limitDenominator(pi 1)) <> " " <> s(rational.limitDenominator(r(3 4) 10)) <> " "
-    <> s(rational.limitDenominator(rational.fromReal(0.1) 100)) <> " " <> s(rational.limitDenominator(r(~13 21) 5)));
+    <> s(rational.limitDenominator(rational.fromReal(0.1) 100)) <> " " <> s(rational.limitDenominator(r(~13 21) 5)))
 
 (* Strings *)
 print("parse " <> parsed("3/4") <> " " <> parsed("-6/8") <> " " <> parsed("~6/8") <> " " <> parsed("+5") <> " "
     <> parsed("1.25") <> " " <> parsed(".5") <> " " <> parsed("2.") <> " " <> parsed("~0.125") <> " "
-    <> parsed("007/14"));
+    <> parsed("007/14"))
 print("not " <> parsed("") <> " " <> parsed("abc") <> " " <> parsed("1/0") <> " " <> parsed("1//2") <> " "
     <> parsed("1/")
     <> " " <> parsed("/2") <> " " <> parsed(".") <> " " <> parsed("1.2.3") <> " " <> parsed("1/2x") <> " "
-    <> parsed("-"));
+    <> parsed("-"))
 print("decimal " <> rational.toDecimal(r(1 3) 3) <> " " <> rational.toDecimal(r(2 3) 3) <> " "
     <> rational.toDecimal(r(~1 8) 2)
     <> " " <> rational.toDecimal(r(1 8) 2) <> " " <> rational.toDecimal(r(5 2) 0) <> " " <> rational.toDecimal(r(7 2) 0)
     <> " "
     <> rational.toDecimal(r(1 400) 2) <> " " <> rational.toDecimal(r(~1 400) 2) <> " "
-    <> rational.toDecimal(r(123 1) 2));
+    <> rational.toDecimal(r(123 1) 2))
 print("hash " <> conv.bool(rational.hash(r(2 4)) is rational.hash(r(1 2)))
-    <> conv.bool(rational.hash(r(~2 4)) is rational.hash(r(~1 2))));
+    <> conv.bool(rational.hash(r(~2 4)) is rational.hash(r(~1 2))))
 
 (* Errors *)
 let raised(f: All() Ok): String =
-    try begin f() "none" end when rational.divide then "divide" when rational.error then "error" end;
+    try begin f() "none" end when rational.divide then "divide" when rational.error then "error" end
 print("errors " <> raised(fun(): Ok begin let x = r(1 0) end) <> " "
     <> raised(fun(): Ok begin let x = rational.inv(rational.zero) end)
     <> " " <> raised(fun(): Ok begin let x = rational.div(r(1 2) rational.zero) end) <> " "
     <> raised(fun(): Ok begin let x = rational.pow(rational.zero ~1) end) <> " "
     <> raised(fun(): Ok begin let x = rational.fromReal(real.infinity) end) <> " "
-    <> raised(fun(): Ok begin let x = rational.limitDenominator(r(1 3) 0) end));
+    <> raised(fun(): Ok begin let x = rational.limitDenominator(r(1 3) 0) end))

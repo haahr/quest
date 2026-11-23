@@ -2,22 +2,24 @@
 
 module declarations : Declarations
 import
-    questlang/types/model : questlang/types/Model
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/ir/slots : questlang/ir/Slots
-    questlang/repr/written : questlang/repr/Written
-    questlang/repr/syntax : questlang/repr/Syntax
-    questlang/repr/layout : questlang/repr/Layout
-    questlang/repr/symbols : questlang/repr/Symbols
-    questlang/repr/staticdata : questlang/repr/StaticData
-    questlang/codegen/c/types : questlang/codegen/c/Types
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/strutil : util/Strutil
-    stringOp = string : StringOp
+
+    questlang/codegen/c/types : questlang/codegen/c/Types
+    questlang/ir/slots : questlang/ir/Slots
+    questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/repr/staticdata : questlang/repr/StaticData
+    questlang/repr/symbols : questlang/repr/Symbols
+    questlang/repr/syntax : questlang/repr/Syntax
+    questlang/repr/written : questlang/repr/Written
+    questlang/types/model : questlang/types/Model
 export
     Let Type = model.Type
     Let Shape = shapes.Shape
@@ -84,7 +86,7 @@ export
                 let ret = if shapes.kindIs(resultShape shapes.shapeOk) then "void"
                     elsif shapes.kindIs(resultShape shapes.shapeRecord) then "QRecordVal"
                     else cType(sig.result)
-                end
+                    end
                 let params = vector.new(:String)
                 for i = 0 upto {extent q.quantifiers - 1} do
                     add(params "const QTypeDescriptor *descriptor_" <> q.quantifiers[i].name)
@@ -98,7 +100,9 @@ export
                     end
                 end
                 maybe.some(tuple
-                    let result = ret let name = symbols.mangleModuleIdent(cleanMod name) let params = params
+                    let result = ret
+                    let name = symbols.mangleModuleIdent(cleanMod name)
+                    let params = params
                 end)
             end
         end
@@ -145,7 +149,7 @@ export
              * records their names *)
             let rec visitShape(ms: maybe.T(Shape)): Ok =
                 if maybe.isSome(ms)
-                    andif not(hashMap.contains(visitedShapes maybe.unwrap(ms).id)) then
+                        andif not(hashMap.contains(visitedShapes maybe.unwrap(ms).id)) then
                     let s = maybe.unwrap(ms)
                     hashMap.insert(visitedShapes s.id true)
                     let t = s.structure
@@ -177,7 +181,7 @@ export
                         for i = 0 upto {extent children - 1} do visitShape(maybe.some(children[i])) end
                     end
                     if {shapes.kindIs(s shapes.shapeTypevar) orif shapes.kindIs(s shapes.shapeAbstract)}
-                        andif maybe.isSome(s.bound) then
+                            andif maybe.isSome(s.bound) then
                         visitShape(s.bound)
                     end
                 end
@@ -315,7 +319,7 @@ export
                                 let f = maybe.unwrap(sig)
                                 let params = if vector.empty(f.params) then items(array of "void" end)
                                     else f.params
-                                end
+                                    end
                                 add(lines "extern " <> f.result <> " " <> syntax.call(f.name params) <> ";")
                             end
                         end
@@ -378,7 +382,8 @@ export
                          * asserts after the struct *)
                         let asserts = vector.new(:String)
                         let assertAt(member: String bytes: Int): Ok =
-                            add(asserts "static_assert(offsetof(struct " <> name <> ", " <> member <> ") == " <> cInt(bytes)
+                            add(asserts "static_assert(offsetof(struct " <> name <> ", " <> member <> ") == "
+                                <> cInt(bytes)
                                 <> ", layout_" <> name <> "_" <> strutil.replace(member "." "_")
                                 <> ");")
                         case a.type.form
@@ -393,7 +398,8 @@ export
                                         assertAt("_" <> cInt(j) 8 * j)
                                     end
                                 end
-                                add(asserts "static_assert(sizeof(struct " <> name <> ") == " <> cInt(layout.tupleBytes(a.type))
+                                add(asserts "static_assert(sizeof(struct " <> name <> ") == "
+                                    <> cInt(layout.tupleBytes(a.type))
                                     <> ", layout_" <> name <> "_size);")
                             when typeRecord with r then
                                 add(lines "    QRecordHeader header;")
@@ -405,10 +411,13 @@ export
                                         add(lines "    " <> layout.slotRepresentation(fields[j].type) <> " qf_"
                                             <> symbols.memberIdent(fields[j].name)
                                             <> ";")
-                                        assertAt("qf_" <> symbols.memberIdent(fields[j].name) layout.recordFieldOffset(a.type fields[j].name))
+                                        assertAt("qf_"
+                                            <> symbols.memberIdent(fields[j].name)
+                                                layout.recordFieldOffset(a.type fields[j].name))
                                     end
                                 end
-                                add(asserts "static_assert(sizeof(struct " <> name <> ") == " <> cInt(layout.recordBytes(a.type))
+                                add(asserts "static_assert(sizeof(struct " <> name <> ") == "
+                                    <> cInt(layout.recordBytes(a.type))
                                     <> ", layout_" <> name <> "_size);")
                             when typeOption with o then
                                 add(lines "    int64_t tag;")
@@ -447,18 +456,20 @@ export
                                                             add(lines "            "
                                                                 <> layout.slotRepresentation(cs.type)
                                                                 <> " qf_"
-                                                                <> symbols.memberIdent(maybe.unwrap(sorted[k].name)) <> ";")
+                                                                <> symbols.memberIdent(maybe.unwrap(sorted[k].name))
+                                                                <> ";")
                                                             assertAt("u.qo_" <> c.name <> ".qf_"
                                                                 <> symbols.memberIdent(maybe.unwrap(sorted[k].name))
-                                                                8 + 8 * k)
+                                                                    8 + 8 * k)
                                                         end
                                                     end
                                                     add(lines "        } qo_" <> c.name <> ";")
                                                 when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk,
-                                                    shapeWord, shapeBottom, shapeVariant, shapeOption, shapeArray,
-                                                    shapeCell, shapeOut, shapeException, shapeFun, shapeAll, shapeAuto,
-                                                    shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
-                                                    shapePending then
+                                                        shapeWord, shapeBottom, shapeVariant, shapeOption, shapeArray,
+                                                        shapeCell, shapeOut, shapeException, shapeFun, shapeAll,
+                                                        shapeAuto,
+                                                        shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
+                                                        shapePending then
                                                     add(lines "        struct { "
                                                         <> layout.slotRepresentation(payloadType) <> " val; } qo_"
                                                         <> c.name <> ";")
@@ -468,7 +479,8 @@ export
                                     end
                                     add(lines "    } u;")
                                 end
-                                add(asserts "static_assert(sizeof(struct " <> name <> ") == " <> cInt(layout.optionBytes(a.type))
+                                add(asserts "static_assert(sizeof(struct " <> name <> ") == "
+                                    <> cInt(layout.optionBytes(a.type))
                                     <> ", layout_" <> name <> "_size);")
                             else ok
                         end
@@ -565,7 +577,8 @@ export
                     else
                         let entries = vector.new(:String)
                         for j = 0 upto {extent table.offsets - 1} do add(entries table.offsets[j].c) end
-                        add(lines "static const " <> table.struct <> " " <> table.symbol <> " = { " <> syntax.comma(entries)
+                        add(lines "static const " <> table.struct <> " " <> table.symbol <> " = { "
+                            <> syntax.comma(entries)
                             <> ", NULL };")
                         for j = 0 upto {extent table.offsets - 1} do
                             assertLayout(lines table.symbol <> "_" <> cInt(j) table.offsets[j])
@@ -681,7 +694,8 @@ export
             for j = 0 upto {n - 1} do
                 let c = cases[j]
                 add(lines "        { .name = " <> syntax.cString(c.name) <> ", .payload_type = " <> c.payload.expr
-                    <> ", .tag_index = " <> syntax.cIntLiteral(c.tagIndex) <> ", .is_var = " <> boolText(c.isVar) <> " },")
+                    <> ", .tag_index = " <> syntax.cIntLiteral(c.tagIndex) <> ", .is_var = " <> boolText(c.isVar)
+                    <> " },")
             end
             add(lines "    }")
             add(lines "};")
@@ -726,7 +740,8 @@ export
                     if extent x.bounds > 0 then
                         let boundDescs = vector.new(:String)
                         for j = 0 upto {extent x.bounds - 1} do add(boundDescs x.bounds[j].expr) end
-                        add(lines "static const QTypeDescriptor *const qfun_bounds_" <> tag <> "[" <> cInt(extent x.bounds)
+                        add(lines "static const QTypeDescriptor *const qfun_bounds_" <> tag <> "["
+                            <> cInt(extent x.bounds)
                             <> "] Q_UNUSED = { " <> syntax.comma(boundDescs) <> " };")
                         bounds := "qfun_bounds_" <> tag
                     end
@@ -768,7 +783,8 @@ export
                     add(lines "    const QTypeDescriptor *bound;")
                     add(lines "    size_t payload_size;")
                     add(lines "    size_t component_count;")
-                    add(lines "    const QAutoComponentDescriptor components[" <> cInt(if n > 1 then n else 1 end) <> "];")
+                    add(lines "    const QAutoComponentDescriptor components[" <> cInt(if n > 1 then n else 1 end)
+                        <> "];")
                     add(lines "} qauto_desc_" <> tag <> " Q_UNUSED = {")
                     add(lines "    .bound = " <> x.bound.expr <> ",")
                     add(lines "    .payload_size = " <> x.payloadSize.c <> ",")
@@ -809,7 +825,8 @@ export
                         add(lines "    }")
                         add(lines "};")
                     else
-                        add(lines "static const QRecordTypeDescriptor qrec_desc_" <> tag <> " Q_UNUSED = { .field_count = 0 };")
+                        add(lines "static const QRecordTypeDescriptor qrec_desc_" <> tag
+                            <> " Q_UNUSED = { .field_count = 0 };")
                     end
                     plain("&qrec_desc_" <> tag)
                 when payloadTuple with x then
@@ -833,7 +850,11 @@ export
                     add(lines "    const QTupleElementDescriptor elements[" <> cInt(if n > 1 then n else 1 end) <> "];")
                     add(lines "} qtup_desc_" <> tag <> " Q_UNUSED = {")
                     add(lines "    .component_count = " <> cInt(extent components) <> ",")
-                    add(lines "    .components = " <> if extent components > 0 then "qtup_components_" <> tag else "NULL" end
+                    add(lines "    .components = " <> if extent components > 0 then
+                        "qtup_components_" <> tag
+                    else
+                        "NULL"
+                    end
                         <> ",")
                     add(lines "    .element_count = " <> cInt(n) <> ",")
                     add(lines "    .elements = {")
@@ -862,7 +883,7 @@ export
         end
 
     let emitTypeDescriptors(e: Emitter ts: vector.T(Type) formOf: All(t: Type) DescriptorForm
-        echoTypes: vector.T(Type) definedStructs: vector.T(String)): Lines =
+            echoTypes: vector.T(Type) definedStructs: vector.T(String)): Lines =
         begin
             let lines = vector.new(:String)
             let ctx = maybe.some(e.ctx)
@@ -946,8 +967,10 @@ export
                 add(lines "/* Static runtime type descriptors for compound and opaque types */")
                 (* Emit descriptors grouped by kind in the bootstrap's order,
                  * with variants and options last *)
-                let order = array of "opaque" "stored" "hole" "fun" "auto" "exception" "array" "record" "tuple" "variant"
-                    "option" end
+                let order =
+                    array of "opaque" "stored" "hole" "fun" "auto" "exception" "array" "record" "tuple" "variant"
+                        "option"
+                    end
                 for k = 0 upto {extent order - 1} do
                     let forms = formsOf(order[k])
                     for i = 0 upto {vector.length(forms) - 1} do
@@ -1055,7 +1078,8 @@ export
                     add(lines "static QClosure *quest_adapt_" <> tag
                         <> "(const QClosure *orig, const QTypeDescriptor *from, "
                         <> "const QTypeDescriptor *to) {")
-                    add(lines "    QFunAdapterClosure *e = (QFunAdapterClosure *)quest_alloc(sizeof(QFunAdapterClosure), "
+                    add(lines
+                            "    QFunAdapterClosure *e = (QFunAdapterClosure *)quest_alloc(sizeof(QFunAdapterClosure), "
                         <> "&quest_layout_adapter_closure);")
                     add(lines "    e->fn = (void *)" <> thunk <> ";")
                     add(lines "    e->orig = orig;")

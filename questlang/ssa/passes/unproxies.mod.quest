@@ -2,9 +2,10 @@
 
 module unproxies : Unproxies
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     collections/vector : collections/Vector
+
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let Function = ssa.Function
 
@@ -28,12 +29,14 @@ export
             let none = array of :Int end
             let tag = runtimeLayout.constant("QUEST_PROXY_TAG")
             let tested = ssa.binary(f b ssa.opAnd ssa.emit(f b ssa.opPtrToInt array of p end ssa.typeInt)
-                ssa.constant(f b tag))
+                    ssa.constant(f b tag))
             let proxy = ssa.newBlock(f)
             let plain = ssa.newBlock(f)
             let rest = ssa.newBlock(f)
             blk.term := option termBranch of ssa.Terminator with
-                let cond = tested let ifTrue = ssa.target(proxy none) let ifFalse = ssa.target(plain none)
+                let cond = tested
+                let ifTrue = ssa.target(proxy none)
+                let ifFalse = ssa.target(plain none)
             end
             blk.termLoc := at
             let orig = runtimeLayout.offset("QProxy" "orig") - tag

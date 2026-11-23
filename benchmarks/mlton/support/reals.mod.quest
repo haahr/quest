@@ -1,11 +1,12 @@
 module reals : Reals
 import
-    util/maybe : util/Maybe
-    util/strutil : util/Strutil
-    sb = util/stringBuilder : util/StringBuilder
-    stringOp = string : StringOp
-    real : RealOp
     conv : Conv
+    real : RealOp
+    stringOp = string : StringOp
+
+    util/maybe : util/Maybe
+    sb = util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
 export
     let negInfinity = 0.0 -- real.infinity
 
@@ -38,7 +39,8 @@ export
 
     let fmtGen(r: Real digits: Int): String =
         special(r fun(r: Real): String
-            if r is 0.0 then "0"
+            if r is 0.0 then
+                "0"
             else
                 begin
                     let d = decompose(magnitude(r) digits)
@@ -54,7 +56,8 @@ export
                             if k <= {e + 1} then ds <> zeros({e + 1} - k)
                             else stringOp.getSub(ds 0 e + 1) <> "." <> stringOp.getSub(ds e + 1 {k - e} - 1)
                             end
-                        else "0." <> zeros({0 - e} - 1) <> ds
+                        else
+                            "0." <> zeros({0 - e} - 1) <> ds
                         end
                     sign(r) <> {if stringOp.length(sci) < stringOp.length(fix) then sci else fix end}
                 end
@@ -95,7 +98,8 @@ export
                     sb.char(b stringOp.getChar(s i)) i := i + 1 fracDigits := fracDigits + 1
                 end
             end
-            if {i is start} then maybe.none(:Real)
+            if {i is start} then
+                maybe.none(:Real)
             else
                 begin
                     (* An exponent, if digits follow its sign *)
@@ -108,7 +112,10 @@ export
                             sb.char(b 'e')
                             if negative then sb.char(b '-') end
                             while {j < n}
-                                andif isDigit(stringOp.getChar(s j)) do sb.char(b stringOp.getChar(s j)) j := j + 1 end
+                                    andif isDigit(stringOp.getChar(s j)) do
+                                sb.char(b stringOp.getChar(s j))
+                                j := j + 1
+                            end
                         end
                     end
                     maybe.some(:Real strutil.toReal(sb.toString(b)))

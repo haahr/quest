@@ -43,12 +43,13 @@
 
 module bignum : Bignum
 import
-    util/maybe : util/Maybe
-    util/strutil : util/Strutil
-    stringOp = string : StringOp
-    word : Word
     ascii : Ascii
     conv : Conv
+    stringOp = string : StringOp
+    word : Word
+
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
 export
     (* A value is its two's complement representation in base 2^64, least
      * significant limb first: every limb but the last is unsigned, and the
@@ -83,8 +84,7 @@ export
     let signWord(t: T): L = if negative(t) then onesW else zeroW end
     (* Whether a last limb leaves room for a carry: its top two bits are the
      * same, so that adding another such limb and a carry cannot overflow *)
-    let roomy(w: L): Bool =
-        begin let n = word.toInt(w) {n >= ~4611686018427387904} andif {n < 4611686018427387904} end
+    let roomy(w: L): Bool = begin let n = word.toInt(w) {n >= ~4611686018427387904} andif {n < 4611686018427387904} end
     (* r's first k limbs, in a new array *)
     let copy(r: T k: Int): T =
         begin
@@ -127,7 +127,8 @@ export
             let r = copy(t extent t)
             negateInPlace(r)
             r
-        else t
+        else
+            t
         end
 
     (* How many of m's limbs are significant (unsigned, at least one) *)
@@ -188,7 +189,8 @@ export
         end
 
     let equal(a: T b: T): Bool =
-        if extent a isnot extent b then false
+        if extent a isnot extent b then
+            false
         else
             let var i = extent a - 1
             while {i >= 0} andif {a[i] is b[i]} do i := i - 1 end
@@ -208,7 +210,8 @@ export
             if {{x < 0} is {y < 0}} andif {{s < 0} isnot {x < 0}} then
                 let high = if x < 0 then onesW else zeroW end
                 array of word.fromInt(s) high end
-            else single(s)
+            else
+                single(s)
             end
         end
 
@@ -218,7 +221,8 @@ export
             if {{x < 0} isnot {y < 0}} andif {{d < 0} isnot {x < 0}} then
                 let high = if x < 0 then onesW else zeroW end
                 array of word.fromInt(d) high end
-            else single(d)
+            else
+                single(d)
             end
         end
 
@@ -484,7 +488,8 @@ export
                         let next = word.add(rhat vTop)
                         big := word.lt(next rhat)
                         rhat := next
-                    else exit
+                    else
+                        exit
                     end
                 end
                 (* un[j .. j + vl] less qhat vn *)
@@ -534,7 +539,8 @@ export
             let mb = magnitude(b)
             let ul = magnitudeLength(ma)
             let vl = magnitudeLength(mb)
-            if ul < vl then tuple let q = zero let r = a end
+            if ul < vl then
+                tuple let q = zero let r = a end
             else
                 let qr = divideMagnitudes(ma ul mb vl)
                 tuple let q = signed(qr.q negative(a) isnot negative(b)) let r = signed(qr.r negative(a)) end
@@ -573,7 +579,8 @@ export
         elsif {extent a is 1} andif {extent b is 1} then
             let x = word.toInt(a[0])
             let y = word.toInt(b[0])
-            if minIntQuotient(x y) then minIntNegated
+            if minIntQuotient(x y) then
+                minIntNegated
             else
                 let q = x / y
                 single(if {{x < 0} isnot {y < 0}} andif {{x % y} isnot 0} then q - 1 else q end)
@@ -588,7 +595,8 @@ export
         elsif {extent a is 1} andif {extent b is 1} then
             let x = word.toInt(a[0])
             let y = word.toInt(b[0])
-            if minIntQuotient(x y) then zero
+            if minIntQuotient(x y) then
+                zero
             else
                 let r = x % y
                 single(if {{x < 0} isnot {y < 0}} andif {r isnot 0} then r + y else r end)
@@ -639,7 +647,8 @@ export
     let chunkDigits = 18
 
     let toString(t: T): String =
-        if extent t is 1 then conv.int(word.toInt(t[0]))
+        if extent t is 1 then
+            conv.int(word.toInt(t[0]))
         else
             (* |t|, divided by 10^18 in place until it is zero *)
             let m = if negative(t) then magnitude(t) else copy(t extent t) end
@@ -685,7 +694,8 @@ export
             end
             let start = i
             while {i < n} andif strutil.isDigit(stringOp.getChar(s i)) do i := i + 1 end
-            if i is start then maybe.none(:T)
+            if i is start then
+                maybe.none(:T)
             else
                 (* The magnitude, times 10^18 and plus each chunk in turn,
                  * the first the digits past a multiple of 18; 10^19 > 2^64,
@@ -755,7 +765,8 @@ export
 
     (* t shifted left by k >= 0 bits *)
     let shiftUp(t: T k: Int): T =
-        if {k is 0} orif isZero(t) then t
+        if {k is 0} orif isZero(t) then
+            t
         else
             let whole = k / 64
             let bits = k % 64

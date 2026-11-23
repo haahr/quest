@@ -2,13 +2,15 @@
 
 module statics : Statics
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/repr/staticdata : questlang/repr/StaticData
-    questlang/repr/objectLayout : questlang/repr/ObjectLayout
-    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    stringOp = string : StringOp
+
     collections/vector : collections/Vector
     util/maybe : util/Maybe
-    stringOp = string : StringOp
+
+    questlang/repr/objectLayout : questlang/repr/ObjectLayout
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    questlang/repr/staticdata : questlang/repr/StaticData
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let Words = vector.T(ssa.Word)
 
@@ -21,8 +23,10 @@ export
     let bytes(name: String): Int = maybe.unwrap(runtimeLayout.struct(name)).bytes
 
     let refWord(r: staticdata.Ref): ssa.Word =
-        if stringOp.length(r.symbol) is 0 then int(0)
-        else option wordSymbol of ssa.Word with let symbol = r.symbol let addend = r.index * bytes("QTypeDescriptor") end
+        if stringOp.length(r.symbol) is 0 then
+            int(0)
+        else
+            option wordSymbol of ssa.Word with let symbol = r.symbol let addend = r.index * bytes("QTypeDescriptor") end
         end
 
     let datum(symbol: String ws: Words): ssa.Data = ssa.words(symbol false false vector.toArray(ws))

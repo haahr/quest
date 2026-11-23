@@ -10,18 +10,19 @@
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
+    conv : Conv
+    writer : Writer
+
+    collections/vector : collections/Vector
+    util/strutil : util/Strutil
+
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/parser : questlang/ssa/Parser
-    questlang/ssa/printer : questlang/ssa/Printer
     questlang/ssa/passes/promote : questlang/ssa/passes/Promote
+    questlang/ssa/printer : questlang/ssa/Printer
     questlang/ssa/verify : questlang/ssa/Verify
-    util/strutil : util/Strutil
-    collections/vector : collections/Vector
-    writer : Writer
-    conv : Conv
-;
 
-let emit(s: String): Ok = writer.putString(writer.output s);
+let emit(s: String): Ok = writer.putString(writer.output s)
 
 let show(title: String lines: Array(String)): Ok =
     begin
@@ -32,7 +33,7 @@ let show(title: String lines: Array(String)): Ok =
         emit("-- after promote: " <> conv.int(n) <> " promoted\n")
         emit(printer.formatUnit(u))
         try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
-    end;
+    end
 
 show("a variable assigned on both arms" array of
     "function choose(%0: int): int slots [8:8] {"
@@ -51,7 +52,7 @@ show("a variable assigned on both arms" array of
     "  %4: int = load8 %1 + 0"
     "  return %4"
     "}"
-end);
+end)
 
 show("a loop's counter" array of
     "function count(%0: int): int slots [8:8] {"
@@ -74,7 +75,7 @@ show("a loop's counter" array of
     "  %8: int = load8 %1 + 0"
     "  return %8"
     "}"
-end);
+end)
 
 show("a byte variable" array of
     "function flag(%0: int): int slots [8:8] {"
@@ -84,7 +85,7 @@ show("a byte variable" array of
     "  %2: int = load1s %1 + 0"
     "  return %2"
     "}"
-end);
+end)
 
 show("a load before any store" array of
     "function early(%0: int): int slots [8:8] {"
@@ -99,7 +100,7 @@ show("a load before any store" array of
     "  %3: int = load8 %1 + 0"
     "  return %3"
     "}"
-end);
+end)
 
 show("a slot whose address a call takes" array of
     "function escapes(): int slots [8:8] {"
@@ -111,7 +112,7 @@ show("a slot whose address a call takes" array of
     "  %2: int = load8 %0 + 0"
     "  return %2"
     "}"
-end);
+end)
 
 show("a function that enters a try: the slot its handler loads is kept, with the try's record" array of
     "function tries(): int slots [240:16 8:8] {"
@@ -127,7 +128,7 @@ show("a function that enters a try: the slot its handler loads is kept, with the
     "  %3: int = load8 %0 + 0"
     "  return %3"
     "}"
-end);
+end)
 
 show("a try whose body alone uses a slot, which is promoted" array of
     "function bodyOnly(): int slots [240:16 8:8 8:8] {"
@@ -146,4 +147,4 @@ show("a try whose body alone uses a slot, which is promoted" array of
     "  %5: int = load8 %0 + 0"
     "  return %5"
     "}"
-end);
+end)

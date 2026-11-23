@@ -3,30 +3,31 @@
  * depth: random inserts and deletes against a model, the order queries,
  * ranges, and rank; the set operations; and the errors *)
 
-import collections/sortedSet : collections/SortedSet;
-import collections/vector : collections/Vector;
-import util/sort : util/Sort;
-import util/maybe : util/Maybe;
-import random = util/random : util/Random;
-import writer: Writer;
-import conv: Conv;
+import conv : Conv
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
-let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds));
+import collections/sortedSet : collections/SortedSet
+import collections/vector : collections/Vector
+import util/maybe : util/Maybe
+import random = util/random : util/Random
+import util/sort : util/Sort
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds))
 let shown(s: sortedSet.T(Int)): String =
     begin
         let text = tuple let var t = "{" end
         sortedSet.forEach(:Int s fun(x: Int): Ok text.t := text.t <> " " <> conv.int(x))
         text.t <> " }"
-    end;
-let at(e: maybe.T(Int)): String = if maybe.isNone(:Int e) then "none" else conv.int(maybe.unwrap(:Int e)) end;
+    end
+let at(e: maybe.T(Int)): String = if maybe.isNone(:Int e) then "none" else conv.int(maybe.unwrap(:Int e)) end
 
 (* 1. Random inserts and deletes against a model *)
-let domain = 300;
-let r = random.new(7);
-let s = sortedSet.new(:Int sort.intCompare);
-let present = array of(domain false);
-let var agrees = true;
+let domain = 300
+let r = random.new(7)
+let s = sortedSet.new(:Int sort.intCompare)
+let present = array of(domain false)
+let var agrees = true
 for step = 1 upto 900 do
     let k = random.below(r domain)
     if random.below(r 3) > 0 then
@@ -36,60 +37,61 @@ for step = 1 upto 900 do
         if sortedSet.delete(:Int s k) isnot present[k] then agrees := false end
         present[k] := false
     end
-end;
-let elems = sortedSet.elements(:Int s);
-let var j = 0;
+end
+let elems = sortedSet.elements(:Int s)
+let var j = 0
 for k = 0 upto {domain - 1} do
     if present[k] then
         if {j >= vector.length(:Int elems)} orif {vector.get(:Int elems j) isnot k} then agrees := false end
         j := j + 1
     end
-end;
-check("random inserts and deletes agree with a model" agrees /\ {j is sortedSet.size(:Int s)});
+end
+check("random inserts and deletes agree with a model" agrees /\ {j is sortedSet.size(:Int s)})
 
 (* 2. Order, ranges, and rank, on a small set *)
-let small = sortedSet.new(:Int sort.intCompare);
-let ns = array of 50 10 40 20 30 end;
-for i = 0 upto {extent ns - 1} do let added = sortedSet.insert(:Int small ns[i]) end;
+let small = sortedSet.new(:Int sort.intCompare)
+let ns = array of 50 10 40 20 30 end
+for i = 0 upto {extent ns - 1} do let added = sortedSet.insert(:Int small ns[i]) end
 print(shown(small) <> " least " <> at(sortedSet.least(:Int small)) <> " greatest "
-    <> at(sortedSet.greatest(:Int small)));
+    <> at(sortedSet.greatest(:Int small)))
 print("floor 25 " <> at(sortedSet.floor(:Int small 25)) <> ", floor 30 " <> at(sortedSet.floor(:Int small 30))
     <> ", below 30 " <> at(sortedSet.below(:Int small 30)) <> ", ceiling 25 " <> at(sortedSet.ceiling(:Int small 25))
     <> ", above 30 " <> at(sortedSet.above(:Int small 30)) <> ", above 50 " <> at(sortedSet.above(:Int small 50))
-    <> ", floor 5 " <> at(sortedSet.floor(:Int small 5)));
-let ranged = sortedSet.elementsInRange(:Int small 15 45);
+    <> ", floor 5 " <> at(sortedSet.floor(:Int small 5)))
+let ranged = sortedSet.elementsInRange(:Int small 15 45)
 print("from 15 to 45: " <> conv.int(vector.length(:Int ranged)) <> " elements; rank 30 "
     <> conv.int(sortedSet.rank(:Int small 30))
     <> ", rank 35 " <> conv.int(sortedSet.rank(:Int small 35)) <> ", rank 99 "
-        <> conv.int(sortedSet.rank(:Int small 99)));
+    <> conv.int(sortedSet.rank(:Int small 99)))
 print("removeLeast " <> at(sortedSet.removeLeast(:Int small)) <> ", removeGreatest "
     <> at(sortedSet.removeGreatest(:Int small))
-    <> ": " <> shown(small));
+    <> ": " <> shown(small))
 
 (* 3. The set operations *)
-let a = sortedSet.new(:Int sort.intCompare);
-let b = sortedSet.new(:Int sort.intCompare);
-for i = 1 upto 6 do let added = sortedSet.insert(:Int a i) end;
-for i = 4 upto 9 do let added = sortedSet.insert(:Int b i) end;
+let a = sortedSet.new(:Int sort.intCompare)
+let b = sortedSet.new(:Int sort.intCompare)
+for i = 1 upto 6 do let added = sortedSet.insert(:Int a i) end
+for i = 4 upto 9 do let added = sortedSet.insert(:Int b i) end
 print("union " <> shown(sortedSet.union(:Int a b)) <> " intersection " <> shown(sortedSet.intersection(:Int a b))
-    <> " difference " <> shown(sortedSet.difference(:Int a b)));
-let evens = sortedSet.filter(:Int a fun(x: Int): Bool {x % 2} is 0);
+    <> " difference " <> shown(sortedSet.difference(:Int a b)))
+let evens = sortedSet.filter(:Int a fun(x: Int): Bool {x % 2} is 0)
 print("evens " <> shown(evens) <> " subset " <> conv.bool(sortedSet.isSubset(:Int evens a)) <> " "
     <> conv.bool(sortedSet.isSubset(:Int a evens)) <> " equal "
-        <> conv.bool(sortedSet.equal(:Int a sortedSet.copy(:Int a)))
-    <> " " <> conv.bool(sortedSet.equal(:Int a b)) <> " contains 3 " <> conv.bool(sortedSet.contains(:Int a 3)));
-sortedSet.clear(:Int b);
-check("cleared" sortedSet.empty(:Int b) /\ maybe.isNone(:Int sortedSet.least(:Int b)));
+    <> conv.bool(sortedSet.equal(:Int a sortedSet.copy(:Int a)))
+    <> " " <> conv.bool(sortedSet.equal(:Int a b)) <> " contains 3 " <> conv.bool(sortedSet.contains(:Int a 3)))
+sortedSet.clear(:Int b)
+check("cleared" sortedSet.empty(:Int b) /\ maybe.isNone(:Int sortedSet.least(:Int b)))
 
 (* 4. Strings, by a reversed comparison *)
-let words = sortedSet.new(:String sort.reverse(:String sort.stringCompare));
-let ws = array of "pear" "fig" "banana" "fig" "apple" end;
-for i = 0 upto {extent ws - 1} do let added = sortedSet.insert(:String words ws[i]) end;
-let wtext = tuple let var t = "" end;
-sortedSet.forEach(:String words fun(w: String): Ok wtext.t := wtext.t <> " " <> w);
-print("reversed:" <> wtext.t);
+let words = sortedSet.new(:String sort.reverse(:String sort.stringCompare))
+let ws = array of "pear" "fig" "banana" "fig" "apple" end
+for i = 0 upto {extent ws - 1} do let added = sortedSet.insert(:String words ws[i]) end
+let wtext = tuple let var t = "" end
+sortedSet.forEach(:String words fun(w: String): Ok wtext.t := wtext.t <> " " <> w)
+print("reversed:" <> wtext.t)
 
 (* 5. A change during forEach *)
 print("an element added during forEach: " <> try
     begin sortedSet.forEach(:Int a fun(x: Int): Ok begin let added = sortedSet.insert(:Int a x + 100) ok end) "none" end
-    when sortedSet.error then "sortedSet.error" end)
+when sortedSet.error then "sortedSet.error"
+end)

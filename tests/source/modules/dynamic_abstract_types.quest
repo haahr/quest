@@ -19,59 +19,62 @@
  "type":0,"value":{"b":false}}
 *)
 
-import ring: Ring = geom/ring : geom/Ring;
-import box: Box = geom/box : geom/Box;
-import small: Small = geom/small : geom/Small;
-import dynamic: Dynamic;
-import reader: Reader;
-import writer: Writer;
-import word: Word;
-import conv: Conv;
+import conv : Conv
+import dynamic : Dynamic
+import reader : Reader
+import word : Word
+import writer : Writer
 
-let nl() = writer.putString(writer.output "\n");
-let say(s: String) = begin writer.putString(writer.output s) nl() end;
-let emit(d: Dynamic.T) = begin dynamic.extern(writer.output d) nl() end;
+import box : Box = geom/box : geom/Box
+import ring : Ring = geom/ring : geom/Ring
+import small : Small = geom/small : geom/Small
+
+let nl() = writer.putString(writer.output "\n")
+let say(s: String) = begin writer.putString(writer.output s) nl() end
+let emit(d: Dynamic.T) = begin dynamic.extern(writer.output d) nl() end
 
 (* 1. An abstract type whose representation mentions an application of another module's abstract type operator *)
-let r = ring.make("written" arrayOp.new(:Int 2 3));
-emit(dynamic.new(:ring.T r));
+let r = ring.make("written" arrayOp.new(:Int 2 3))
+emit(dynamic.new(:ring.T r))
 
 (* 2. Applications of an abstract type operator, built generically and at a particular argument by the module *)
-emit(dynamic.new(:box.T(Bool) box.box(:Bool true)));
-emit(dynamic.new(:box.T(Int) box.seven));
+emit(dynamic.new(:box.T(Bool) box.box(:Bool true)))
+emit(dynamic.new(:box.T(Int) box.seven))
 
 (* 3. Inside a nested dynamic value, and the external type of word.T *)
-Let Labeled = Record label: String payload: Dynamic.T end;
-emit(dynamic.new(:Labeled record label = "nested" payload = dynamic.new(:list.T(Int) list.cons(:Int 1 list.nil(:Int))) end));
-emit(dynamic.new(:word.T word.fromInt(5)));
+Let Labeled = Record label: String payload: Dynamic.T end
+emit(dynamic.new(:Labeled record label = "nested"
+    payload = dynamic.new(:list.T(Int) list.cons(:Int 1 list.nil(:Int)))
+end))
+emit(dynamic.new(:word.T word.fromInt(5)))
 
 (* 4. Reading a value of a linked module's abstract type *)
-let rd = dynamic.be(:ring.T dynamic.intern(reader.input));
-say(ring.label(rd));
-say(conv.int(ring.total(rd)));
-say(box.unbox(:String dynamic.be(:box.T(String) dynamic.intern(reader.input))));
+let rd = dynamic.be(:ring.T dynamic.intern(reader.input))
+say(ring.label(rd))
+say(conv.int(ring.total(rd)))
+say(box.unbox(:String dynamic.be(:box.T(String) dynamic.intern(reader.input))))
 
 (* 5. A representation that does not match the linked module's *)
-say(try ring.label(dynamic.be(:ring.T dynamic.intern(reader.input))) when dynamic.error then "mismatch" end);
+say(try ring.label(dynamic.be(:ring.T dynamic.intern(reader.input))) when dynamic.error then "mismatch" end)
 
 (* 6. The type of a module the program does not link is opaque, and is written again as it was read *)
-let unlinked = dynamic.intern(reader.input);
-say(try conv.int(dynamic.be(:Int unlinked)) when dynamic.error then "opaque" end);
-emit(unlinked);
+let unlinked = dynamic.intern(reader.input)
+say(try conv.int(dynamic.be(:Int unlinked)) when dynamic.error then "opaque" end)
+emit(unlinked)
 
 (* 7. Reading a word *)
-say(conv.int(word.toInt(word.shift(dynamic.be(:word.T dynamic.intern(reader.input)) 0 - 60))));
+say(conv.int(word.toInt(word.shift(dynamic.be(:word.T dynamic.intern(reader.input)) 0 - 60))))
 
 (* 8. Bounded abstract types: a record whose bound has fewer fields, sorted differently, an Int, and a variant *)
-emit(dynamic.new(:small.Q small.q(5)));
-emit(dynamic.new(:small.N small.n(3)));
-emit(dynamic.new(:small.V small.yes));
-let q = dynamic.be(:small.Q dynamic.new(:small.Q small.q(6)));
-say(conv.int(q.y));
-say(conv.int(small.qx(q)));
-let rq = dynamic.be(:small.Q dynamic.intern(reader.input));
-say(conv.int(rq.y));
-say(conv.int(small.qx(rq)));
-let rv = dynamic.be(:small.V dynamic.intern(reader.input));
-say(if small.isTrue(rv) then "true" else "false" end);
-say(case rv when a with i then "a" when b with t then "b" end);
+emit(dynamic.new(:small.Q small.q(5)))
+emit(dynamic.new(:small.N small.n(3)))
+emit(dynamic.new(:small.V small.yes))
+let q = dynamic.be(:small.Q dynamic.new(:small.Q small.q(6)))
+say(conv.int(q.y))
+say(conv.int(small.qx(q)))
+let rq = dynamic.be(:small.Q dynamic.intern(reader.input))
+say(conv.int(rq.y))
+say(conv.int(small.qx(rq)))
+let rv = dynamic.be(:small.V dynamic.intern(reader.input))
+say(if small.isTrue(rv) then "true" else "false" end)
+say(case rv when a with i then "a" when b with t then "b" end)

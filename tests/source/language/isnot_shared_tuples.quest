@@ -3,28 +3,28 @@
  * unification compares its references (docs/wasm.md section 2.8, where the
  * wasm backend's isnot was once is for these) *)
 
-import writer : Writer;
-import conv : Conv;
+import conv : Conv
+import writer : Writer
 
 Let Rec Term = Option
     con with s: String end
     ref with r: Ref end
 end
 and Ref = Tuple var v: Maybe end
-and Maybe = Option none some with t: Term end end;
+and Maybe = Option none some with t: Term end end
 
-let show(s: String): Ok = writer.putString(writer.output s <> "\n");
-let newRef(): Ref = tuple let var v = option none of Maybe end end;
+let show(s: String): Ok = writer.putString(writer.output s <> "\n")
+let newRef(): Ref = tuple let var v = option none of Maybe end end
 
 (* r isnot the reference that t names, if it names one *)
-let occurs(r: Ref t: Term): Bool = case t when ref with x then r isnot x.r else true end;
-let same(r: Ref t: Term): Bool = case t when ref with x then r is x.r else false end;
+let occurs(r: Ref t: Term): Bool = case t when ref with x then r isnot x.r else true end
+let same(r: Ref t: Term): Bool = case t when ref with x then r is x.r else false end
 
-let a = newRef();
-let b = newRef();
-let ta = option ref of Term with a end;
-show("a is a: " <> conv.bool(same(a ta)));
-show("b is a: " <> conv.bool(same(b ta)));
-show("a isnot a: " <> conv.bool(occurs(a ta)));
-show("b isnot a: " <> conv.bool(occurs(b ta)));
-show("a isnot a constant: " <> conv.bool(occurs(a option con of Term with "c" end)));
+let a = newRef()
+let b = newRef()
+let ta = option ref of Term with a end
+show("a is a: " <> conv.bool(same(a ta)))
+show("b is a: " <> conv.bool(same(b ta)))
+show("a isnot a: " <> conv.bool(occurs(a ta)))
+show("b isnot a: " <> conv.bool(occurs(b ta)))
+show("a isnot a constant: " <> conv.bool(occurs(a option con of Term with "c" end)))

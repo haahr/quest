@@ -2,18 +2,20 @@
 
 module slots : Slots
 import
-    questlang/types/model : questlang/types/Model
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/ir/nodes : questlang/ir/Nodes
-    questlang/ir/walk : questlang/ir/Walk
-    questlang/repr/layout : questlang/repr/Layout
-    questlang/repr/genericLayout : questlang/repr/GenericLayout
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    stringOp = string : StringOp
+
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/repr/genericLayout : questlang/repr/GenericLayout
+    questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
 export
     Let Type = model.Type
     Let Shape = shapes.Shape
@@ -29,7 +31,8 @@ export
     let mayBeStoredAsSubtype(s: Shape): Bool =
         if shapes.kindIs(s shapes.shapeTuple) then extent s.components > 0
         else shapes.kindIs(s shapes.shapeFun) orif shapes.kindIs(s shapes.shapeAll)
-            orif shapes.isViewedKind(layout.resolvedShape(s).kind) end
+            orif shapes.isViewedKind(layout.resolvedShape(s).kind)
+        end
 
     let typeOf(a: Atom): Type = nodes.atomType(a)
 
@@ -51,7 +54,8 @@ export
     let tupleAccess(ts: Shape index: Int fresh: Bool): nodes.Access =
         if fresh orif not(layout.mayBeProxied(ts)) then nodes.direct
         elsif layout.changesView(shapes.componentShape(ts.components[index])) then nodes.proxy
-        else nodes.original end
+        else nodes.original
+        end
 
     let optionTagAccess(os: Shape): nodes.Access = if layout.mayBeProxied(os) then nodes.proxy else nodes.direct end
 
@@ -69,9 +73,9 @@ export
                             vector.append(comps shapes.componentShape(payload.components[i]))
                         end
                     when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
-                        shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut, shapeException,
-                        shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
-                        shapePending then
+                            shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut, shapeException,
+                            shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
+                            shapePending then
                         vector.append(comps payload)
                 end
                 let proxied = layout.mayBeProxied(os)
@@ -99,10 +103,11 @@ export
         if maybe.isNone(ordinalAtom) then
             tag
         else
-            let n = case maybe.unwrap(ordinalAtom)
-                when atomConst with x then case x.c.value when constInt with y then y.n else ~1 end
-                else ~1
-            end
+            let n =
+                case maybe.unwrap(ordinalAtom)
+                    when atomConst with x then case x.c.value when constInt with y then y.n else ~1 end
+                    else ~1
+                end
             if {n >= 0} andif {n < extent cases} then maybe.some(cases[n]) else os.cases[0].name end
         end
 
@@ -115,7 +120,8 @@ export
 
     let slotUnbox(box: Variable t: Type): Op =
         option opConvert of Op with
-            let var value = nodes.atomOfVar(box) let var plan = nodes.newPlan(nodes.planSlotUnbox t t)
+            let var value = nodes.atomOfVar(box)
+            let var plan = nodes.newPlan(nodes.planSlotUnbox t t)
         end
 
     Let SlotState = Tuple
@@ -134,23 +140,27 @@ export
      * one, made by a let added to before) *)
     let slot(st: SlotState a: Atom before: vector.T(Stmt)): Atom =
         begin
-            let own = case a
-                when atomVar with x then
-                    if x.v.boxed andif not(x.v.isMutable) then maybe.some(a)
-                    else
-                        let remembered = hashMap.get(st.boxes x.v.id)
-                        if maybe.isSome(remembered) then maybe.some(nodes.atomOfVar(maybe.unwrap(remembered)))
-                        else maybe.none(:Atom) end
-                    end
-                else maybe.none(:Atom)
-            end
+            let own =
+                case a
+                    when atomVar with x then
+                        if x.v.boxed andif not(x.v.isMutable) then
+                            maybe.some(a)
+                        else
+                            let remembered = hashMap.get(st.boxes x.v.id)
+                            if maybe.isSome(remembered) then maybe.some(nodes.atomOfVar(maybe.unwrap(remembered)))
+                            else maybe.none(:Atom)
+                            end
+                        end
+                    else maybe.none(:Atom)
+                end
             if maybe.isSome(own) then
                 maybe.unwrap(own)
             else
                 let t = typeOf(a)
                 let box = newBox("box" t)
                 vector.append(before nodes.letStmt(box option opConvert of Op with
-                    let var value = a let var plan = nodes.newPlan(nodes.planSlotBox t t)
+                    let var value = a
+                    let var plan = nodes.newPlan(nodes.planSlotBox t t)
                 end))
                 nodes.atomOfVar(box)
             end
@@ -171,7 +181,9 @@ export
             c.binder := maybe.some(box)
             let statements = vector.new(:Stmt)
             vector.append(statements nodes.letStmt(b slotUnbox(box b.type)))
-            for i = 0 upto {vector.length(c.body.statements) - 1} do vector.append(statements vector.get(c.body.statements i)) end
+            for i = 0 upto {vector.length(c.body.statements) - 1} do
+                vector.append(statements vector.get(c.body.statements i))
+            end
             c.body.statements := statements
             hashMap.insert(st.boxes b.id box)
             ok
@@ -193,7 +205,7 @@ export
         if maybe.isSome(c.binder) then
             let b = maybe.unwrap(c.binder)
             if not(shapes.kindIs(shapes.shape(b.type) shapes.shapeOk))
-                andif boxed(maybe.some(caseShape(vs c.tags[0] b.type))) then
+                    andif boxed(maybe.some(caseShape(vs c.tags[0] b.type))) then
                 unboxBinder(st c)
             end
         end
@@ -206,7 +218,7 @@ export
             if not(shapes.kindIs(shapes.shape(b.type) shapes.shapeOk)) then
                 c.components := optionComponentAccesses(os maybe.some(c.tags[0]))
                 if not(shapes.kindIs(shapes.shape(b.type) shapes.shapeTuple))
-                    andif boxed(maybe.some(caseShape(os c.tags[0] b.type))) then
+                        andif boxed(maybe.some(caseShape(os c.tags[0] b.type))) then
                     unboxBinder(st c)
                 end
             end
@@ -221,7 +233,11 @@ export
         else
             let recordFields = array of(extent fields tuple let name = "" let type = model.okType let isVar = false end)
             for i = 0 upto {extent fields - 1} do
-                recordFields[i] := tuple let name = fields[i].name let type = typeOf(fields[i].atom) let isVar = fields[i].isVar end
+                recordFields[i] := tuple
+                    let name = fields[i].name
+                    let type = typeOf(fields[i].atom)
+                    let isVar = fields[i].isVar
+                end
             end
             let concrete = model.recordType(recordFields maybe.none())
             let h = layout.heldShape(maybe.unwrap(v).type shapes.shapeRecord)
@@ -265,7 +281,7 @@ export
                     let fieldShape = shapes.componentShape(field)
                     let own = layout.ownView(shapes.shape(typeOf(x.recordAtom)))
                     if not(field.isVar)
-                        andif {own orif layout.isQVal(fieldShape) orif mayBeStoredAsSubtype(fieldShape)} then
+                            andif {own orif layout.isQVal(fieldShape) orif mayBeStoredAsSubtype(fieldShape)} then
                         (* A subtype or bounded type parameter may store this
                          * field at a different type, so it is read through the
                          * offset table and converted to a value *)
@@ -297,7 +313,9 @@ export
                                 let remembered = hashMap.get(st.boxes y.v.id)
                                 (* A record's or variant's QVal word is its box:
                                  * the one it was read from serves *)
-                                if maybe.isSome(remembered) then x.value := nodes.atomOfVar(maybe.unwrap(remembered)) end
+                                if maybe.isSome(remembered) then
+                                    x.value := nodes.atomOfVar(maybe.unwrap(remembered))
+                                end
                             else ok
                         end
                     end
@@ -372,9 +390,14 @@ export
             when opMakeVariant with x then
                 if maybe.isSome(v) andif maybe.isSome(x.payload) then
                     let vs = layout.heldShape(maybe.unwrap(v).type shapes.shapeVariant)
-                    let c = if maybe.isSome(vs) then shapes.caseOf(maybe.unwrap(vs) x.tag) else maybe.none(:shapes.Component) end
+                    let c =
+                        if maybe.isSome(vs) then
+                            shapes.caseOf(maybe.unwrap(vs) x.tag)
+                        else
+                            maybe.none(:shapes.Component)
+                        end
                     x.payload := optSlotIfBoxed(st x.payload
-                        if maybe.isSome(c) then maybe.unwrap(c).shape else maybe.none() end before)
+                            if maybe.isSome(c) then maybe.unwrap(c).shape else maybe.none() end before)
                 end
                 false
             (* Decide boxing from the binder's payload type because x.exc has
@@ -441,7 +464,7 @@ export
                     let t = typeOf(x.args[0])
                     let t2 = typeOf(x.args[1])
                     if not(layout.isQVal(shapes.shape(t)))
-                        andif {layout.mayBeProxied(shapes.shape(t)) orif layout.mayBeProxied(shapes.shape(t2))} then
+                            andif {layout.mayBeProxied(shapes.shape(t)) orif layout.mayBeProxied(shapes.shape(t2))} then
                         (* A proxy is the object it views *)
                         x.access := nodes.original
                     end
@@ -462,12 +485,13 @@ export
             when sLet with x then
                 let v = x.v
                 let isAtom = case x.value when opAtom then true else false end
-                let freshValue = case x.value
-                    when opMakeTuple then true
-                    when opMakeOption then true
-                    when opAtom with y then isFresh(st y.atom)
-                    else false
-                end
+                let freshValue =
+                    case x.value
+                        when opMakeTuple then true
+                        when opMakeOption then true
+                        when opAtom with y then isFresh(st y.atom)
+                        else false
+                    end
                 if freshValue then hashMap.insert(st.fresh v.id true) end
                 if isAtom then
                     case x.value
@@ -535,7 +559,9 @@ export
                 when sLet then ok
                 when sDo with x then begin operation(st x.value maybe.none() before) ok end
                 when sVarDecl with x then
-                    if x.v.boxed andif maybe.isSome(x.init) then x.init := maybe.some(slot(st maybe.unwrap(x.init) before)) end
+                    if x.v.boxed andif maybe.isSome(x.init) then
+                        x.init := maybe.some(slot(st maybe.unwrap(x.init) before))
+                    end
                 when sAssign with x then if x.v.boxed then x.value := slot(st x.value before) end
                 when sStoreAt with x then x.value := slotIfBoxed(st x.value maybe.some(locatedShape(x.address)) before)
                 when sStoreField with x then
@@ -561,10 +587,13 @@ export
                         (* A store is never into a fresh tuple's view *)
                         x.access := tupleAccess(ts x.index false)
                     end
-                when sStoreElement with x then x.value := slotIfBoxed(st x.value shapes.shape(typeOf(x.base)).elementShape before)
-                when sSwitch then ok (* switchCases, before its cases' bodies *)
+                when sStoreElement with x then
+                    x.value := slotIfBoxed(st x.value shapes.shape(typeOf(x.base)).elementShape before)
+                when sSwitch then ok  (* switchCases, before its cases' bodies *)
                 when sRaise with x then
-                    if maybe.isSome(x.payload) then x.payload := optSlotIfBoxed(st x.payload exceptionPayload(typeOf(x.exc)) before) end
+                    if maybe.isSome(x.payload) then
+                        x.payload := optSlotIfBoxed(st x.payload exceptionPayload(typeOf(x.exc)) before)
+                    end
                 when sEcho with x then x.value := slotIfBoxed(st x.value maybe.some(shapes.shape(x.type)) before)
                 else ok
             end
@@ -617,7 +646,9 @@ export
                 let f = vector.get(unit.functions i)
                 for j = 0 upto {extent f.params - 1} do
                     let p = f.params[j]
-                    if not(eq(p.mode "value")) andif boxed(maybe.some(shapes.shape(p.v.type))) then p.v.boxed := true end
+                    if not(eq(p.mode "value")) andif boxed(maybe.some(shapes.shape(p.v.type))) then
+                        p.v.boxed := true
+                    end
                 end
             end
             for i = 0 upto {extent bodies - 1} do

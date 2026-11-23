@@ -2,14 +2,16 @@
 
 module allocations : Allocations
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
-    collections/vector : collections/Vector
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    util/hash : util/Hash
+
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
 export
     Let Function = ssa.Function
 
@@ -102,7 +104,7 @@ export
             while vector.length(blk.insts) > k do begin let ignored = vector.pop(blk.insts) end end
             let put = fun(b2: Int i: ssa.Inst): Ok begin i.loc := at ssa.append(f b2 i) end
             let value = fun(b2: Int op: ssa.Opcode args: Array(Int) t: ssa.Type imm: Int symbol: String width: Int
-                signed: Bool): Int
+                    signed: Bool): Int
                 begin
                     let v = ssa.newValue(f t)
                     put(b2 ssa.instruction(op args array of v end imm symbol width signed ssa.emptySignature))
@@ -149,10 +151,12 @@ export
             (* The slow path asks the runtime *)
             let r = runtimeFunctions.function("quest_gc_alloc_slow")
             let base = ssa.call(f slow "quest_gc_alloc_slow" array of bytes layout end runtimeFunctions.signature(r)
-                runtimeFunctions.resultTypes(r))[0]
+                    runtimeFunctions.resultTypes(r))[0]
             let baseInt = unary(slow ssa.opPtrToInt base ssa.typeInt)
             let slowBlk = ssa.block(f slow)
-            slowBlk.term := option termJump of ssa.Terminator with let target = ssa.target(rest array of baseInt end) end
+            slowBlk.term := option termJump of ssa.Terminator with
+                let target = ssa.target(rest array of baseInt end)
+            end
             slowBlk.termLoc := at
             (* The rest: the object and its start bit, then what followed the
              * call *)
@@ -169,13 +173,13 @@ export
              * an end-of-object pointer to that preceding object (docs/arm64.md
              * section 3.13). *)
             put(rest ssa.instruction(ssa.opIntToPtr array of binary(rest ssa.opAdd baseParam constant(rest 8)) end
-                array of obj end 0 "" 0 false ssa.emptySignature))
+                    array of obj end 0 "" 0 false ssa.emptySignature))
             let low = loadWord(rest address(rest "quest_gc_heap_lo" 0) ssa.typeInt)
             let bits = loadWord(rest address(rest "quest_gc_start_bits" 0) ssa.typePtr)
             let index = binary(rest ssa.opLshr binary(rest ssa.opSub unary(rest ssa.opPtrToInt obj ssa.typeInt) low)
-                constant(rest 3))
+                    constant(rest 3))
             let byteAt = value(rest ssa.opPtrAdd array of bits binary(rest ssa.opLshr index constant(rest 3)) end
-                ssa.typePtr 0 "" 0 false)
+                    ssa.typePtr 0 "" 0 false)
             let mask = binary(rest ssa.opShl constant(rest 1) binary(rest ssa.opAnd index constant(rest 7)))
             let old = value(rest ssa.opLoad array of byteAt end ssa.typeInt 0 "" 1 false)
             store(rest byteAt binary(rest ssa.opOr old mask) 1)
@@ -203,7 +207,7 @@ export
                 while not(expanded) andif {k < vector.length(blk.insts)} do
                     let i = vector.get(blk.insts k)
                     if ssa.isOp(i ssa.opCall) andif eq(i.symbol "quest_alloc") andif {extent i.args is 2}
-                        andif {extent i.results is 1} andif cs.isConst[i.args[0]] then
+                            andif {extent i.results is 1} andif cs.isConst[i.args[0]] then
                         let space = hashMap.get(spaces symbolOf(i.args[1]))
                         expand(f b k cs.value[i.args[0]] maybe.unwrapOr(space 0))
                         expanded := true

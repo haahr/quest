@@ -4,11 +4,11 @@
  * type parameter, and adapted to a supertype, each called after enough
  * allocation to collect many times over. *)
 
-import writer : Writer;
-import conv : Conv;
-import string : StringOp;
+import conv : Conv
+import string : StringOp
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
 
 (* Allocates enough to collect, so that a closure's words are read after its
  * object may have been moved between generations and its captures marked *)
@@ -16,16 +16,16 @@ let churn(): Ok =
     begin
         let var s = ""
         for i = 0 upto 20000 do s := string.getSub(s <> "abcdefgh" 0 8) end
-    end;
+    end
 
 (* Every kind of capture: an Int, a Bool, a Char, a Real, a String, a tuple *)
 let mixed(n: Int b: Bool c: Char r: Real s: String t: Tuple x: Int y: String end): All() String =
     fun(): String
         conv.int(n) <> " " <> conv.bool(b) <> " " <> conv.char(c) <> " " <> conv.real(r) <> " " <> s <> " "
-            <> conv.int(t.x) <> t.y;
-let m = mixed(7 true 'q' 2.5 "str" tuple let x = 3 let y = "!" end);
-churn();
-print("mixed " <> m());
+            <> conv.int(t.x) <> t.y
+let m = mixed(7 true 'q' 2.5 "str" tuple let x = 3 let y = "!" end)
+churn()
+print("mixed " <> m())
 
 (* A let rec group: each captures the other, a local offset, and itself *)
 let parity(offset: Int): Tuple even: All(n: Int) Bool odd: All(n: Int) Bool count: All(n: Int) Int end =
@@ -34,35 +34,35 @@ let parity(offset: Int): Tuple even: All(n: Int) Bool odd: All(n: Int) Bool coun
         and odd(n: Int): Bool = if n is offset then false else even(n - 1) end
         and count(n: Int): Int = if n <= offset then 0 else 1 + count(n - 1) end
         tuple let even = even let odd = odd let count = count end
-    end;
-let p = parity(3);
-churn();
-print("parity " <> conv.bool(p.even(13)) <> " " <> conv.bool(p.odd(13)) <> " " <> conv.int(p.count(13)));
+    end
+let p = parity(3)
+churn()
+print("parity " <> conv.bool(p.even(13)) <> " " <> conv.bool(p.odd(13)) <> " " <> conv.int(p.count(13)))
 
 (* Many closures, each its own object, kept in an array across collections *)
-let adders = array of(50 fun(x: Int): Int x);
+let adders = array of(50 fun(x: Int): Int x)
 for i = 0 upto 49 do
     let j = i
     let label = "n" <> conv.int(j)
     adders[i] := fun(x: Int): Int x + j + string.length(label)
-end;
-churn();
-let var sum = 0;
-for i = 0 upto 49 do sum := sum + adders[i](1) end;
-print("adders " <> conv.int(sum));
+end
+churn()
+let var sum = 0
+for i = 0 upto 49 do sum := sum + adders[i](1) end
+print("adders " <> conv.int(sum))
 
 (* A closure at a type parameter, whose closure supplies the descriptor *)
-let twice(A::TYPE f: All(a: A) A): All(a: A) A = fun(a: A): A f(f(a));
-let shout = twice(:String fun(s: String): String s <> "!");
-churn();
-print("twice " <> shout("hey") <> " " <> conv.int(twice(:Int fun(n: Int): Int n * 3)(2)));
+let twice(A::TYPE f: All(a: A) A): All(a: A) A = fun(a: A): A f(f(a))
+let shout = twice(:String fun(s: String): String s <> "!")
+churn()
+print("twice " <> shout("hey") <> " " <> conv.int(twice(:Int fun(n: Int): Int n * 3)(2)))
 
 (* A closure used at a supertype: an adapter, which holds the closure it
  * adapts *)
-Let Small = Record x: Int end;
-Let Big = Record x: Int y: Int end;
-let k = 10;
-let grow(s: Small): Big = record x = s.x + k y = s.x * k end;
-let shrink: All(b: Big) Small = grow;
-churn();
-print("adapted " <> conv.int(shrink(record x = 4 y = 0 end).x));
+Let Small = Record x: Int end
+Let Big = Record x: Int y: Int end
+let k = 10
+let grow(s: Small): Big = record x = s.x + k y = s.x * k end
+let shrink: All(b: Big) Small = grow
+churn()
+print("adapted " <> conv.int(shrink(record x = 4 y = 0 end).x))

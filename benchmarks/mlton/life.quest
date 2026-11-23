@@ -2,10 +2,11 @@
  * live cells kept in lexical order (from the SML/NJ benchmark suite) *)
 
 import
-    support/bench : support/Bench
-    writer : Writer
-    support/lists : support/Lists
     stringOp = string : StringOp
+    writer : Writer
+
+    support/bench : support/Bench
+    support/lists : support/Lists
 
 Let Coord = Tuple x: Int y: Int end
 Let Coords = lists.T(Coord)
@@ -35,8 +36,10 @@ let filter(p: All(a: Coord) Bool): All(l: Coords) Coords =
 
 let exists(p: All(a: Coord) Bool): All(l: Coords) Bool =
     begin
-        let rec existsp(l: Coords): Bool = case l when cons with c then if p(c.hd) then true else existsp(c.tl) end
-            else false end
+        let rec existsp(l: Coords): Bool =
+            case l when cons with c then if p(c.hd) then true else existsp(c.tl) end
+                else false
+            end
         existsp
     end
 
@@ -60,7 +63,7 @@ let copy(n: Int x: String): Strings = repeat(fun(l: Strings): Strings lists.cons
 let spaces(n: Int): String =
     stringOp.conc(lists.foldr(:String :Array(String))(fun(s: String a: Array(String)): Array(String)
         begin let b = array of(extent a + 1 s) for i = 0 upto extent a - 1 do b[i + 1] := a[i] end b end
-        array of :String end copy(n " ")))
+            array of :String end copy(n " ")))
 
 let lexless(a: Coord): All(b: Coord) Bool =
     fun(b: Coord): Bool if b.x < a.x then true elsif b.x is a.x then b.y < a.y else false end
@@ -70,7 +73,7 @@ let rec lexordset(l: Coords): Coords =
     case l
         when cons with c then
             lists.append(:Coord)(lexordset(filter(lexless(c.hd))(c.tl))
-                lists.append(:Coord)(cons(c.hd nil) lexordset(filter(lexgreater(c.hd))(c.tl))))
+                    lists.append(:Coord)(cons(c.hd nil) lexordset(filter(lexgreater(c.hd))(c.tl))))
         else nil
     end
 
@@ -172,7 +175,7 @@ let barberpole(n: Int): Coords =
     end
 
 let genB = mkgen(lists.append(:Coord)(at(glider 2 2)
-    lists.append(:Coord)(at(bail 2 12) at(rotate(barberpole(4)) 5 20))))
+        lists.append(:Coord)(at(bail 2 12) at(rotate(barberpole(4)) 5 20))))
 
 let rec nthgen(g: Generation i: Int): Generation = if i is 0 then g else nthgen(mkNextgenFn(neighbours)(g) i - 1) end
 

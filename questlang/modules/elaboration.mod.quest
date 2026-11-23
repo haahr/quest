@@ -3,35 +3,37 @@
 
 module elaboration : Elaboration
 import
-    questlang/common/location : questlang/common/Location
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/common/diagbag : questlang/common/DiagBag
-    questlang/syntax/ast : questlang/syntax/Ast
-    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
-    questlang/syntax/parser : questlang/syntax/Parser
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/types/env : questlang/types/Env
-    questlang/types/kinds : questlang/types/Kinds
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
-    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
-    questlang/typechecker/checks : questlang/typechecker/Checks
-    questlang/modules/paths : questlang/modules/Paths
-    questlang/common/files : questlang/common/Files
-    questlang/repr/externals : questlang/repr/Externals
-    questlang/modules/units : questlang/modules/Units
-    questlang/modules/graph : questlang/modules/Graph
-    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
+    raised : Raised
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
-    util/iter : util/Iter
     util/hash : util/Hash
+    util/iter : util/Iter
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    raised : Raised
+
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/files : questlang/common/Files
+    questlang/common/location : questlang/common/Location
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/units : questlang/modules/Units
+    questlang/repr/externals : questlang/repr/Externals
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/parser : questlang/syntax/Parser
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
+    questlang/typechecker/checks : questlang/typechecker/Checks
+    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/kinds : questlang/types/Kinds
+    questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let Type = model.Type
     Let Scope = symbols.Scope
@@ -83,7 +85,9 @@ export
             for i = 0 upto {extent entries - 1} do
                 let entry = entries[i]
                 vector.append(fields tuple
-                    let name = entry.key let type = entry.value.type let isVar = entry.value.isVar
+                    let name = entry.key
+                    let type = entry.value.type
+                    let isVar = entry.value.isVar
                 end)
             end
             model.recordType(vector.toArray(fields) provenance)
@@ -116,13 +120,14 @@ export
             let savedUnsound = e.inUnsoundModule
             e.currentScope := s
             e.inUnsoundModule := isUnsound
-            let result = try
-                body()
-            else with r then
-                e.currentScope := saved
-                e.inUnsoundModule := savedUnsound
-                raised.reraise(:A r)
-            end
+            let result =
+                try
+                    body()
+                else with r then
+                    e.currentScope := saved
+                    e.inUnsoundModule := savedUnsound
+                    raised.reraise(:A r)
+                end
             e.currentScope := saved
             e.inUnsoundModule := savedUnsound
             result
@@ -134,7 +139,8 @@ export
      * compromise soundness. *)
     let requireSoundImport(scope: Scope ifacePath: String importerIsUnsound: Bool): Ok =
         if scope.isUnsound andif not(importerIsUnsound) then
-            diagnostics.fail(:Ok "The unsound interface '" <> ifacePath <> "' may be imported only by an unsound module" 0)
+            diagnostics.fail(:Ok "The unsound interface '" <> ifacePath
+                <> "' may be imported only by an unsound module" 0)
         end
 
     (* ======================================================================
@@ -150,8 +156,9 @@ export
      * fresh symbol. The values' types are rewritten from the interface's
      * abstract types to the opaque ones. *)
     let createModuleExportScope(
-        moduleName: String canon: String interfaceScope: Scope e: env.T concreteDefs: maybe.T(hashMap.T(String Type))
-    ): Scope =
+            moduleName: String canon: String interfaceScope: Scope e: env.T
+            concreteDefs: maybe.T(hashMap.T(String Type))
+            ): Scope =
         begin
             let exportScope = symbols.newScope(maybe.none() "module_export_" <> moduleName)
             exportScope.moduleName := maybe.some(moduleName)
@@ -163,16 +170,17 @@ export
                 let ifaceSym = entry.value
                 if maybe.isNone(ifaceSym.definition) then
                     let exportId = abstractTypes.abstractTypeSymbolId(canon <> "." <> typeName)
-                    let extDef = if maybe.isSome(concreteDefs) then
-                        let def = lookupLocal(maybe.unwrap(concreteDefs) typeName)
-                        if maybe.isSome(def) then
-                            case maybe.unwrap(def).form when typeExternal then def else maybe.none(:Type) end
+                    let extDef =
+                        if maybe.isSome(concreteDefs) then
+                            let def = lookupLocal(maybe.unwrap(concreteDefs) typeName)
+                            if maybe.isSome(def) then
+                                case maybe.unwrap(def).form when typeExternal then def else maybe.none(:Type) end
+                            else
+                                maybe.none(:Type)
+                            end
                         else
                             maybe.none(:Type)
                         end
-                    else
-                        maybe.none(:Type)
-                    end
                     symbols.declareType(exportScope symbols.newTypeSymbol(typeName exportId ifaceSym.kind extDef))
                     let opaque = model.typeVariable(moduleName <> "." <> typeName exportId maybe.some(ifaceSym.kind))
                     hashMap.insert(subst ifaceSym.symbolId opaque)
@@ -181,7 +189,7 @@ export
                     end
                 else
                     symbols.declareType(exportScope
-                        symbols.newTypeSymbol(typeName env.freshSymbolId(e) ifaceSym.kind ifaceSym.definition))
+                            symbols.newTypeSymbol(typeName env.freshSymbolId(e) ifaceSym.kind ifaceSym.definition))
                     ok
                 end
             end
@@ -190,7 +198,7 @@ export
                 let entry = values[i]
                 let v = entry.value
                 symbols.declareValue(exportScope symbols.newValueSymbol(entry.key model.substitute(v.type subst) v.isVar
-                    v.isOut false 0 0))
+                        v.isOut false 0 0))
             end
             exportScope
         end
@@ -223,55 +231,57 @@ export
         if maybe.isSome(src) andif maybe.isSome(paths.libModulePath(maybe.unwrap(src))) then
             libraryExternalTypes(maybe.unwrap(paths.libModulePath(maybe.unwrap(src))))
         else
-        begin
-            let defs = hashMap.new(:String :Type stringOp.equal hash.string)
-            let text = if maybe.isSome(src) then files.readText(maybe.unwrap(src)) else maybe.none(:String) end
-            let known = if maybe.isSome(text) then
-                hashMap.get(externalsByText maybe.unwrap(text))
-            else
-                maybe.none(:hashMap.T(String Type))
-            end
-            if maybe.isSome(known) then
-                ok
-            elsif maybe.isSome(text) andif strutil.contains(maybe.unwrap(text) "external") then
-                try
-                    let sm = location.newSourceMap(files.baseName(maybe.unwrap(src)) maybe.unwrap(text))
-                    let bag = diagbag.new()
-                    let prog = parser.parseProgram(tokenizer.tokenizeAll(tokenizer.new(sm bag)) sm bag)
-                    if vector.length(prog.form.phrases) is 1 then
-                        case vector.get(prog.form.phrases 0).form
-                            when phraseModule with m then
-                                for i = 0 upto {vector.length(m.modDecl.bindings) - 1} do
-                                    case vector.get(m.modDecl.bindings i).form
-                                        when declTypeBinding with b then
-                                            case b.typeVal.form
-                                                when typeExternal with x then
-                                                    begin
-                                                        hashMap.insert(defs b.name
-                                                            model.externalType(m.modDecl.name <> "." <> b.name x.cType))
-                                                        ok
-                                                    end
-                                                else ok
-                                            end
-                                        else ok
-                                    end
-                                end
-                            else ok
-                        end
+            begin
+                let defs = hashMap.new(:String :Type stringOp.equal hash.string)
+                let text = if maybe.isSome(src) then files.readText(maybe.unwrap(src)) else maybe.none(:String) end
+                let known =
+                    if maybe.isSome(text) then
+                        hashMap.get(externalsByText maybe.unwrap(text))
+                    else
+                        maybe.none(:hashMap.T(String Type))
                     end
-                when diagbag.fatalError then
+                if maybe.isSome(known) then
                     ok
+                elsif maybe.isSome(text) andif strutil.contains(maybe.unwrap(text) "external") then
+                    try
+                        let sm = location.newSourceMap(files.baseName(maybe.unwrap(src)) maybe.unwrap(text))
+                        let bag = diagbag.new()
+                        let prog = parser.parseProgram(tokenizer.tokenizeAll(tokenizer.new(sm bag)) sm bag)
+                        if vector.length(prog.form.phrases) is 1 then
+                            case vector.get(prog.form.phrases 0).form
+                                when phraseModule with m then
+                                    for i = 0 upto {vector.length(m.modDecl.bindings) - 1} do
+                                        case vector.get(m.modDecl.bindings i).form
+                                            when declTypeBinding with b then
+                                                case b.typeVal.form
+                                                    when typeExternal with x then
+                                                        begin
+                                                            hashMap.insert(defs b.name
+                                                                    model.externalType(m.modDecl.name <> "."
+                                                                        <> b.name x.cType))
+                                                            ok
+                                                        end
+                                                    else ok
+                                                end
+                                            else ok
+                                        end
+                                    end
+                                else ok
+                            end
+                        end
+                    when diagbag.fatalError then
+                        ok
+                    end
+                end
+                if maybe.isSome(known) then
+                    maybe.unwrap(known)
+                else
+                    if maybe.isSome(text) then
+                        hashMap.insert(externalsByText maybe.unwrap(text) defs)
+                    end
+                    defs
                 end
             end
-            if maybe.isSome(known) then
-                maybe.unwrap(known)
-            else
-                if maybe.isSome(text) then
-                    hashMap.insert(externalsByText maybe.unwrap(text) defs)
-                end
-                defs
-            end
-        end
         end
 
     let separatelyCompiledModuleScope(modPath: String interfaceScope: Scope e: env.T): Scope =
@@ -279,20 +289,23 @@ export
             let resolved = env.resolveModule(e modPath)
             let canon = graph.canonicalName(resolved)
             let u = graph.unit(e.units option moduleUnit of units.UnitKind end canon)
-            let existing = if maybe.isSome(u.typedModule) then
-                maybe.some(moduleScope(maybe.unwrap(u.typedModule)))
-            else
-                u.exportScope
-            end
-            let scope = if maybe.isSome(existing) then
-                maybe.unwrap(existing)
-            else
-                let concrete = extractModuleExternalTypes(resolved.source)
-                let s = createModuleExportScope(paths.declaredModuleName(resolved.source modPath) canon interfaceScope e
-                    maybe.some(concrete))
-                u.exportScope := maybe.some(s)
-                s
-            end
+            let existing =
+                if maybe.isSome(u.typedModule) then
+                    maybe.some(moduleScope(maybe.unwrap(u.typedModule)))
+                else
+                    u.exportScope
+                end
+            let scope =
+                if maybe.isSome(existing) then
+                    maybe.unwrap(existing)
+                else
+                    let concrete = extractModuleExternalTypes(resolved.source)
+                    let s =
+                        createModuleExportScope(paths.declaredModuleName(resolved.source modPath) canon interfaceScope e
+                                maybe.some(concrete))
+                    u.exportScope := maybe.some(s)
+                    s
+                end
             env.registerModule(e modPath scope)
             scope
         end
@@ -306,12 +319,12 @@ export
                 let entry = types[i]
                 let exportSym = entry.value
                 let internal = lookupLocal(internalScope.types entry.key)
-                if maybe.isNone(exportSym.definition) andif maybe.isSome(internal) andif
-                        maybe.isSome(maybe.unwrap(internal).definition) then
+                if maybe.isNone(exportSym.definition) andif maybe.isSome(internal)
+                        andif maybe.isSome(maybe.unwrap(internal).definition) then
                     let typeVar = model.typeVariable(maybe.unwrapOr(exportScope.moduleName "") <> "." <> entry.key
-                        exportSym.symbolId maybe.some(exportSym.kind))
+                            exportSym.symbolId maybe.some(exportSym.kind))
                     abstractTypes.registerAbstractTypeRepresentation(canon <> "." <> entry.key typeVar
-                        maybe.unwrap(maybe.unwrap(internal).definition))
+                            maybe.unwrap(maybe.unwrap(internal).definition))
                 end
             end
         end
@@ -357,8 +370,8 @@ export
                         if vector.empty(imp.names) then
                             (* An unaliased interface import: interface
                              * inheritance *)
-                            let isAlias = maybe.isSome(imp.interfacePath) andif
-                                not(stringOp.equal(imp.interfaceName ifacePath))
+                            let isAlias = maybe.isSome(imp.interfacePath)
+                                andif not(stringOp.equal(imp.interfaceName ifacePath))
                             declareTypesAndKinds(source if isAlias then importScope else interfaceScope end)
                         else
                             let modPaths = ast.effectiveModulePaths(imp)
@@ -378,32 +391,35 @@ export
                                     symbols.declareKind(interfaceScope maybe.unwrap(kindSym))
                                     ok
                                 else
-                                    let available = maybe.isSome(graph.typedModule(e.units modPath)) orif
-                                        graph.isPrecompiled(e.units modPath) orif
-                                        maybe.isSome(env.resolveModule(e modPath).source) orif
-                                        maybe.isSome(paths.resolveObjectFile(modPath e.currentDir
-                                            vector.toArray(e.includePaths)))
+                                    let available = maybe.isSome(graph.typedModule(e.units modPath))
+                                        orif graph.isPrecompiled(e.units modPath)
+                                        orif maybe.isSome(env.resolveModule(e modPath).source)
+                                        orif maybe.isSome(paths.resolveObjectFile(modPath e.currentDir
+                                                vector.toArray(e.includePaths)))
                                     let var modScope = maybe.none(:Scope)
                                     if available then
                                         try
                                             modScope := maybe.some(moduleScope(loadModule(modPath ifacePath e)))
                                         when diagnostics.compilerError with err then
                                             if err.isFatal then diagnostics.raiseError(:Ok err) end
-                                            if maybe.isSome(e.report) andif
-                                                    not(err.silent) then
+                                            if maybe.isSome(e.report)
+                                                    andif not(err.silent) then
                                                 maybe.unwrap(e.report)(err)
                                             end
                                         end
                                     end
-                                    let registered = if maybe.isSome(modScope) then
-                                        maybe.unwrap(modScope)
-                                    else
-                                        separatelyCompiledModuleScope(modPath source e)
-                                    end
+                                    let registered =
+                                        if maybe.isSome(modScope) then
+                                            maybe.unwrap(modScope)
+                                        else
+                                            separatelyCompiledModuleScope(modPath source e)
+                                        end
                                     env.registerModule(e name registered)
-                                    if not(stringOp.equal(modPath name)) then env.registerModule(e modPath registered) end
+                                    if not(stringOp.equal(modPath name)) then
+                                        env.registerModule(e modPath registered)
+                                    end
                                     symbols.declareValue(importScope symbols.valueSymbol(name
-                                        buildRecordTypeFromScope(registered maybe.some(name))))
+                                            buildRecordTypeFromScope(registered maybe.some(name))))
                                     ok
                                 end
                             end
@@ -422,7 +438,7 @@ export
             let declareOnce(declared: hashSet.T(String) what: String name: String at: Int): Ok =
                 if hashSet.contains(declared name) then
                     diagnostics.fail(:Ok
-                        what <> "'" <> name <> "' is declared more than once in interface '" <> decl.name <> "'" at)
+                            what <> "'" <> name <> "' is declared more than once in interface '" <> decl.name <> "'" at)
                 else
                     begin hashSet.insert(declared name) ok end
                 end
@@ -434,7 +450,7 @@ export
                                 declareOnce(declaredTypes "Type " x.val.name x.val.offset)
                                 let bound = elaborateTypes.elaborateKind(x.val.bound e)
                                 symbols.declareType(interfaceScope
-                                    symbols.newTypeSymbol(x.val.name env.freshSymbolId(e) bound maybe.none(:Type)))
+                                        symbols.newTypeSymbol(x.val.name env.freshSymbolId(e) bound maybe.none(:Type)))
                                 ok
                             end
                         when sigTypeBinding with x then
@@ -453,22 +469,22 @@ export
                                 for j = 0 upto {extent syms - 1} do symbols.declareType(interfaceScope syms[j]) end
                             end
                         when sigValue with x then
-                            if maybe.isSome(x.val.name) andif
-                                    not(stringOp.equal(maybe.unwrap(x.val.name) "")) then
+                            if maybe.isSome(x.val.name)
+                                    andif not(stringOp.equal(maybe.unwrap(x.val.name) "")) then
                                 declareOnce(declaredValues "" maybe.unwrap(x.val.name) x.val.offset)
                                 checks.checkBinder(maybe.unwrap(x.val.name) x.val.offset)
                                 let t = elaborateTypes.elaborateType(maybe.unwrap(x.val.typeSig) e)
                                 let isVar = case x.val.mode when modeVar then true else false end
                                 let isOut = case x.val.mode when modeOut then true else false end
                                 symbols.declareValue(interfaceScope
-                                    symbols.newValueSymbol(maybe.unwrap(x.val.name) t isVar isOut false 0 0))
+                                        symbols.newValueSymbol(maybe.unwrap(x.val.name) t isVar isOut false 0 0))
                                 ok
                             end
                         when sigKindBinding with x then
                             begin
                                 declareOnce(declaredKinds "Kind " x.val.name x.val.offset)
                                 symbols.declareKind(interfaceScope
-                                    elaborateTypes.elaborateKindBinding(x.val.name x.val.kindVal e))
+                                        elaborateTypes.elaborateKindBinding(x.val.name x.val.kindVal e))
                                 ok
                             end
                     end
@@ -476,7 +492,9 @@ export
 
             env.registerInterface(e decl.name interfaceScope)
             typedAst.binding(offset option bindInterface of typedAst.BindingForm with
-                let name = decl.name let signatures = array of :typedAst.Binding end let scope = interfaceScope
+                let name = decl.name
+                let signatures = array of :typedAst.Binding end
+                let scope = interfaceScope
             end)
         end
 
@@ -492,13 +510,17 @@ export
         end
 
     let importItem(
-        imp: ast.ImportItem canonical: maybe.T(Array(String)) symbolIds: maybe.T(Array(maybe.T(Int)))
-        modulePaths: maybe.T(Array(String))
-    ): typedAst.ImportItem =
+            imp: ast.ImportItem canonical: maybe.T(Array(String)) symbolIds: maybe.T(Array(maybe.T(Int)))
+            modulePaths: maybe.T(Array(String))
+            ): typedAst.ImportItem =
         tuple
-            let offset = imp.offset let names = stringArray(imp.names) let interfaceName = imp.interfaceName
-            let modulePaths = modulePaths let interfacePath = imp.interfacePath
-            let canonicalModulePaths = canonical let symbolIds = symbolIds
+            let offset = imp.offset
+            let names = stringArray(imp.names)
+            let interfaceName = imp.interfaceName
+            let modulePaths = modulePaths
+            let interfacePath = imp.interfacePath
+            let canonicalModulePaths = canonical
+            let symbolIds = symbolIds
         end
 
     let canonicalPaths(imp: ast.ImportItem e: env.T): Array(String) =
@@ -530,33 +552,34 @@ export
                 let ifaceSym = entry.value
                 let found = lookupLocal(internalScope.types typeName)
                 if maybe.isNone(found) then
-                    diagnostics.fail(:Ok "Module '" <> decl.name <> "' does not implement required type '" <> typeName <>
-                        "' from interface '" <> decl.interfaceName <> "'" offset)
+                    diagnostics.fail(:Ok "Module '" <> decl.name <> "' does not implement required type '" <> typeName
+                        <> "' from interface '" <> decl.interfaceName <> "'" offset)
                 end
                 let modSym = maybe.unwrap(found)
                 if maybe.isSome(ifaceSym.definition) then
                     if not(subtyping.isTypeEqual(typeOf(modSym) maybe.unwrap(ifaceSym.definition) lookup)) then
-                        diagnostics.fail(:Ok "Module '" <> decl.name <> "' defines manifest type '" <> typeName <>
-                            "' incompatibly with interface '" <> decl.interfaceName <> "'" offset)
+                        diagnostics.fail(:Ok "Module '" <> decl.name <> "' defines manifest type '" <> typeName
+                            <> "' incompatibly with interface '" <> decl.interfaceName <> "'" offset)
                     end
                 end
                 (* A defined type has the interface's kind if it is a member of
                  * it, whatever kind it was declared with; an undefined one must
                  * have been declared with a subkind *)
-                let satisfies = if maybe.isSome(modSym.definition) then
-                    try
-                        kinds.checkKind(maybe.unwrap(modSym.definition) ifaceSym.kind maybe.some(e))
-                        true
-                    when diagnostics.compilerError with err then
-                        if err.isFatal orif err.silent then diagnostics.raiseError(:Ok err) end
-                        false
+                let satisfies =
+                    if maybe.isSome(modSym.definition) then
+                        try
+                            kinds.checkKind(maybe.unwrap(modSym.definition) ifaceSym.kind maybe.some(e))
+                            true
+                        when diagnostics.compilerError with err then
+                            if err.isFatal orif err.silent then diagnostics.raiseError(:Ok err) end
+                            false
+                        end
+                    else
+                        subtyping.isSubkind(modSym.kind ifaceSym.kind lookup)
                     end
-                else
-                    subtyping.isSubkind(modSym.kind ifaceSym.kind lookup)
-                end
                 if not(satisfies) then
-                    diagnostics.fail(:Ok "Type '" <> typeName <> "' in module '" <> decl.name <>
-                        "' does not satisfy kind bound from interface '" <> decl.interfaceName <> "'" offset)
+                    diagnostics.fail(:Ok "Type '" <> typeName <> "' in module '" <> decl.name
+                        <> "' does not satisfy kind bound from interface '" <> decl.interfaceName <> "'" offset)
                 end
                 if maybe.isNone(ifaceSym.definition) then
                     hashMap.insert(subst ifaceSym.symbolId typeOf(modSym))
@@ -567,15 +590,15 @@ export
                 let entry = values[i]
                 let found = lookupLocal(internalScope.values entry.key)
                 if maybe.isNone(found) then
-                    diagnostics.fail(:Ok "Module '" <> decl.name <> "' does not implement required value '" <> entry.key <>
-                        "' from interface '" <> decl.interfaceName <> "'" offset)
+                    diagnostics.fail(:Ok "Module '" <> decl.name <> "' does not implement required value '" <> entry.key
+                        <> "' from interface '" <> decl.interfaceName <> "'" offset)
                 end
                 let modSym = maybe.unwrap(found)
                 let expected = model.substitute(entry.value.type subst)
                 if not(subtyping.isSubtype(modSym.type expected lookup)) then
-                    diagnostics.fail(:Ok "Value '" <> entry.key <> "' in module '" <> decl.name <> "' has type '" <>
-                        model.show(modSym.type) <> "', which is not a subtype of interface signature '" <>
-                        model.show(expected) <> "'" offset)
+                    diagnostics.fail(:Ok "Value '" <> entry.key <> "' in module '" <> decl.name <> "' has type '"
+                        <> model.show(modSym.type) <> "', which is not a subtype of interface signature '"
+                        <> model.show(expected) <> "'" offset)
                 end
             end
         end
@@ -623,7 +646,7 @@ export
      * or it is typed already. It is registered by its path and its local
      * name. *)
     let bindImportedModule(localName: String modPath: String ifacePath: String ifaceScope: Scope scope: Scope e: env.T):
-        symbols.ValueSymbol =
+            symbols.ValueSymbol =
         begin
             if not(e.compilingC) andif maybe.isNone(graph.typedModule(e.units modPath)) then
                 loadModule(modPath ifacePath e)
@@ -641,14 +664,15 @@ export
     let elaborateModule(decl: ast.ModuleDecl offset: Int e: env.T): typedAst.Binding =
         begin
             let found = env.lookupInterface(e decl.interfaceName)
-            let targetInterface = if maybe.isSome(found) then
-                maybe.unwrap(found)
-            else
-                loadInterface(decl.interfaceName e)
-            end
+            let targetInterface =
+                if maybe.isSome(found) then
+                    maybe.unwrap(found)
+                else
+                    loadInterface(decl.interfaceName e)
+                end
             if targetInterface.isUnsound andif not(decl.isUnsound) then
-                diagnostics.fail(:Ok "The unsound interface '" <> decl.interfaceName <>
-                    "' may be implemented only by an unsound module" offset)
+                diagnostics.fail(:Ok "The unsound interface '" <> decl.interfaceName
+                    <> "' may be implemented only by an unsound module" offset)
             end
             let internalScope = symbols.newScope(maybe.some(e.baseScope) "module_internal_" <> decl.name)
 
@@ -687,7 +711,7 @@ export
                                 else
                                     let sym = bindImportedModule(localName modPath ifacePath source internalScope e)
                                     vector.set(syms {vector.length(syms) - 1}
-                                        maybe.some(sym))
+                                            maybe.some(sym))
                                 end
                             end
                         end
@@ -705,14 +729,14 @@ export
                     for j = 0 upto {vector.length(syms) - 1} do
                         let s = vector.get(syms j)
                         vector.append(ids
-                            if maybe.isSome(s) then
-                                maybe.some(maybe.unwrap(s).symbolId)
-                            else
-                                maybe.none(:Int)
-                            end)
+                                if maybe.isSome(s) then
+                                    maybe.some(maybe.unwrap(s).symbolId)
+                                else
+                                    maybe.none(:Int)
+                                end)
                     end
                     vector.append(items importItem(imp maybe.some(canonicalPaths(imp e))
-                        maybe.some(vector.toArray(ids)) maybePaths(imp.modulePaths)))
+                            maybe.some(vector.toArray(ids)) maybePaths(imp.modulePaths)))
                 end
                 vector.append(typedBindings typedAst.binding(offset option bindImport of typedAst.BindingForm with
                     let items = vector.toArray(items)
@@ -739,56 +763,64 @@ export
              *    types *)
             let canon = graph.canonicalName(env.resolveModule(e decl.name))
             let u = graph.unit(e.units option moduleUnit of units.UnitKind end canon)
-            let exportScope = if maybe.isNone(u.exportScope) then
-                let concrete = hashMap.new(:String :Type stringOp.equal hash.string)
-                let types = pairs(internalScope.types)
-                for i = 0 upto {extent types - 1} do
-                    let entry = types[i]
-                    if maybe.isSome(entry.value.definition) then
-                        (* Match the bootstrap's external type naming: when
-                         * compiling a whole program (not a standalone unit),
-                         * qualify the name as module.T to match
-                         * extractModuleExternalTypes; when compiling a unit
-                         * file, keep the binding's own name *)
-                        let def = maybe.unwrap(entry.value.definition)
-                        let named = case def.form
-                            when typeExternal with x then
-                                if not(e.compilingUnit) then
-                                    model.externalType(decl.name <> "." <> entry.key x.cType) else def end
-                            else def
-                        end
-                        hashMap.insert(concrete entry.key named)
-                    end
-                end
-                let s = createModuleExportScope(decl.name canon targetInterface e maybe.some(concrete))
-                u.exportScope := maybe.some(s)
-                s
-            else
-                let s = maybe.unwrap(u.exportScope)
-                let types = pairs(internalScope.types)
-                for i = 0 upto {extent types - 1} do
-                    let entry = types[i]
-                    let exported = lookupLocal(s.types entry.key)
-                    if maybe.isSome(exported) andif
-                            maybe.isNone(maybe.unwrap(exported).definition) andif
-                            maybe.isSome(entry.value.definition) then
-                        case maybe.unwrap(entry.value.definition).form
-                            when typeExternal then
-                                symbols.defineType(maybe.unwrap(exported) maybe.unwrap(entry.value.definition))
-                            else ok
+            let exportScope =
+                if maybe.isNone(u.exportScope) then
+                    let concrete = hashMap.new(:String :Type stringOp.equal hash.string)
+                    let types = pairs(internalScope.types)
+                    for i = 0 upto {extent types - 1} do
+                        let entry = types[i]
+                        if maybe.isSome(entry.value.definition) then
+                            (* Match the bootstrap's external type naming: when
+                             * compiling a whole program (not a standalone unit),
+                             * qualify the name as module.T to match
+                             * extractModuleExternalTypes; when compiling a unit
+                             * file, keep the binding's own name *)
+                            let def = maybe.unwrap(entry.value.definition)
+                            let named =
+                                case def.form
+                                    when typeExternal with x then
+                                        if not(e.compilingUnit) then
+                                            model.externalType(decl.name <> "." <> entry.key x.cType)
+                                        else
+                                            def
+                                        end
+                                    else def
+                                end
+                            hashMap.insert(concrete entry.key named)
                         end
                     end
+                    let s = createModuleExportScope(decl.name canon targetInterface e maybe.some(concrete))
+                    u.exportScope := maybe.some(s)
+                    s
+                else
+                    let s = maybe.unwrap(u.exportScope)
+                    let types = pairs(internalScope.types)
+                    for i = 0 upto {extent types - 1} do
+                        let entry = types[i]
+                        let exported = lookupLocal(s.types entry.key)
+                        if maybe.isSome(exported)
+                                andif maybe.isNone(maybe.unwrap(exported).definition)
+                                andif maybe.isSome(entry.value.definition) then
+                            case maybe.unwrap(entry.value.definition).form
+                                when typeExternal then
+                                    symbols.defineType(maybe.unwrap(exported) maybe.unwrap(entry.value.definition))
+                                else ok
+                            end
+                        end
+                    end
+                    s
                 end
-                s
-            end
             registerAbstractTypes(canon exportScope internalScope)
             env.registerModule(e decl.name exportScope)
 
-            let moduleSymbol = symbols.valueSymbol(decl.name buildRecordTypeFromScope(exportScope maybe.some(decl.name)))
+            let moduleSymbol =
+                symbols.valueSymbol(decl.name buildRecordTypeFromScope(exportScope maybe.some(decl.name)))
             symbols.declareValue(e.currentScope moduleSymbol)
             typedAst.binding(offset option bindModule of typedAst.BindingForm with
-                let name = decl.name let interfaceName = decl.interfaceName
-                let bindings = vector.toArray(typedBindings) let scope = exportScope
+                let name = decl.name
+                let interfaceName = decl.interfaceName
+                let bindings = vector.toArray(typedBindings)
+                let scope = exportScope
                 let isPrecompiled = false
                 let symbolId = maybe.some(moduleSymbol.symbolId)
             end)
@@ -825,7 +857,7 @@ export
                              * and kinds *)
                             declareTypesAndKinds(ifaceScope e.currentScope)
                             vector.append(items importItem(item maybe.none(:Array(String))
-                                maybe.none(:Array(maybe.T(Int))) maybe.some(array of :String end)))
+                                    maybe.none(:Array(maybe.T(Int))) maybe.some(array of :String end)))
                         else
                             let ids = vector.new(:maybe.T(Int))
                             let modPaths = ast.effectiveModulePaths(item)
@@ -836,8 +868,8 @@ export
                                 vector.append(ids maybe.some(sym.symbolId))
                             end
                             vector.append(items importItem(item
-                                maybe.some(canonicalPaths(item e))
-                                maybe.some(vector.toArray(ids)) maybePaths(item.modulePaths)))
+                                    maybe.some(canonicalPaths(item e))
+                                    maybe.some(vector.toArray(ids)) maybePaths(item.modulePaths)))
                         end
                     end)
             end

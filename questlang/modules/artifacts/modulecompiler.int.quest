@@ -8,12 +8,13 @@
 
 interface ModuleCompiler
 import
-    questlang/modules/graph : questlang/modules/Graph
-    questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
+    util/maybe : util/Maybe
+
     questlang/codegen/choice : questlang/codegen/Choice
     questlang/common/location : questlang/common/Location
     questlang/ir/nodes : questlang/ir/Nodes
-    util/maybe : util/Maybe
+    questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
+    questlang/modules/graph : questlang/modules/Graph
 export
     Def ModuleCompileResult = Tuple c: String o: String qm: String end
 
@@ -25,8 +26,8 @@ export
      * driver's --report-inferable mode (env.T's reportInferable): the calls
      * found are written to standard error after the module is checked. *)
     compileModuleFile(file: String outputDir: maybe.T(String) includePaths: Array(String) compiler: maybe.T(String)
-        nogc: Bool extraFlags: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
-        res: maybe.T(graph.Resolver) backends: choice.T reportInferable: String): ModuleCompileResult
+            nogc: Bool extraFlags: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
+            res: maybe.T(graph.Resolver) backends: choice.T reportInferable: String): ModuleCompileResult
 
     (* Elaborates a module file as compileModuleFile does and lowers it to a
      * standalone IR unit for the JIT to compile and load (docs/jit.md section
@@ -36,7 +37,7 @@ export
     Def ModuleImport = Tuple name: String source: String offset: Int end
     Def ModuleUnit = Tuple unit: nodes.Unit sourceMap: location.SourceMap imports: Array(ModuleImport) end
     moduleFileUnit(file: String includePaths: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
-        res: maybe.T(graph.Resolver)): ModuleUnit
+            res: maybe.T(graph.Resolver)): ModuleUnit
 
     (* What a manifest records of an interface a unit imports, resolved, and
      * found at path: its name, its source's absolute path and modification

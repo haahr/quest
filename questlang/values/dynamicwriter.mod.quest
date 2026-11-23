@@ -2,17 +2,19 @@
 
 module dynamicWriter : DynamicWriter
 import
-    questlang/values/model : questlang/values/Model
-    util/json : util/Json
+    realOp = real : RealOp
+    stringOp = string : StringOp
+    word : Word
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
+    util/json : util/Json
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    realOp = real : RealOp
-    word : Word
+
     questlang/values/dynamicJson : questlang/values/DynamicJson
+    questlang/values/model : questlang/values/Model
 export
     Let Value = model.Value
     let none = maybe.none(:Int)
@@ -144,7 +146,8 @@ export
                     found := true
                     if maybe.isSome(payloadRef) andif not(isRef(maybe.unwrap(payloadRef) "Ok")) then
                         let p = maybe.unwrap(payloadRef)
-                        if stringOp.equal(node.shape.kind "option") andif not(stringOp.equal(kindOf(w.graph p) "tuple")) then
+                        if stringOp.equal(node.shape.kind "option")
+                                andif not(stringOp.equal(kindOf(w.graph p) "tuple")) then
                             fail(:Ok)
                         end
                         result := payloadRef
@@ -362,7 +365,7 @@ export
                                 json.put(target tag json.arrayValue(items))
                             else
                                 json.put(target tag encodeValue(w maybe.unwrapOr(tagged(v).payload model.okValue)
-                                    maybe.unwrap(payloadRef)))
+                                        maybe.unwrap(payloadRef)))
                             end
                             json.object(target)
                         end
@@ -376,11 +379,12 @@ export
         if stringOp.equal(name "Int") then
             case v when vInt with x then json.int(x.n) else fail() end
         elsif stringOp.equal(name "Real") then
-            let r = case v
-                when vReal with x then x.r
-                when vInt with x then realOp.int(x.n)
-                else fail(:Real)
-            end
+            let r =
+                case v
+                    when vReal with x then x.r
+                    when vInt with x then realOp.int(x.n)
+                    else fail(:Real)
+                end
             if isInfinite(r) then json.string(if r >> 0.0 then "Infinity" else "-Infinity" end) else json.real(r) end
         elsif stringOp.equal(name "Bool") then
             case v when vBool with x then json.bool(x.b) else fail() end
@@ -416,10 +420,11 @@ export
             end
             scan(w d builtin("Dynamic"))
             let a = case d when vAuto with x then x.a else fail(:model.AutoValue) end
-            let element = case a.value
-                when vTuple with t then if extent t.t.elements is 1 then t.t.elements[0] else fail(:Value) end
-                else fail(:Value)
-            end
+            let element =
+                case a.value
+                    when vTuple with t then if extent t.t.elements is 1 then t.t.elements[0] else fail(:Value) end
+                    else fail(:Value)
+                end
             let root = dynamicJson.ref(w.graph a.type)
             vector.append(w.roots root)
             let value = encodeValue(w element root)

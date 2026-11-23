@@ -2,24 +2,26 @@
 
 module tuples : Tuples
 import
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/syntax/ast : questlang/syntax/Ast
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/types/env : questlang/types/Env
-    questlang/types/kinds : questlang/types/Kinds
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
-    questlang/typechecker/checker : questlang/typechecker/Checker
-    questlang/typechecker/checks : questlang/typechecker/Checks
-    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
-    questlang/typechecker/bindings : questlang/typechecker/Bindings
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/typechecker/bindings : questlang/typechecker/Bindings
+    questlang/typechecker/checker : questlang/typechecker/Checker
+    questlang/typechecker/checks : questlang/typechecker/Checks
+    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/kinds : questlang/types/Kinds
+    questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let Type = model.Type
     Let Kind = model.Kind
@@ -79,10 +81,11 @@ export
      * manifest binding, Let A = T). Raises diagnostics.compilerError on a
      * mismatch. *)
     let tupleScope(
-        c: checker.T x0: ast.Expr items: vector.T(Item) typeGroups: vector.T(TypeGroup) recGroupsAst: vector.T(RecGroup)
-        simGroups: vector.T(vector.T(ast.TupleFieldBinding)) kindsBefore: hashMap.T(Int vector.T(KindDecl))
-        expectedTuple: maybe.T(Array(model.TupleComponent)) expectedTupleType: maybe.T(Type) e: env.T loopDepth: Int
-    ): typedAst.Expr =
+            c: checker.T x0: ast.Expr items: vector.T(Item) typeGroups: vector.T(TypeGroup)
+            recGroupsAst: vector.T(RecGroup)
+            simGroups: vector.T(vector.T(ast.TupleFieldBinding)) kindsBefore: hashMap.T(Int vector.T(KindDecl))
+            expectedTuple: maybe.T(Array(model.TupleComponent)) expectedTupleType: maybe.T(Type) e: env.T loopDepth: Int
+            ): typedAst.Expr =
         begin
             let checking = maybe.isSome(expectedTuple)
             let expFields = maybe.unwrapOr(expectedTuple array of :model.TupleComponent end)
@@ -125,14 +128,16 @@ export
                     if not(hashMap.contains(witnesses group)) then
                         let g = vector.get(typeGroups group)
                         hashMap.insert(witnesses group
-                            elaborateTypes.elaborateTupleTypeBindings(g.members g.isGroup e))
+                                elaborateTypes.elaborateTupleTypeBindings(g.members g.isGroup e))
                     end
                     hashMap.find(witnesses group)[pos]
                 end
 
             let witnessExpr(offset: Int name: String t: Type bound: maybe.T(Kind)): typedAst.Expr =
                 expr(offset model.okType option exprTypeWitness of typedAst.ExprForm with
-                    let name = name let witnessType = t let bound = bound
+                    let name = name
+                    let witnessType = t
+                    let bound = bound
                 end)
 
             (* 2. Elaborate the components in order, in a scope of their own,
@@ -145,11 +150,12 @@ export
                 declareKinds(index)
                 let item = vector.get(items index)
                 let expF = if checking then maybe.some(expFields[index]) else maybe.none(:model.TupleComponent) end
-                let itemOffset = case item
-                    when typeItem with t then t.b.offset
-                    when recItem with r then r.decl.span.startOffset
-                    when valItem with v then v.b.offset
-                end
+                let itemOffset =
+                    case item
+                        when typeItem with t then t.b.offset
+                        when recItem with r then r.decl.span.startOffset
+                        when valItem with v then v.b.offset
+                    end
                 let isTypeItem = case item when typeItem then true else false end
                 (* What the expected type has here: a type formal, a type
                  * binding, or (neither) a field or nothing *)
@@ -171,21 +177,22 @@ export
                                 when typeItem with t then
                                     begin
                                         if not(stringOp.equal(t.b.name f.name)) then
-                                            diagnostics.fail(:Ok "Tuple type formal name mismatch: expected '" <> f.name <>
-                                                "', got '" <> t.b.name <> "'" t.b.offset)
+                                            diagnostics.fail(:Ok "Tuple type formal name mismatch: expected '" <> f.name
+                                                <> "', got '" <> t.b.name <> "'" t.b.offset)
                                         end
                                         let witnessType = maybe.unwrap(witnessOf(t.group t.pos).sym.definition)
                                         let expectedBound = model.substituteInKind(f.bound witnessSubst)
                                         kinds.checkKind(witnessType expectedBound some(e))
                                         hashMap.insert(witnessSubst f.symbolId witnessType)
                                         symbols.declareType(e.currentScope
-                                            symbols.newTypeSymbol(f.name f.symbolId expectedBound maybe.some(witnessType)))
+                                                symbols.newTypeSymbol(f.name f.symbolId expectedBound
+                                                        maybe.some(witnessType)))
                                         vector.append(elems
-                                            witnessExpr(t.b.offset f.name witnessType maybe.some(expectedBound)))
+                                                witnessExpr(t.b.offset f.name witnessType maybe.some(expectedBound)))
                                     end
                                 else
-                                    diagnostics.fail(:Ok "Expected type witness for type formal '" <> f.name <>
-                                        "', got value component" itemOffset)
+                                    diagnostics.fail(:Ok "Expected type witness for type formal '" <> f.name
+                                        <> "', got value component" itemOffset)
                             end
                         else ok
                     end
@@ -198,23 +205,28 @@ export
                                 when typeItem with t then
                                     begin
                                         if not(stringOp.equal(t.b.name f.name)) then
-                                            diagnostics.fail(:Ok "Tuple type binding name mismatch: expected '" <> f.name <>
-                                                "', got '" <> t.b.name <> "'" t.b.offset)
+                                            diagnostics.fail(:Ok "Tuple type binding name mismatch: expected '"
+                                                <> f.name
+                                                <> "', got '" <> t.b.name <> "'" t.b.offset)
                                         end
                                         let witnessType = maybe.unwrap(witnessOf(t.group t.pos).sym.definition)
                                         let expectedTypeVal = model.substitute(f.type witnessSubst)
                                         if not(isTypeEqual(witnessType expectedTypeVal e)) then
-                                            diagnostics.fail(:Ok "Type binding '" <> f.name <> "' must match manifest type '" <>
-                                                model.show(expectedTypeVal) <> "', got '" <> model.show(witnessType) <> "'"
-                                                t.b.offset)
+                                            diagnostics.fail(:Ok "Type binding '" <> f.name
+                                                <> "' must match manifest type '"
+                                                <> model.show(expectedTypeVal) <> "', got '" <> model.show(witnessType)
+                                                <> "'"
+                                                    t.b.offset)
                                         end
-                                        symbols.declareType(e.currentScope symbols.newTypeSymbol(f.name env.freshSymbolId(e)
-                                            maybe.unwrapOr(f.bound model.typeKind) maybe.some(witnessType)))
+                                        symbols.declareType(e.currentScope
+                                                symbols.newTypeSymbol(f.name env.freshSymbolId(e)
+                                                        maybe.unwrapOr(f.bound model.typeKind) maybe.some(witnessType)))
                                         vector.append(elems witnessExpr(t.b.offset f.name witnessType f.bound))
                                     end
                                 else
-                                    diagnostics.fail(:Ok "Expected type binding for '" <> f.name <> "', got value component"
-                                        itemOffset)
+                                    diagnostics.fail(:Ok "Expected type binding for '" <> f.name
+                                        <> "', got value component"
+                                            itemOffset)
                             end
                         else ok
                     end
@@ -228,9 +240,10 @@ export
                             begin
                                 if maybe.isSome(expF) then
                                     let fname = maybe.unwrapOr(model.componentName(maybe.unwrap(expF))
-                                        "None")
-                                    diagnostics.fail(:Ok "Unexpected type binding '" <> t.b.name <> "' for value field '" <>
-                                        fname <> "'" t.b.offset)
+                                            "None")
+                                    diagnostics.fail(:Ok "Unexpected type binding '" <> t.b.name
+                                        <> "' for value field '"
+                                        <> fname <> "'" t.b.offset)
                                 end
                                 let w = witnessOf(t.group t.pos)
                                 let kBound = maybe.unwrapOr(w.bound model.typeKind)
@@ -238,7 +251,9 @@ export
                                 let def = maybe.unwrap(w.sym.definition)
                                 vector.append(elems witnessExpr(t.b.offset t.b.name def maybe.some(kBound)))
                                 vector.append(qFields option tupleTypeBinding of model.TupleComponent with
-                                    let name = t.b.name let type = def let bound = maybe.some(kBound)
+                                    let name = t.b.name
+                                    let type = def
+                                    let bound = maybe.some(kBound)
                                 end)
                             end
                         else ok
@@ -248,38 +263,42 @@ export
                      * declared when the first is reached, so that each can
                      * refer to the others; those of a let ... and ... have
                      * their labels declared after the last *)
-                    let expFieldType =if maybe.isSome(expF) then
-                        case maybe.unwrap(expF)
-                            when tupleField with f then
-                                begin
-                                    let bname = case item
-                                        when recItem with r then maybe.some(namedDecl(r.decl).name)
-                                        when valItem with v then v.b.name
-                                        else maybe.none(:String)
+                    let expFieldType =
+                        if maybe.isSome(expF) then
+                            case maybe.unwrap(expF)
+                                when tupleField with f then
+                                    begin
+                                        let bname =
+                                            case item
+                                                when recItem with r then maybe.some(namedDecl(r.decl).name)
+                                                when valItem with v then v.b.name
+                                                else maybe.none(:String)
+                                            end
+                                        if maybe.isSome(f.name) andif maybe.isSome(bname)
+                                                andif not(stringOp.equal(maybe.unwrap(f.name) maybe.unwrap(bname))) then
+                                            diagnostics.fail(:Ok "Tuple field name mismatch: expected '"
+                                                <> maybe.unwrap(f.name) <> "', got '" <> maybe.unwrap(bname) <> "'"
+                                                    itemOffset)
+                                        end
+                                        maybe.some(model.substitute(f.type witnessSubst))
                                     end
-                                    if maybe.isSome(f.name) andif maybe.isSome(bname) andif
-                                            not(stringOp.equal(maybe.unwrap(f.name) maybe.unwrap(bname))) then
-                                        diagnostics.fail(:Ok "Tuple field name mismatch: expected '" <>
-                                            maybe.unwrap(f.name) <> "', got '" <> maybe.unwrap(bname) <> "'"
-                                            itemOffset)
-                                    end
-                                    maybe.some(model.substitute(f.type witnessSubst))
-                                end
-                            else maybe.none(:Type)
+                                else maybe.none(:Type)
+                            end
+                        else
+                            maybe.none(:Type)
                         end
-                    else
-                        maybe.none(:Type)
-                    end
-                    let expIsVar = if maybe.isSome(expF) then
-                        case maybe.unwrap(expF) when tupleField with f then f.isVar else false end
-                    else
-                        false
-                    end
-                    let expName = if maybe.isSome(expF) then
-                        case maybe.unwrap(expF) when tupleField with f then f.name else maybe.none(:String) end
-                    else
-                        maybe.none(:String)
-                    end
+                    let expIsVar =
+                        if maybe.isSome(expF) then
+                            case maybe.unwrap(expF) when tupleField with f then f.isVar else false end
+                        else
+                            false
+                        end
+                    let expName =
+                        if maybe.isSome(expF) then
+                            case maybe.unwrap(expF) when tupleField with f then f.name else maybe.none(:String) end
+                        else
+                            maybe.none(:String)
+                        end
                     case item
                         when recItem with r then
                             begin
@@ -294,38 +313,42 @@ export
                                         let syms = vector.new(:symbols.ValueSymbol)
                                         for i = 0 upto last do
                                             vector.append(syms
-                                                bindings.declareRecValue(c vector.get(g.members i) e))
+                                                    bindings.declareRecValue(c vector.get(g.members i) e))
                                         end
                                         hashMap.insert(recSymbols r.group syms)
                                     end
                                 end
                                 Let Member = Tuple value: typedAst.Expr sym: symbols.ValueSymbol end
-                                let member: Member = if maybe.isNone(expF) then
-                                    let typedMember = hashMap.find(recTyped r.group)[r.pos]
-                                    case typedMember.form
-                                        when bindLetValue with v then
-                                            begin
-                                                vector.append(qFields model.tupleField(
-                                                    maybe.some(v.value.name) v.value.symbol.type v.value.symbol.isVar))
-                                                tuple let value = v.value.value let sym = v.value.symbol end
-                                            end
-                                        else diagnostics.fail("internal: not a let declaration" itemOffset)
+                                let member: Member =
+                                    if maybe.isNone(expF) then
+                                        let typedMember = hashMap.find(recTyped r.group)[r.pos]
+                                        case typedMember.form
+                                            when bindLetValue with v then
+                                                begin
+                                                    vector.append(qFields model.tupleField(
+                                                            maybe.some(v.value.name) v.value.symbol.type
+                                                            v.value.symbol.isVar))
+                                                    tuple let value = v.value.value let sym = v.value.symbol end
+                                                end
+                                            else diagnostics.fail("internal: not a let declaration" itemOffset)
+                                        end
+                                    else
+                                        let recSym = vector.get(hashMap.find(recSymbols r.group) r.pos)
+                                        if expIsVar then
+                                            diagnostics.fail(:Ok "Tuple field '" <> maybe.unwrapOr(expName "")
+                                                <> "' must be declared mutable (var)" itemOffset)
+                                        end
+                                        let eft = maybe.unwrap(expFieldType)
+                                        if not(isSubtype(recSym.type eft e)) then
+                                            diagnostics.fail(:Ok "Tuple field '" <> namedDecl(r.decl).name
+                                                <> "' declared type '"
+                                                <> model.show(recSym.type)
+                                                <> "' is not a subtype of expected field type '"
+                                                <> model.show(eft) <> "'" itemOffset)
+                                        end
+                                        let typedMember = bindings.checkRecValue(c r.decl recSym e loopDepth)
+                                        tuple let value = typedMember.value let sym = recSym end
                                     end
-                                else
-                                    let recSym = vector.get(hashMap.find(recSymbols r.group) r.pos)
-                                    if expIsVar then
-                                        diagnostics.fail(:Ok "Tuple field '" <> maybe.unwrapOr(expName "") <>
-                                            "' must be declared mutable (var)" itemOffset)
-                                    end
-                                    let eft = maybe.unwrap(expFieldType)
-                                    if not(isSubtype(recSym.type eft e)) then
-                                        diagnostics.fail(:Ok "Tuple field '" <> namedDecl(r.decl).name <> "' declared type '" <>
-                                            model.show(recSym.type) <> "' is not a subtype of expected field type '" <>
-                                            model.show(eft) <> "'" itemOffset)
-                                    end
-                                    let typedMember = bindings.checkRecValue(c r.decl recSym e loopDepth)
-                                    tuple let value = typedMember.value let sym = recSym end
-                                end
                                 vector.append(groupIndices vector.length(elems))
                                 hashMap.insert(labels vector.length(elems) member.sym)
                                 vector.append(elems member.value)
@@ -341,38 +364,55 @@ export
                                     checks.checkDistinctNames(vector.toArray(vector.map(members namedTupleBinding)))
                                 end
                                 if maybe.isSome(b.name) then checks.checkBinder(maybe.unwrap(b.name) b.offset) end
-                                Let Labeled = Tuple value: typedAst.Expr name: maybe.T(String) type: Type isVar: Bool end
-                                let labeled: Labeled = if maybe.isNone(expF) then
-                                    let valTyped = synthTupleComponent(c b e loopDepth)
-                                    vector.append(qFields model.tupleField(b.name valTyped.type b.isVar))
-                                    tuple let value = valTyped let name = b.name let type = valTyped.type let isVar = b.isVar end
-                                else
-                                    let eft = maybe.unwrap(expFieldType)
-                                    let valTyped = if expIsVar then
-                                        if not(b.isVar) then
-                                            diagnostics.fail(:Ok "Tuple field '" <> maybe.unwrapOr(expName "") <>
-                                                "' must be declared mutable (var)" b.offset)
+                                Let Labeled =
+                                    Tuple value: typedAst.Expr name: maybe.T(String) type: Type isVar: Bool end
+                                let labeled: Labeled =
+                                    if maybe.isNone(expF) then
+                                        let valTyped = synthTupleComponent(c b e loopDepth)
+                                        vector.append(qFields model.tupleField(b.name valTyped.type b.isVar))
+                                        tuple
+                                            let value = valTyped
+                                            let name = b.name
+                                            let type = valTyped.type
+                                            let isVar = b.isVar
                                         end
-                                        let t = checker.checkExpr(c b.value eft e loopDepth)
-                                        if not(isTypeEqual(t.type eft e)) then
-                                            diagnostics.fail(:Ok "Mutable tuple field '" <> maybe.unwrapOr(expName "") <>
-                                                "' is invariant; expected '" <> model.show(eft) <> "', got '" <>
-                                                model.show(t.type) <> "'" b.offset)
-                                        end
-                                        t
-                                    elsif maybe.isSome(b.typeAnnot) then
-                                        let annotType = elaborateTypes.elaborateType(maybe.unwrap(b.typeAnnot) e)
-                                        if not(isSubtype(annotType eft e)) then
-                                            diagnostics.fail(:Ok "Tuple field '" <> nameOf(b.name) <> "' declared type '" <>
-                                                model.show(annotType) <> "' is not a subtype of expected field type '" <>
-                                                model.show(eft) <> "'" b.offset)
-                                        end
-                                        checker.checkExpr(c b.value annotType e loopDepth)
                                     else
-                                        checker.checkExpr(c b.value eft e loopDepth)
+                                        let eft = maybe.unwrap(expFieldType)
+                                        let valTyped =
+                                            if expIsVar then
+                                                if not(b.isVar) then
+                                                    diagnostics.fail(:Ok "Tuple field '" <> maybe.unwrapOr(expName "")
+                                                        <> "' must be declared mutable (var)" b.offset)
+                                                end
+                                                let t = checker.checkExpr(c b.value eft e loopDepth)
+                                                if not(isTypeEqual(t.type eft e)) then
+                                                    diagnostics.fail(:Ok "Mutable tuple field '"
+                                                        <> maybe.unwrapOr(expName "")
+                                                        <> "' is invariant; expected '" <> model.show(eft) <> "', got '"
+                                                        <> model.show(t.type) <> "'" b.offset)
+                                                end
+                                                t
+                                            elsif maybe.isSome(b.typeAnnot) then
+                                                let annotType =
+                                                    elaborateTypes.elaborateType(maybe.unwrap(b.typeAnnot) e)
+                                                if not(isSubtype(annotType eft e)) then
+                                                    diagnostics.fail(:Ok "Tuple field '" <> nameOf(b.name)
+                                                        <> "' declared type '"
+                                                        <> model.show(annotType)
+                                                        <> "' is not a subtype of expected field type '"
+                                                        <> model.show(eft) <> "'" b.offset)
+                                                end
+                                                checker.checkExpr(c b.value annotType e loopDepth)
+                                            else
+                                                checker.checkExpr(c b.value eft e loopDepth)
+                                            end
+                                        tuple
+                                            let value = valTyped
+                                            let name = expName
+                                            let type = eft
+                                            let isVar = expIsVar
+                                        end
                                     end
-                                    tuple let value = valTyped let name = expName let type = eft let isVar = expIsVar end
-                                end
                                 let elementIndex = vector.length(elems)
                                 vector.append(elems labeled.value)
                                 if maybe.isSome(v.group) then
@@ -380,34 +420,41 @@ export
                                     if v.pos is 0 then vector.clear(groupIndices) end
                                     vector.append(groupIndices elementIndex)
                                     if maybe.isSome(labeled.name) then
-                                        let label = if checking then
-                                            maybe.some(newLabel(c maybe.unwrap(labeled.name) labeled.type labeled.isVar))
-                                        else
-                                            maybe.none(:symbols.ValueSymbol)
-                                        end
+                                        let label =
+                                            if checking then
+                                                maybe.some(newLabel(c maybe.unwrap(labeled.name) labeled.type
+                                                        labeled.isVar))
+                                            else
+                                                maybe.none(:symbols.ValueSymbol)
+                                            end
                                         vector.append(pendingLabels tuple
-                                            let index = elementIndex let name = maybe.unwrap(labeled.name)
-                                            let type = labeled.type let isVar = labeled.isVar let label = label
+                                            let index = elementIndex
+                                            let name = maybe.unwrap(labeled.name)
+                                            let type = labeled.type
+                                            let isVar = labeled.isVar
+                                            let label = label
                                         end)
                                     end
                                     if v.pos is {vector.length(members) - 1} then
                                         vector.append(simultaneousGroups
-                                            vector.toArray(vector.copy(groupIndices)))
+                                                vector.toArray(vector.copy(groupIndices)))
                                         for i = 0 upto {vector.length(pendingLabels) - 1} do
                                             let p = vector.get(pendingLabels i)
-                                            let label = if maybe.isSome(p.label) then
-                                                maybe.unwrap(p.label)
-                                            else
-                                                newLabel(c p.name p.type p.isVar)
-                                            end
+                                            let label =
+                                                if maybe.isSome(p.label) then
+                                                    maybe.unwrap(p.label)
+                                                else
+                                                    newLabel(c p.name p.type p.isVar)
+                                                end
                                             hashMap.insert(labels p.index
-                                                symbols.declareValue(e.currentScope label))
+                                                    symbols.declareValue(e.currentScope label))
                                         end
                                         vector.clear(pendingLabels)
                                     end
                                 elsif maybe.isSome(labeled.name) then
                                     hashMap.insert(labels elementIndex symbols.declareValue(
-                                        e.currentScope newLabel(c maybe.unwrap(labeled.name) labeled.type labeled.isVar)))
+                                            e.currentScope
+                                            newLabel(c maybe.unwrap(labeled.name) labeled.type labeled.isVar)))
                                     ok
                                 end
                             end
@@ -425,11 +472,12 @@ export
             end
             (* 3. Checking, the tuple has the expected type; synthesizing, the
              *    type made of its components' types *)
-            let tupleType = if maybe.isSome(expectedTupleType) then
-                maybe.unwrap(expectedTupleType)
-            else
-                model.tupleType(vector.toArray(qFields))
-            end
+            let tupleType =
+                if maybe.isSome(expectedTupleType) then
+                    maybe.unwrap(expectedTupleType)
+                else
+                    model.tupleType(vector.toArray(qFields))
+                end
             expr(x0.span.startOffset tupleType option exprTuple of typedAst.ExprForm with
                 let elements = elements
                 let recGroups = vector.toArray(recGroups)
@@ -438,9 +486,10 @@ export
             end)
         end
     let elaborateTupleComponents(
-        c: checker.T x0: ast.Expr components: vector.T(ast.TupleField) expectedTuple: maybe.T(Array(model.TupleComponent))
-        expectedTupleType: maybe.T(Type) e: env.T loopDepth: Int
-    ): typedAst.Expr =
+            c: checker.T x0: ast.Expr components: vector.T(ast.TupleField)
+            expectedTuple: maybe.T(Array(model.TupleComponent))
+            expectedTupleType: maybe.T(Type) e: env.T loopDepth: Int
+            ): typedAst.Expr =
         begin
             let checking = maybe.isSome(expectedTuple)
             (* 1. Flatten the components. A group (let ... and ..., or a group
@@ -474,7 +523,9 @@ export
                     vector.append(typeGroups tuple let members = ms let isGroup = isGroup end)
                     for i = 0 upto {vector.length(ms) - 1} do
                         vector.append(items option typeItem of Item with
-                            let b = vector.get(ms i) let group = group let pos = i
+                            let b = vector.get(ms i)
+                            let group = group
+                            let pos = i
                         end)
                     end
                 end
@@ -488,7 +539,9 @@ export
                     vector.append(recGroupsAst tuple let decl = d let members = members end)
                     for i = 0 upto {vector.length(members) - 1} do
                         vector.append(items option recItem of Item with
-                            let decl = vector.get(members i) let group = group let pos = i
+                            let decl = vector.get(members i)
+                            let group = group
+                            let pos = i
                         end)
                     end
                 end
@@ -496,7 +549,9 @@ export
                 case vector.get(components i)
                     when fieldVal with v then
                         vector.append(items option valItem of Item with
-                            let b = v.val let group = maybe.none(:Int) let pos = 0
+                            let b = v.val
+                            let group = maybe.none(:Int)
+                            let pos = 0
                         end)
                     when fieldGroup with g then
                         begin
@@ -507,7 +562,8 @@ export
                             vector.append(simGroups g.val)
                             for j = 0 upto {vector.length(g.val) - 1} do
                                 vector.append(items option valItem of Item with
-                                    let b = vector.get(g.val j) let group = maybe.some(group)
+                                    let b = vector.get(g.val j)
+                                    let group = maybe.some(group)
                                     let pos = j
                                 end)
                             end
@@ -525,18 +581,20 @@ export
                                 (* Phrases a tuple cannot hold, rejected before
                                  * the arity is checked *)
                                 diagnostics.fail(:Ok "Unsupported tuple component: " <> declClassName(d.val)
-                                    d.val.span.startOffset)
+                                        d.val.span.startOffset)
                         end
                 end
             end
             let n = vector.length(items)
             let expFields = maybe.unwrapOr(expectedTuple array of :model.TupleComponent end)
             if checking andif {n isnot extent expFields} then
-                diagnostics.fail(:Ok "Tuple arity mismatch: expected " <> conv.int(extent expFields) <> " components, got " <>
-                    conv.int(n) x0.span.startOffset)
+                diagnostics.fail(:Ok "Tuple arity mismatch: expected " <> conv.int(extent expFields)
+                    <> " components, got "
+                    <> conv.int(n) x0.span.startOffset)
             end
             env.localScoped(e if checking then "tuple_check" else "tuple_synth" end fun(s: symbols.Scope): typedAst.Expr
-                tupleScope(c x0 items typeGroups recGroupsAst simGroups kindsBefore expectedTuple expectedTupleType e loopDepth))
+                tupleScope(c x0 items typeGroups recGroupsAst simGroups kindsBefore expectedTuple expectedTupleType e
+                        loopDepth))
         end
     (* Each member of a group is a component of its own, and a manifest kind is
      * not a component: it names a kind for the components after it. Components
@@ -560,7 +618,7 @@ export
                                 expectedTupleType := maybe.some(expectedLazy)
                             else
                                 early := maybe.some(checker.checkSubsumption(c x0 maybe.unwrap(expected)
-                                    e loopDepth maybe.some("Tuple")))
+                                        e loopDepth maybe.some("Tuple")))
                         end
                     end
                     if maybe.isSome(early) then

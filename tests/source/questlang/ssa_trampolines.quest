@@ -13,17 +13,18 @@
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
-    questlang/ssa/parser : questlang/ssa/Parser
-    questlang/ssa/printer : questlang/ssa/Printer
-    questlang/ssa/passes/trampolines : questlang/ssa/passes/Trampolines
-    questlang/ssa/verify : questlang/ssa/Verify
-    collections/vector : collections/Vector
-    util/strutil : util/Strutil
     conv : Conv
     writer : Writer
-;
 
-let emit(s: String): Ok = writer.putString(writer.output s);
+    collections/vector : collections/Vector
+    util/strutil : util/Strutil
+
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/passes/trampolines : questlang/ssa/passes/Trampolines
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/verify : questlang/ssa/Verify
+
+let emit(s: String): Ok = writer.putString(writer.output s)
 
 let show(title: String lines: Array(String)): Ok =
     begin
@@ -34,7 +35,7 @@ let show(title: String lines: Array(String)): Ok =
         emit("-- after trampolines\n")
         emit(printer.formatUnit(u))
         try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
-    end;
+    end
 
 let joined(units: Array(Array(String))): Array(String) =
     begin
@@ -43,7 +44,7 @@ let joined(units: Array(Array(String))): Array(String) =
             for k = 0 upto {extent units[u] - 1} do vector.append(:String all units[u][k]) end
         end
         vector.toArray(:String all)
-    end;
+    end
 
 (* An export, as the builder makes one: it passes a null environment and its
  * own parameters to callee *)
@@ -54,7 +55,7 @@ let exporter(name: String callee: String): Array(String) =
         "  %2: ptr = null"
         "  tail %3: int = call " <> callee <> "(%2, %0, %1)"
         "}"
-    end;
+    end
 
 (* An adapter, which passes its environment's place a null too *)
 let adapter(name: String callee: String): Array(String) =
@@ -64,7 +65,7 @@ let adapter(name: String callee: String): Array(String) =
         "  %3: ptr = null"
         "  tail %4: int = call " <> callee <> "(%3, %1, %2)"
         "}"
-    end;
+    end
 
 (* A vector's get: a bounds check that raises, and a load *)
 let getter(name: String): Array(String) =
@@ -86,7 +87,7 @@ let getter(name: String): Array(String) =
         "  call quest_raise(%10)"
         "  unreachable"
         "}"
-    end;
+    end
 
 (* The unit's table of names for tracebacks, and its registration *)
 let names = array of
@@ -99,11 +100,11 @@ let names = array of
     "}"
     "data qs_get text \"vector.get\""
     "data qr_funcs words [get, qs_get]"
-end;
+end
 
 show("an export, its adapter, and its function, named as the function" joined(array of
     exporter("qv_get" "adapt") adapter("adapt" "get") getter("get") names
-end));
+end))
 
 let large(): Array(String) =
     begin
@@ -117,8 +118,8 @@ let large(): Array(String) =
         vector.append(:String lines "  return %66")
         vector.append(:String lines "}")
         vector.toArray(:String lines)
-    end;
-show("a function too large" joined(array of exporter("qv_large" "adapt") adapter("adapt" "large") large() end));
+    end
+show("a function too large" joined(array of exporter("qv_large" "adapt") adapter("adapt" "large") large() end))
 
 show("a function that makes a call" joined(array of exporter("qv_caller" "caller") array of
     "function caller(%0: ptr, %1: ptr, %2: int): int {"
@@ -127,7 +128,7 @@ show("a function that makes a call" joined(array of exporter("qv_caller" "caller
     "  %4: int = add %3, %2"
     "  return %4"
     "}"
-end end));
+end end))
 
 show("a function with a stack slot" joined(array of exporter("qv_slotted" "slotted") array of
     "function slotted(%0: ptr, %1: ptr, %2: int): int slots [8:8] {"
@@ -137,7 +138,7 @@ show("a function with a stack slot" joined(array of exporter("qv_slotted" "slott
     "  %4: int = load8 %3 + 0"
     "  return %4"
     "}"
-end end));
+end end))
 
 show("a function whose first block is a loop's head" joined(array of exporter("qv_loop" "loop") array of
     "function loop(%0: ptr, %1: ptr, %2: int): int {"
@@ -152,9 +153,9 @@ show("a function whose first block is a loop's head" joined(array of exporter("q
     "  %6: int = sub %2, %5"
     "  jump b0(%0, %1, %6)"
     "}"
-end end));
+end end))
 
-show("a function of another unit" exporter("qv_elsewhere" "elsewhere"));
+show("a function of another unit" exporter("qv_elsewhere" "elsewhere"))
 
 show("a function not exported" joined(array of array of
     "function local(%0: ptr, %1: int): int {"
@@ -162,4 +163,4 @@ show("a function not exported" joined(array of array of
     "  %2: ptr = null"
     "  tail %3: int = call get(%2, %0, %1)"
     "}"
-end getter("get") end));
+end getter("get") end))

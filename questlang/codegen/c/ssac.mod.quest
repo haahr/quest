@@ -2,17 +2,19 @@
 
 module ssac : Ssac
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/repr/syntax : questlang/repr/Syntax
-    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    conv : Conv
+    stringOp = string : StringOp
+
+    collections/bitset : collections/Bitset
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    collections/bitset : collections/Bitset
     util/hash : util/Hash
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    questlang/repr/syntax : questlang/repr/Syntax
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let Function = ssa.Function
     Let Builder = sb.T
@@ -156,7 +158,8 @@ export
             let params = if vector.empty(types) then "void" else syntax.comma(types) end
             tuple
                 let fnType = resultOf(i.signature.results i.results f) <> " (*)(" <> params <> ")"
-                let args = syntax.comma(exprs) let results = i.results
+                let args = syntax.comma(exprs)
+                let results = i.results
             end
         end
 
@@ -234,9 +237,10 @@ export
                 when opPtrAdd then set(a(0) <> " + " <> a(1))
                 (* A QVal word is an int64_t *)
                 when opToVal, opFromVal then
-                    let pointer = case typeOf(f if ssa.isOp(i ssa.opToVal) then i.args[0] else i.results[0] end)
-                        when typePtr then true when typeInt, typeReal, typeVal then false
-                    end
+                    let pointer =
+                        case typeOf(f if ssa.isOp(i ssa.opToVal) then i.args[0] else i.results[0] end)
+                            when typePtr then true when typeInt, typeReal, typeVal then false
+                        end
                     set(if not(pointer) then a(0)
                         elsif ssa.isOp(i ssa.opToVal) then "(int64_t)(uintptr_t)" <> a(0)
                         else "(char *)(uintptr_t)" <> a(0) end)
@@ -249,7 +253,8 @@ export
             if extent i.results is 0 then line(p e <> ";")
             elsif extent i.results is 1 then line(p v(i.results[0]) <> " = " <> e <> ";")
             else
-                line(p "{ QSsaPair r = " <> e <> "; " <> v(i.results[0]) <> " = " <> fromWord("r.w0" typeOf(p.f i.results[0]))
+                line(p "{ QSsaPair r = " <> e <> "; " <> v(i.results[0]) <> " = "
+                    <> fromWord("r.w0" typeOf(p.f i.results[0]))
                     <> "; " <> v(i.results[1]) <> " = " <> fromWord("r.w1" typeOf(p.f i.results[1])) <> "; }")
             end
         end
@@ -259,7 +264,8 @@ export
     let jumpText(p: Printer t: ssa.Target): String =
         begin
             let params = ssa.block(p.f t.block).params
-            if extent t.args is 0 then "goto " <> blockLabel(t.block) <> ";"
+            if extent t.args is 0 then
+                "goto " <> blockLabel(t.block) <> ";"
             else
                 let b = sb.new()
                 sb.str(b "{ ")
@@ -280,11 +286,12 @@ export
     let returnText(p: Printer vs: Array(Int)): String =
         if extent vs is 0 then "return;"
         elsif extent vs is 1 then
-            let cast = case p.f.signature.results[0]
-                when passByte then "(uint8_t)"
-                when passInt32 then "(int)"
-                when passWord, passReal, passPair, passPairRest, passMemory then ""
-            end
+            let cast =
+                case p.f.signature.results[0]
+                    when passByte then "(uint8_t)"
+                    when passInt32 then "(int)"
+                    when passWord, passReal, passPair, passPairRest, passMemory then ""
+                end
             "return " <> cast <> v(vs[0]) <> ";"
         else "return (QSsaPair){ " <> asWord(p.f vs[0]) <> ", " <> asWord(p.f vs[1]) <> " };"
         end
@@ -309,10 +316,13 @@ export
                  * which C converts only with a cast *)
                 let e = callExpr(p x.call)
                 let rs = vector.toArray(p.f.resultTypes)
-                let cast = if {extent x.call.results is 1} andif {extent rs is 1}
-                        andif not(eq(cType(typeOf(p.f x.call.results[0])) cType(rs[0]))) then
-                    "(" <> cType(rs[0]) <> ")"
-                else "" end
+                let cast =
+                    if {extent x.call.results is 1} andif {extent rs is 1}
+                            andif not(eq(cType(typeOf(p.f x.call.results[0])) cType(rs[0]))) then
+                        "(" <> cType(rs[0]) <> ")"
+                    else
+                        ""
+                    end
                 line(p if extent x.call.results is 0 then e <> "; return;" else "return " <> cast <> e <> ";" end)
             (* The try's handler record lives in its stack slot. On entry,
              * _setjmp saves the registers there and returns 0 so the body runs.
@@ -320,7 +330,8 @@ export
              * control transfers to the handler. *)
             when termTry with x then
                 line(p "if (_setjmp((int *)(void *)(s" <> conv.int(x.slot) <> " + "
-                    <> conv.int(runtimeLayout.offset("QExceptionHandler" "env_jmp")) <> ")) == 0) " <> jumpText(p x.body))
+                    <> conv.int(runtimeLayout.offset("QExceptionHandler" "env_jmp")) <> ")) == 0) "
+                    <> jumpText(p x.body))
                 line(p "goto " <> blockLabel(x.handler) <> ";")
             when termUnreachable then line(p "__builtin_unreachable();")
         end
@@ -335,8 +346,11 @@ export
                     when passInt32 then "int"
                     when passWord, passReal, passPair, passPairRest, passMemory then cType(rs[0])
                 end
-            elsif extent rs is 0 then "void"
-            else "QSsaPair" end
+            elsif extent rs is 0 then
+                "void"
+            else
+                "QSsaPair"
+            end
         end
 
     (* The C declaration for parameter k of f, along with any entry statements
@@ -366,8 +380,12 @@ export
                     end
                 when passByte then direct("uint8_t")
                 when passInt32 then
-                    tuple let decl = declared("int" pk) let entry = array of "int64_t " <> v(n) <> " = " <> pk
-                        <> ";" end let words = 1 end
+                    tuple
+                        let decl = declared("int" pk)
+                        let entry = array of "int64_t " <> v(n) <> " = " <> pk
+                            <> ";" end
+                        let words = 1
+                    end
                 when passMemory with x then
                     tuple
                         let decl = declared(memoryType(x.bytes) pk)
@@ -376,10 +394,15 @@ export
                     end
                 when passWord, passReal, passPairRest then
                     if eq(f.symbol "main") andif {k is 1} then
-                        tuple let decl = declared("char **" pk) let entry = array of "char *" <> v(n) <> " = (char *)"
-                            <> pk <> ";" end
-                            let words = 1 end
-                    else direct(cType(typeOf(f n))) end
+                        tuple
+                            let decl = declared("char **" pk)
+                            let entry = array of "char *" <> v(n) <> " = (char *)"
+                                <> pk <> ";" end
+                            let words = 1
+                        end
+                    else
+                        direct(cType(typeOf(f n)))
+                    end
             end
         end
 
@@ -451,7 +474,9 @@ export
                             for i = 0 upto {extent inst.results - 1} do bitset.remove(live inst.results[i]) end
                             for i = 0 upto {extent inst.args - 1} do bitset.insert(live inst.args[i]) end
                         end
-                        for i = 0 upto {vector.length(blk.params) - 1} do bitset.remove(live vector.get(blk.params i)) end
+                        for i = 0 upto {vector.length(blk.params) - 1} do
+                            bitset.remove(live vector.get(blk.params i))
+                        end
                         if not(bitset.equal(live liveIn[b])) then
                             bitset.assign(liveIn[b] live)
                             changed := true
@@ -495,8 +520,10 @@ export
                 if not(isParam[n]) then
                     let t = typeOf(f n)
                     let isVolatile = p.hasTry andif p.volatileValue[n]
-                    let decl = case t when typePtr then if isVolatile then "char * volatile " else "char * " end
-                        else if isVolatile then "volatile " else "" end <> cType(t) <> " " end
+                    let decl =
+                        case t when typePtr then if isVolatile then "char * volatile " else "char * " end
+                            else if isVolatile then "volatile " else "" end <> cType(t) <> " "
+                        end
                     line(p decl <> v(n) <> ";")
                 end
             end
@@ -576,7 +603,7 @@ export
             let seen = hashMap.new(:String :Bool eq hash.string)
             let refer(symbol: String): Ok =
                 if {stringOp.length(symbol) > 0} andif not(hashMap.contains(defined symbol))
-                    andif not(hashMap.contains(seen symbol)) then
+                        andif not(hashMap.contains(seen symbol)) then
                     put(seen symbol true)
                     vector.append(externs symbol)
                 end
@@ -626,18 +653,20 @@ export
                 sb.str(buf "typedef struct { unsigned char b[" <> conv.int(n) <> "]; } " <> memoryType(n) <> ";\n")
             end
             sb.str(buf
-                "static inline double ssac_real(uint64_t b) { double d; __builtin_memcpy(&d, &b, 8); return d; }\n")
+                    "static inline double ssac_real(uint64_t b) { double d; __builtin_memcpy(&d, &b, 8); return d; }\n")
             sb.str(buf
-                "static inline uint64_t ssac_bits(double d) { uint64_t b; __builtin_memcpy(&b, &d, 8); return b; }\n")
+                    "static inline uint64_t ssac_bits(double d) { uint64_t b; __builtin_memcpy(&b, &d, 8); return b; }\n")
             sb.str(buf "extern int _setjmp(int *) __attribute__((returns_twice));\n\n")
             (* Only an extern's address is used, so its declared size is
              * arbitrary *)
             for k = 0 upto {vector.length(externs) - 1} do
                 let symbol = vector.get(externs k)
                 sb.str(buf
-                    if hashMap.contains(threadLocals symbol) then
-                        "extern __thread uint64_t " <> symbol <> "[8];\n"
-                    else "extern char " <> symbol <> "[];\n" end)
+                        if hashMap.contains(threadLocals symbol) then
+                            "extern __thread uint64_t " <> symbol <> "[8];\n"
+                        else
+                            "extern char " <> symbol <> "[];\n"
+                        end)
             end
             sb.str(buf "\n")
             for k = 0 upto {vector.length(u.data) - 1} do
@@ -652,7 +681,7 @@ export
             end
             sb.str(buf "\n")
             for k = 0 upto {vector.length(u.functions) - 1} do function(buf vector.get(u.functions
-                k)) end
+                    k)) end
             sb.toString(buf)
         end
 end

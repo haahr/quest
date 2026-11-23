@@ -2,12 +2,13 @@
  * grid, one time step (from the SML/NJ benchmark suite) *)
 
 import
+    conv : Conv
+    real : RealOp
+    writer : Writer
+
     support/bench : support/Bench
     support/lists : support/Lists
     support/reals : support/Reals
-    real : RealOp
-    conv : Conv
-    writer : Writer
 
 (* The original overrides print, so the benchmark is silent *)
 let print(s: String): Ok = ok
@@ -45,10 +46,8 @@ let max(x: Real y: Real): Real = if x << y then y else x end
 let maxListE: Exception = exception maxListE: Ok end
 let minListE: Exception = exception minListE: Ok end
 let sumListE: Exception = exception sumListE: Ok end
-let maxList(l: lists.T(Real)): Real =
-    case l when nil then raise maxListE end else fold(max l lists.hd(:Real)(l)) end
-let minList(l: lists.T(Real)): Real =
-    case l when nil then raise minListE end else fold(min l lists.hd(:Real)(l)) end
+let maxList(l: lists.T(Real)): Real = case l when nil then raise maxListE end else fold(max l lists.hd(:Real)(l)) end
+let minList(l: lists.T(Real)): Real = case l when nil then raise minListE end else fold(min l lists.hd(:Real)(l)) end
 let sumList(l: lists.T(Real)): Real =
     case l when nil then raise sumListE end else fold(fun(a: Real b: Real): Real a ++ b l 0.0) end
 
@@ -436,9 +435,9 @@ let polynomial(t: Tables rhoValue: Real thetaValue: Real): Real =
             sumList(lists.map(:Int :Real)(fun(j: Int): Real f(i j) from(0 t.degree))) from(0 t.degree)))
     end
 let zonalPressure(rhoValue: Real thetaValue: Real): Real = polynomial(extractPressureTablesFromConstants
-    rhoValue thetaValue)
+        rhoValue thetaValue)
 let zonalEnergy(rhoValue: Real thetaValue: Real): Real = polynomial(extractEnergyTablesFromConstants
-    rhoValue thetaValue)
+        rhoValue thetaValue)
 
 let dx = 0.000001
 let tiny = 0.000001
@@ -452,7 +451,8 @@ let newtonRaphson(f: All(x: Real) Real x: Real): Real =
                     let denom = fxdx -- fx
                     if denom << tiny then iter(x tiny) else iter(x -- {{fx ** dx} // denom} fxdx) end
                 end
-            else x
+            else
+                x
             end
         iter(x f(x))
     end
@@ -471,7 +471,7 @@ let makeTemperature(p: RGrid epsilon: RGrid rho: RGrid theta: RGrid rhoPrime: RG
                 let epsilon0 = s2(epsilon zone)
                 let revisedEnergy(pkl: Real): Real = epsilon0 -- {{pkl ++ qkl} ** tauKl}
                 let revisedTemperature(epsilonKl: Real
-                    thetaKl: Real): Real = newtonRaphson(energyEquation(epsilonKl) thetaKl)
+                        thetaKl: Real): Real = newtonRaphson(energyEquation(epsilonKl) thetaKl)
                 let revisedPressure(thetaKl: Real): Real = zonalPressure(rhoKl thetaKl)
                 let p0 = s2(p zone)
                 let theta0 = s2(theta zone)
@@ -616,7 +616,7 @@ Let Link = Tuple n1: Node n2: Node end
 let link(n1: Node n2: Node): Link = tuple let n1 = n1 let n2 = n2 end
 
 let computeEnergyError(v1: Pair x1: Pair p1: RGrid q1: RGrid epsilon1: RGrid theta1: RGrid rho1: RGrid alpha1: RGrid
-    gammaK: RGrid gammaL: RGrid deltat: Real): Real =
+        gammaK: RGrid gammaL: RGrid deltat: Real): Real =
     begin
         let u = v1.a let w = v1.b let r = x1.a let z = x1.b
         let mass(zone: Node): Real = s2(rho1 zone) ** s2(alpha1 zone)
@@ -655,13 +655,17 @@ let computeEnergyError(v1: Pair x1: Pair p1: RGrid q1: RGrid epsilon1: RGrid the
         let heatFlow(gamma: RGrid): All(lk: Link) Real =
             fun(lk: Link): Real {deltat ** s2(gamma lk.n1)} ** {s2(theta1 lk.n1) -- s2(theta1 lk.n2)}
         let northFlow = begin
-            let k = kmin + 1 lineOf(fun(l: Int): Link link(north(node(k l)) node(k l)) from(lmin + 1 lmax)) end
+            let k = kmin + 1 lineOf(fun(l: Int): Link link(north(node(k l)) node(k l)) from(lmin + 1 lmax))
+        end
         let southFlow = begin
-            let k = kmax lineOf(fun(l: Int): Link link(south(node(k l)) node(k l)) from(lmin + 2 lmax - 1)) end
+            let k = kmax lineOf(fun(l: Int): Link link(south(node(k l)) node(k l)) from(lmin + 2 lmax - 1))
+        end
         let eastFlow = begin
-            let l = lmax lineOf(fun(k: Int): Link link(east(node(k l)) node(k l)) from(kmin + 2 kmax)) end
+            let l = lmax lineOf(fun(k: Int): Link link(east(node(k l)) node(k l)) from(kmin + 2 kmax))
+        end
         let westFlow = begin
-            let l = lmin + 1 lineOf(fun(k: Int): Link link(west(node(k l)) node(k l)) from(kmin + 2 kmax)) end
+            let l = lmin + 1 lineOf(fun(k: Int): Link link(west(node(k l)) node(k l)) from(kmin + 2 kmax))
+        end
         let h1 = sumList(lists.map(:Link :Real)(heatFlow(gammaK) northFlow))
         let h2 = sumList(lists.map(:Link :Real)(heatFlow(gammaK) southFlow))
         let h3 = sumList(lists.map(:Link :Real)(heatFlow(gammaL) eastFlow))
@@ -727,9 +731,17 @@ let computeInitialState(): State =
         let q = allZeroZones
         let epsilon = makeEnergy(rho theta)
         tuple
-            let v = v let x = x let alpha = alphaS.a let s = alphaS.b let rho = rho let p = p let q = q
-                let epsilon = epsilon
-            let theta = theta let deltat = 0.01 let c = 0.0
+            let v = v
+            let x = x
+            let alpha = alphaS.a
+            let s = alphaS.b
+            let rho = rho
+            let p = p
+            let q = q
+            let epsilon = epsilon
+            let theta = theta
+            let deltat = 0.01
+            let c = 0.0
         end
     end
 
@@ -756,8 +768,17 @@ let computeNextState(state: State): State =
         let deltat1 = computeTimeStep(qd.d thetaHat hc.theta)
         if control.trace then print("done compute_time_step\n\n") end
         tuple
-            let v = v1 let x = x1 let alpha = ars.alpha let s = ars.s let rho = ars.rho let p = p1 let q = qd.q
-            let epsilon = epsilon1 let theta = hc.theta let deltat = deltat1 let c = c1
+            let v = v1
+            let x = x1
+            let alpha = ars.alpha
+            let s = ars.s
+            let rho = ars.rho
+            let p = p1
+            let q = qd.q
+            let epsilon = epsilon1
+            let theta = hc.theta
+            let deltat = deltat1
+            let c = c1
         end
     end
 

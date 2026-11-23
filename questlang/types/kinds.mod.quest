@@ -2,17 +2,19 @@
 
 module kinds : Kinds
 import
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/types/env : questlang/types/Env
+    conv : Conv
+    raised : Raised
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    conv : Conv
-    raised : Raised
+
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/env : questlang/types/Env
+    questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let Env = maybe.T(env.T)
     Let Type = model.Type
@@ -20,11 +22,9 @@ export
 
     let kindError(A::TYPE message: String): A = diagnostics.fail(message 0)
 
-    let lookupOf(e: Env): model.Lookup =
-        if maybe.isSome(e) then symbols.lookup else model.noLookup end
+    let lookupOf(e: Env): model.Lookup = if maybe.isSome(e) then symbols.lookup else model.noLookup end
 
-    let subEnv(e: Env): subtyping.Env =
-        if maybe.isSome(e) then env.lookupOf(maybe.unwrap(e)) else maybe.none() end
+    let subEnv(e: Env): subtyping.Env = if maybe.isSome(e) then env.lookupOf(maybe.unwrap(e)) else maybe.none() end
 
     let evaluate(t: Type e: Env): Type = model.evaluateLazily(t lookupOf(e))
     let evaluateKind(k: Kind e: Env): Kind = model.evaluateKindLazily(k lookupOf(e))
@@ -88,11 +88,12 @@ export
                     if maybe.isSome(e) then
                         let en = maybe.unwrap(e)
                         let found = env.lookupKindById(en x.symbolId)
-                        let sym = if maybe.isSome(found) then
-                            found
-                        else
-                            env.lookupKind(en x.name)
-                        end
+                        let sym =
+                            if maybe.isSome(found) then
+                                found
+                            else
+                                env.lookupKind(en x.name)
+                            end
                         if maybe.isNone(sym) then
                             kindError(:Ok "Unbound kind variable '" <> x.name <> "' (#" <> conv.int(x.symbolId) <> ")")
                         end
@@ -109,15 +110,15 @@ export
             let exp = evaluateKind(expected e)
             if model.isPower(exp) then
                 if not(subtyping.isSubtype(t model.powerBound(exp) subEnv(e))) then
-                    kindError(:Ok "Kind mismatch: type '" <> model.show(t) <> "' is not a subtype of bound '" <>
-                        model.show(model.powerBound(exp)) <> "'")
+                    kindError(:Ok "Kind mismatch: type '" <> model.show(t) <> "' is not a subtype of bound '"
+                        <> model.show(model.powerBound(exp)) <> "'")
                 end
             else
                 let synthesized = synthKind(t e)
                 if not(subtyping.isSubkind(synthesized exp subEnv(e))) then
-                    kindError(:Ok "Kind mismatch: type '" <> model.show(t) <> "' has kind '" <>
-                        model.showKind(synthesized) <> "', which is not a subkind of expected kind '" <>
-                        model.showKind(expected) <> "'")
+                    kindError(:Ok "Kind mismatch: type '" <> model.show(t) <> "' has kind '"
+                        <> model.showKind(synthesized) <> "', which is not a subkind of expected kind '"
+                        <> model.showKind(expected) <> "'")
                 end
             end
         end
@@ -148,12 +149,13 @@ export
                     end
                 else
                     memo.active := maybe.some(tuple let kinds = newKinds() let e = e end)
-                    let k = try
-                        synthUncached(t e)
-                    else with r then
-                        memo.active := maybe.none()
-                        raised.reraise(:Kind r)
-                    end
+                    let k =
+                        try
+                            synthUncached(t e)
+                        else with r then
+                            memo.active := maybe.none()
+                            raised.reraise(:Kind r)
+                        end
                     memo.active := maybe.none()
                     k
                 end
@@ -204,7 +206,7 @@ export
                                         checkKind(f.type model.typeKind e)
                                         if maybe.isSome(e) then
                                             declare(e f.name env.freshSymbolId(maybe.unwrap(e))
-                                                maybe.unwrapOr(f.bound model.typeKind) maybe.some(f.type))
+                                                    maybe.unwrapOr(f.bound model.typeKind) maybe.some(f.type))
                                         end
                                     end
                             end
@@ -245,13 +247,14 @@ export
                 if maybe.isSome(x.bound) then
                     maybe.unwrap(x.bound)
                 else
-                    let sym = if maybe.isSome(e) then
-                        let en = maybe.unwrap(e)
-                        let found = env.lookupTypeById(en x.symbolId)
-                        if maybe.isSome(found) then found else env.lookupType(en x.name) end
-                    else
-                        maybe.none(:symbols.TypeSymbol)
-                    end
+                    let sym =
+                        if maybe.isSome(e) then
+                            let en = maybe.unwrap(e)
+                            let found = env.lookupTypeById(en x.symbolId)
+                            if maybe.isSome(found) then found else env.lookupType(en x.name) end
+                        else
+                            maybe.none(:symbols.TypeSymbol)
+                        end
                     if maybe.isSome(sym) then
                         maybe.unwrap(sym).kind
                     else
@@ -351,8 +354,8 @@ export
                                     ctorKind := evaluateKind(applied e)
                                 end
                             else
-                                kindError(:Ok "Type application error: constructor '" <> model.show(x.constructor) <>
-                                    "' has non-operator kind '" <> model.showKind(ctorKind) <> "'")
+                                kindError(:Ok "Type application error: constructor '" <> model.show(x.constructor)
+                                    <> "' has non-operator kind '" <> model.showKind(ctorKind) <> "'")
                         end
                     end
                     ctorKind
@@ -428,12 +431,13 @@ export
                     result := maybe.some(lazy)
                     searching := false
                 else
-                    let isHead = case lazy.form
-                        when typeRec then true
-                        when typeRecGroup then true
-                        when typeApp then true
-                        else false
-                    end
+                    let isHead =
+                        case lazy.form
+                            when typeRec then true
+                            when typeRecGroup then true
+                            when typeApp then true
+                            else false
+                        end
                     if isHead then
                         if hashMap.contains(unfolded lazy.id) then
                             searching := false
@@ -540,11 +544,12 @@ export
                                 when typeOperator with f then
                                     begin
                                         let subst = model.newSubst()
-                                        let n = if extent f.params < extent a.arguments then
-                                            extent f.params
-                                        else
-                                            extent a.arguments
-                                        end
+                                        let n =
+                                            if extent f.params < extent a.arguments then
+                                                extent f.params
+                                            else
+                                                extent a.arguments
+                                            end
                                         for i = 0 upto {n - 1} do
                                             hashMap.insert(subst f.params[i].symbolId a.arguments[i])
                                         end

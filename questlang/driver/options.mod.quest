@@ -2,18 +2,20 @@
 
 module options : Options
 import
-    questlang/common/strings : questlang/common/Strings
-    questlang/common/files : questlang/common/Files
-    questlang/modules/units : questlang/modules/Units
-    questlang/codegen/choice : questlang/codegen/Choice
-    questlang/jit/session : questlang/jit/Session
-    questlang/build/workers : questlang/build/Workers
+    stringOp = string : StringOp
+    system : System
+    writer : Writer
+
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    writer : Writer
-    system : System
+
+    questlang/build/workers : questlang/build/Workers
+    questlang/codegen/choice : questlang/codegen/Choice
+    questlang/common/files : questlang/common/Files
+    questlang/common/strings : questlang/common/Strings
+    questlang/jit/session : questlang/jit/Session
+    questlang/modules/units : questlang/modules/Units
 export
     (* The command line, parsed: the phase to stop after (and whether one was
      * given), the program (a file, standard input, -e's code, or the REPL's
@@ -88,7 +90,8 @@ export
         begin
             let var found = false
             for i = 0 upto {extent objectSuffixes - 1} do if strutil.endsWith(arg objectSuffixes[i]) then
-                found := true end end
+                found := true
+            end end
             found
         end
 
@@ -217,7 +220,14 @@ export
             (* An option of compile alone *)
             let compiling = fun(arg: String): Ok if not(compileMode) then usage(arg <> " is an option of compile") end
             (* A worker's command line is the worker's to read *)
-            let var i = if workers.isUnitMode(system.args) orif fmtMode then extent system.args elsif compileMode then 2 else 1 end
+            let var i =
+                if workers.isUnitMode(system.args) orif fmtMode then
+                    extent system.args
+                elsif compileMode then
+                    2
+                else
+                    1
+                end
             while i < extent system.args do
                 let arg = system.args[i]
                 let valued = {i + 1} < extent system.args
@@ -286,7 +296,8 @@ export
                     end
                     vector.append(variants maybe.unwrap(v))
                     i := i + 2
-                elsif strings.isOneOf(arg array of "--expected-exit" "--expected_exit" end) andif valued andif not(compileMode) then
+                elsif strings.isOneOf(arg array of "--expected-exit" "--expected_exit" end) andif valued
+                        andif not(compileMode) then
                     (* What a compiled program's exit status must be; the
                      * interpreter's is the program's own *)
                     expectedExit := strutil.toInt(system.args[i + 1])
@@ -333,21 +344,23 @@ export
                     compiling(arg)
                     nogc := true
                     i := i + 1
-                elsif strings.isOneOf(arg array of "--report-inferable" "--report-inferable=equal" "--report-inferable=exact"
-                    end) then
+                elsif strings.isOneOf(arg array of "--report-inferable"
+                    "--report-inferable=equal"
+                    "--report-inferable=exact"
+                end) then
                     reportInferable := if stringOp.equal(arg "--report-inferable=exact") then "exact" else "equal" end
                     i := i + 1
                 elsif strutil.startsWith(arg "--report-inferable=") then
                     usage("--report-inferable takes equal or exact, not '" <> stringOp.getSub(arg 19
-                        stringOp.length(arg) - 19) <> "'")
+                            stringOp.length(arg) - 19) <> "'")
                 elsif strings.isOneOf(arg array of "-h" "--help" end) then
                     writer.putString(writer.output usageText)
                     system.sysexit(0)
                 elsif isObjectFile(arg) then
                     vector.append(extraObjects if system.fileExists(arg) then files.absolute(arg) else arg end)
                     i := i + 1
-                elsif {stringOp.length(arg) > 1} andif {stringOp.getChar(arg 0) is '-'} andif not(stringOp.equal(arg "--"))
-                    then
+                elsif {stringOp.length(arg) > 1} andif {stringOp.getChar(arg 0) is '-'}
+                        andif not(stringOp.equal(arg "--")) then
                     usage("unknown option '" <> arg <> "'")
                 elsif compileMode then
                     (* compile runs no program, so options may follow its file;
@@ -359,7 +372,8 @@ export
                         setFile(arg)
                         i := i + 1
                     end
-                elsif not(stringOp.equal(arg "--")) andif not(stringOp.equal(arg "-")) andif not(isProgramFile(arg)) then
+                elsif not(stringOp.equal(arg "--")) andif not(stringOp.equal(arg "-"))
+                        andif not(isProgramFile(arg)) then
                     (* Options may follow a unit file, which is compiled, not
                      * run *)
                     file := arg
@@ -375,7 +389,7 @@ export
             (* Objects given without -o or a phase are linked with the program,
              * which runs compiled *)
             if not(compileMode) andif {vector.length(extraObjects) > 0} andif maybe.isNone(output)
-                andif not(stopGiven) andif vector.empty(dumpAfter) then
+                    andif not(stopGiven) andif vector.empty(dumpAfter) then
                 stopAfter := "run_c_compiled"
             end
             (* compile neither runs the program nor interprets it *)
@@ -391,20 +405,21 @@ export
             (* codegen_arm64 compiles the program with arm64, unless a backend
              * is given (which must then be arm64, checked once the program's
              * backend is known) *)
-            if {stringOp.equal(stopAfter "codegen_arm64") orif strings.isOneOf("codegen_arm64" vector.toArray(dumpAfter))}
-                andif not(backendGiven) then
+            if {stringOp.equal(stopAfter "codegen_arm64")
+                    orif strings.isOneOf("codegen_arm64" vector.toArray(dumpAfter))}
+                    andif not(backendGiven) then
                 backend := "arm64"
             end
             (* codegen_wasm, with wasm *)
             if {stringOp.equal(stopAfter "codegen_wasm") orif strings.isOneOf("codegen_wasm" vector.toArray(dumpAfter))}
-                andif not(backendGiven) then
+                    andif not(backendGiven) then
                 backend := "wasm"
             end
             (* and codegen_c, or compile --emit-c, with C, unless a backend is
              * given; compile's own last phase is codegen_c, which means only
              * that it writes the binary, through any backend *)
             if {{stopGiven andif stringOp.equal(stopAfter "codegen_c")}
-                orif strings.isOneOf("codegen_c" vector.toArray(dumpAfter)) orif emitC} andif not(backendGiven) then
+                    orif strings.isOneOf("codegen_c" vector.toArray(dumpAfter)) orif emitC} andif not(backendGiven) then
                 backend := "c"
             end
             (* With neither a file nor a program, the REPL starts on an empty
@@ -453,7 +468,8 @@ export
                 let jobs = jobs
                 let wholeProgram = wholeProgram
                 let backends = tuple
-                    let default = backend let overrides = vector.toArray(unitBackends)
+                    let default = backend
+                    let overrides = vector.toArray(unitBackends)
                     let variants = vector.toArray(variants)
                 end
                 let wasmEngine = wasmEngine

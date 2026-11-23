@@ -14,19 +14,20 @@
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
+    conv : Conv
+    writer : Writer
+
+    collections/vector : collections/Vector
+    util/strutil : util/Strutil
+
+    questlang/ssa/barriers : questlang/ssa/Barriers
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/parser : questlang/ssa/Parser
     questlang/ssa/printer : questlang/ssa/Printer
     questlang/ssa/scalars : questlang/ssa/Scalars
     questlang/ssa/verify : questlang/ssa/Verify
-    questlang/ssa/barriers : questlang/ssa/Barriers
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    util/strutil : util/Strutil
-    collections/vector : collections/Vector
-    writer : Writer
-    conv : Conv
-;
 
-let emit(s: String): Ok = writer.putString(writer.output s);
+let emit(s: String): Ok = writer.putString(writer.output s)
 
 let show(title: String lines: Array(String)): Ok =
     begin
@@ -45,7 +46,7 @@ let show(title: String lines: Array(String)): Ok =
                 for j = 0 upto {extent owed - 1} do emit("!! " <> owed[j] <> "\n") end
             end
         end
-    end;
+    end
 
 (* A pair (n, sum) carried round a loop, a new one each time *)
 show("a loop carrying a tuple" array of
@@ -79,7 +80,7 @@ show("a loop carrying a tuple" array of
     "b3():"
     "  return %8"
     "}"
-end);
+end)
 
 (* A pair (p, n) carried round a loop, its first word a pointer: each store of
  * it is followed by a barrier, of the object or of the slot, which keeps no
@@ -116,7 +117,7 @@ show("a loop carrying a tuple, with its barriers" array of
     "b3():"
     "  return %5"
     "}"
-end);
+end)
 
 (* An option some(c) made, or none, a constant of the static data, joined, then
  * its tag switched on and its payload read through the proxy tests reading
@@ -157,7 +158,7 @@ show("a join of an option and a constant" array of
     "  return %14"
     "}"
     "data qc_none words [0, 1]"
-end);
+end)
 
 (* A search: none, a constant, carried round a loop that replaces it with
  * some(i) where it finds a match, so that the parameters carrying it are bound
@@ -207,7 +208,7 @@ show("a loop carrying an option or a constant" array of
     "  return %21"
     "}"
     "data qc_none words [0, 1]"
-end);
+end)
 
 (* An option some(c, s) holding a pair s, as a stream's reader returns, or
  * none; the pair's words are read from the option's *)
@@ -246,7 +247,7 @@ show("an option holding a tuple" array of
     "  return %14"
     "}"
     "data qc_none words [0, 1]"
-end);
+end)
 
 show("one value; left: passed to a call, stored to, joined with another value" array of
     "function single(%0: int): int {"
@@ -313,7 +314,7 @@ show("one value; left: passed to a call, stored to, joined with another value" a
     "  %7: int = load8 %6 + 0"
     "  return %7"
     "}"
-end);
+end)
 
 (* The last of an inner loop's tuples carried round an outer loop, as
  * promotion leaves a variable's slot, by a parameter nothing uses but its
@@ -339,7 +340,7 @@ show("a parameter nothing uses" array of
     "b3():"
     "  return %2"
     "}"
-end);
+end)
 
 (* A list's cells, each holding the next, round a loop: a group that holds
  * its own pointers, which its values cannot stand for *)
@@ -366,4 +367,4 @@ show("left: holding a pointer of its own group" array of
     "  return %10"
     "}"
     "data qc_nil words [0]"
-end);
+end)

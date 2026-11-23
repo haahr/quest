@@ -2,18 +2,20 @@
 
 module checks : Checks
 import
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/syntax/desugar : questlang/syntax/Desugar
-    questlang/types/model : questlang/types/Model
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/types/env : questlang/types/Env
-    questlang/types/kinds : questlang/types/Kinds
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    stringOp = string : StringOp
+
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/syntax/desugar : questlang/syntax/Desugar
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/kinds : questlang/types/Kinds
+    questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
 export
     Let Named = Tuple name: String offset: Int end
 
@@ -21,7 +23,8 @@ export
         (* mod, on the list but never infix, is a function's name (word.mod,
          * bignum.mod) *)
         if desugar.isBuiltinInfix(name) andif not(stringOp.equal(name "mod")) then
-            diagnostics.fail(:Ok "'" <> name <> "' is a built-in operator and cannot be bound; give the operator a name "
+            diagnostics.fail(:Ok "'" <> name
+                <> "' is a built-in operator and cannot be bound; give the operator a name "
                 <> "of its own, such as <+>" offset)
         end
 
@@ -31,7 +34,8 @@ export
             for i = 0 upto {extent members - 1} do
                 let m = members[i]
                 if hashMap.contains(seen m.name) then
-                    diagnostics.fail(:Ok "'" <> m.name <> "' is declared more than once in one simultaneous declaration" m.offset)
+                    diagnostics.fail(:Ok "'" <> m.name
+                        <> "' is declared more than once in one simultaneous declaration" m.offset)
                 end
                 hashMap.insert(seen m.name true)
             end
@@ -45,14 +49,14 @@ export
             let b = model.evaluateKindLazily(bound maybe.unwrap(env.lookupOf(e)))
             if model.isPower(b) then
                 if not(subtyping.isSubtype(targ model.powerBound(b) env.lookupOf(e))) then
-                    diagnostics.fail(:Ok what <> " '" <> model.show(targ) <> "' is not a subtype of bound '" <>
-                        model.show(model.powerBound(b)) <> "'" offset)
+                    diagnostics.fail(:Ok what <> " '" <> model.show(targ) <> "' is not a subtype of bound '"
+                        <> model.show(model.powerBound(b)) <> "'" offset)
                 end
             else
                 let kind = kinds.synthKind(targ maybe.some(e))
                 if not(subtyping.isSubkind(kind b env.lookupOf(e))) then
-                    diagnostics.fail(:Ok what <> " '" <> model.show(targ) <> "' has kind '" <> model.showKind(kind) <>
-                        "', which is not a subkind of '" <> model.showKind(b) <> "'" offset)
+                    diagnostics.fail(:Ok what <> " '" <> model.show(targ) <> "' has kind '" <> model.showKind(kind)
+                        <> "', which is not a subkind of '" <> model.showKind(b) <> "'" offset)
                 end
             end
         end
@@ -67,26 +71,28 @@ export
                 if subtyping.isSubtype(join bt env.lookupOf(e)) then
                     join := bt
                 elsif not(subtyping.isSubtype(bt join env.lookupOf(e))) then
-                    let message = if maybe.isSome(errorMessage) then
-                        strutil.replace(strutil.replace(maybe.unwrap(errorMessage) "{t1}" model.show(join))
-                            "{t2}" model.show(bt))
-                    else
-                        "Cannot find common supertype join for branch types '" <> model.show(join) <> "' and '" <>
-                            model.show(bt) <> "'"
-                    end
+                    let message =
+                        if maybe.isSome(errorMessage) then
+                            strutil.replace(strutil.replace(maybe.unwrap(errorMessage) "{t1}" model.show(join))
+                                    "{t2}" model.show(bt))
+                        else
+                            "Cannot find common supertype join for branch types '" <> model.show(join) <> "' and '"
+                                <> model.show(bt) <> "'"
+                        end
                     diagnostics.fail(:Ok message offset)
                 end
             end
             join
         end
 
-    let requireSubtype(offset: Int typed: typedAst.Expr expected: model.Type e: env.T typeDesc: maybe.T(String)): typedAst.Expr =
+    let requireSubtype(offset: Int typed: typedAst.Expr expected: model.Type e: env.T
+            typeDesc: maybe.T(String)): typedAst.Expr =
         if subtyping.isSubtype(typed.type expected env.lookupOf(e)) then
             typed
         else
             let prefix = maybe.unwrapOr(typeDesc "Type mismatch: synthesized")
-            diagnostics.fail(prefix <> " type '" <> model.show(typed.type) <>
-                "' is not a subtype of expected type '" <> model.show(expected) <> "'" offset)
+            diagnostics.fail(prefix <> " type '" <> model.show(typed.type)
+                <> "' is not a subtype of expected type '" <> model.show(expected) <> "'" offset)
         end
 
     let notDesugared(className: String offset: Int): diagnostics.CompilerError =

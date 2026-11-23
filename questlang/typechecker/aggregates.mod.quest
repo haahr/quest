@@ -2,22 +2,24 @@
 
 module aggregates : Aggregates
 import
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/syntax/ast : questlang/syntax/Ast
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/types/env : questlang/types/Env
-    questlang/types/kinds : questlang/types/Kinds
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
-    questlang/typechecker/checker : questlang/typechecker/Checker
-    questlang/typechecker/checks : questlang/typechecker/Checks
-    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    stringOp = string : StringOp
+
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/typechecker/checker : questlang/typechecker/Checker
+    questlang/typechecker/checks : questlang/typechecker/Checks
+    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/kinds : questlang/types/Kinds
+    questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let Type = model.Type
     Let Kind = model.Kind
@@ -44,8 +46,8 @@ export
                 begin
                     let field = model.variantGetField(variants tag)
                     if maybe.isNone(field) then
-                        diagnostics.fail(:Ok "Tag '" <> tag <> "' is not a valid variant of " <> what <> " '" <>
-                            model.show(t) <> "'" offset)
+                        diagnostics.fail(:Ok "Tag '" <> tag <> "' is not a valid variant of " <> what <> " '"
+                            <> model.show(t) <> "'" offset)
                     end
                     tuple let payload = maybe.unwrap(field).type let isOption = false end
                 end
@@ -53,8 +55,8 @@ export
                 begin
                     let opt = model.optionGetField(options tag)
                     if maybe.isNone(opt) then
-                        diagnostics.fail(:Ok "Tag '" <> tag <> "' is not a valid option of " <> what <> " '" <>
-                            model.show(t) <> "'" offset)
+                        diagnostics.fail(:Ok "Tag '" <> tag <> "' is not a valid option of " <> what <> " '"
+                            <> model.show(t) <> "'" offset)
                     end
                     tuple let payload = maybe.unwrap(opt).payload let isOption = true end
                 end
@@ -65,8 +67,8 @@ export
                     begin
                         let bound = kinds.resolveSumBound(targetType some(e))
                         let failed(): TagPayload =
-                            diagnostics.fail(opDesc <> " requires Variant or Option target, got '" <>
-                                model.show(targetType) <> "'" offset)
+                            diagnostics.fail(opDesc <> " requires Variant or Option target, got '"
+                                <> model.show(targetType) <> "'" offset)
                         if maybe.isSome(bound) then
                             let b = maybe.unwrap(bound)
                             case b.form
@@ -97,7 +99,7 @@ export
                             when typeRecord with r then expectedRec := maybe.some(r.fields)
                             else
                                 early := maybe.some(checker.checkSubsumption(c x0 maybe.unwrap(expected)
-                                    e loopDepth maybe.some("Record")))
+                                        e loopDepth maybe.some("Record")))
                         end
                     end
                     if maybe.isSome(early) then
@@ -116,45 +118,57 @@ export
                             let expF = expFields[i]
                             let found = hashMap.get(fieldMap expF.name)
                             if maybe.isNone(found) then
-                                diagnostics.fail(:Ok "Record constructor missing required field '" <> expF.name <>
-                                    "' of type '" <> model.show(expF.type) <> "'" x0.span.startOffset)
+                                diagnostics.fail(:Ok "Record constructor missing required field '" <> expF.name
+                                    <> "' of type '" <> model.show(expF.type) <> "'" x0.span.startOffset)
                             end
                             let b = maybe.unwrap(found)
                             if expF.isVar andif not(b.isVar) then
-                                diagnostics.fail(:Ok "Field '" <> expF.name <> "' in record must be declared mutable (var)"
-                                    b.offset)
+                                diagnostics.fail(:Ok "Field '" <> expF.name
+                                    <> "' in record must be declared mutable (var)"
+                                        b.offset)
                             end
                             let valTyped = checker.checkExpr(c b.value expF.type e loopDepth)
                             if expF.isVar andif not(isTypeEqual(valTyped.type expF.type e)) then
-                                diagnostics.fail(:Ok "Mutable record field '" <> expF.name <> "' is invariant; expected '" <>
-                                    model.show(expF.type) <> "', got '" <> model.show(valTyped.type) <> "'" b.offset)
+                                diagnostics.fail(:Ok "Mutable record field '" <> expF.name
+                                    <> "' is invariant; expected '"
+                                    <> model.show(expF.type) <> "', got '" <> model.show(valTyped.type) <> "'" b.offset)
                             end
                             vector.append(typedFields tuple
-                                let offset = b.offset let name = b.name let value = valTyped let isVar = b.isVar
+                                let offset = b.offset
+                                let name = b.name
+                                let value = valTyped
+                                let isVar = b.isVar
                             end)
                         end
                         for i = 0 upto {vector.length(x.fields) - 1} do
                             let b = vector.get(x.fields i)
                             if maybe.isNone(model.recordGetField(expFields b.name)) then
                                 vector.append(typedFields tuple
-                                    let offset = b.offset let name = b.name
-                                    let value = checker.synthExpr(c b.value e loopDepth) let isVar = b.isVar
+                                    let offset = b.offset
+                                    let name = b.name
+                                    let value = checker.synthExpr(c b.value e loopDepth)
+                                    let isVar = b.isVar
                                 end)
                             end
                         end
                         let fields = vector.toArray(typedFields)
-                        let recType = if maybe.isSome(expectedRec) then
-                            evaluate(maybe.unwrap(expected))
-                        else
-                            let qFields = vector.new(:model.RecordField)
-                            for i = 0 upto {extent fields - 1} do
-                                vector.append(qFields tuple
-                                    let name = fields[i].name let type = fields[i].value.type let isVar = fields[i].isVar
-                                end)
+                        let recType =
+                            if maybe.isSome(expectedRec) then
+                                evaluate(maybe.unwrap(expected))
+                            else
+                                let qFields = vector.new(:model.RecordField)
+                                for i = 0 upto {extent fields - 1} do
+                                    vector.append(qFields tuple
+                                        let name = fields[i].name
+                                        let type = fields[i].value.type
+                                        let isVar = fields[i].isVar
+                                    end)
+                                end
+                                model.recordType(vector.toArray(qFields) maybe.none())
                             end
-                            model.recordType(vector.toArray(qFields) maybe.none())
-                        end
-                        expr(x0.span.startOffset recType option exprRecord of typedAst.ExprForm with let fields = fields end)
+                        expr(x0.span.startOffset recType option exprRecord of typedAst.ExprForm with
+                            let fields = fields
+                        end)
                     end
                 end
             else internal("a record" x0)
@@ -188,7 +202,9 @@ export
                                 let var found = false
                                 for i = 0 upto {vector.length(definitions) - 1} do
                                     let d = vector.get(definitions i)
-                                    if stringOp.equal(d.name a.name) andif model.same(d.type a.target) then found := true end
+                                    if stringOp.equal(d.name a.name) andif model.same(d.type a.target) then
+                                        found := true
+                                    end
                                 end
                                 if found then maybe.some(model.mapAliases(a.target replace)) else maybe.none() end
                             end
@@ -202,49 +218,57 @@ export
         option exprSelect of typedAst.ExprForm with let target = target let field = field end
 
     let selectTupleField(
-        c: checker.T x0: ast.Expr target: ast.Expr field: String targetTyped: typedAst.Expr targetType: Type
-        fields: Array(model.TupleComponent) e: env.T
-    ): typedAst.Expr =
+            c: checker.T x0: ast.Expr target: ast.Expr field: String targetTyped: typedAst.Expr targetType: Type
+            fields: Array(model.TupleComponent) e: env.T
+            ): typedAst.Expr =
         begin
             let offset = x0.span.startOffset
             let found = model.tupleGetField(fields field)
             if maybe.isNone(found) then
-                diagnostics.fail(:Ok "Tuple type '" <> model.show(targetType) <> "' has no field named '" <> field <> "'" offset)
+                diagnostics.fail(:Ok "Tuple type '" <> model.show(targetType) <> "' has no field named '" <> field
+                    <> "'" offset)
             end
-            let fieldType = case maybe.unwrap(found)
-                when tupleField with f then f.type
-                else
-                    diagnostics.fail(:Type "Cannot select type component '" <> field <> "' as a value expression" offset)
-            end
+            let fieldType =
+                case maybe.unwrap(found)
+                    when tupleField with f then f.type
+                    else
+                        diagnostics.fail(:Type "Cannot select type component '" <> field
+                            <> "' as a value expression" offset)
+                end
             let formals = model.tupleTypeFormals(fields)
             let formalIds = newIntMap(:Bool)
             for i = 0 upto {extent formals - 1} do hashMap.insert(formalIds formals[i].symbolId true) end
-            let selected = if model.typeMentionsSymbolIds(fieldType formalIds) then
-                let rootName = case target.form
-                    when exprId with id then id.name
-                    else
-                        diagnostics.fail(:String "Cannot select type-dependent member '" <> field <>
-                            "' from compound or anonymous existential tuple; bind to an immutable variable first" offset)
-                end
-                let valSym = checker.lookupValue(c e rootName)
-                if maybe.isSome(valSym) andif maybe.unwrap(valSym).isVar then
-                    diagnostics.fail(:Ok "Cannot select type-dependent member '" <> field <> "' from mutable variable '" <>
-                        rootName <> "'; bind to an immutable variable first" offset)
-                end
-                let rootId = if maybe.isSome(valSym) then
-                    maybe.unwrap(valSym).symbolId
+            let selected =
+                if model.typeMentionsSymbolIds(fieldType formalIds) then
+                    let rootName =
+                        case target.form
+                            when exprId with id then id.name
+                            else
+                                diagnostics.fail(:String "Cannot select type-dependent member '" <> field
+                                    <> "' from compound or anonymous existential tuple; bind to an immutable variable first"
+                                        offset)
+                        end
+                    let valSym = checker.lookupValue(c e rootName)
+                    if maybe.isSome(valSym) andif maybe.unwrap(valSym).isVar then
+                        diagnostics.fail(:Ok "Cannot select type-dependent member '" <> field
+                            <> "' from mutable variable '"
+                            <> rootName <> "'; bind to an immutable variable first" offset)
+                    end
+                    let rootId =
+                        if maybe.isSome(valSym) then
+                            maybe.unwrap(valSym).symbolId
+                        else
+                            0
+                        end
+                    let subst = model.newSubst()
+                    for i = 0 upto {extent formals - 1} do
+                        let f = formals[i]
+                        hashMap.insert(subst f.symbolId model.pathType(rootName rootId f.name f.bound))
+                    end
+                    model.substitute(fieldType subst)
                 else
-                    0
+                    fieldType
                 end
-                let subst = model.newSubst()
-                for i = 0 upto {extent formals - 1} do
-                    let f = formals[i]
-                    hashMap.insert(subst f.symbolId model.pathType(rootName rootId f.name f.bound))
-                end
-                model.substitute(fieldType subst)
-            else
-                fieldType
-            end
             expr(offset outsideTuple(selected fields) selectForm(targetTyped field))
         end
 
@@ -282,23 +306,27 @@ export
                                 let modSym = checker.lookupValue(c e id.name)
                                 (* A value binding that shadows the module is
                                  * selected from as any other value *)
-                                if maybe.isSome(moduleScope) andif {maybe.isNone(modSym) orif
-                                        model.bindsModule(id.name maybe.unwrap(modSym).type)} then
+                                if maybe.isSome(moduleScope) andif {maybe.isNone(modSym)
+                                        orif model.bindsModule(id.name maybe.unwrap(modSym).type)} then
                                     if maybe.isNone(modSym) then
-                                        diagnostics.fail(:Ok "Undefined identifier '" <> id.name <> "'" x.target.span.startOffset)
+                                        diagnostics.fail(:Ok "Undefined identifier '" <> id.name
+                                            <> "'" x.target.span.startOffset)
                                     end
                                     let ms = maybe.unwrap(modSym)
                                     let valSym = symbols.lookupValueLocal(maybe.unwrap(moduleScope) x.field)
                                     if maybe.isNone(valSym) then
-                                        diagnostics.fail(:Ok "Module '" <> id.name <> "' has no exported member '" <> x.field <> "'"
-                                            offset)
+                                        diagnostics.fail(:Ok "Module '" <> id.name <> "' has no exported member '"
+                                            <> x.field <> "'"
+                                                offset)
                                     end
                                     checker.checkPoisoned(maybe.unwrap(valSym))
-                                    let targetTyped = expr(x.target.span.startOffset ms.type option exprVar of typedAst.ExprForm with
-                                        let name = id.name let symbol = ms
-                                    end)
+                                    let targetTyped =
+                                        expr(x.target.span.startOffset ms.type option exprVar of typedAst.ExprForm with
+                                            let name = id.name
+                                            let symbol = ms
+                                        end)
                                     moduleSelect := maybe.some(expr(offset
-                                        maybe.unwrap(valSym).type selectForm(targetTyped x.field)))
+                                            maybe.unwrap(valSym).type selectForm(targetTyped x.field)))
                                 end
                             end
                         else ok
@@ -308,44 +336,50 @@ export
                     else
                         let targetTyped = checker.synthExpr(c x.target e loopDepth)
                         let var targetType = evaluate(targetTyped.type)
-                        let isRecordOrTuple = case targetType.form when typeRecord then true when typeTuple then true else false end
+                        let isRecordOrTuple =
+                            case targetType.form when typeRecord then true when typeTuple then true else false end
                         if not(isRecordOrTuple) andif maybe.isNone(kinds.resolveRecordBound(targetType some(e))) then
                             (* A type parameter bounded by a tuple type is
                              * selected from using its bound *)
                             targetType := maybe.unwrapOr(kinds.resolveTupleBound(targetType some(e)) targetType)
                         end
-                        let recBound = case targetType.form
-                            when typeRecord then maybe.none(:Type)
-                            else kinds.resolveRecordBound(targetType some(e))
-                        end
+                        let recBound =
+                            case targetType.form
+                                when typeRecord then maybe.none(:Type)
+                                else kinds.resolveRecordBound(targetType some(e))
+                            end
                         case targetType.form
                             when typeRecord with r then
                                 begin
                                     let f = model.recordGetField(r.fields x.field)
                                     if maybe.isNone(f) then
-                                        diagnostics.fail(:Ok "Record type '" <> model.show(targetType) <> "' has no field named '" <>
-                                            x.field <> "'" offset)
+                                        diagnostics.fail(:Ok "Record type '" <> model.show(targetType)
+                                            <> "' has no field named '"
+                                            <> x.field <> "'" offset)
                                     end
                                     expr(offset maybe.unwrap(f).type selectForm(targetTyped x.field))
                                 end
                             else
                                 if maybe.isSome(recBound) then
-                                    let fields = case maybe.unwrap(recBound).form
-                                        when typeRecord with r then r.fields
-                                        else array of :model.RecordField end
-                                    end
+                                    let fields =
+                                        case maybe.unwrap(recBound).form
+                                            when typeRecord with r then r.fields
+                                            else array of :model.RecordField end
+                                        end
                                     let f = model.recordGetField(fields x.field)
                                     if maybe.isNone(f) then
-                                        diagnostics.fail(:Ok "Bounded record type '" <> model.show(targetType) <>
-                                            "' has no field named '" <> x.field <> "'" offset)
+                                        diagnostics.fail(:Ok "Bounded record type '" <> model.show(targetType)
+                                            <> "' has no field named '" <> x.field <> "'" offset)
                                     end
                                     expr(offset maybe.unwrap(f).type selectForm(targetTyped x.field))
                                 else
                                     case targetType.form
-                                        when typeTuple with t then selectTupleField(c x0 x.target x.field targetTyped targetType t.fields e)
+                                        when typeTuple with t then
+                                            selectTupleField(c x0 x.target x.field targetTyped targetType t.fields e)
                                         else
-                                            diagnostics.fail("Cannot select field '" <> x.field <>
-                                                "' from non-record/tuple type '" <> model.show(targetType) <> "'" offset)
+                                            diagnostics.fail("Cannot select field '" <> x.field
+                                                <> "' from non-record/tuple type '" <> model.show(targetType)
+                                                <> "'" offset)
                                     end
                                 end
                         end
@@ -411,22 +445,23 @@ export
         begin
             let expectedLazy = evaluate(expected)
             let isTuple = case expectedLazy.form when typeTuple then true else false end
-            let single = if isTuple then
-                maybe.none(:ast.Expr)
-            else
-                case payload.form
-                    when exprTuple with t then
-                        if vector.length(t.fields) is 1 then
-                            case vector.get(t.fields 0)
-                                when fieldVal with v then maybe.some(v.val.value)
-                                else maybe.none(:ast.Expr)
+            let single =
+                if isTuple then
+                    maybe.none(:ast.Expr)
+                else
+                    case payload.form
+                        when exprTuple with t then
+                            if vector.length(t.fields) is 1 then
+                                case vector.get(t.fields 0)
+                                    when fieldVal with v then maybe.some(v.val.value)
+                                    else maybe.none(:ast.Expr)
+                                end
+                            else
+                                maybe.none(:ast.Expr)
                             end
-                        else
-                            maybe.none(:ast.Expr)
-                        end
-                    else maybe.none(:ast.Expr)
+                        else maybe.none(:ast.Expr)
+                    end
                 end
-            end
             if maybe.isSome(single) then
                 checker.checkExpr(c maybe.unwrap(single) expectedLazy e loopDepth)
             else
@@ -447,15 +482,19 @@ export
                     let offset = x0.span.startOffset
                     let optType = elaborateTypes.elaborateType(x.optionType e)
                     let optLazy = evaluate(optType)
-                    let options = case optLazy.form
-                        when typeOption with o then o.options
-                        else
-                            diagnostics.fail(:Array(model.OptionField) "Expected option type in 'of' clause, got '" <>
-                                model.show(optType) <> "'" offset)
-                    end
-                    let optionExpr(tag: maybe.T(String) payload: maybe.T(typedAst.Expr) ordinalTyped: maybe.T(typedAst.Expr)): typedAst.Expr =
+                    let options =
+                        case optLazy.form
+                            when typeOption with o then o.options
+                            else
+                                diagnostics.fail(:Array(model.OptionField) "Expected option type in 'of' clause, got '"
+                                    <> model.show(optType) <> "'" offset)
+                        end
+                    let optionExpr(tag: maybe.T(String) payload: maybe.T(typedAst.Expr)
+                            ordinalTyped: maybe.T(typedAst.Expr)): typedAst.Expr =
                         expr(offset optType option exprOption of typedAst.ExprForm with
-                            let tag = tag let payload = payload let ordinalExpr = ordinalTyped
+                            let tag = tag
+                            let payload = payload
+                            let ordinalExpr = ordinalTyped
                         end)
                     if maybe.isSome(x.ordinalExpr) then
                         let ordinalTyped = checker.checkExpr(c maybe.unwrap(x.ordinalExpr) model.intType e loopDepth)
@@ -465,46 +504,52 @@ export
                         let firstPayload = options[0].payload
                         for i = 1 upto {extent options - 1} do
                             if not(optionSignaturesCompatible(firstPayload options[i].payload e)) then
-                                diagnostics.fail(:Ok "Option construction by ordinal requires all branches to have identical " <>
-                                    "signatures, but variant '" <> options[i].name <> "' differs from '" <> options[0].name <> "'"
-                                    offset)
+                                diagnostics.fail(:Ok
+                                        "Option construction by ordinal requires all branches to have identical "
+                                    <> "signatures, but variant '" <> options[i].name <> "' differs from '"
+                                    <> options[0].name <> "'"
+                                        offset)
                             end
                         end
-                        let payloadTyped = if maybe.isSome(firstPayload) then
-                            if maybe.isNone(x.payload) then
-                                diagnostics.fail(:Ok "Option variants require a payload of type '" <>
-                                    model.show(maybe.unwrap(firstPayload)) <> "'" offset)
+                        let payloadTyped =
+                            if maybe.isSome(firstPayload) then
+                                if maybe.isNone(x.payload) then
+                                    diagnostics.fail(:Ok "Option variants require a payload of type '"
+                                        <> model.show(maybe.unwrap(firstPayload)) <> "'" offset)
+                                end
+                                maybe.some(checkOptionPayload(c maybe.unwrap(x.payload)
+                                        maybe.unwrap(firstPayload) e loopDepth))
+                            else
+                                if maybe.isSome(x.payload) then
+                                    diagnostics.fail(:Ok "Option variants do not accept a payload" offset)
+                                end
+                                maybe.none(:typedAst.Expr)
                             end
-                            maybe.some(checkOptionPayload(c maybe.unwrap(x.payload)
-                                maybe.unwrap(firstPayload) e loopDepth))
-                        else
-                            if maybe.isSome(x.payload) then
-                                diagnostics.fail(:Ok "Option variants do not accept a payload" offset)
-                            end
-                            maybe.none(:typedAst.Expr)
-                        end
                         optionExpr(maybe.none() payloadTyped maybe.some(ordinalTyped))
                     else
                         let tag = maybe.unwrap(x.tag)
                         let optField = model.optionGetField(options tag)
                         if maybe.isNone(optField) then
-                            diagnostics.fail(:Ok "Option type '" <> model.show(optType) <> "' has no variant tag '" <> tag <> "'"
-                                offset)
+                            diagnostics.fail(:Ok "Option type '" <> model.show(optType) <> "' has no variant tag '"
+                                <> tag <> "'"
+                                    offset)
                         end
                         let payloadType = maybe.unwrap(optField).payload
-                        let payloadTyped = if maybe.isSome(payloadType) then
-                            if maybe.isNone(x.payload) then
-                                diagnostics.fail(:Ok "Option variant '" <> tag <> "' requires a payload of type '" <>
-                                    model.show(maybe.unwrap(payloadType)) <> "'" offset)
+                        let payloadTyped =
+                            if maybe.isSome(payloadType) then
+                                if maybe.isNone(x.payload) then
+                                    diagnostics.fail(:Ok "Option variant '" <> tag <> "' requires a payload of type '"
+                                        <> model.show(maybe.unwrap(payloadType)) <> "'" offset)
+                                end
+                                maybe.some(checkOptionPayload(c maybe.unwrap(x.payload)
+                                        maybe.unwrap(payloadType) e loopDepth))
+                            else
+                                if maybe.isSome(x.payload) then
+                                    diagnostics.fail(:Ok "Option variant '" <> tag
+                                        <> "' does not accept a payload" offset)
+                                end
+                                maybe.none(:typedAst.Expr)
                             end
-                            maybe.some(checkOptionPayload(c maybe.unwrap(x.payload)
-                                maybe.unwrap(payloadType) e loopDepth))
-                        else
-                            if maybe.isSome(x.payload) then
-                                diagnostics.fail(:Ok "Option variant '" <> tag <> "' does not accept a payload" offset)
-                            end
-                            maybe.none(:typedAst.Expr)
-                        end
                         optionExpr(x.tag payloadTyped maybe.none())
                     end
                 end
@@ -518,32 +563,37 @@ export
                     let offset = x0.span.startOffset
                     let varType = elaborateTypes.elaborateType(x.variantType e)
                     let varLazy = evaluate(varType)
-                    let variants = case varLazy.form
-                        when typeVariant with v then v.variants
-                        else
-                            diagnostics.fail(:Array(model.VariantField) "Expected variant type in 'of' clause, got '" <>
-                                model.show(varType) <> "'" offset)
-                    end
+                    let variants =
+                        case varLazy.form
+                            when typeVariant with v then v.variants
+                            else
+                                diagnostics.fail(:Array(model.VariantField)
+                                        "Expected variant type in 'of' clause, got '"
+                                    <> model.show(varType) <> "'" offset)
+                        end
                     let field = model.variantGetField(variants x.tag)
                     if maybe.isNone(field) then
-                        diagnostics.fail(:Ok "Variant type '" <> model.show(varType) <> "' has no tag '" <> x.tag <> "'" offset)
+                        diagnostics.fail(:Ok "Variant type '" <> model.show(varType) <> "' has no tag '" <> x.tag
+                            <> "'" offset)
                     end
                     let fieldType = maybe.unwrap(field).type
-                    let payloadTyped = if maybe.isSome(fieldType) then
-                        if maybe.isNone(x.payload) then
-                            diagnostics.fail(:Ok "Variant tag '" <> x.tag <> "' requires a payload of type '" <>
-                                model.show(maybe.unwrap(fieldType)) <> "'" offset)
+                    let payloadTyped =
+                        if maybe.isSome(fieldType) then
+                            if maybe.isNone(x.payload) then
+                                diagnostics.fail(:Ok "Variant tag '" <> x.tag <> "' requires a payload of type '"
+                                    <> model.show(maybe.unwrap(fieldType)) <> "'" offset)
+                            end
+                            maybe.some(checker.checkExpr(c maybe.unwrap(x.payload)
+                                    maybe.unwrap(fieldType) e loopDepth))
+                        else
+                            if maybe.isSome(x.payload) then
+                                diagnostics.fail(:Ok "Variant tag '" <> x.tag <> "' does not accept a payload" offset)
+                            end
+                            maybe.none(:typedAst.Expr)
                         end
-                        maybe.some(checker.checkExpr(c maybe.unwrap(x.payload)
-                            maybe.unwrap(fieldType) e loopDepth))
-                    else
-                        if maybe.isSome(x.payload) then
-                            diagnostics.fail(:Ok "Variant tag '" <> x.tag <> "' does not accept a payload" offset)
-                        end
-                        maybe.none(:typedAst.Expr)
-                    end
                     expr(offset varType option exprVariant of typedAst.ExprForm with
-                        let tag = x.tag let payload = payloadTyped
+                        let tag = x.tag
+                        let payload = payloadTyped
                     end)
                 end
             else internal("a variant" x0)
@@ -557,7 +607,8 @@ export
                     let targetType = evaluate(targetTyped.type)
                     resolveVariantOrOptionField(targetType x.tag "Variant query '?'" x0.span.startOffset e)
                     expr(x0.span.startOffset model.boolType option exprVariantCheck of typedAst.ExprForm with
-                        let target = targetTyped let tag = x.tag
+                        let target = targetTyped
+                        let tag = x.tag
                     end)
                 end
             else internal("a variant check" x0)
@@ -577,30 +628,34 @@ export
                     let targetTyped = checker.synthExpr(c x.target e loopDepth)
                     let targetType = evaluate(targetTyped.type)
                     let tp = resolveVariantOrOptionField(targetType x.tag "Variant assertion '!'" x0.span.startOffset e)
-                    let resultType = if not(tp.isOption) then
-                        maybe.unwrapOr(tp.payload model.okType)
-                    else
-                        let ordinalField = model.tupleField(maybe.none() model.intType false)
-                        if maybe.isNone(tp.payload) then
-                            model.tupleType(array of ordinalField end)
+                    let resultType =
+                        if not(tp.isOption) then
+                            maybe.unwrapOr(tp.payload model.okType)
                         else
-                            let payloadLazy = evaluate(maybe.unwrap(tp.payload))
-                            case payloadLazy.form
-                                when typeTuple with t then
-                                    begin
-                                        let fields = vector.fromArray(array of ordinalField end)
-                                        for i = 0 upto {extent t.fields - 1} do
-                                            vector.append(fields t.fields[i])
+                            let ordinalField = model.tupleField(maybe.none() model.intType false)
+                            if maybe.isNone(tp.payload) then
+                                model.tupleType(array of ordinalField end)
+                            else
+                                let payloadLazy = evaluate(maybe.unwrap(tp.payload))
+                                case payloadLazy.form
+                                    when typeTuple with t then
+                                        begin
+                                            let fields = vector.fromArray(array of ordinalField end)
+                                            for i = 0 upto {extent t.fields - 1} do
+                                                vector.append(fields t.fields[i])
+                                            end
+                                            model.tupleType(vector.toArray(fields))
                                         end
-                                        model.tupleType(vector.toArray(fields))
-                                    end
-                                else
-                                    model.tupleType(array of ordinalField model.tupleField(maybe.none() payloadLazy false) end)
+                                    else
+                                        model.tupleType(array of ordinalField
+                                            model.tupleField(maybe.none() payloadLazy false)
+                                        end)
+                                end
                             end
                         end
-                    end
                     expr(x0.span.startOffset resultType option exprVariantAssert of typedAst.ExprForm with
-                        let target = targetTyped let tag = x.tag
+                        let target = targetTyped
+                        let tag = x.tag
                     end)
                 end
             else internal("a variant assertion" x0)
@@ -623,45 +678,49 @@ export
                             when typeArray with a then expectedElement := maybe.some(a.element)
                             else
                                 early := maybe.some(checker.checkSubsumption(c x0 maybe.unwrap(expected)
-                                    e loopDepth maybe.some("Array")))
+                                        e loopDepth maybe.some("Array")))
                         end
                     end
                     if maybe.isSome(early) then
                         maybe.unwrap(early)
                     else
-                        let elemType = if maybe.isSome(x.elementType) then
-                            let t = elaborateTypes.elaborateType(maybe.unwrap(x.elementType) e)
-                            if maybe.isSome(expectedElement) andif
-                                    not(isSubtype(t maybe.unwrap(expectedElement) e)) then
-                                diagnostics.fail(:Ok "Array element type annotation '" <> model.show(t) <>
-                                    "' is not a subtype of expected '" <> model.show(maybe.unwrap(expectedElement)) <>
-                                    "'" offset)
+                        let elemType =
+                            if maybe.isSome(x.elementType) then
+                                let t = elaborateTypes.elaborateType(maybe.unwrap(x.elementType) e)
+                                if maybe.isSome(expectedElement)
+                                        andif not(isSubtype(t maybe.unwrap(expectedElement) e)) then
+                                    diagnostics.fail(:Ok "Array element type annotation '" <> model.show(t)
+                                        <> "' is not a subtype of expected '"
+                                        <> model.show(maybe.unwrap(expectedElement))
+                                        <> "'" offset)
+                                end
+                                maybe.some(t)
+                            else
+                                expectedElement
                             end
-                            maybe.some(t)
-                        else
-                            expectedElement
-                        end
                         let elements = vector.toArray(x.elements)
                         let typed = vector.new(:typedAst.Expr)
-                        let finalElem = if maybe.isSome(elemType) then
-                            for i = 0 upto {extent elements - 1} do
-                                vector.append(typed
-                                    checker.checkExpr(c elements[i] maybe.unwrap(elemType) e loopDepth))
+                        let finalElem =
+                            if maybe.isSome(elemType) then
+                                for i = 0 upto {extent elements - 1} do
+                                    vector.append(typed
+                                            checker.checkExpr(c elements[i] maybe.unwrap(elemType) e loopDepth))
+                                end
+                                maybe.unwrap(elemType)
+                            else
+                                if extent elements is 0 then
+                                    diagnostics.fail(:Ok
+                                            "Cannot infer element type of empty array; type annotation required" offset)
+                                end
+                                let types = vector.new(:Type)
+                                for i = 0 upto {extent elements - 1} do
+                                    let t = checker.synthExpr(c elements[i] e loopDepth)
+                                    vector.append(typed t)
+                                    vector.append(types t.type)
+                                end
+                                checks.joinTypes(vector.toArray(types) e offset
+                                        maybe.some("Incompatible array element types '{t1}' and '{t2}'"))
                             end
-                            maybe.unwrap(elemType)
-                        else
-                            if extent elements is 0 then
-                                diagnostics.fail(:Ok "Cannot infer element type of empty array; type annotation required" offset)
-                            end
-                            let types = vector.new(:Type)
-                            for i = 0 upto {extent elements - 1} do
-                                let t = checker.synthExpr(c elements[i] e loopDepth)
-                                vector.append(typed t)
-                                vector.append(types t.type)
-                            end
-                            checks.joinTypes(vector.toArray(types) e offset
-                                maybe.some("Incompatible array element types '{t1}' and '{t2}'"))
-                        end
                         expr(offset model.arrayType(finalElem) option exprArray of typedAst.ExprForm with
                             let elements = vector.toArray(typed)
                         end)
@@ -682,25 +741,27 @@ export
                             when typeArray then expectedArray := maybe.some(expectedLazy)
                             else
                                 early := maybe.some(checker.checkSubsumption(c x0 maybe.unwrap(expected)
-                                    e loopDepth maybe.some("Array")))
+                                        e loopDepth maybe.some("Array")))
                         end
                     end
                     if maybe.isSome(early) then
                         maybe.unwrap(early)
                     else
                         let countTyped = checker.checkExpr(c x.count model.intType e loopDepth)
-                        let element = if maybe.isSome(expectedArray) then
-                            case maybe.unwrap(expectedArray).form
-                                when typeArray with a then maybe.some(a.element)
-                                else maybe.none(:Type)
+                        let element =
+                            if maybe.isSome(expectedArray) then
+                                case maybe.unwrap(expectedArray).form
+                                    when typeArray with a then maybe.some(a.element)
+                                    else maybe.none(:Type)
+                                end
+                            else
+                                maybe.none(:Type)
                             end
-                        else
-                            maybe.none(:Type)
-                        end
                         let initTyped = checker.elaborateSubexpr(c x.initVal element e loopDepth)
                         let t = maybe.unwrapOr(expectedArray model.arrayType(initTyped.type))
                         expr(x0.span.startOffset t option exprArrayRep of typedAst.ExprForm with
-                            let count = countTyped let initVal = initTyped
+                            let count = countTyped
+                            let initVal = initTyped
                         end)
                     end
                 end
@@ -720,11 +781,13 @@ export
                     let offset = x0.span.startOffset
                     let targetTyped = checker.synthExpr(c x.target e loopDepth)
                     let targetType = evaluate(targetTyped.type)
-                    let element = arrayElement(targetType "Cannot index non-array type '" <> model.show(targetType) <> "'"
-                        offset)
+                    let element =
+                        arrayElement(targetType "Cannot index non-array type '" <> model.show(targetType) <> "'"
+                                offset)
                     let idxTyped = checker.checkExpr(c x.index model.intType e loopDepth)
                     expr(offset element option exprIndex of typedAst.ExprForm with
-                        let target = targetTyped let index = idxTyped
+                        let target = targetTyped
+                        let index = idxTyped
                     end)
                 end
             else internal("an index" x0)
@@ -737,12 +800,14 @@ export
                     let offset = x0.span.startOffset
                     let targetTyped = checker.synthExpr(c x.target e loopDepth)
                     let targetType = evaluate(targetTyped.type)
-                    let element = arrayElement(targetType "Cannot assign to index of non-array type '" <>
-                        model.show(targetType) <> "'" offset)
+                    let element = arrayElement(targetType "Cannot assign to index of non-array type '"
+                        <> model.show(targetType) <> "'" offset)
                     let idxTyped = checker.checkExpr(c x.index model.intType e loopDepth)
                     let valTyped = checker.checkExpr(c x.value element e loopDepth)
                     expr(offset model.okType option exprIndexAssign of typedAst.ExprForm with
-                        let target = targetTyped let index = idxTyped let value = valTyped
+                        let target = targetTyped
+                        let index = idxTyped
+                        let value = valTyped
                     end)
                 end
             else internal("an index assignment" x0)

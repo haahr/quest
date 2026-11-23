@@ -7,61 +7,72 @@
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
-    questlang/codegen/choice : questlang/codegen/Choice
+    writer : Writer
+
+    collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    collections/vector : collections/Vector
-    writer : Writer
-;
 
-let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
-let yes(b: Bool): String = if b then "yes" else "no" end;
+    questlang/codegen/choice : questlang/codegen/Choice
 
-let values = array of "main=ssac" "lib/collections/vector=c" "a=b=ssac" "=ssac" "main=" "main" "main=arm64" "main=x86" "" end;
+let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end
+let yes(b: Bool): String = if b then "yes" else "no" end
+
+let values =
+    array of "main=ssac" "lib/collections/vector=c" "a=b=ssac" "=ssac" "main=" "main" "main=arm64" "main=x86" "" end
 for i = 0 upto {extent values - 1} do
     let o = choice.parseOverride(values[i])
-    emit("'" <> values[i] <> "': " <> if maybe.isSome(:choice.Override o) then
-        maybe.unwrap(:choice.Override o).unit <> " by " <> maybe.unwrap(:choice.Override o).backend
-    else "not an override" end)
-end;
+    emit("'" <> values[i] <> "': "
+        <> if maybe.isSome(:choice.Override o) then
+            maybe.unwrap(:choice.Override o).unit <> " by " <> maybe.unwrap(:choice.Override o).backend
+        else
+            "not an override"
+        end)
+end
 
-emit("backends: " <> strutil.join(" " vector.fromArray(:String choice.backends)));
-emit("arm64 a backend: " <> yes(choice.isBackend("arm64")));
-emit("x86 a backend: " <> yes(choice.isBackend("x86")));
-emit("arm64 writes assembly: " <> yes(choice.isAssembly("arm64")) <> ", ssac: " <> yes(choice.isAssembly("ssac")));
+emit("backends: " <> strutil.join(" " vector.fromArray(:String choice.backends)))
+emit("arm64 a backend: " <> yes(choice.isBackend("arm64")))
+emit("x86 a backend: " <> yes(choice.isBackend("x86")))
+emit("arm64 writes assembly: " <> yes(choice.isAssembly("arm64")) <> ", ssac: " <> yes(choice.isAssembly("ssac")))
 emit("code files: " <> choice.codeFile("b/m.mod.c" "arm64") <> " " <> choice.codeFile("b/m.mod.c" "c") <> " "
-    <> choice.codeFile("b/main.main.c" "arm64"));
-emit("the program's unit: " <> choice.programUnit);
+    <> choice.codeFile("b/main.main.c" "arm64"))
+emit("the program's unit: " <> choice.programUnit)
 
-let override(unit: String backend: String): choice.Override = tuple let unit = unit let backend = backend end;
+let override(unit: String backend: String): choice.Override = tuple let unit = unit let backend = backend end
 let mixed = tuple
     let default = "ssac"
     let overrides = array of override("main" "c") override("geometry" "c") override("geometry" "ssac") end
     let variants = array of :choice.Alternative end
-end;
-let units = array of "main" "geometry" "writer" end;
-for i = 0 upto {extent units - 1} do emit(units[i] <> " by " <> choice.forUnit(mixed units[i])) end;
-emit("standard all c: " <> yes(choice.allC(choice.standard)));
-emit("mixed all c: " <> yes(choice.allC(mixed)));
+end
+let units = array of "main" "geometry" "writer" end
+for i = 0 upto {extent units - 1} do emit(units[i] <> " by " <> choice.forUnit(mixed units[i])) end
+emit("standard all c: " <> yes(choice.allC(choice.standard)))
+emit("mixed all c: " <> yes(choice.allC(mixed)))
 emit("c with one ssac unit all c: " <> yes(choice.allC(tuple
-    let default = "c" let overrides = array of override("main" "ssac") end let variants = array of :choice.Alternative end
-end)));
-emit("arguments: " <> strutil.join(" " vector.fromArray(:String choice.arguments(mixed))));
-emit("standard arguments: " <> strutil.join(" " vector.fromArray(:String choice.arguments(choice.standard))));
+    let default = "c"
+    let overrides = array of override("main" "ssac") end
+    let variants = array of :choice.Alternative end
+end)))
+emit("arguments: " <> strutil.join(" " vector.fromArray(:String choice.arguments(mixed))))
+emit("standard arguments: " <> strutil.join(" " vector.fromArray(:String choice.arguments(choice.standard))))
 (* Variants (docs/build-process.md section 6.4): the last --variant naming a
  * unit, else its backend's name *)
-let alternative(unit: String name: String): choice.Alternative = tuple let unit = unit let name = name end;
+let alternative(unit: String name: String): choice.Alternative = tuple let unit = unit let name = name end
 let varied = tuple
-    let default = "wasm" let overrides = array of override("main" "c") end
+    let default = "wasm"
+    let overrides = array of override("main" "c") end
     let variants = array of alternative("questlang/jit/target" "arm64") alternative("questlang/jit/target" "none") end
-end;
-let units2 = array of "main" "questlang/jit/target" "writer" end;
-for i = 0 upto {extent units2 - 1} do emit(units2[i] <> " as " <> choice.variantFor(varied units2[i])) end;
-emit("variant arguments: " <> strutil.join(" " vector.fromArray(:String choice.arguments(varied))));
-let parsed = array of "u=wasm" "u=" "=none" "u=no-dash" "u=x9" end;
+end
+let units2 = array of "main" "questlang/jit/target" "writer" end
+for i = 0 upto {extent units2 - 1} do emit(units2[i] <> " as " <> choice.variantFor(varied units2[i])) end
+emit("variant arguments: " <> strutil.join(" " vector.fromArray(:String choice.arguments(varied))))
+let parsed = array of "u=wasm" "u=" "=none" "u=no-dash" "u=x9" end
 for i = 0 upto {extent parsed - 1} do
     let v = choice.parseVariant(parsed[i])
-    emit("'" <> parsed[i] <> "': " <> if maybe.isSome(:choice.Alternative v) then
-        maybe.unwrap(:choice.Alternative v).unit <> " as " <> maybe.unwrap(:choice.Alternative v).name
-    else "not a variant" end)
-end;
+    emit("'" <> parsed[i] <> "': "
+        <> if maybe.isSome(:choice.Alternative v) then
+            maybe.unwrap(:choice.Alternative v).unit <> " as " <> maybe.unwrap(:choice.Alternative v).name
+        else
+            "not a variant"
+        end)
+end

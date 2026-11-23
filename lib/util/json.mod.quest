@@ -7,18 +7,19 @@
 
 module json : Json
 import
+    ascii : Ascii
+    conv : Conv
+    reader : Reader
+    stringOp = string : StringOp
+    wordLib = word : Word
+    writer : Writer
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    util/strutil : util/Strutil
     sb = util/stringBuilder : util/StringBuilder
-    stringOp = string : StringOp
-    wordLib = word : Word
-    ascii : Ascii
-    conv : Conv
-    reader : Reader
-    writer : Writer
+    util/strutil : util/Strutil
 export
     (* ======================================================================
      * 1. Values
@@ -219,7 +220,8 @@ export
     let expectWord(s: Scanner word: String): Ok =
         begin
             let n = stringOp.length(word)
-            if {{s.pos + n} > stringOp.length(s.text)} orif not(stringOp.equal(stringOp.getSub(s.text s.pos n) word)) then
+            if {{s.pos + n} > stringOp.length(s.text)}
+                    orif not(stringOp.equal(stringOp.getSub(s.text s.pos n) word)) then
                 fail(:Ok s "expected " <> word)
             end
             s.pos := s.pos + n
@@ -403,7 +405,11 @@ export
         begin
             let b = sb.new()
             let next(): Char =
-                if reader.more(rd) then reader.getChar(rd) else failAt(:Char "end of stream in a value" sb.length(b)) end
+                if reader.more(rd) then
+                    reader.getChar(rd)
+                else
+                    failAt(:Char "end of stream in a value" sb.length(b))
+                end
             let var c = next()
             while isSpace(c) do c := next() end
             sb.char(b c)
@@ -419,9 +425,12 @@ export
                         elsif d is '\\' then escaped := true
                         elsif d is '"' then inString := false
                         end
-                    elsif d is '"' then inString := true
-                    elsif {d is '{'} orif {d is '['} then depth := depth + 1
-                    elsif {d is '}'} orif {d is ']'} then depth := depth - 1
+                    elsif d is '"' then
+                        inString := true
+                    elsif {d is '{'} orif {d is '['} then
+                        depth := depth + 1
+                    elsif {d is '}'} orif {d is ']'} then
+                        depth := depth - 1
                     end
                 end
             elsif c is '"' then
@@ -487,7 +496,8 @@ export
         if indent > 0 then
             sb.char(b '\n')
             sb.repeat(b ' ' indent * depth)
-        else ok
+        else
+            ok
         end
 
     (* v, at depth levels of indentation *)
@@ -675,7 +685,8 @@ export
         if sb.length(e.b) > 0 then
             writer.putString(e.wr sb.toString(e.b))
             sb.clear(e.b)
-        else ok
+        else
+            ok
         end
 
     let depth(e: Emitter): Int = vector.length(e.frames)

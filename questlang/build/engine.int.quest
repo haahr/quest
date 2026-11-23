@@ -16,13 +16,14 @@
 
 interface Engine
 import
-    questlang/codegen/choice : questlang/codegen/Choice
-    questlang/modules/graph : questlang/modules/Graph
-    questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
-    questlang/build/logger : questlang/build/Logger
-    passes = questlang/ir/pipeline : questlang/ir/Pipeline
-    util/maybe : util/Maybe
     pathLib = os/path : os/Path
+    util/maybe : util/Maybe
+
+    questlang/build/logger : questlang/build/Logger
+    questlang/codegen/choice : questlang/codegen/Choice
+    passes = questlang/ir/pipeline : questlang/ir/Pipeline
+    questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
+    questlang/modules/graph : questlang/modules/Graph
 export
     (* A build that failed: a cycle, an interface that does not conform, a
      * missing module, or a file that is not a program, with the bootstrap's
@@ -56,7 +57,7 @@ export
     end
     (* An engine building in buildDir (.build if none), which it makes *)
     new(buildDir: maybe.T(String) includePaths: Array(String) verbose: Bool nogc: Bool extraObjects: Array(String)
-        resolver: maybe.T(graph.Resolver)): T
+            resolver: maybe.T(graph.Resolver)): T
 
     (* eng, compiling up to jobs modules at once, in child processes of
      * driver *)
@@ -75,15 +76,15 @@ export
      * importing them (implicit, by canonical name and interface name), each
      * resolved from currentDir by the resolver *)
     unitModuleRefs(imports: Array(ImportRef) implicit: Array(passes.ImplicitImport)
-        currentDir: maybe.T(String) includePaths: Array(String) programDir: maybe.T(String) res: graph.Resolver)
-        : Array(manifest.ImportedModuleRef)
+            currentDir: maybe.T(String) includePaths: Array(String) programDir: maybe.T(String) res: graph.Resolver)
+            : Array(manifest.ImportedModuleRef)
 
     (* The objects that link the modules importer imports (roots, with the
      * interfaces it expects of them) and the modules they import, after
      * compiling those that are stale: the engine's extra objects first, then
      * one per module in queue order *)
     buildModules(eng: T roots: Array(manifest.ImportedModuleRef) importer: String programDir: maybe.T(String))
-        : Array(String)
+            : Array(String)
     (* Builds the program in mainFile and links it to output (else to its
      * artifacts' base in the build directory) *)
     buildMain(eng: T mainFile: String output: maybe.T(String)): Ok

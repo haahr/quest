@@ -2,13 +2,15 @@
 
 module dump : Dump
 import
-    questlang/types/model : questlang/types/Model
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/types/model : questlang/types/Model
 export
     Let Type = model.Type
     Let Kind = model.Kind
@@ -90,7 +92,7 @@ export
                             let prefix = if p.isVar then "var " elsif p.isOut then "out " else "" end
                             let ts = compact(p.type visited {depth + 1})
                             vector.append(params
-                                if stringOp.length(p.name) > 0 then prefix <> p.name <> ": " <> ts else ts end)
+                                    if stringOp.length(p.name) > 0 then prefix <> p.name <> ": " <> ts else ts end)
                         end
                         "Fun(" <> joined(params) <> "): " <> compact(x.result visited {depth + 1})
                     end
@@ -154,8 +156,9 @@ export
                             let v = x.variants[i]
                             let payload = maybe.unwrapOr(v.type model.okType)
                             vector.append(parts if not(model.same(payload model.okType)) then
-                                {if v.isVar then "var " else "" end} <> v.name <> ": " <>
-                                    compact(payload visited {depth + 1})
+                                {
+                                if v.isVar then "var " else "" end} <> v.name <> ": "
+                                    <> compact(payload visited {depth + 1})
                             else
                                 v.name
                             end)
@@ -182,8 +185,8 @@ export
                         x.varName
                     else
                         let seen = withIds(visited vector.fromArray(array of x.symbolId end))
-                        "Rec(" <> x.varName <> " :: " <> compactKind(x.bound seen {depth + 1}) <> ") " <>
-                            compact(x.body seen {depth + 1})
+                        "Rec(" <> x.varName <> " :: " <> compactKind(x.bound seen {depth + 1}) <> ") "
+                            <> compact(x.body seen {depth + 1})
                     end
                 when typeRecGroup with x then
                     begin
@@ -194,8 +197,8 @@ export
                             let ids = vector.new(:Int)
                             for i = 0 upto {extent x.bindings - 1} do vector.append(ids x.bindings[i].symbolId) end
                             let seen = withIds(visited ids)
-                            "Rec(" <> b.name <> " :: " <> compactKind(b.bound seen {depth + 1}) <> ") " <>
-                                compact(b.body seen {depth + 1})
+                            "Rec(" <> b.name <> " :: " <> compactKind(b.bound seen {depth + 1}) <> ") "
+                                <> compact(b.body seen {depth + 1})
                         end
                     end
                 else model.show(t)
@@ -206,8 +209,8 @@ export
             when kindType then "TYPE"
             when kindPower with x then "POWER(" <> compact(x.bound visited depth) <> ")"
             when kindAll with x then
-                "All(" <> x.paramName <> " :: " <> compactKind(x.paramKind visited depth) <> ") " <>
-                    compactKind(x.resultKind visited depth)
+                "All(" <> x.paramName <> " :: " <> compactKind(x.paramKind visited depth) <> ") "
+                    <> compactKind(x.resultKind visited depth)
             else model.showKind(k)
         end
 
@@ -277,15 +280,15 @@ export
                         for i = 0 upto {extent x.fields - 1} do
                             vector.append(lines case x.fields[i]
                                 when tupleTypeFormal with f then
-                                    p <> "    (QTupleTypeFormal '" <> f.name <> "' #" <> conv.int(f.symbolId) <>
-                                        " :: " <> model.showKind(f.bound) <> ")"
+                                    p <> "    (QTupleTypeFormal '" <> f.name <> "' #" <> conv.int(f.symbolId)
+                                        <> " :: " <> model.showKind(f.bound) <> ")"
                                 when tupleField with f then
-                                    p <> "    (QTupleField " <> maybe.unwrapOr(f.name "") <>
-                                        {if f.isVar then " :var" else "" end} <> " " <> typeDump(f.type {indent + 2}) <>
-                                        ")"
+                                    p <> "    (QTupleField " <> maybe.unwrapOr(f.name "")
+                                        <> {if f.isVar then " :var" else "" end} <> " " <> typeDump(f.type {indent + 2})
+                                        <> ")"
                                 when tupleTypeBinding with f then
-                                    p <> "    (QTupleTypeBinding '" <> f.name <> "' = " <>
-                                        typeDump(f.type {indent + 2}) <> ")"
+                                    p <> "    (QTupleTypeBinding '" <> f.name <> "' = "
+                                        <> typeDump(f.type {indent + 2}) <> ")"
                             end)
                         end
                         "(QTupleType\n" <> p <> "  :fields (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
@@ -297,8 +300,8 @@ export
                         let lines = vector.new(:String)
                         for i = 0 upto {extent x.fields - 1} do
                             let f = x.fields[i]
-                            vector.append(lines p <> "    (QRecordField '" <> f.name <> "'" <>
-                                {if f.isVar then " :var" else "" end} <> " " <> typeDump(f.type {indent + 2}) <> ")")
+                            vector.append(lines p <> "    (QRecordField '" <> f.name <> "'"
+                                <> {if f.isVar then " :var" else "" end} <> " " <> typeDump(f.type {indent + 2}) <> ")")
                         end
                         "(QRecordType\n" <> p <> "  :fields (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
                     end
@@ -309,11 +312,12 @@ export
                         let lines = vector.new(:String)
                         for i = 0 upto {extent x.variants - 1} do
                             let v = x.variants[i]
-                            let payload = if maybe.isSome(v.type) then
-                                " " <> typeDump(maybe.unwrap(v.type) {indent + 2})
-                            else
-                                ""
-                            end
+                            let payload =
+                                if maybe.isSome(v.type) then
+                                    " " <> typeDump(maybe.unwrap(v.type) {indent + 2})
+                                else
+                                    ""
+                                end
                             vector.append(lines p <> "    (QVariantField '" <> v.name <> "'" <> payload <> ")")
                         end
                         "(QVariantType\n" <> p <> "  :variants (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
@@ -325,11 +329,12 @@ export
                         let lines = vector.new(:String)
                         for i = 0 upto {extent x.options - 1} do
                             let o = x.options[i]
-                            let payload = if maybe.isSome(o.payload) then
-                                " " <> typeDump(maybe.unwrap(o.payload) {indent + 2})
-                            else
-                                ""
-                            end
+                            let payload =
+                                if maybe.isSome(o.payload) then
+                                    " " <> typeDump(maybe.unwrap(o.payload) {indent + 2})
+                                else
+                                    ""
+                                end
                             vector.append(lines p <> "    (QOptionField '" <> o.name <> "'" <> payload <> ")")
                         end
                         "(QOptionType\n" <> p <> "  :options (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
@@ -341,11 +346,11 @@ export
                             let q = x.params[i]
                             let modes = {if q.isVar then " :var" else "" end} <> {if q.isOut then " :out" else "" end}
                             vector.append(lines
-                                p <> "    (QParam '" <> q.name <> "'" <> modes <> " " <>
-                                    typeDump(q.type {indent + 2}) <> ")")
+                                    p <> "    (QParam '" <> q.name <> "'" <> modes <> " "
+                                <> typeDump(q.type {indent + 2}) <> ")")
                         end
-                        "(QFunType\n" <> p <> "  :params (\n" <> joinLines(lines) <> "\n" <> p <> "  )\n" <> p <>
-                            "  :result " <> typeDump(x.result {indent + 1}) <> ")"
+                        "(QFunType\n" <> p <> "  :params (\n" <> joinLines(lines) <> "\n" <> p <> "  )\n" <> p
+                            <> "  :result " <> typeDump(x.result {indent + 1}) <> ")"
                     end
                 when typeVar with x then "(QVarType\n" <> p <> "  :element " <> typeDump(x.element {indent + 1}) <> ")"
                 when typeArray with x then
@@ -356,11 +361,11 @@ export
                         let lines = vector.new(:String)
                         for i = 0 upto {extent x.quantifiers - 1} do
                             let q = x.quantifiers[i]
-                            vector.append(lines p <> "    (QQuantifier '" <> q.name <> "' #" <>
-                                conv.int(q.symbolId) <> " " <> kindDump(q.bound {indent + 2}) <> ")")
+                            vector.append(lines p <> "    (QQuantifier '" <> q.name <> "' #"
+                                <> conv.int(q.symbolId) <> " " <> kindDump(q.bound {indent + 2}) <> ")")
                         end
-                        "(QAllType\n" <> p <> "  :quantifiers (\n" <> joinLines(lines) <> "\n" <> p <> "  )\n" <> p <>
-                            "  :body " <> typeDump(x.body {indent + 1}) <> ")"
+                        "(QAllType\n" <> p <> "  :quantifiers (\n" <> joinLines(lines) <> "\n" <> p <> "  )\n" <> p
+                            <> "  :body " <> typeDump(x.body {indent + 1}) <> ")"
                     end
                 when typeApp with x then
                     begin
@@ -368,21 +373,21 @@ export
                         for i = 0 upto {extent x.arguments - 1} do
                             vector.append(lines p <> "    " <> typeDump(x.arguments[i] {indent + 2}))
                         end
-                        "(QTypeApp\n" <> p <> "  :constructor " <> typeDump(x.constructor {indent + 1}) <> "\n" <> p <>
-                            "  :arguments (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
+                        "(QTypeApp\n" <> p <> "  :constructor " <> typeDump(x.constructor {indent + 1}) <> "\n" <> p
+                            <> "  :arguments (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
                     end
                 when typeRec with x then
-                    "(QRecType '" <> x.varName <> "' #" <> conv.int(x.symbolId) <> "\n" <> p <> "  :bound " <>
-                        kindDump(x.bound {indent + 1}) <> "\n" <> p <> "  :body " <> typeDump(x.body {indent + 1}) <>
-                        ")"
+                    "(QRecType '" <> x.varName <> "' #" <> conv.int(x.symbolId) <> "\n" <> p <> "  :bound "
+                        <> kindDump(x.bound {indent + 1}) <> "\n" <> p <> "  :body " <> typeDump(x.body {indent + 1})
+                        <> ")"
                 when typeRecGroup with x then
                     begin
                         let lines = vector.new(:String)
                         for i = 0 upto {extent x.bindings - 1} do
                             let b = x.bindings[i]
-                            vector.append(lines p <> "    (Binding '" <> b.name <> "' #" <>
-                                conv.int(b.symbolId) <> " " <> kindDump(b.bound {indent + 2}) <> " " <>
-                                typeDump(b.body {indent + 2}) <> ")")
+                            vector.append(lines p <> "    (Binding '" <> b.name <> "' #"
+                                <> conv.int(b.symbolId) <> " " <> kindDump(b.bound {indent + 2}) <> " "
+                                <> typeDump(b.body {indent + 2}) <> ")")
                         end
                         "(QRecGroupType\n" <> p <> "  :bindings (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
                     end
@@ -396,9 +401,9 @@ export
                 when kindType then "(QTypeKind)"
                 when kindPower with x then "(QPowerKind\n" <> p <> "  :bound " <> typeDump(x.bound {indent + 1}) <> ")"
                 when kindAll with x then
-                    "(QAllKind\n" <> p <> "  :param '" <> x.paramName <> "'\n" <> p <> "  :param_kind " <>
-                        kindDump(x.paramKind {indent + 1}) <> "\n" <> p <> "  :result_kind " <>
-                        kindDump(x.resultKind {indent + 1}) <> ")"
+                    "(QAllKind\n" <> p <> "  :param '" <> x.paramName <> "'\n" <> p <> "  :param_kind "
+                        <> kindDump(x.paramKind {indent + 1}) <> "\n" <> p <> "  :result_kind "
+                        <> kindDump(x.resultKind {indent + 1}) <> ")"
                 when kindVar with x then "(QKindVar '" <> x.name <> "' #" <> conv.int(x.symbolId) <> ")"
             end
         end

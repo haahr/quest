@@ -2,13 +2,15 @@
 
 module printer : Printer
 import
-    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
-    questlang/codegen/arm64/asm : questlang/codegen/arm64/Asm
-    questlang/codegen/arm64/target : questlang/codegen/arm64/Target
-    collections/vector : collections/Vector
-    util/strutil : util/Strutil
     conv : Conv
     word : Word
+
+    collections/vector : collections/Vector
+    util/strutil : util/Strutil
+
+    questlang/codegen/arm64/asm : questlang/codegen/arm64/Asm
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+    questlang/codegen/arm64/target : questlang/codegen/arm64/Target
 export
     Def Names = Tuple full: All(r: Int) String half: All(r: Int) String real: All(r: Int) Bool end
     let physical: Names = tuple let full = target.name let half = target.half let real = target.isReal end
@@ -65,8 +67,7 @@ export
     (* Formats a register name for DWARF unwind directives (such as
      * .cfi_offset) as clang does: wN for xN and bN for dN, which name the
      * same DWARF registers as their wider forms *)
-    let cfiName(r: Int): String =
-        if target.isReal(r) then "b" <> conv.int(r - target.d(0)) else "w" <> conv.int(r) end
+    let cfiName(r: Int): String = if target.isReal(r) then "b" <> conv.int(r - target.d(0)) else "w" <> conv.int(r) end
 
     let shifted(shift: Int): String = ", lsl #" <> conv.int(shift)
 
@@ -90,7 +91,8 @@ export
              * encoder *)
             when opCmpImm with x then
                 if x.imm < 0 then "cmn " <> n.full(rs[0]) <> ", " <> immediate(0 - x.imm)
-                else "cmp " <> n.full(rs[0]) <> ", " <> immediate(x.imm) end
+                else "cmp " <> n.full(rs[0]) <> ", " <> immediate(x.imm)
+                end
             when opCcmp with x then
                 "ccmp " <> operands(array of n.full(rs[0]) n.full(rs[1]) immediate(x.nzcv) condition(x.cond) end)
             when opCcmpImm with x then
@@ -164,7 +166,8 @@ export
                  * the fill and the first differing halfword, and movk fills
                  * each remaining halfword. *)
                 when opMovConst with x then
-                    if minst.isMovImm(x.imm) then vector.append(code minst.movImm(d x.imm))
+                    if minst.isMovImm(x.imm) then
+                        vector.append(code minst.movImm(d x.imm))
                     else
                         let w = word.fromInt(x.imm)
                         let half(k: Int): Int = word.toInt(word.extract(w 16 * k 16))
@@ -184,11 +187,13 @@ export
                                      * or movn (for ~0) *)
                                     let base = if fill is 0 then word.toInt(word.shift(word.fromInt(half(k)) 16 * k))
                                         else word.toInt(word.xorBits(word.fromInt(~1)
-                                            word.shift(word.fromInt(65535 - half(k)) 16 * k)))
+                                                word.shift(word.fromInt(65535 - half(k)) 16 * k)))
                                         end
                                     vector.append(code minst.movImm(d base))
                                     first := false
-                                else vector.append(code minst.movk(d half(k) 16 * k)) end
+                                else
+                                    vector.append(code minst.movk(d half(k) 16 * k))
+                                end
                             end
                         end
                     end
@@ -199,7 +204,7 @@ export
                     else
                         vector.append(code minst.adrp(d x.symbol minst.relocGot))
                         vector.append(code minst.load(minst.load64 d d minst.pageOff(x.symbol
-                            minst.relocGot)))
+                                minst.relocGot)))
                     end
                     (* Apply any non-zero byte offset from the symbol *)
                     if x.offset is 0 then ok
@@ -221,10 +226,12 @@ export
                     vector.append(code minst.load(minst.load64 target.x(16) d minst.modeBase))
                     vector.append(code minst.blr(target.x(16)))
                 when opMovImm, opMovz, opMovk, opMov, opArith, opAddImm, opSubImm, opLogicImm, opShiftImm, opMsub,
-                    opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore, opLdp,
-                    opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz,
-                    opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa,
-                    opCfiOffset, opLoc then
+                        opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore,
+                        opLdp,
+                        opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz,
+                        opTbz,
+                        opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa,
+                        opCfiOffset, opLoc then
                     vector.append(code tuple let op = op let regs = rs end)
             end
             vector.toArray(code)
@@ -234,9 +241,11 @@ export
         case op
             when opLabel, opJumpTable, opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then 0
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
-                opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
-                opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
-                opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opJumpEntry then
+                    opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp,
+                    opCcmpImm,
+                    opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl,
+                    opBlr,
+                    opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opJumpEntry then
                 extent expansion(op array of 0 end)
         end
 
@@ -247,10 +256,12 @@ export
              * jump-table entries as data, followed by the table's label *)
             when opJumpTable with x then array of "\t.data_region jt32" x.label <> ":" end
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
-                opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
-                opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
-                opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opJumpEntry, opJumpTableEnd,
-                opCfiDefCfa, opCfiOffset, opLoc then
+                    opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp,
+                    opCcmpImm,
+                    opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl,
+                    opBlr,
+                    opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opJumpEntry, opJumpTableEnd,
+                    opCfiDefCfa, opCfiOffset, opLoc then
                 let expanded = expansion(op regs)
                 let ls = array of(extent expanded "")
                 for k = 0 upto {extent expanded - 1} do

@@ -4,51 +4,51 @@
  * middle of a chain kept, or a write between its calls, leaves the chain in pieces, with the same results. The SSA
  * golden shows the joined calls. *)
 
-import stringOp = string: StringOp;
-import writer: Writer;
-import conv: Conv;
+import conv : Conv
+import stringOp = string : StringOp
+import writer : Writer
 
-let line(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+let line(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end
 
 (* 1. Chains of three, five, seven, eight, and fifteen parts *)
-let a = stringOp.new(1 'a');
-let b = stringOp.new(2 'b');
-let c = stringOp.new(3 'c');
-line("1. " <> a <> b);
-line("1. " <> a <> "-" <> b <> "-" <> c);
-line("1. " <> a <> b <> c <> a <> b <> c <> a);
-line("1. " <> a <> b <> c <> a <> b <> c <> a <> b);
-let fifteen = "0" <> "1" <> "2" <> "3" <> "4" <> "5" <> "6" <> "7" <> "8" <> "9" <> a <> b <> c <> "x" <> "y";
-line("1. " <> fifteen <> " " <> conv.int(stringOp.length(fifteen)));
+let a = stringOp.new(1 'a')
+let b = stringOp.new(2 'b')
+let c = stringOp.new(3 'c')
+line("1. " <> a <> b)
+line("1. " <> a <> "-" <> b <> "-" <> c)
+line("1. " <> a <> b <> c <> a <> b <> c <> a)
+line("1. " <> a <> b <> c <> a <> b <> c <> a <> b)
+let fifteen = "0" <> "1" <> "2" <> "3" <> "4" <> "5" <> "6" <> "7" <> "8" <> "9" <> a <> b <> c <> "x" <> "y"
+line("1. " <> fifteen <> " " <> conv.int(stringOp.length(fifteen)))
 
 (* 2. Empty parts, the same part twice, and a chain of empty strings *)
-let empty = stringOp.new(0 ' ');
-line("2. [" <> empty <> a <> "" <> empty <> b <> "]");
-line("2. " <> a <> a <> a <> c <> c);
-line("2. [" <> empty <> "" <> empty <> "" <> "]");
+let empty = stringOp.new(0 ' ')
+line("2. [" <> empty <> a <> "" <> empty <> b <> "]")
+line("2. " <> a <> a <> a <> c <> c)
+line("2. [" <> empty <> "" <> empty <> "" <> "]")
 
 (* 3. The result is new: changing a part after the chain leaves it, and it can be written *)
-let d = stringOp.new(3 'd');
-let joined = d <> "+" <> d <> "+" <> d;
-stringOp.setChar(d 0 'X');
-stringOp.setChar(joined 2 'Y');
-line("3. " <> joined <> " " <> d);
+let d = stringOp.new(3 'd')
+let joined = d <> "+" <> d <> "+" <> d
+stringOp.setChar(d 0 'X')
+stringOp.setChar(joined 2 'Y')
+line("3. " <> joined <> " " <> d)
 
 (* 4. A middle used twice: the chain stays in pieces, with the same results *)
-let middle = a <> b;
-let left = middle <> c <> "!";
-let right = "?" <> middle <> c;
-line("4. " <> left <> " " <> right <> " " <> middle);
+let middle = a <> b
+let left = middle <> c <> "!"
+let right = "?" <> middle <> c
+line("4. " <> left <> " " <> right <> " " <> middle)
 
 (* 5. Chains of calls' results, in a loop and in a function *)
-let label(n: Int): String = "#" <> conv.int(n) <> ":" <> conv.int(n * n) <> ";";
-let var all = "";
-for i = 1 upto 4 do all := all <> label(i) end;
-line("5. " <> all);
+let label(n: Int): String = "#" <> conv.int(n) <> ":" <> conv.int(n * n) <> ";"
+let var all = ""
+for i = 1 upto 4 do all := all <> label(i) end
+line("5. " <> all)
 
 (* 6. A write between a chain's calls: the chain is not joined across it, so the earlier call's copy stands *)
-let e = stringOp.new(2 'e');
-let before = e <> "|";
-stringOp.setChar(e 0 'Z');
-let after = before <> e;
-line("6. " <> after);
+let e = stringOp.new(2 'e')
+let before = e <> "|"
+stringOp.setChar(e 0 'Z')
+let after = before <> e
+line("6. " <> after)

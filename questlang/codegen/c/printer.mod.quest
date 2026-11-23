@@ -6,32 +6,34 @@
 
 module printer : Printer
 import
-    questlang/common/location : questlang/common/Location
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/types/model : questlang/types/Model
-    questlang/ir/nodes : questlang/ir/Nodes
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/ir/walk : questlang/ir/Walk
-    questlang/ir/describe : questlang/ir/Describe
-    questlang/repr/syntax : questlang/repr/Syntax
-    questlang/repr/layout : questlang/repr/Layout
-    questlang/repr/genericLayout : questlang/repr/GenericLayout
-    questlang/repr/symbols : questlang/repr/Symbols
-    questlang/repr/externals : questlang/repr/Externals
-    questlang/repr/staticdata : questlang/repr/StaticData
-    questlang/repr/objectLayout : questlang/repr/ObjectLayout
-    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
-    questlang/codegen/c/types : questlang/codegen/c/Types
-    questlang/codegen/c/declarations : questlang/codegen/c/Declarations
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/iter : util/Iter
     util/hash : util/Hash
+    util/iter : util/Iter
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/codegen/c/declarations : questlang/codegen/c/Declarations
+    questlang/codegen/c/types : questlang/codegen/c/Types
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/location : questlang/common/Location
+    questlang/ir/describe : questlang/ir/Describe
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/repr/externals : questlang/repr/Externals
+    questlang/repr/genericLayout : questlang/repr/GenericLayout
+    questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/objectLayout : questlang/repr/ObjectLayout
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/repr/staticdata : questlang/repr/StaticData
+    questlang/repr/symbols : questlang/repr/Symbols
+    questlang/repr/syntax : questlang/repr/Syntax
+    questlang/types/model : questlang/types/Model
 export
     Let Type = model.Type
     Let Shape = shapes.Shape
@@ -62,7 +64,8 @@ export
     let removePrefix(s: String prefix: String): String =
         if strutil.startsWith(s prefix) then
             stringOp.getSub(s stringOp.length(prefix) {stringOp.length(s) - stringOp.length(prefix)})
-        else s
+        else
+            s
         end
     (* Adds or replaces a map's entry *)
     let put(K::TYPE V::TYPE m: hashMap.T(K V) key: K value: V): Ok =
@@ -125,7 +128,7 @@ export
             let var index = ~1
             for i = 0 upto {extent s.cases - 1} do
                 if {index < 0} andif maybe.isSome(tag) andif maybe.isSome(s.cases[i].name)
-                    andif eq(maybe.unwrap(s.cases[i].name) maybe.unwrap(tag)) then
+                        andif eq(maybe.unwrap(s.cases[i].name) maybe.unwrap(tag)) then
                     index := i
                 end
             end
@@ -137,7 +140,10 @@ export
         begin
             let c = caseOf(s tag)
             if maybe.isSome(c) then
-                maybe.unwrap(c).shape else maybe.none() end
+                maybe.unwrap(c).shape
+            else
+                maybe.none()
+            end
         end
 
     (* =========================================================================
@@ -295,7 +301,7 @@ export
     let name(p: P v: Variable): String =
         begin
             if not(hashMap.contains(p.names v.id))
-                andif {model.same(v.type nodes.descriptorType) orif model.same(v.type nodes.viewMapType)} then
+                    andif {model.same(v.type nodes.descriptorType) orif model.same(v.type nodes.viewMapType)} then
                 (* A descriptor variable (a function's descriptor parameter), or
                  * a view map *)
                 put(p.names v.id freshName(p v.hint))
@@ -332,25 +338,26 @@ export
      * which every indirect call is, ((T)(clos->fn))(...), whose parenthesis
      * follows another): a call may allocate, and so collect *)
     let callsFunction(line: String): Bool =
-        strutil.contains(line "->fn))(") orif
-        begin
-            let n = stringOp.length(line)
-            let var found = false
-            let var i = 1
-            while {i < n} andif not(found) do
-                if stringOp.getChar(line i) is '(' then
-                    let c = stringOp.getChar(line {i - 1})
-                    let separator = {c is ' '} orif {c is '('} orif {c is ')'} orif {c is '*'} orif {c is '{'}
-                        orif {c is '='} orif {c is ','} orif {c is '&'} orif {c is '!'} orif {c is '-'} orif {c is '+'}
-                        orif {c is '"'}
-                    if not(separator) andif not({i >= 6} andif stringOp.equalSub(line {i - 6} 6 "sizeof" 0 6)) then
-                        found := true
+        strutil.contains(line "->fn))(")
+            orif begin
+                let n = stringOp.length(line)
+                let var found = false
+                let var i = 1
+                while {i < n} andif not(found) do
+                    if stringOp.getChar(line i) is '(' then
+                        let c = stringOp.getChar(line {i - 1})
+                        let separator = {c is ' '} orif {c is '('} orif {c is ')'} orif {c is '*'} orif {c is '{'}
+                            orif {c is '='} orif {c is ','} orif {c is '&'} orif {c is '!'} orif {c is '-'}
+                            orif {c is '+'}
+                            orif {c is '"'}
+                        if not(separator) andif not({i >= 6} andif stringOp.equalSub(line {i - 6} 6 "sizeof" 0 6)) then
+                            found := true
+                        end
                     end
+                    i := i + 1
                 end
-                i := i + 1
+                found
             end
-            found
-        end
 
     let emit(p: P line: String): Ok =
         begin
@@ -445,10 +452,13 @@ export
                         offset := offset + 8
                     end
                 end
-            for i = 0 upto {extent o.typeArgs - 1} do words(array of option kindPointer of objectLayout.Kind end end) end
+            for i = 0 upto {extent o.typeArgs - 1} do
+                words(array of option kindPointer of objectLayout.Kind end end)
+            end
             for i = 0 upto {extent o.captures - 1} do
                 let t = atomType(o.captures[i])
-                if isOk(t) then words(array of scalar end)
+                if isOk(t) then
+                    words(array of scalar end)
                 else
                     case layout.representationKind(t)
                         when repBool, repChar then
@@ -460,7 +470,7 @@ export
                 end
             end
             objectLayout.closureLayout(code vector.toArray(kinds)
-                8 * {vector.length(kinds) + 1} "sizeof(struct QClosure_" <> code <> ")")
+                    8 * {vector.length(kinds) + 1} "sizeof(struct QClosure_" <> code <> ")")
         end
 
     (* The definitions of the unit's layouts, after every function has been
@@ -559,10 +569,10 @@ export
         begin
             let form = if d.echo then staticdata.echoDescriptorForm(d.type maybe.some(p.ctx))
                 else maybe.none(:staticdata.DescriptorForm)
-            end
+                end
             types.cExpr(if maybe.isSome(form) then maybe.unwrap(form)
                 else staticForm(p d.type)
-            end)
+                end)
         end
 
     (* A descriptor operand (ir/describe): a descriptor variable, a static
@@ -687,7 +697,8 @@ export
     let optionTag(v: String access: nodes.Access): String =
         case access
             when direct then "((" <> v <> ")->tag)"
-            when original, proxy then "(quest_is_proxy(" <> v <> ") ? quest_proxy_tag(" <> v <> ") : (" <> v <> ")->tag)"
+            when original, proxy then
+                "(quest_is_proxy(" <> v <> ") ? quest_proxy_tag(" <> v <> ") : (" <> v <> ")->tag)"
         end
 
     (* The tag of the variant or option v, of shape ts, in its numbering: read
@@ -699,8 +710,9 @@ export
             case ts.kind
                 when shapeVariant then "(" <> vm <> "->index[" <> v <> ".tag])"
                 when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
-                    shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
-                    shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then
+                        shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
+                        shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
+                        shapePending then
                     "quest_view_option_tag(" <> v <> ", " <> vm <> ")"
             end
         elsif shapes.kindIs(ts shapes.shapeVariant) then
@@ -745,8 +757,9 @@ export
                     let caseS = if maybe.isSome(cs) then maybe.unwrap(cs) else shapeOf(t) end
                     types.shapeQvalUnwrap("quest_view_part(" <> vm <> ", " <> cInt(b) <> ", " <> v <> ".payload)" caseS)
                 when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
-                    shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
-                    shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then
+                        shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
+                        shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
+                        shapePending then
                     let tupleS = shapeOf(t)
                     if not(shapes.kindIs(tupleS shapes.shapeTuple)) then
                         (* A payload that is not a tuple: its one component *)
@@ -764,12 +777,13 @@ export
                             case pt.kind
                                 when shapeTuple then
                                     for i = 0 upto {extent pt.components - 1} do
-                                        vector.append(comps componentShape(pt i)) end
+                                        vector.append(comps componentShape(pt i))
+                                    end
                                 when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord,
-                                    shapeBottom, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell,
-                                    shapeOut,
-                                    shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract,
-                                    shapeExternal, shapeOperator, shapePending then
+                                        shapeBottom, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell,
+                                        shapeOut,
+                                        shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract,
+                                        shapeExternal, shapeOperator, shapePending then
                                     vector.append(comps pt)
                             end
                         end
@@ -835,8 +849,11 @@ export
                     case f
                         when fieldFresh with x then
                             let box = "((" <> slotCType(x.shape) <> ")&" <> boxes <> "[" <> cInt(k) <> "])"
-                            vector.append(res option fieldBox of Field with let k = k let box = box let value =
-                                x.value end)
+                            vector.append(res option fieldBox of Field with
+                                let k = k
+                                let box = box
+                                let value = x.value
+                            end)
                             k := k + 1
                         else vector.append(res f)
                     end
@@ -896,7 +913,8 @@ export
         begin
             let res = vector.new(:Field)
             for i = 0 upto {vector.length(xs) - 1} do
-                vector.append(res text(vector.get(xs i))) end
+                vector.append(res text(vector.get(xs i)))
+            end
             res
         end
 
@@ -938,7 +956,7 @@ export
             let fs = maybe.unwrap(fields[k].shape)
             if maybe.isSome(viewMap) then
                 let slot = syntax.call("quest_view_record_slot"
-                    strings(array of recC name(p maybe.unwrap(viewMap)) cInt(k) end))
+                        strings(array of recC name(p maybe.unwrap(viewMap)) cInt(k) end))
                 tuple let ptr = "((" <> slotCType(fs) <> " *)" <> slot <> ")" let shape = fs end
             else
                 let dictType = staticdata.offsetDictStructName(p.ctx rs.structure)
@@ -1010,12 +1028,13 @@ export
                     let sourceS = shapeOf(plan.source)
                     let targetS = shapeOf(plan.target)
                     if shapes.kindIs(sourceS shapes.shapeTuple) andif shapes.kindIs(targetS shapes.shapeTuple)
-                        andif not(eq(layout.shapeTag(sourceS) layout.shapeTag(targetS))) then
+                            andif not(eq(layout.shapeTag(sourceS) layout.shapeTag(targetS))) then
                         let key = layout.shapeTag(targetS) <> "\n" <> layout.shapeTag(sourceS)
                         if not(hashMap.contains(p.tupleCasts key)) then
-                            add(p.tupleCastKeys key) end
+                            add(p.tupleCastKeys key)
+                        end
                         put(p.tupleCasts key
-                            tuple let target = targetS.structure let source = sourceS.structure end)
+                                tuple let target = targetS.structure let source = sourceS.structure end)
                     end
                     "((" <> cType(plan.target) <> ")" <> c <> ")"
                 when planUnproxy then
@@ -1035,7 +1054,8 @@ export
                         raise unsupported with "C printing of an adapt plan without its adapter" end
                     end
                     let clos = temp(p "QAdaptClosure *")
-                    emit(p clos <> " = (QAdaptClosure *)quest_alloc(sizeof(QAdaptClosure), &quest_layout_adapt_closure);")
+                    emit(p clos
+                        <> " = (QAdaptClosure *)quest_alloc(sizeof(QAdaptClosure), &quest_layout_adapt_closure);")
                     let mark = beginInit(p clos)
                     emit(p clos <> "->fn = (void *)" <> codeName(p maybe.unwrap(plan.thunk)) <> ";")
                     emit(p clos <> "->orig = (const QClosure *)(" <> c <> ");")
@@ -1060,14 +1080,13 @@ export
                     let targetS = shapeOf(plan.target)
                     let n = if extent targetS.components < extent plan.fields then extent targetS.components
                         else extent plan.fields
-                    end
+                        end
                     for i = 0 upto {n - 1} do
                         let tc = componentShape(targetS i)
                         let fp = plan.fields[i]
                         let sc = componentShape(sourceS i)
                         let fc = tupleComponent(p src sourceS i plan.access[i])
-                        let byDescriptor =
-                            maybe.isSome(fp) andif nodes.planIs(maybe.unwrap(fp) nodes.planView)
+                        let byDescriptor = maybe.isSome(fp) andif nodes.planIs(maybe.unwrap(fp) nodes.planView)
                         if byDescriptor then
                             (* Converted by descriptor, from the slot's QVal
                              * form to the target slot's *)
@@ -1079,8 +1098,8 @@ export
                             vector.append(fields text(types.shapeQvalToSlot(converted tc)))
                         elsif maybe.isSome(fp) then
                             vector.append(fields
-                                text(types.shapeSlotStore(convert(p types.shapeSlotLoad(fc sc)
-                                    maybe.unwrap(fp)) tc)))
+                                    text(types.shapeSlotStore(convert(p types.shapeSlotLoad(fc sc)
+                                            maybe.unwrap(fp)) tc)))
                         elsif eq(slotCType(sc) slotCType(tc)) then
                             vector.append(fields text(fc))
                         else
@@ -1103,7 +1122,9 @@ export
             for i = 0 upto {extent o.fields - 1} do
                 let f = o.fields[i]
                 vector.append(fields tuple
-                    let name = f.name let type = atomType(f.atom) let isVar = f.isVar
+                    let name = f.name
+                    let type = atomType(f.atom)
+                    let isVar = f.isVar
                 end)
             end
             let concrete = model.recordType(vector.toArray(fields) maybe.none())
@@ -1114,8 +1135,11 @@ export
             let stored = vector.new(:Stored)
             for i = 0 upto {extent o.fields - 1} do
                 if not(isOk(atomType(o.fields[i].atom))) then
-                    vector.append(stored tuple let index = i let name = o.fields[i].name let a =
-                        o.fields[i].atom end)
+                    vector.append(stored tuple
+                        let index = i
+                        let name = o.fields[i].name
+                        let a = o.fields[i].atom
+                    end)
                 end
             end
             let values = vector.new(:Field)
@@ -1141,13 +1165,15 @@ export
                 emit(p payload <> "->qf_" <> symbols.memberIdent(vector.get(stored j).name) <> " = "
                     <> vector.get(filled j) <> ";")
             end
-            let dictExpr = if o.runtimeOffsets then
-                "quest_record_dict(" <> maybeDescriptor(p o.viewDescriptor) <> ", " <> maybeDescriptor(p o.descriptor)
-                    <> ")"
-            else
-                let table = maybe.unwrap(o.offsets)
-                "(const void *)&" <> staticdata.offsetDictInstanceName(p.ctx table.view table.layout)
-            end
+            let dictExpr =
+                if o.runtimeOffsets then
+                    "quest_record_dict(" <> maybeDescriptor(p o.viewDescriptor) <> ", "
+                        <> maybeDescriptor(p o.descriptor)
+                        <> ")"
+                else
+                    let table = maybe.unwrap(o.offsets)
+                    "(const void *)&" <> staticdata.offsetDictInstanceName(p.ctx table.view table.layout)
+                end
             emit(p "*" <> box <> " = (QRecordVal){ .val = (void *)" <> payload <> ", .dict = " <> dictExpr <> " };")
             initBarrier(p mark box)
             if result.boxed then box else "(*" <> box <> ")" end
@@ -1200,16 +1226,16 @@ export
                                 let pt = if maybe.isSome(o.tag) then caseShape(os maybe.unwrap(o.tag))
                                     else maybe.none(:Shape) end
                                 if {extent t.embedded > 0} orif maybe.isNone(pt)
-                                    orif not(shapes.kindIs(maybe.unwrap(pt) shapes.shapeTuple))
-                                    orif {extent maybe.unwrap(:Shape pt).components isnot extent rs.components}
-                                    orif {extent t.args isnot extent rs.components} then
+                                        orif not(shapes.kindIs(maybe.unwrap(pt) shapes.shapeTuple))
+                                        orif {extent maybe.unwrap(:Shape pt).components isnot extent rs.components}
+                                        orif {extent t.args isnot extent rs.components} then
                                     false
                                 else
                                     let cs = maybe.unwrap(pt)
                                     let var same = true
                                     for i = 0 upto {extent rs.components - 1} do
                                         if {componentShape(rs i).id isnot componentShape(cs i).id}
-                                            orif not(o.access[i]?direct) then
+                                                orif not(o.access[i]?direct) then
                                             same := false
                                         end
                                     end
@@ -1253,33 +1279,35 @@ export
                             case st
                                 when sLet with x then
                                     let next = vector.get(body.statements k + 1)
-                                    let paysFor = case next
-                                        when sLet with y then
-                                            case y.value
-                                                when opMakeOption with o then
-                                                    maybe.isNone(o.ordinalAtom)
-                                                        andif maybe.isSome(o.payload)
-                                                        andif case maybe.unwrap(o.payload)
-                                                            when atomVar with v then nodes.same(v.v x.v)
-                                                            else false
-                                                        end
-                                                else false
-                                            end
-                                        else false
-                                    end
-                                    let readOnce = case next
-                                        when sLet with y then
-                                            case y.value
-                                                when opTupleField with f then
-                                                    maybe.isNone(f.viewMap)
-                                                        andif {f.index >= 1} andif case f.tup
-                                                            when atomVar with v then nodes.same(v.v x.v)
-                                                            else false
-                                                        end
-                                                else false
-                                            end
-                                        else false
-                                    end
+                                    let paysFor =
+                                        case next
+                                            when sLet with y then
+                                                case y.value
+                                                    when opMakeOption with o then
+                                                        maybe.isNone(o.ordinalAtom)
+                                                            andif maybe.isSome(o.payload)
+                                                            andif case maybe.unwrap(o.payload)
+                                                                when atomVar with v then nodes.same(v.v x.v)
+                                                                else false
+                                                            end
+                                                    else false
+                                                end
+                                            else false
+                                        end
+                                    let readOnce =
+                                        case next
+                                            when sLet with y then
+                                                case y.value
+                                                    when opTupleField with f then
+                                                        maybe.isNone(f.viewMap)
+                                                            andif {f.index >= 1} andif case f.tup
+                                                                when atomVar with v then nodes.same(v.v x.v)
+                                                                else false
+                                                            end
+                                                    else false
+                                                end
+                                            else false
+                                        end
                                     let payloadRead = readOnce andif case x.value
                                         when opPayload with q then
                                             maybe.isNone(q.viewMap)
@@ -1287,9 +1315,9 @@ export
                                         else false
                                     end
                                     if {{paysFor andif fusable(p x next)} orif payloadRead} andif not(x.v.unboxed)
-                                        andif not(hashMap.contains(p.globals x.v.id))
-                                        andif not(hashMap.contains(p.fs.volatile x.v.id))
-                                        andif {maybe.unwrapOr(hashMap.get(uses x.v.id) 0) is 1} then
+                                            andif not(hashMap.contains(p.globals x.v.id))
+                                            andif not(hashMap.contains(p.fs.volatile x.v.id))
+                                            andif {maybe.unwrapOr(hashMap.get(uses x.v.id) 0) is 1} then
                                         put(found x.v.id st)
                                     end
                                 else ok
@@ -1334,7 +1362,7 @@ export
     let ordinalTag(p: P o: nodes.OpMakeOption os: Shape value: Atom): String =
         begin
             let checked = syntax.call("quest_check_option_ordinal_at"
-                strings(array of atom(p value) lit(extent os.cases) site(p o.offset) end))
+                    strings(array of atom(p value) lit(extent os.cases) site(p o.offset) end))
             let tags = array of(extent o.cases 0)
             let var identity = true
             for i = 0 upto {extent o.cases - 1} do
@@ -1359,29 +1387,32 @@ export
                 (* The payload is stored as the case of a constant ordinal
                  * stores it, and otherwise as the first case does, whose
                  * components the union overlays on the other cases' *)
-                let n = case ordinalValue
-                    when atomConst with x then case x.c.value when constInt with y then y.n else ~1 end
-                    else ~1
-                end
+                let n =
+                    case ordinalValue
+                        when atomConst with x then case x.c.value when constInt with y then y.n else ~1 end
+                        else ~1
+                    end
                 tag := if {n >= 0} andif {n < extent o.cases} then some(o.cases[n])
                     else os.cases[0].name
-                end
+                    end
             else
                 emit(p tmp <> "->tag = " <> lit(tagIndex(os tag)) <> ";")
             end
-            let fusedLet = if maybe.isSome(o.payload) then
-                case maybe.unwrap(o.payload)
-                    when atomVar with v then hashMap.get(p.fs.fused v.v.id)
-                    else maybe.none(:nodes.Stmt)
+            let fusedLet =
+                if maybe.isSome(o.payload) then
+                    case maybe.unwrap(o.payload)
+                        when atomVar with v then hashMap.get(p.fs.fused v.v.id)
+                        else maybe.none(:nodes.Stmt)
+                    end
+                else
+                    maybe.none(:nodes.Stmt)
                 end
-            else
-                maybe.none(:nodes.Stmt)
-            end
-            let fusedComponents = if maybe.isSome(fusedLet) andif maybe.isSome(tag) then
-                maybe.some(fusedValues(p maybe.unwrap(fusedLet)))
-            else
-                maybe.none(:vector.T(String))
-            end
+            let fusedComponents =
+                if maybe.isSome(fusedLet) andif maybe.isSome(tag) then
+                    maybe.some(fusedValues(p maybe.unwrap(fusedLet)))
+                else
+                    maybe.none(:vector.T(String))
+                end
             if maybe.isSome(fusedComponents) then
                 (* The payload tuple's components, stored as it would have
                  * stored them, the tuple never made *)
@@ -1446,7 +1477,7 @@ export
                 if not(caseWithoutComponents(os maybe.unwrapOr(os.cases[i].name ""))) then allWithout := false end
             end
             if maybe.isNone(o.ordinalAtom) andif maybe.isSome(o.tag)
-                andif caseWithoutComponents(os maybe.unwrap(o.tag)) then
+                    andif caseWithoutComponents(os maybe.unwrap(o.tag)) then
                 "((" <> struct <> " *)&" <> optionTable(p struct extent os.cases) <> "["
                     <> cInt(tagIndex(os o.tag)) <> "])"
             elsif maybe.isSome(o.ordinalAtom) andif allWithout then
@@ -1464,7 +1495,7 @@ export
      * it is *)
     let optionField(src: String stored: maybe.T(Shape) index: Int wanted: Shape): String =
         if maybe.isNone(stored) orif not(shapes.kindIs(maybe.unwrap(stored) shapes.shapeTuple))
-            orif {index >= extent maybe.unwrap(:Shape stored).components} then
+                orif {index >= extent maybe.unwrap(:Shape stored).components} then
             src
         else
             let storedC = slotCType(componentShape(maybe.unwrap(stored) index))
@@ -1479,7 +1510,7 @@ export
     (* A new tuple of an option's case components (after offset components of
      * tupleType: the case's ordinal), read as access says *)
     let optionCaseTuple(p: P opt: String os: Shape tag: String tupleType: Type offset: Int access: Array(nodes.Access)
-        ordinalValue: Int): String =
+            ordinalValue: Int): String =
         begin
             let ts = shapeOf(tupleType)
             let struct = layout.shapeTag(ts)
@@ -1494,7 +1525,7 @@ export
                 for i = 0 upto {extent ptShape.components - 1} do
                     if {i + offset} < extent ts.components then
                         let src = optionField(optionComponent(p opt os tag maybe.some(i) access[i]) pt i
-                            componentShape(ts i + offset))
+                                componentShape(ts i + offset))
                         emit(p tmp <> "->_" <> cInt(i + offset) <> " = " <> src <> ";")
                     end
                 end
@@ -1576,9 +1607,9 @@ export
                     when shapeOption then
                         emit(p result <> "->_0 = " <> lit(maybe.unwrapOr(o.ordinalIndex 0)) <> ";")
                     when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
-                        shapeTuple, shapeRecord, shapeVariant, shapeArray, shapeCell, shapeOut, shapeException,
-                        shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
-                        shapePending then ok
+                            shapeTuple, shapeRecord, shapeVariant, shapeArray, shapeCell, shapeOut, shapeException,
+                            shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
+                            shapePending then ok
                 end
                 result
             else
@@ -1596,16 +1627,17 @@ export
                          * variable) *)
                         types.shapeQvalToSlot(atom(p o.value) <> ".payload" caseS)
                     when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
-                        shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
-                        shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
-                        shapePending then
+                            shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException,
+                            shapeFun,
+                            shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
+                            shapePending then
                         if not(o.decided) then
                             let tagC = optionTag(atom(p o.value) o.access)
                             emit(p "if (" <> tagC <> " != " <> lit(index) <> ") quest_raise_variant_error_at(" <> st
                                 <> ");")
                         end
                         optionCaseTuple(p atom(p o.value) ts o.tag t 1 o.components
-                            maybe.unwrapOr(o.ordinalIndex 0))
+                                maybe.unwrapOr(o.ordinalIndex 0))
                 end
             end
         end
@@ -1667,7 +1699,7 @@ export
                         "(" <> negate <> "quest_val_is(" <> maybeDescriptor(p o.descriptor) <> ", " <> left <> ", "
                             <> right() <> "))"
                     elsif maybe.isSome(t) andif maybe.isSome(o.descriptor)
-                        andif eq(cType(maybe.unwrap(t)) "QVariantVal") then
+                            andif eq(cType(maybe.unwrap(t)) "QVariantVal") then
                         (* By case and value (docs/extensions.md, Variants as
                          * Values) *)
                         let negate = if isIs then "" else "!" end
@@ -1682,8 +1714,12 @@ export
                     else
                         let var l = left
                         let var r = right()
-                        let t2 = if maybe.isSome(t) then
-                            maybe.some(atomType(o.args[1])) else maybe.none(:Type) end
+                        let t2 =
+                            if maybe.isSome(t) then
+                                maybe.some(atomType(o.args[1]))
+                            else
+                                maybe.none(:Type)
+                            end
                         let viaOriginal = case o.access when original then true when direct, proxy then false end
                         if maybe.isSome(t) andif eq(cType(maybe.unwrap(t)) "QRecordVal") then
                             (* A record is its payload: a view changes only its
@@ -1695,8 +1731,8 @@ export
                             l := "quest_unproxy(" <> l <> ")"
                             r := "quest_unproxy(" <> r <> ")"
                         elsif maybe.isSome(t2)
-                            andif not(eq(cType(maybe.unwrap(t)) cType(maybe.unwrap(t2))))
-                            andif strutil.endsWith(cType(maybe.unwrap(t)) "*") then
+                                andif not(eq(cType(maybe.unwrap(t)) cType(maybe.unwrap(t2))))
+                                andif strutil.endsWith(cType(maybe.unwrap(t)) "*") then
                             (* Pointers to aggregates of different (subtype-
                              * related) types: compared as addresses *)
                             l := "(const void *)(" <> l <> ")"
@@ -1751,7 +1787,7 @@ export
             let cArgs = joinedWith(descs atoms(p args))
             let known = hashMap.get(p.closures callee.id)
             if maybe.isSome(known)
-                andif {extent maybe.unwrap(:nodes.OpMakeClosure known).typeArgs is 0} then
+                    andif {extent maybe.unwrap(:nodes.OpMakeClosure known).typeArgs is 0} then
                 let k = maybe.unwrap(known)
                 let env = if extent k.captures is 0 then "NULL" else "(void *)" <> name(p callee) end
                 syntax.call(codeName(p k.code) joinedWith(one(env) cArgs))
@@ -1771,19 +1807,20 @@ export
     let libraryExternal(imp: nodes.Import member: String calleeType: maybe.T(Type)): maybe.T(String) =
         begin
             let var symbol = maybe.none(:String)
-            let concrete = if maybe.isSome(calleeType) then
-                case maybe.unwrap(calleeType).form
-                    when typeFun with f then
-                        let var all = not(eq(types.qtypeToCType(f.result) "QVal"))
-                        for i = 0 upto {extent f.params - 1} do
-                            if eq(types.qtypeToCType(f.params[i].type) "QVal") then all := false end
-                        end
-                        all
-                    else false
+            let concrete =
+                if maybe.isSome(calleeType) then
+                    case maybe.unwrap(calleeType).form
+                        when typeFun with f then
+                            let var all = not(eq(types.qtypeToCType(f.result) "QVal"))
+                            for i = 0 upto {extent f.params - 1} do
+                                if eq(types.qtypeToCType(f.params[i].type) "QVal") then all := false end
+                            end
+                            all
+                        else false
+                    end
+                else
+                    false
                 end
-            else
-                false
-            end
             if concrete andif maybe.isSome(imp.libPath) then
                 for i = 0 upto {extent externals.functions - 1} do
                     let entry = externals.functions[i]
@@ -1847,10 +1884,11 @@ export
                     end
                     let recType = maybe.unwrap(x.i.recordType)
                     let fieldName = maybe.unwrap(member)
-                    let fields = case recType.form
-                        when typeRecord with rt then rt.fields
-                        else vector.toArray(vector.new(:model.RecordField))
-                    end
+                    let fields =
+                        case recType.form
+                            when typeRecord with rt then rt.fields
+                            else vector.toArray(vector.new(:model.RecordField))
+                        end
                     let var fieldType = maybe.none(:Type)
                     for i = 0 upto {extent fields - 1} do
                         if maybe.isNone(fieldType) andif eq(fields[i].name fieldName) then
@@ -1858,7 +1896,9 @@ export
                         end
                     end
                     if maybe.isNone(fieldType) then
-                        raise unsupported with "module " <> x.i.name <> ": its interface has no member " <> fieldName end
+                        raise unsupported with
+                            "module " <> x.i.name <> ": its interface has no member " <> fieldName
+                        end
                     end
                     let cField = slotCType(shapeOf(maybe.unwrap(fieldType)))
                     let dictType = staticdata.offsetDictStructName(p.ctx recType)
@@ -1940,19 +1980,22 @@ export
             if maybe.isNone(o.thunkParams) then
                 let isImport = maybe.isNone(o.callee)
                     andif maybe.isSome(importOf(maybe.unwrap(o.moduleRef)))
-                let called = if isImport then
-                    let imp = maybe.unwrap(importOf(maybe.unwrap(o.moduleRef)))
-                    syntax.call(symbols.mangleModuleIdent(symbols.mangleModuleName(imp.canonicalPath)
-                        maybe.unwrap(o.member))
-                        descs)
-                else
-                    let fnPtr = types.closureFnPtrType(origType)
-                    syntax.call("((" <> fnPtr <> ")(" <> clos <> "->fn))" joinedWith(one("(void *)" <> clos) descs))
-                end
+                let called =
+                    if isImport then
+                        let imp = maybe.unwrap(importOf(maybe.unwrap(o.moduleRef)))
+                        syntax.call(symbols.mangleModuleIdent(symbols.mangleModuleName(imp.canonicalPath)
+                                maybe.unwrap(o.member))
+                                descs)
+                    else
+                        let fnPtr = types.closureFnPtrType(origType)
+                        syntax.call("((" <> fnPtr <> ")(" <> clos <> "->fn))" joinedWith(one("(void *)" <> clos) descs))
+                    end
                 let pl = o.plans[0]
                 if maybe.isNone(pl) then called else convert(p called maybe.unwrap(pl)) end
             else
-                raise unsupported with "C printing of a type application whose instance is a function, not its thunk's closure" end
+                raise unsupported with
+                    "C printing of a type application whose instance is a function, not its thunk's closure"
+                end
             end
         end
 
@@ -1983,7 +2026,7 @@ export
                     let caseName = maybe.unwrap(ts.cases[i].name)
                     let var index = ~1
                     for j = 0 upto {extent x.cases - 1} do if {index < 0}
-                        andif eq(x.cases[j] caseName) then index := j end end
+                            andif eq(x.cases[j] caseName) then index := j end end
                     indices[i] := index
                     if not(index is i) then same := false end
                 end
@@ -1993,7 +2036,9 @@ export
             when opBuiltin with x then "(&" <> symbols.mangleIdent(x.name) <> "_closure)"
             when opExternal with x then
                 if maybe.isSome(result) andif isFunction(maybe.unwrap(result).type) then
-                    raise unsupported with "C printing of an external C function used as a value, not its thunk's closure" end
+                    raise unsupported with
+                        "C printing of an external C function used as a value, not its thunk's closure"
+                    end
                 end
                 x.symbol
             when opCallExternal with x then
@@ -2003,11 +2048,11 @@ export
             when opConvert with x then
                 let v = atomVar(x.value)
                 if nodes.planIs(x.plan nodes.planUnbox) andif maybe.isSome(result)
-                    andif maybe.unwrap(result).boxed then
+                        andif maybe.unwrap(result).boxed then
                     (* A QVal word holds a record or variant as its box *)
                     types.shapeQvalToSlot(atom(p x.value) shapeOf(x.plan.target))
                 elsif nodes.planIs(x.plan nodes.planBox) andif maybe.isSome(v)
-                    andif maybe.unwrap(v).boxed andif not(maybe.unwrap(v).isMutable) then
+                        andif maybe.unwrap(v).boxed andif not(maybe.unwrap(v).isMutable) then
                     (* A box is a record's or variant's QVal word *)
                     types.shapeSlotToQval(atom(p x.value) shapeOf(x.plan.source))
                 else
@@ -2029,7 +2074,8 @@ export
              * (sVarDecl): a pointer, or a QVal's word *)
             when opIsSet with x then
                 if stringOp.equal(varCType(p x.v) "QVal") then "(" <> name(p x.v) <> ".i != 0)"
-                else "(" <> name(p x.v) <> " != NULL)" end
+                else "(" <> name(p x.v) <> " != NULL)"
+                end
             when opAddrCell with x then
                 let cell = temp(p locationCType(atomType(x.init)))
                 emit(p cell <> " = " <> atom(p x.init) <> ";")
@@ -2056,9 +2102,10 @@ export
                             let unproxied = "((" <> cType(ts.type) <> ")quest_unproxy(" <> b <> "))"
                             slotAddress("(&(" <> unproxied <> "->_" <> cInt(x.index) <> "))" component)
                         when proxy then
-                            let through = "((" <> layout.shapeLocationRepresentation(component) <> " *)quest_proxy_slot("
-                                <> b <> ", "
-                                <> cInt(x.index) <> "))"
+                            let through =
+                                "((" <> layout.shapeLocationRepresentation(component) <> " *)quest_proxy_slot("
+                                    <> b <> ", "
+                                    <> cInt(x.index) <> "))"
                             "(quest_is_proxy(" <> b <> ") ? " <> through <> " : " <> address <> ")"
                     end
                 end
@@ -2084,10 +2131,11 @@ export
                     makeTuple(p maybe.unwrap(result).type fields)
                 end
             when opTupleField with x then
-                let fusedPayload = case x.tup
-                    when atomVar with v then hashMap.get(p.fs.fused v.v.id)
-                    else maybe.none(:nodes.Stmt)
-                end
+                let fusedPayload =
+                    case x.tup
+                        when atomVar with v then hashMap.get(p.fs.fused v.v.id)
+                        else maybe.none(:nodes.Stmt)
+                    end
                 if maybe.isSome(fusedPayload) then
                     (* o!tag.field: the option's component, read in place,
                      * the tuple of its ordinal and components never made *)
@@ -2097,7 +2145,7 @@ export
                      * map, converted to the bound's type *)
                     let comp = componentShape(layout.resolvedShape(shapeOf(atomType(x.tup))) x.index)
                     let element = syntax.call("quest_view_tuple_element"
-                        strings(array of atom(p x.tup) name(p maybe.unwrap(x.viewMap)) cInt(x.index) end))
+                            strings(array of atom(p x.tup) name(p maybe.unwrap(x.viewMap)) cInt(x.index) end))
                     types.shapeQvalUnwrap(element comp)
                 elsif maybe.isSome(nodes.atomVarOf(x.tup)) andif maybe.unwrap(nodes.atomVarOf(x.tup)).unboxed then
                     atom(p x.tup) <> "._" <> cInt(x.index)
@@ -2201,12 +2249,20 @@ export
             let kind = describe.echoValueKind(t)
             if stringOp.length(kind) > 0 then
                 emit(p syntax.call("quest_print_value"
-                    strings(array of syntax.cString(prefix) wrapped syntax.cString(kind) syntax.cString(suffix) end))
-                        <> ";")
+                        strings(array of syntax.cString(prefix)
+                            wrapped
+                            syntax.cString(kind)
+                            syntax.cString(suffix)
+                        end))
+                    <> ";")
             else
                 emit(p syntax.call("quest_print_typed"
-                    strings(array of syntax.cString(prefix) wrapped maybeDescriptor(p d) syntax.cString(suffix) end))
-                        <> ";")
+                        strings(array of syntax.cString(prefix)
+                            wrapped
+                            maybeDescriptor(p d)
+                            syntax.cString(suffix)
+                        end))
+                    <> ";")
             end
         end
 
@@ -2220,14 +2276,16 @@ export
             emit(p a <> " = (" <> armStruct <> " *)quest_alloc(sizeof(" <> armStruct <> "), "
                 <> layoutRef(p objectLayout.tupleLayout(shapeOf(armType) armStruct noBoxes)) <> ");")
             let mark = beginInit(p a)
-            let storedFields = case storedType.form
-                when typeTuple with x then model.tupleValueFields(x.fields)
-                else vector.toArray(vector.new(:model.ValueField))
-            end
-            let armFields = case armType.form
-                when typeTuple with x then model.tupleValueFields(x.fields)
-                else vector.toArray(vector.new(:model.ValueField))
-            end
+            let storedFields =
+                case storedType.form
+                    when typeTuple with x then model.tupleValueFields(x.fields)
+                    else vector.toArray(vector.new(:model.ValueField))
+                end
+            let armFields =
+                case armType.form
+                    when typeTuple with x then model.tupleValueFields(x.fields)
+                    else vector.toArray(vector.new(:model.ValueField))
+                end
             let var n = extent arm.descriptors
             if extent storedFields < n then n := extent storedFields end
             if extent armFields < n then n := extent armFields end
@@ -2273,7 +2331,8 @@ export
         case s
             when sLet with x then
                 case x.value when opMakeClosure with c then
-                    put(p.closures x.v.id c) else ok end
+                    put(p.closures x.v.id c) else ok
+                end
                 assign(p x.v operation(p x.value maybe.some(x.v)))
             when sDo with x then
                 let c = operation(p x.value maybe.none())
@@ -2422,7 +2481,7 @@ export
             when sReturn with x then
                 leaveTo(p 0)
                 if maybe.isSome(p.fs.function)
-                    andif isOk(maybe.unwrap(p.fs.function).resultType) then
+                        andif isOk(maybe.unwrap(p.fs.function).resultType) then
                     emit(p "return;")
                 else
                     emit(p "return " <> atom(p x.value) <> ";")
@@ -2430,10 +2489,11 @@ export
             when sRaise with x then
                 let pl = if maybe.isNone(x.payload) then "Q_OK_VAL"
                     else types.shapeSlotToQval(atom(p maybe.unwrap(x.payload))
-                        shapeOf(atomType(maybe.unwrap(x.payload))))
-                end
+                            shapeOf(atomType(maybe.unwrap(x.payload))))
+                    end
                 if maybe.isSome(x.descriptor) then
-                    emit(p "quest_raise_typed_at(" <> atom(p x.exc) <> ", " <> pl <> ", " <> maybeDescriptor(p x.descriptor)
+                    emit(p "quest_raise_typed_at(" <> atom(p x.exc) <> ", " <> pl <> ", "
+                        <> maybeDescriptor(p x.descriptor)
                         <> ", " <> syntax.cString(x.payloadText) <> ", " <> site(p x.offset) <> ");")
                 else
                     emit(p "quest_raise_at(" <> atom(p x.exc) <> ", " <> pl <> ", " <> site(p x.offset) <> ");")
@@ -2443,7 +2503,7 @@ export
             when sEcho with x then
                 let value = atom(p x.value)
                 echo(p x.prefix value x.type x.descriptor
-                    if stringOp.length(x.prefix) > 0 then "" else " : " <> genericLayout.qtypeToNameStr(x.type) end)
+                        if stringOp.length(x.prefix) > 0 then "" else " : " <> genericLayout.qtypeToNameStr(x.type) end)
             when sEchoText with x then emit(p syntax.call("puts" one(syntax.cString(x.text))) <> ";")
             when sFuns then raise unsupported with "C printing of Funs" end
         end
@@ -2459,10 +2519,11 @@ export
         begin
             for i = 0 upto {vector.length(b.statements) - 1} do
                 let st = vector.get(b.statements i)
-                let skipped = case st
-                    when sLet with x then hashMap.contains(p.fs.fused x.v.id)
-                    else false
-                end
+                let skipped =
+                    case st
+                        when sLet with x then hashMap.contains(p.fs.fused x.v.id)
+                        else false
+                    end
                 if not(skipped) then statement(p st) end
             end
             ok
@@ -2533,7 +2594,7 @@ export
                     let binder = maybe.unwrap(c.binder)
                     let binderKind = shapeOf(binder.type).kind
                     if maybe.isSome(x.viewMap) andif not(isVariant)
-                        andif shapes.sameKind(binderKind shapes.shapeTuple) then
+                            andif shapes.sameKind(binderKind shapes.shapeTuple) then
                         (* A bounded type parameter's value: its payload, viewed
                          * at the bound's payload type *)
                         let struct = layout.shapeTag(shapeOf(binder.type))
@@ -2652,7 +2713,7 @@ export
                             p.indent := p.indent + 1
                             let converted = if maybe.isNone(arm.plan) then stored
                                 else convert(p stored maybe.unwrap(arm.plan))
-                            end
+                                end
                             emit(p a <> " = " <> converted <> ";")
                             p.indent := p.indent - 1
                         end
@@ -2707,7 +2768,7 @@ export
                     (* A let rec's variable is bound by the let rec and by the
                      * let in it that computes its value *)
                     if not(hashMap.contains(seen v.id)) andif not(hashMap.contains(exclude v.id))
-                        andif not(isOk(v.type)) then
+                            andif not(isOk(v.type)) then
                         put(seen v.id true)
                         let c = varCType(p v)
                         let typed = if hashMap.contains(p.fs.volatile v.id) then c <> " volatile" else c end
@@ -2771,7 +2832,8 @@ export
                     add(params c <> " " <> name(p entry.v))
                 end
             end
-            let ret = if isOk(f.resultType) then "void" elsif f.unboxedResult then unboxedCType(f.resultType)
+            let ret = if isOk(f.resultType) then "void"
+                elsif f.unboxedResult then unboxedCType(f.resultType)
                 else cType(f.resultType) end
             "static Q_UNUSED " <> ret <> " " <> syntax.call(codeName(p f) params)
         end
@@ -2890,7 +2952,8 @@ export
             body(p b)
             let all = vector.copy(decls)
             for i = 0 upto {vector.length(p.fs.locals) - 1} do
-                vector.append(all vector.get(p.fs.locals i)) end
+                vector.append(all vector.get(p.fs.locals i))
+            end
             tuple let decls = all let lines = p.lines end
         end
 
@@ -2929,7 +2992,7 @@ export
                     let res = vector.new(:declarations.Pair)
                     for i = 0 upto {vector.length(keys) - 1} do
                         vector.append(res
-                            hashMap.find(m vector.get(keys i)))
+                                hashMap.find(m vector.get(keys i)))
                     end
                     res
                 end
@@ -2948,7 +3011,7 @@ export
             addAll(lines declarations.emitAggregateStructs(e aggregates))
             addAll(lines declarations.emitEvidenceDictionaries(e aggregates valuesOf(tableKeys tables)))
             addAll(lines
-                declarations.emitCoercionTables(e valuesOf(p.tupleCastKeys p.tupleCasts) valuesOf(mapKeys maps)))
+                    declarations.emitCoercionTables(e valuesOf(p.tupleCastKeys p.tupleCasts) valuesOf(mapKeys maps)))
             let static(t: Type): staticdata.DescriptorForm = staticForm(p t)
             addAll(lines declarations.emitTypeDescriptors(e plain static echoed structNames))
             addAll(lines declarations.emitFunTypeAdapters(e e.emittedFunTypes))
@@ -2977,10 +3040,10 @@ export
                 add(lines "extern QRecordVal " <> symbols.moduleRecordIdent(clean) <> ";")
                 add(lines "extern void qv_mod_" <> clean <> "_init(void);")
                 vector.append(records
-                    tuple let name = imp.canonicalPath let recordType = imp.recordType end)
+                        tuple let name = imp.canonicalPath let recordType = imp.recordType end)
             end
             addAll(lines
-                declarations.emitPrecompiledModuleDeclarations(maybe.unwrap(p.emitter) records))
+                    declarations.emitPrecompiledModuleDeclarations(maybe.unwrap(p.emitter) records))
             lines
         end
 
@@ -3005,15 +3068,21 @@ export
                     for j = 0 upto {extent binders - 1} do
                         let v = binders[j]
                         if hashMap.contains(p.globals v.id) andif not(hashMap.contains(seen v.id))
-                            andif not(isOk(v.type)) then
+                                andif not(isOk(v.type)) then
                             put(seen v.id true)
                             let words =
                                 if hashMap.contains(p.handlerVars v.id) then
                                     maybe.unwrap(runtimeLayout.struct("QExceptionState")).bytes / 8
-                                elsif holdsPointer(v.type) then extent objectLayout.representationKinds(shapeOf(v.type))
-                                else 0 end
+                                elsif holdsPointer(v.type) then
+                                    extent objectLayout.representationKinds(shapeOf(v.type))
+                                else
+                                    0
+                                end
                             vector.append(found tuple
-                                let name = name(p v) let cType = varCType(p v) let words = words end)
+                                let name = name(p v)
+                                let cType = varCType(p v)
+                                let words = words
+                            end)
                         end
                     end
                 end
@@ -3033,8 +3102,10 @@ export
             for i = 0 upto {vector.length(p.unit.functions) - 1} do
                 let f = vector.get(p.unit.functions i)
                 if maybe.isSome(f.traceName) then
-                    vector.append(entries tuple let cName = codeName(p f) let frame =
-                        maybe.unwrap(f.traceName) end)
+                    vector.append(entries tuple
+                        let cName = codeName(p f)
+                        let frame = maybe.unwrap(f.traceName)
+                    end)
                 end
             end
             for i = 0 upto {vector.length(p.unit.modules) - 1} do
@@ -3058,14 +3129,16 @@ export
             let res = vector.new(:String)
             for i = 0 upto {extent m.abstractTypes - 1} do
                 let entry = m.abstractTypes[i]
-                let form = try maybe.some(staticdata.descriptorForm(entry.descriptor.type
-                        maybe.some(p.ctx)))
+                let form =
+                    try maybe.some(staticdata.descriptorForm(entry.descriptor.type
+                            maybe.some(p.ctx)))
                     when staticdata.missingDescriptor then maybe.none(:staticdata.DescriptorForm)
-                end
+                    end
                 if maybe.isSome(form) then
                     let registered = syntax.call("quest_register_abstract_type"
-                        strings(array of syntax.cString(entry.name) cInt(entry.arity)
-                            types.cExpr(maybe.unwrap(form)) end))
+                            strings(array of syntax.cString(entry.name) cInt(entry.arity)
+                                types.cExpr(maybe.unwrap(form))
+                            end))
                     add(res "    " <> registered <> ";")
                 end
             end
@@ -3093,14 +3166,16 @@ export
                     let direct = maybe.isSome(known)
                         andif {extent maybe.unwrap(:nodes.OpMakeClosure known).typeArgs is 0}
                         andif {extent maybe.unwrap(:nodes.OpMakeClosure known).captures is 0}
-                    let called = if direct then
-                        syntax.call(codeName(p maybe.unwrap(known).code)
-                            joinedWith(one("NULL") args))
-                    else
-                        let fnPtr = types.closureFnPtrType(exportVar.type)
-                        let clos = name(p exportVar)
-                        syntax.call("((" <> fnPtr <> ")(" <> clos <> "->fn))" joinedWith(one("(void *)" <> clos) args))
-                    end
+                    let called =
+                        if direct then
+                            syntax.call(codeName(p maybe.unwrap(known).code)
+                                    joinedWith(one("NULL") args))
+                        else
+                            let fnPtr = types.closureFnPtrType(exportVar.type)
+                            let clos = name(p exportVar)
+                            syntax.call("((" <> fnPtr <> ")(" <> clos
+                                <> "->fn))" joinedWith(one("(void *)" <> clos) args))
+                        end
                     let params = if vector.empty(fsig.params) then one("void") else fsig.params end
                     add(res fsig.result <> " " <> syntax.call(fsig.name params) <> " {")
                     add(res if eq(fsig.result "void") then "    " <> called <> ";" else "    return " <> called
@@ -3285,7 +3360,8 @@ export
             for i = 0 upto {vector.length(unit.modules) - 1} do
                 let m = vector.get(unit.modules i)
                 if maybe.isSome(m.recordVar) then
-                    add(res "    { (void *)&" <> symbols.moduleRecordIdent(symbols.mangleModuleName(m.name)) <> ", 2 },")
+                    add(res "    { (void *)&" <> symbols.moduleRecordIdent(symbols.mangleModuleName(m.name))
+                        <> ", 2 },")
                 end
             end
             add(res "    { NULL, 0 },")
@@ -3324,7 +3400,7 @@ export
                 let table = vector.get(tables i)
                 let dictName = staticdata.offsetDictInstanceName(p.ctx table.view table.layout)
                 if maybe.isSome(table.registered)
-                    andif not(hashMap.contains(registered dictName)) then
+                        andif not(hashMap.contains(registered dictName)) then
                     put(registered dictName true)
                     let r = maybe.unwrap(table.registered)
                     let viewD = staticDescriptorOf(p r.view)

@@ -9,123 +9,125 @@
  * geometricMean is printed to nine places, since exp and log may differ in
  * their last bit between backends. *)
 
-import util/stats : util/Stats;
-import util/iter : util/Iter;
-import collections/vector : collections/Vector;
-import util/hash : util/Hash;
-import stringOp = string : StringOp;
-import writer: Writer;
-import conv: Conv;
-import real: RealOp;
-import word: Word;
+import conv : Conv
+import real : RealOp
+import stringOp = string : StringOp
+import word : Word
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
-let r(x: Real): String = conv.real(x);
+import collections/vector : collections/Vector
+import util/hash : util/Hash
+import util/iter : util/Iter
+import util/stats : util/Stats
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+let r(x: Real): String = conv.real(x)
 let reals(a: Array(Real)): String =
     begin
         let var text = "["
         for i = 0 upto {extent a - 1} do text := text <> " " <> conv.real(a[i]) end
         text <> " ]"
-    end;
-let same(a: Real b: Real): Bool = {a <<= b} andif {a >>= b};
-let realHash(x: Real): word.T = hash.string(conv.real(x));
-let nine(x: Real): String = real.format(x 'f' 9);
-let it(a: Array(Real)): iter.T(Real) = iter.ofArray(a);
-let ints(a: Array(Int)): Array(Real) = iter.toArray(stats.fromInts(iter.ofArray(a)));
+    end
+let same(a: Real b: Real): Bool = {a <<= b} andif {a >>= b}
+let realHash(x: Real): word.T = hash.string(conv.real(x))
+let nine(x: Real): String = real.format(x 'f' 9)
+let it(a: Array(Real)): iter.T(Real) = iter.ofArray(a)
+let ints(a: Array(Int)): Array(Real) = iter.toArray(stats.fromInts(iter.ofArray(a)))
 
-let docs = array of 2.75 1.75 1.25 0.25 0.5 1.25 3.5 end;
-let population = array of 0.0 0.25 0.25 1.25 1.5 1.75 2.75 3.25 end;
-let spread = array of 1.5 2.5 2.5 2.75 3.25 4.75 end;
-let small = ints(array of 1 2 3 4 4 end);
-let tenths = array of 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 end;
-let cancelling = array of 1.0e100 1.0 ~1.0e100 1.0e~100 1.0e50 ~1.0 ~1.0e50 end;
-let thirds = array of 1.0e16 1.0 ~1.0e16 end;
-let offset = array of 4000000004.0 4000000007.0 4000000013.0 4000000016.0 end;
+let docs = array of 2.75 1.75 1.25 0.25 0.5 1.25 3.5 end
+let population = array of 0.0 0.25 0.25 1.25 1.5 1.75 2.75 3.25 end
+let spread = array of 1.5 2.5 2.5 2.75 3.25 4.75 end
+let small = ints(array of 1 2 3 4 4 end)
+let tenths = array of 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.1 end
+let cancelling = array of 1.0e100 1.0 ~1.0e100 1.0e~100 1.0e50 ~1.0 ~1.0e50 end
+let thirds = array of 1.0e16 1.0 ~1.0e16 end
+let offset = array of 4000000004.0 4000000007.0 4000000013.0 4000000016.0 end
 
 (* Sums and averages *)
 print("fsum " <> r(stats.fsum(it(tenths))) <> " " <> r(stats.fsum(it(cancelling))) <> " "
-    <> r(stats.fsum(it(array of :Real end))));
+    <> r(stats.fsum(it(array of :Real end))))
 print("mean " <> r(stats.mean(it(small))) <> " " <> r(stats.mean(it(thirds))) <> " " <> r(stats.mean(it(docs)))
     <> ", fmean "
-    <> r(stats.fmean(it(small))) <> " " <> r(stats.fmean(it(thirds))) <> " " <> r(stats.fmean(it(docs))));
+    <> r(stats.fmean(it(small))) <> " " <> r(stats.fmean(it(thirds))) <> " " <> r(stats.fmean(it(docs))))
 print("geometricMean " <> nine(stats.geometricMean(it(array of 54.0 24.0 36.0 end))) <> " "
-    <> nine(stats.geometricMean(it(docs))));
+    <> nine(stats.geometricMean(it(docs))))
 print("harmonicMean " <> r(stats.harmonicMean(it(array of 40.0 60.0 end))) <> " "
     <> r(stats.harmonicMean(it(array of 2.5 3.0 10.0 end))) <> " "
     <> r(stats.harmonicMean(it(array of 1.0 0.0 2.0 end))) <> " "
-    <> r(stats.harmonicMean(it(array of 7.5 end))) <> " " <> r(stats.harmonicMean(it(docs))));
+    <> r(stats.harmonicMean(it(array of 7.5 end))) <> " " <> r(stats.harmonicMean(it(docs))))
 print("median " <> r(stats.median(it(array of 5.0 1.0 3.0 end))) <> " "
     <> r(stats.median(it(array of 7.0 1.0 5.0 3.0 end)))
     <> " low "
     <> r(stats.medianLow(it(array of 7.0 1.0 5.0 3.0 end))) <> " high "
     <> r(stats.medianHigh(it(array of 7.0 1.0 5.0 3.0 end)))
     <> " "
-    <> r(stats.median(it(docs))));
+    <> r(stats.median(it(docs))))
 print("mode " <> r(stats.mode(it(array of 1.0 1.0 2.0 3.0 3.0 3.0 3.0 4.0 end) same realHash)) <> " tie "
     <> r(stats.mode(it(array of 2.0 2.0 1.0 1.0 end) same realHash)) <> " multimode "
     <> reals(stats.multimode(it(array of 1.0 1.0 2.0 2.0 2.0 3.0 4.0 4.0 4.0 end) same realHash)) <> " none "
-    <> reals(stats.multimode(it(array of :Real end) same realHash)));
-let letters = array of "a" "a" "b" "b" "b" "b" "c" "c" "d" "d" "d" "d" "e" "e" "f" "f" "f" "f" "g" "g" end;
-let modes = stats.multimode(iter.ofArray(letters) stringOp.equal hash.string);
-let var modeText = "";
-for i = 0 upto {extent modes - 1} do modeText := modeText <> modes[i] end;
-print("multimode of strings " <> modeText <> ", mode " <> stats.mode(iter.ofArray(letters) stringOp.equal hash.string));
+    <> reals(stats.multimode(it(array of :Real end) same realHash)))
+let letters = array of "a" "a" "b" "b" "b" "b" "c" "c" "d" "d" "d" "d" "e" "e" "f" "f" "f" "f" "g" "g" end
+let modes = stats.multimode(iter.ofArray(letters) stringOp.equal hash.string)
+let var modeText = ""
+for i = 0 upto {extent modes - 1} do modeText := modeText <> modes[i] end
+print("multimode of strings " <> modeText <> ", mode " <> stats.mode(iter.ofArray(letters) stringOp.equal hash.string))
 
 (* Quantiles *)
 let scores = ints(array of 105 129 87 86 111 111 89 81 108 92 110 100 75 105 103 109 76 119 99 91 103 129
-    106 101 84 111 74 87 86 103 103 106 86 111 75 87 102 121 111 88 89 101 106 95 103 107 101 81 109 104 end);
-print("deciles " <> reals(stats.quantiles(it(scores) 10 false)));
-let ten = ints(array of 1 2 3 4 5 6 7 8 9 10 end);
+    106 101 84 111 74 87 86 103 103 106 86 111 75 87 102 121 111 88 89 101 106 95 103 107 101 81 109 104
+end)
+print("deciles " <> reals(stats.quantiles(it(scores) 10 false)))
+let ten = ints(array of 1 2 3 4 5 6 7 8 9 10 end)
 print("quartiles " <> reals(stats.quantiles(it(ten) 4 false)) <> " inclusive " <> reals(stats.quantiles(it(ten) 4 true))
     <> " n 1 "
-    <> reals(stats.quantiles(it(ten) 1 false)));
+    <> reals(stats.quantiles(it(ten) 1 false)))
 print("two " <> reals(stats.quantiles(it(array of 1.0 2.0 end) 4 false)) <> " "
-    <> reals(stats.quantiles(it(array of 1.0 2.0 end) 4 true)));
+    <> reals(stats.quantiles(it(array of 1.0 2.0 end) 4 true)))
 
 (* Spread *)
 print("variance " <> r(stats.variance(it(docs))) <> " " <> r(stats.variance(it(offset))) <> " "
     <> r(stats.variance(it(small)))
     <> ", pvariance "
     <> r(stats.pvariance(it(population))) <> " " <> r(stats.pvariance(it(offset))) <> " "
-    <> r(stats.pvariance(it(array of 3.0 end))));
+    <> r(stats.pvariance(it(array of 3.0 end))))
 print("stdev " <> r(stats.stdev(it(spread))) <> " " <> r(stats.stdev(it(offset))) <> " " <> r(stats.stdev(it(docs)))
     <> ", pstdev "
     <> r(stats.pstdev(it(spread))) <> " " <> r(stats.pstdev(it(population))) <> " "
-    <> r(stats.pstdev(it(array of 3.0 3.0 end))));
+    <> r(stats.pstdev(it(array of 3.0 3.0 end))))
 
 (* Two variables *)
-let nines = ints(array of 1 2 3 4 5 6 7 8 9 end);
-let cycle = ints(array of 1 2 3 1 2 3 1 2 3 end);
-let down = ints(array of 9 8 7 6 5 4 3 2 1 end);
+let nines = ints(array of 1 2 3 4 5 6 7 8 9 end)
+let cycle = ints(array of 1 2 3 1 2 3 1 2 3 end)
+let down = ints(array of 9 8 7 6 5 4 3 2 1 end)
 print("covariance " <> r(stats.covariance(it(nines) it(cycle))) <> " " <> r(stats.covariance(it(cycle) it(nines)))
     <> " "
-    <> r(stats.covariance(it(nines) it(down))));
+    <> r(stats.covariance(it(nines) it(down))))
 print("correlation " <> r(stats.correlation(it(nines) it(nines))) <> " " <> r(stats.correlation(it(nines) it(down)))
     <> " "
-    <> r(stats.correlation(it(nines) it(cycle))));
-let years = ints(array of 1971 1975 1979 1982 1983 end);
-let films = ints(array of 1 2 3 4 5 end);
-let fit = stats.linearRegression(it(years) it(films));
+    <> r(stats.correlation(it(nines) it(cycle))))
+let years = ints(array of 1971 1975 1979 1982 1983 end)
+let films = ints(array of 1 2 3 4 5 end)
+let fit = stats.linearRegression(it(years) it(films))
 print("linearRegression " <> r(fit.slope) <> " " <> r(fit.intercept) <> ", 2019 "
-    <> r({fit.slope ** 2019.0} ++ fit.intercept));
+    <> r({fit.slope ** 2019.0} ++ fit.intercept))
 
 (* The array forms, and data that is not an array: a vector, a mapped range, and fromInts *)
-let unsorted = array of 7.0 1.0 5.0 3.0 end;
+let unsorted = array of 7.0 1.0 5.0 3.0 end
 print("arrays " <> r(stats.medianOfArray(unsorted)) <> " " <> r(stats.medianLowOfArray(unsorted)) <> " "
     <> r(stats.medianHighOfArray(unsorted)) <> " " <> reals(stats.quantilesOfArray(ten 4 false)) <> " "
     <> r(stats.covarianceOfArray(nines cycle)) <> " " <> r(stats.correlationOfArray(nines down)) <> " "
-    <> r(stats.linearRegressionOfArray(years films).slope) <> ", unchanged " <> reals(unsorted));
-let v = vector.fromArray(docs);
+    <> r(stats.linearRegressionOfArray(years films).slope) <> ", unchanged " <> reals(unsorted))
+let v = vector.fromArray(docs)
 print("vector " <> r(stats.mean(vector.iter(v))) <> " " <> r(stats.median(vector.iter(v))) <> " "
-    <> r(stats.stdev(vector.iter(v))));
+    <> r(stats.stdev(vector.iter(v))))
 print("pipeline " <> r(stats.mean(iter.map(iter.range(1 101) fun(n: Int): Real real.int(n * n)))) <> " "
     <> r(stats.pvariance(stats.fromInts(iter.range(1 11)))) <> " "
-    <> r(stats.median(iter.filter(stats.fromInts(iter.range(0 20)) fun(x: Real): Bool x >> 4.5))));
+    <> r(stats.median(iter.filter(stats.fromInts(iter.range(0 20)) fun(x: Real): Bool x >> 4.5))))
 
 (* Errors *)
-let raised(f: All() Ok): String = try begin f() "none" end when stats.error then "error" end;
-let none = array of :Real end;
-let one = array of 1.0 end;
+let raised(f: All() Ok): String = try begin f() "none" end when stats.error then "error" end
+let none = array of :Real end
+let one = array of 1.0 end
 print("errors " <> raised(fun(): Ok begin let x = stats.mean(it(none)) end) <> " "
     <> raised(fun(): Ok begin let x = stats.fmean(it(none)) end)
     <> " " <> raised(fun(): Ok begin let x = stats.median(it(none)) end) <> " "
@@ -134,11 +136,11 @@ print("errors " <> raised(fun(): Ok begin let x = stats.mean(it(none)) end) <> "
     <> raised(fun(): Ok begin let x = stats.stdev(it(one)) end) <> " "
     <> raised(fun(): Ok begin let x = stats.pvariance(it(none)) end) <> " "
     <> raised(fun(): Ok begin let x = stats.quantiles(it(ten) 0 false) end) <> " "
-    <> raised(fun(): Ok begin let x = stats.quantiles(it(one) 4 false) end));
+    <> raised(fun(): Ok begin let x = stats.quantiles(it(one) 4 false) end))
 print("domain " <> raised(fun(): Ok begin let x = stats.harmonicMean(it(array of ~1.0 2.0 end)) end) <> " "
     <> raised(fun(): Ok begin let x = stats.harmonicMean(it(array of 0.0 ~1.0 end)) end) <> " "
     <> raised(fun(): Ok begin let x = stats.geometricMean(it(array of 0.0 1.0 end)) end) <> " "
     <> raised(fun(): Ok begin let x = stats.covariance(it(nines) it(films)) end) <> " "
     <> raised(fun(): Ok begin let x = stats.correlation(it(nines) it(ints(array of 1 1 1 1 1 1 1 1 1 end))) end)
     <> " "
-    <> raised(fun(): Ok begin let x = stats.linearRegression(it(ints(array of 2 2 2 end)) it(films)) end));
+    <> raised(fun(): Ok begin let x = stats.linearRegression(it(ints(array of 2 2 2 end)) it(films)) end))

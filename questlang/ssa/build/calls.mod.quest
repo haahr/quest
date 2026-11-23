@@ -2,21 +2,22 @@
 
 module calls : Calls
 import
-    questlang/types/model : questlang/types/Model
-    ir = questlang/ir/nodes : questlang/ir/Nodes
-    questlang/repr/shapes : questlang/repr/Shapes
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/repr/layout : questlang/repr/Layout
-    questlang/repr/symbols : questlang/repr/Symbols
-    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
-    questlang/repr/externals : questlang/repr/Externals
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/sort : util/Sort
-    vals = questlang/ssa/build/values : questlang/ssa/build/Values
-    questlang/ssa/build/representation : questlang/ssa/build/Representation
+
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/repr/externals : questlang/repr/Externals
+    questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/repr/symbols : questlang/repr/Symbols
     descriptors = questlang/ssa/build/descriptors : questlang/ssa/build/Descriptors
+    questlang/ssa/build/representation : questlang/ssa/build/Representation
+    vals = questlang/ssa/build/values : questlang/ssa/build/Values
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/types/model : questlang/types/Model
 export
     Let Type = model.Type
     Let Variable = ir.Variable
@@ -46,8 +47,8 @@ export
                     let b = y()
                     vals.check(fn vals.binary(fn ssa.opNe b vals.constant(fn 0)) true "quest_raise_int_error_at" site)
                     representation.choose(fn vals.binary(fn ssa.opEq b vals.constant(fn ~1)) array of vals.tInt end
-                        fun(): Array(Int) array of byMinusOne(a) end
-                        fun(): Array(Int) array of vals.binary(fn op a b) end)
+                            fun(): Array(Int) array of byMinusOne(a) end
+                            fun(): Array(Int) array of vals.binary(fn op a b) end)
                 end
             (* Lowers Real arithmetic inline (matching quest_real_add_at and
              * its siblings): any NaN result raises real.error. Division (//)
@@ -63,54 +64,64 @@ export
             let identity(isIs: Bool): Array(Int) =
                 begin
                     let first = o.args[0]
-                    let same = if layout.isQVal(shapes.shape(ir.atomType(first))) then
-                        let args = array of descriptors.maybeDescriptor(fn o.descriptor) vals.atom1(fn o.args[0]) vals.atom1(fn o.args[1]) end
-                        vals.narrowed(fn vals.call1(fn "quest_val_is" args) vals.part(vals.tInt 1 false))
-                    elsif maybe.isSome(o.descriptor)
-                        andif vals.eq(layout.representation(ir.atomType(first)) "QVariantVal") then
-                        (* Compares variants by tag and payload value (see
-                         * docs/extensions.md, "Variants as Values") *)
-                        let a = vals.atom(fn o.args[0])
-                        let b = vals.atom(fn o.args[1])
-                        let args = array of descriptors.maybeDescriptor(fn o.descriptor) a[0] a[1] b[0] b[1] end
-                        vals.narrowed(fn vals.call1(fn "quest_variant_is" args) vals.part(vals.tInt 1 false))
-                    elsif vals.eq(layout.representation(ir.atomType(first)) "QRecordVal") then
-                        (* Record identity compares payload pointers only: a
-                         * supertype view (quest_record_view) replaces the
-                         * offset table without changing the record itself *)
-                        vals.binary(fn ssa.opPeq vals.atom(fn o.args[0])[0] vals.atom(fn o.args[1])[0])
-                    elsif maybe.isSome(o.descriptor) then
-                        (* Compares option values by case or component using
-                         * their descriptor (docs/extensions.md, "Options as
-                         * Values") *)
-                        let args = array of descriptors.maybeDescriptor(fn o.descriptor) vals.atom1(fn o.args[0])
-                            vals.atom1(fn o.args[1]) end
-                        vals.narrowed(fn vals.call1(fn "quest_option_is" args) vals.part(vals.tInt 1 false))
-                    else
-                        let a = vals.atom(fn o.args[0])
-                        let b = vals.atom(fn o.args[1])
-                        if extent a isnot 1 then
-                            raise vals.unsupported with "is of a value of "
-                                <> layout.representation(ir.atomType(first)) end
-                        end
-                        case ssa.typeOf(fn.f a[0])
-                            when typePtr then
-                                case o.access
-                                    when original then vals.binary(fn ssa.opPeq representation.unproxy(fn a[0]) representation.unproxy(fn b[0]))
-                                    when direct, proxy then vals.binary(fn ssa.opPeq a[0] b[0])
+                    let same =
+                        if layout.isQVal(shapes.shape(ir.atomType(first))) then
+                            let args =
+                                array of descriptors.maybeDescriptor(fn o.descriptor)
+                                    vals.atom1(fn o.args[0])
+                                    vals.atom1(fn o.args[1])
                                 end
-                            when typeReal then vals.binary(fn ssa.opFeq a[0] b[0])
-                            when typeInt then vals.binary(fn ssa.opEq a[0] b[0])
-                            (* QVal words are the same if their bits are *)
-                            when typeVal then
-                                vals.binary(fn ssa.opEq vals.fromVal(fn a[0] vals.tInt) vals.fromVal(fn b[0] vals.tInt))
+                            vals.narrowed(fn vals.call1(fn "quest_val_is" args) vals.part(vals.tInt 1 false))
+                        elsif maybe.isSome(o.descriptor)
+                                andif vals.eq(layout.representation(ir.atomType(first)) "QVariantVal") then
+                            (* Compares variants by tag and payload value (see
+                             * docs/extensions.md, "Variants as Values") *)
+                            let a = vals.atom(fn o.args[0])
+                            let b = vals.atom(fn o.args[1])
+                            let args = array of descriptors.maybeDescriptor(fn o.descriptor) a[0] a[1] b[0] b[1] end
+                            vals.narrowed(fn vals.call1(fn "quest_variant_is" args) vals.part(vals.tInt 1 false))
+                        elsif vals.eq(layout.representation(ir.atomType(first)) "QRecordVal") then
+                            (* Record identity compares payload pointers only: a
+                             * supertype view (quest_record_view) replaces the
+                             * offset table without changing the record itself *)
+                            vals.binary(fn ssa.opPeq vals.atom(fn o.args[0])[0] vals.atom(fn o.args[1])[0])
+                        elsif maybe.isSome(o.descriptor) then
+                            (* Compares option values by case or component using
+                             * their descriptor (docs/extensions.md, "Options as
+                             * Values") *)
+                            let args = array of descriptors.maybeDescriptor(fn o.descriptor) vals.atom1(fn o.args[0])
+                                vals.atom1(fn o.args[1])
+                            end
+                            vals.narrowed(fn vals.call1(fn "quest_option_is" args) vals.part(vals.tInt 1 false))
+                        else
+                            let a = vals.atom(fn o.args[0])
+                            let b = vals.atom(fn o.args[1])
+                            if extent a isnot 1 then
+                                raise vals.unsupported with "is of a value of "
+                                    <> layout.representation(ir.atomType(first)) end
+                            end
+                            case ssa.typeOf(fn.f a[0])
+                                when typePtr then
+                                    case o.access
+                                        when original then
+                                            vals.binary(fn ssa.opPeq representation.unproxy(fn a[0])
+                                                    representation.unproxy(fn b[0]))
+                                        when direct, proxy then vals.binary(fn ssa.opPeq a[0] b[0])
+                                    end
+                                when typeReal then vals.binary(fn ssa.opFeq a[0] b[0])
+                                when typeInt then vals.binary(fn ssa.opEq a[0] b[0])
+                                (* QVal words are the same if their bits are *)
+                                when typeVal then
+                                    vals.binary(fn ssa.opEq vals.fromVal(fn a[0] vals.tInt)
+                                            vals.fromVal(fn b[0] vals.tInt))
+                            end
                         end
-                    end
                     array of if isIs then same else vals.binary(fn ssa.opXor same vals.constant(fn 1)) end end
                 end
             case o.op
                 when primNot then array of vals.binary(fn ssa.opXor x() vals.constant(fn 1)) end
-                when primExtent then array of vals.invariantWord(fn x() runtimeLayout.offset("QArray" "length") vals.tInt) end
+                when primExtent then
+                    array of vals.invariantWord(fn x() runtimeLayout.offset("QArray" "length") vals.tInt) end
                 when primDiv then divided(ssa.opDiv fun(a: Int): Int vals.binary(fn ssa.opSub vals.constant(fn 0) a))
                 when primRem, primMod then divided(ssa.opRem fun(a: Int): Int vals.constant(fn 0))
                 when primRealAdd then real(ssa.opFadd x() y())
@@ -237,9 +248,12 @@ export
                 let c = maybe.unwrap(count)
                 if {c >= 64} orif {c <= ~64} then
                     one(vals.constant(fn 0))
-                elsif c > 0 then one(vals.binary(fn ssa.opShl x() vals.constant(fn c)))
-                elsif c < 0 then one(vals.binary(fn ssa.opLshr x() vals.constant(fn 0 - c)))
-                else one(x())
+                elsif c > 0 then
+                    one(vals.binary(fn ssa.opShl x() vals.constant(fn c)))
+                elsif c < 0 then
+                    one(vals.binary(fn ssa.opLshr x() vals.constant(fn 0 - c)))
+                else
+                    one(x())
                 end
             elsif named("quest_word_rotate_val") andif maybe.isSome(count) then
                 (* A left rotation by the count modulo 64 *)
@@ -292,13 +306,14 @@ export
                     let w = x()
                     let n = y()
                     let shifted(op: ssa.Opcode by: Int): Array(Int) =
-                        representation.choose(fn vals.binary(fn ssa.opUlt by vals.constant(fn 64)) array of vals.tInt end
-                            fun(): Array(Int) array of vals.binary(fn op w by) end
-                            fun(): Array(Int) array of vals.constant(fn 0) end)
+                        representation.choose(fn vals.binary(fn ssa.opUlt by vals.constant(fn 64))
+                                array of vals.tInt end
+                                fun(): Array(Int) array of vals.binary(fn op w by) end
+                                fun(): Array(Int) array of vals.constant(fn 0) end)
                     maybe.some(representation.choose(fn vals.binary(fn ssa.opLt n vals.constant(fn 0))
-                        array of vals.tInt end
-                        fun(): Array(Int) shifted(ssa.opLshr vals.binary(fn ssa.opSub vals.constant(fn 0) n))
-                        fun(): Array(Int) shifted(ssa.opShl n)))
+                            array of vals.tInt end
+                            fun(): Array(Int) shifted(ssa.opLshr vals.binary(fn ssa.opSub vals.constant(fn 0) n))
+                            fun(): Array(Int) shifted(ssa.opShl n)))
                 end
             elsif named("quest_ascii_char") then
                 (* A Char is held zero-extended *)
@@ -308,10 +323,10 @@ export
             elsif named("quest_string_length") then
                 let s = x()
                 maybe.some(representation.choose(fn vals.binary(fn ssa.opPeq s vals.null(fn))
-                    array of vals.tInt end
-                    fun(): Array(Int) array of vals.constant(fn 0) end
-                    fun(): Array(Int)
-                        array of vals.invariantWord(fn s runtimeLayout.offset("QString" "length") vals.tInt) end))
+                        array of vals.tInt end
+                        fun(): Array(Int) array of vals.constant(fn 0) end
+                        fun(): Array(Int)
+                            array of vals.invariantWord(fn s runtimeLayout.offset("QString" "length") vals.tInt) end))
             elsif named("quest_string_get_char") then
                 one(vals.load(fn byteAddress(x() y()) 0 vals.part(vals.tInt 1 false)))
             elsif named("quest_string_set_char") then
@@ -325,11 +340,12 @@ export
                 let var mask = 1
                 for k = 1 upto {bit % 8} do mask := 2 * mask end
                 let clear = vals.binary(fn ssa.opEq vals.binary(fn ssa.opAnd headerByte vals.constant(fn mask))
-                    vals.constant(fn 0))
+                        vals.constant(fn 0))
                 vals.check(fn clear true "quest_raise_string_error" noSite)
                 vals.store(fn address 0 1 vals.atom1(fn args[2]))
                 maybe.some(array of :Int end)
-            else none
+            else
+                none
             end
         end
 
@@ -337,7 +353,7 @@ export
     let directCallOf(fn: vals.Fn symbol: String lead: Array(Int) args: Array(Atom) ps: Array(vals.Part)): Array(Int) =
         begin
             let vs = vals.callQuest(fn symbol vals.concat(lead vals.callAtoms(fn args)) pairsOf(extent lead args)
-                narrowOf(extent lead args) ps)
+                    narrowOf(extent lead args) ps)
             resultsOf(fn ps vs)
         end
 
@@ -353,22 +369,25 @@ export
             let stmts = f.body.statements
             let var found = maybe.none(:String)
             if {vector.length(stmts) is 2} andif {extent f.descriptorParams is 0} then
-                let call = case vector.get(stmts 0)
-                    when sLet with x then maybe.some(x.value)
-                    when sDo with x then maybe.some(x.value)
-                    else maybe.none(:ir.Op)
-                end
+                let call =
+                    case vector.get(stmts 0)
+                        when sLet with x then maybe.some(x.value)
+                        when sDo with x then maybe.some(x.value)
+                        else maybe.none(:ir.Op)
+                    end
                 let returns = case vector.get(stmts 1) when sReturn then true else false end
                 case maybe.unwrapOr(call option opAtom of ir.Op with let var atom = ir.atomOfVar(f.v) end)
                     when opCallExternal with x then
                         let var forwards = returns andif {extent x.descriptors is 0}
                             andif {extent x.args is extent f.params}
                         for i = 0 upto {extent x.args - 1} do
-                            let same = case x.args[i]
-                                when atomVar with a then
-                                    forwards andif {a.v.id is f.params[i].v.id} andif vals.eq(f.params[i].mode "value")
-                                when atomConst then false
-                            end
+                            let same =
+                                case x.args[i]
+                                    when atomVar with a then
+                                        forwards andif {a.v.id is f.params[i].v.id}
+                                            andif vals.eq(f.params[i].mode "value")
+                                    when atomConst then false
+                                end
                             if not(same) then forwards := false end
                         end
                         if forwards then found := maybe.some(x.symbol) end
@@ -387,21 +406,28 @@ export
         begin
             let known = hashMap.get(fn.u.closureVars callee.id)
             if maybe.isSome(known)
-                andif {extent maybe.unwrap(:ir.OpMakeClosure known).typeArgs is 0} then
+                    andif {extent maybe.unwrap(:ir.OpMakeClosure known).typeArgs is 0} then
                 let k = maybe.unwrap(known)
                 (* The code's first argument is the closure itself, which
                  * holds its captures *)
                 let env = if extent k.captures is 0 then vals.null(fn) else vals.atom1(fn ir.atomOfVar(callee)) end
                 (* A function returning an unboxed tuple returns its
                  * components (questlang/ir/unbox) *)
-                let ps = if k.code.unboxedResult then vals.unboxedParts(k.code.resultType) else resultParts(callee.type) end
+                let ps =
+                    if k.code.unboxedResult then vals.unboxedParts(k.code.resultType) else resultParts(callee.type) end
                 let thunked = forwardedExternal(k.code)
-                let operation = if maybe.isSome(thunked) then
-                    externalOperation(fn maybe.unwrap(thunked) args)
-                else maybe.none(:Array(Int)) end
-                let inlined = if maybe.isSome(thunked) andif maybe.isNone(operation) then
-                    inlineExternal(fn maybe.unwrap(thunked) args)
-                else maybe.none(:Int) end
+                let operation =
+                    if maybe.isSome(thunked) then
+                        externalOperation(fn maybe.unwrap(thunked) args)
+                    else
+                        maybe.none(:Array(Int))
+                    end
+                let inlined =
+                    if maybe.isSome(thunked) andif maybe.isNone(operation) then
+                        inlineExternal(fn maybe.unwrap(thunked) args)
+                    else
+                        maybe.none(:Int)
+                    end
                 if maybe.isSome(operation) then
                     maybe.unwrap(operation)
                 elsif maybe.isSome(inlined) then
@@ -415,7 +441,7 @@ export
                     let lead = vals.concat(array of env end descs)
                     let all = vals.retyped(fn vals.concat(lead vals.callAtoms(fn args)) vals.codeParamTypes(k.code))
                     let vs = vals.callQuest(fn vals.codeName(fn.u k.code) all pairsOf(extent lead args)
-                        narrowOf(extent lead args) vals.codeResultParts(k.code))
+                            narrowOf(extent lead args) vals.codeResultParts(k.code))
                     resultsOf(fn ps vals.retyped(fn vs vals.typesOf(ps)))
                 end
             else
@@ -443,7 +469,8 @@ export
      * void). Only then does a library wrapper match the C function's
      * signature, as required by the C printer's libraryExternal. *)
     let concrete(t: maybe.T(Type)): Bool =
-        if maybe.isNone(t) then false
+        if maybe.isNone(t) then
+            false
         else
             case maybe.unwrap(t).form
                 when typeFun with f then
@@ -452,7 +479,8 @@ export
                             when repInt, repWord, repBool, repChar, repPointer then true
                             else false
                         end
-                    let var all = case layout.representationKind(f.result) when repVoid then true else unboxed(f.result) end
+                    let var all =
+                        case layout.representationKind(f.result) when repVoid then true else unboxed(f.result) end
                     for i = 0 upto {extent f.params - 1} do
                         if not(unboxed(f.params[i].type)) then all := false end
                     end
@@ -506,15 +534,22 @@ export
                     let imp = maybe.unwrap(importOf(r))
                     let calleeType = maybe.unwrapOr(o.calleeType model.okType)
                     let direct = libraryExternal(imp member o.args calleeType)
-                    let inline = if maybe.isSome(direct) andif concrete(o.calleeType) then
-                        externalOperation(fn maybe.unwrap(direct) o.args)
-                    else maybe.none(:Array(Int)) end
-                    if maybe.isSome(inline) then maybe.unwrap(inline)
+                    let inline =
+                        if maybe.isSome(direct) andif concrete(o.calleeType) then
+                            externalOperation(fn maybe.unwrap(direct) o.args)
+                        else
+                            maybe.none(:Array(Int))
+                        end
+                    if maybe.isSome(inline) then
+                        maybe.unwrap(inline)
                     else
                         let clean = symbols.mangleModuleName(imp.canonicalPath)
-                        let inlined = if maybe.isSome(direct) then
-                            inlineExternal(fn maybe.unwrap(direct) o.args)
-                        else maybe.none(:Int) end
+                        let inlined =
+                            if maybe.isSome(direct) then
+                                inlineExternal(fn maybe.unwrap(direct) o.args)
+                            else
+                                maybe.none(:Int)
+                            end
                         if maybe.isSome(inlined) then
                             array of maybe.unwrap(inlined) end
                         elsif maybe.isSome(direct) then
@@ -547,10 +582,11 @@ export
             if maybe.isNone(imp.recordType) then raise vals.unsupported with "module " <> imp.name
                 <> ": its interface is unknown" end end
             let recType = maybe.unwrap(imp.recordType)
-            let fields = case recType.form
-                when typeRecord with rt then rt.fields
-                else vector.toArray(vector.new(:model.RecordField))
-            end
+            let fields =
+                case recType.form
+                    when typeRecord with rt then rt.fields
+                    else vector.toArray(vector.new(:model.RecordField))
+                end
             let var fieldType = model.okType
             let var index = 0
             for i = 0 upto {extent fields - 1} do

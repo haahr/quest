@@ -5,117 +5,118 @@
  * sample as permutations; copy and split; normal's mean and spread; and the
  * errors *)
 
-import random = util/random : util/Random;
-import collections/vector : collections/Vector;
-import word: Word;
-import writer: Writer;
-import conv: Conv;
-import real: RealOp;
+import conv : Conv
+import real : RealOp
+import word : Word
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
-let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds));
+import collections/vector : collections/Vector
+import random = util/random : util/Random
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds))
 
 (* 1. Known answers: anyInt, and below and between, from each seed *)
-let seeds = array of 0 1 1989 ~1 9223372036854775807 end;
+let seeds = array of 0 1 1989 ~1 9223372036854775807 end
 for k = 0 upto {extent seeds - 1} do
     let r = random.new(seeds[k])
     let var line = "seed " <> conv.int(seeds[k]) <> ":"
     for i = 1 upto 6 do line := line <> " " <> conv.int(random.anyInt(r)) end
     print(line)
-end;
-let lr = random.new(42);
-let var belows = "below 42:";
-let bounds = array of 1 2 3 6 7 10 100 1000000007 4611686018427387904 9223372036854775807 end;
-for k = 0 upto {extent bounds - 1} do belows := belows <> " " <> conv.int(random.below(lr bounds[k])) end;
-print(belows);
-let br = random.new(7);
+end
+let lr = random.new(42)
+let var belows = "below 42:"
+let bounds = array of 1 2 3 6 7 10 100 1000000007 4611686018427387904 9223372036854775807 end
+for k = 0 upto {extent bounds - 1} do belows := belows <> " " <> conv.int(random.below(lr bounds[k])) end
+print(belows)
+let br = random.new(7)
 print("between 7: " <> conv.int(random.between(br ~5 5)) <> " " <> conv.int(random.between(br 0 0)) <> " "
     <> conv.int(random.between(br ~9223372036854775807 - 1 9223372036854775807)) <> " "
-    <> conv.int(random.between(br 9223372036854775806 9223372036854775807)));
+    <> conv.int(random.between(br 9223372036854775806 9223372036854775807)))
 
 (* 2. below without bias: each of 6 faces about 1,000 times in 6,000 *)
-let dr = random.new(3);
-let counts = array of(6 0);
+let dr = random.new(3)
+let counts = array of(6 0)
 for i = 1 upto 6000 do
     let face = random.below(dr 6)
     counts[face] := counts[face] + 1
-end;
-let var even = true;
-for f = 0 upto 5 do if {counts[f] < 850} \/ {counts[f] > 1150} then even := false end end;
-check("six faces even" even);
+end
+let var even = true
+for f = 0 upto 5 do if {counts[f] < 850} \/ {counts[f] > 1150} then even := false end end
+check("six faces even" even)
 
 (* 3. Fractions and booleans *)
-let fr = random.new(11);
-let var inRange = true;
-let var sum = 0.0;
-let var trues = 0;
+let fr = random.new(11)
+let var inRange = true
+let var sum = 0.0
+let var trues = 0
 for i = 1 upto 4000 do
     let x = random.fraction(fr)
     if real.smaller(x 0.0) \/ not(real.smaller(x 1.0)) then inRange := false end
     sum := real.plus(sum x)
     if random.bool(fr) then trues := trues + 1 end
-end;
-check("fractions in [0, 1)" inRange);
-check("fractions average a half" real.smaller(real.abs(real.diff(real.div(sum 4000.0) 0.5)) 0.025));
-check("booleans even" {trues > 1840} /\ {trues < 2160});
+end
+check("fractions in [0, 1)" inRange)
+check("fractions average a half" real.smaller(real.abs(real.diff(real.div(sum 4000.0) 0.5)) 0.025))
+check("booleans even" {trues > 1840} /\ {trues < 2160})
 
 (* 4. normal: mean 0, standard deviation 1 *)
-let nr = random.new(5);
-let var nsum = 0.0;
-let var nsquares = 0.0;
+let nr = random.new(5)
+let var nsum = 0.0
+let var nsquares = 0.0
 for i = 1 upto 4000 do
     let x = random.normal(nr)
     nsum := real.plus(nsum x)
     nsquares := real.plus(nsquares real.mul(x x))
-end;
-check("normal mean near 0" real.smaller(real.abs(real.div(nsum 4000.0)) 0.08));
-check("normal spread near 1" real.smaller(real.abs(real.diff(real.div(nsquares 4000.0) 1.0)) 0.11));
+end
+check("normal mean near 0" real.smaller(real.abs(real.div(nsum 4000.0)) 0.08))
+check("normal spread near 1" real.smaller(real.abs(real.diff(real.div(nsquares 4000.0) 1.0)) 0.11))
 
 (* 5. shuffle, sample, and choice *)
-let sr = random.new(9);
-let a = array of 0 1 2 3 4 5 6 7 8 9 end;
-random.shuffle(:Int sr a);
-let var seen = array of(10 false);
-let var perm = "shuffled:";
+let sr = random.new(9)
+let a = array of 0 1 2 3 4 5 6 7 8 9 end
+random.shuffle(:Int sr a)
+let var seen = array of(10 false)
+let var perm = "shuffled:"
 for i = 0 upto 9 do
     seen[a[i]] := true
     perm := perm <> " " <> conv.int(a[i])
-end;
-let var all = true;
-for i = 0 upto 9 do if not(seen[i]) then all := false end end;
-print(perm);
-check("shuffle is a permutation" all);
-let v = vector.fromArray(:Int array of 1 2 3 4 5 end);
-random.shuffleVector(:Int sr v);
-let var vsum = 0;
-for i = 0 upto 4 do vsum := vsum + vector.get(:Int v i) end;
-check("shuffleVector keeps the elements" vsum is 15);
-let picked = random.sample(:Int sr array of 10 20 30 40 50 60 end 4);
-let var distinct = true;
+end
+let var all = true
+for i = 0 upto 9 do if not(seen[i]) then all := false end end
+print(perm)
+check("shuffle is a permutation" all)
+let v = vector.fromArray(:Int array of 1 2 3 4 5 end)
+random.shuffleVector(:Int sr v)
+let var vsum = 0
+for i = 0 upto 4 do vsum := vsum + vector.get(:Int v i) end
+check("shuffleVector keeps the elements" vsum is 15)
+let picked = random.sample(:Int sr array of 10 20 30 40 50 60 end 4)
+let var distinct = true
 for i = 0 upto 3 do
     for j = 0 upto {i - 1} do if vector.get(:Int picked i) is vector.get(:Int picked j) then distinct := false end end
-end;
-check("sample of 4 distinct" {vector.length(:Int picked) is 4} /\ distinct);
-check("sample of none" vector.length(:Int random.sample(:Int sr array of 1 2 end 0)) is 0);
-check("choice is an element" {random.choice(:Int sr array of 7 end) is 7});
+end
+check("sample of 4 distinct" {vector.length(:Int picked) is 4} /\ distinct)
+check("sample of none" vector.length(:Int random.sample(:Int sr array of 1 2 end 0)) is 0)
+check("choice is an element" {random.choice(:Int sr array of 7 end) is 7})
 
 (* 6. copy gives the same numbers, split different ones *)
-let cr = random.new(13);
-let c = random.copy(cr);
-let s = random.split(cr);
-let first = random.anyInt(c);
-let r13 = random.new(13);
-check("copy gives the same numbers" first is random.anyInt(r13));
-check("split gives other numbers" random.anyInt(s) isnot random.anyInt(random.new(13)));
-check("fromClock differs from run to run" random.anyInt(random.fromClock()) isnot random.anyInt(random.fromClock()));
+let cr = random.new(13)
+let c = random.copy(cr)
+let s = random.split(cr)
+let first = random.anyInt(c)
+let r13 = random.new(13)
+check("copy gives the same numbers" first is random.anyInt(r13))
+check("split gives other numbers" random.anyInt(s) isnot random.anyInt(random.new(13)))
+check("fromClock differs from run to run" random.anyInt(random.fromClock()) isnot random.anyInt(random.fromClock()))
 
 (* 7. The errors *)
 let err(what: String f: All() Int): Ok = print(what <> ": "
-    <> try conv.int(f()) when random.error then "random.error" end);
-let er = random.new(1);
-err("below 0" fun(): Int random.below(er 0));
-err("below ~5" fun(): Int random.below(er ~5));
-err("between 3 2" fun(): Int random.between(er 3 2));
-err("choice of none" fun(): Int random.choice(:Int er array of :Int end));
-err("sample of 3 from 2" fun(): Int vector.length(:Int random.sample(:Int er array of 1 2 end 3)));
+    <> try conv.int(f()) when random.error then "random.error" end)
+let er = random.new(1)
+err("below 0" fun(): Int random.below(er 0))
+err("below ~5" fun(): Int random.below(er ~5))
+err("between 3 2" fun(): Int random.between(er 3 2))
+err("choice of none" fun(): Int random.choice(:Int er array of :Int end))
+err("sample of 3 from 2" fun(): Int vector.length(:Int random.sample(:Int er array of 1 2 end 3)))
 err("sample of ~1" fun(): Int vector.length(:Int random.sample(:Int er array of 1 2 end ~1)))

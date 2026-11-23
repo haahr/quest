@@ -6,75 +6,75 @@
  * tuple component of the copy is the payload's own. A variant's extraction is
  * its payload. *)
 
-import writer : Writer;
-import conv : Conv;
+import conv : Conv
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
 
-Let Made = Option none made with var x: Int inner: Tuple var y: Int end end end;
-let o = option made of Made with let var x = 1 let inner = tuple let var y = 10 end end;
-let shown(): String = conv.int(o!made.x) <> " " <> conv.int(o!made.inner.y);
+Let Made = Option none made with var x: Int inner: Tuple var y: Int end end end
+let o = option made of Made with let var x = 1 let inner = tuple let var y = 10 end end
+let shown(): String = conv.int(o!made.x) <> " " <> conv.int(o!made.inner.y)
 
 (* 1. Directly: the option changes, seen by a case and by o!made *)
-o!made.x := 2;
-print("direct " <> shown() <> ", case " <> conv.int(case o when made with c then c.x else 0 end));
+o!made.x := 2
+print("direct " <> shown() <> ", case " <> conv.int(case o when made with c then c.x else 0 end))
 
 (* 2. As an out and a var argument *)
-let setTo(out d: Int n: Int): Ok = d := n;
-let bump(var d: Int): Ok = d := d + 1;
-setTo(@o!made.x 3);
-bump(@o!made.x);
-print("out and var " <> shown());
+let setTo(out d: Int n: Int): Ok = d := n
+let bump(var d: Int): Ok = d := d + 1
+setTo(@o!made.x 3)
+bump(@o!made.x)
+print("out and var " <> shown())
 
 (* 3. Of another case: raises as o!made does, before the value is evaluated *)
-let n = option none of Made end;
-let value(): Int = begin print("value evaluated") 7 end;
-let raised = try begin n!made.x := value() false end else true end;
-print("other case raises " <> conv.bool(raised));
-let raisedOut = try begin setTo(@n!made.x 7) false end else true end;
-print("other case @ raises " <> conv.bool(raisedOut));
+let n = option none of Made end
+let value(): Int = begin print("value evaluated") 7 end
+let raised = try begin n!made.x := value() false end else true end
+print("other case raises " <> conv.bool(raised))
+let raisedOut = try begin setTo(@n!made.x 7) false end else true end
+print("other case @ raises " <> conv.bool(raisedOut))
 
 (* 4. The option is evaluated once *)
-let count = tuple let var n = 0 end;
-let get(): Made = begin count.n := count.n + 1 o end;
-get()!made.x := 5;
-print("once " <> conv.int(count.n) <> " " <> shown());
+let count = tuple let var n = 0 end
+let get(): Made = begin count.n := count.n + 1 o end
+get()!made.x := 5
+print("once " <> conv.int(count.n) <> " " <> shown())
 
 (* 5. Through an upcast that numbers the cases differently (C: a proxy) *)
-Let Wider = Option made with var x: Int inner: Tuple var y: Int end end other none end;
-let w: Wider = o;
-w!made.x := 6;
-print("upcast " <> shown());
+Let Wider = Option made with var x: Int inner: Tuple var y: Int end end other none end
+let w: Wider = o
+w!made.x := 6
+print("upcast " <> shown())
 
 (* 6. In generic code, through a bounded type parameter's view *)
-let set0(A <: Wider v: A): Ok = v!made.x := 7;
-let set: All(A <: Wider v: A) Ok = set0;
-set(:Made o);
-print("bound " <> shown());
+let set0(A <: Wider v: A): Ok = v!made.x := 7
+let set: All(A <: Wider v: A) Ok = set0
+set(:Made o)
+print("bound " <> shown())
 
 (* 7. A heap value stored this way survives a collection *)
-Let Named = Option none named with var s: String end end;
-let k = option named of Named with let var s = "" end;
-k!named.s := conv.int(12345) <> "!";
-let var junk = "";
-for i = 1 upto 20000 do junk := conv.int(i) end;
-print("stored " <> k!named.s);
+Let Named = Option none named with var s: String end end
+let k = option named of Named with let var s = "" end
+k!named.s := conv.int(12345) <> "!"
+let var junk = ""
+for i = 1 upto 20000 do junk := conv.int(i) end
+print("stored " <> k!named.s)
 
 (* 8. Through a variable bound to the extraction: the copy alone changes *)
-let t = o!made;
-t.x := 8;
-print("copy " <> conv.int(t.x) <> ", option " <> shown());
+let t = o!made
+t.x := 8
+print("copy " <> conv.int(t.x) <> ", option " <> shown())
 
 (* 9. Through a tuple component of the copy: the payload's own *)
-o!made.inner.y := 20;
-print("inner " <> shown());
+o!made.inner.y := 20
+print("inner " <> shown())
 
 (* 10. Through a case binder: the payload itself *)
-case o when made with c then c.x := 9 when none then ok end;
-print("binder " <> shown());
+case o when made with c then c.x := 9 when none then ok end
+print("binder " <> shown())
 
 (* 11. A variant's extraction is its payload *)
-Let V = Variant p: Tuple var z: Int end q: Ok end;
-let v = variant p of V with tuple let var z = 1 end end;
-v!p.z := 5;
+Let V = Variant p: Tuple var z: Int end q: Ok end
+let v = variant p of V with tuple let var z = 1 end end
+v!p.z := 5
 print("variant " <> conv.int(v!p.z))

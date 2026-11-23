@@ -10,12 +10,13 @@
 
 module reduce : Reduce
 import
-    questlang/types/model : questlang/types/Model
-    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
+
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
+    questlang/types/model : questlang/types/Model
 export
     Let Type = model.Type
 
@@ -167,8 +168,10 @@ export
      * itself *)
     let sameNode(a: Type b: Type): Bool =
         case a.form
-            when typeVariable with x then case b.form when typeVariable with y then x.symbolId is y.symbolId else false end
-            when typeAbstract with x then case b.form when typeAbstract with y then x.symbolId is y.symbolId else false end
+            when typeVariable with x then
+                case b.form when typeVariable with y then x.symbolId is y.symbolId else false end
+            when typeAbstract with x then
+                case b.form when typeAbstract with y then x.symbolId is y.symbolId else false end
             else model.same(a b)
         end
     let resolveTypeBound(t: Type): Type =
@@ -231,13 +234,17 @@ export
                 for i = 0 upto {extent curr.fv - 1} do
                     let e = abstractTypes.abstractTypeBySymbol(curr.fv[i])
                     if maybe.isSome(e)
-                        andif maybe.isSome(maybe.unwrap(e).rep) then
+                            andif maybe.isSome(maybe.unwrap(e).rep) then
                         hashMap.insert(reps curr.fv[i]
-                            maybe.unwrap(maybe.unwrap(e).rep))
+                                maybe.unwrap(maybe.unwrap(e).rep))
                     end
                 end
-                let var exposed = if hashMap.size(reps) > 0 then
-                    normalizeType(model.substitute(curr reps)) else curr end
+                let var exposed =
+                    if hashMap.size(reps) > 0 then
+                        normalizeType(model.substitute(curr reps))
+                    else
+                        curr
+                    end
                 if model.same(exposed curr) then exposed := normalizeType(resolveTypeBound(curr)) end
                 if model.same(exposed curr) then stuck := true else curr := exposed end
             end
@@ -250,14 +257,15 @@ export
                 let empty = vector.new(:String)
                 for i = 0 upto {extent x.options - 1} do
                     let o = x.options[i]
-                    let components = if maybe.isSome(o.payload) then
-                        case normalizeType(maybe.unwrap(o.payload)).form
-                            when typeTuple with y then extent y.fields
-                            else 0
+                    let components =
+                        if maybe.isSome(o.payload) then
+                            case normalizeType(maybe.unwrap(o.payload)).form
+                                when typeTuple with y then extent y.fields
+                                else 0
+                            end
+                        else
+                            0
                         end
-                    else
-                        0
-                    end
                     if components is 0 then vector.append(empty o.name) end
                 end
                 maybe.some(tuple let empty = vector.toArray(empty) end)

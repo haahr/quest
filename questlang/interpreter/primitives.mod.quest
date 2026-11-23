@@ -3,15 +3,17 @@
 
 module primitives : Primitives
 import
-    questlang/values/model : questlang/values/Model
-    tm = questlang/types/model : questlang/types/Model
-    questlang/types/reduce : questlang/types/Reduce
-    util/maybe : util/Maybe
-    util/strutil : util/Strutil
-    stringOp = string : StringOp
-    system : System
     intOp = int : IntOp
     realOp = real : RealOp
+    stringOp = string : StringOp
+    system : System
+
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+
+    tm = questlang/types/model : questlang/types/Model
+    questlang/types/reduce : questlang/types/Reduce
+    questlang/values/model : questlang/values/Model
 export
     let arrayOpError = model.exceptionValue("arrayOp.error")
     let writerError = model.exceptionValue("writer.error")
@@ -107,11 +109,14 @@ export
                     when vVariant with y then
                         stringOp.equal(x.v.tag y.v.tag) andif begin
                             let cases = reduce.variantCases(t)
-                            let caseType = if maybe.isNone(cases) then maybe.none(:tm.Type)
+                            let caseType =
+                                if maybe.isNone(cases) then
+                                    maybe.none(:tm.Type)
                                 else
                                     let f = tm.variantGetField(maybe.unwrap(cases) x.v.tag)
                                     if maybe.isSome(f) then maybe.unwrap(f).type
-                                    else maybe.none(:tm.Type) end
+                                    else maybe.none(:tm.Type)
+                                    end
                                 end
                             if maybe.isNone(x.v.payload) orif maybe.isNone(y.v.payload) then
                                 maybe.isNone(x.v.payload) andif maybe.isNone(y.v.payload)
@@ -121,7 +126,7 @@ export
                                 false
                             else
                                 sameAt(maybe.unwrap(caseType) maybe.unwrap(x.v.payload)
-                                    maybe.unwrap(y.v.payload))
+                                        maybe.unwrap(y.v.payload))
                             end
                         end
                     else false

@@ -3,37 +3,37 @@
  * before the value, in every evaluator; the interpreters once took the value
  * first for a field. Each part notes a letter as it is evaluated. *)
 
-import writer : Writer;
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
 
-let log = tuple let var s = "" end;
-let note(w: String): Ok = log.s := log.s <> w;
-let reset(): Ok = log.s := "";
+let log = tuple let var s = "" end
+let note(w: String): Ok = log.s := log.s <> w
+let reset(): Ok = log.s := ""
 
-let t = tuple let var x = 0 let inner = tuple let var y = 0 end end;
-let r = record var x = 0 end;
-let a = array of(3 0);
-let theTuple(): Tuple var x: Int inner: Tuple var y: Int end end = begin note("t") t end;
-let theRecord(): Record var x: Int end = begin note("r") r end;
-let theArray(): Array(Int) = begin note("a") a end;
-let index(): Int = begin note("i") 1 end;
-let value(): Int = begin note("v") 5 end;
+let t = tuple let var x = 0 let inner = tuple let var y = 0 end end
+let r = record var x = 0 end
+let a = array of(3 0)
+let theTuple(): Tuple var x: Int inner: Tuple var y: Int end end = begin note("t") t end
+let theRecord(): Record var x: Int end = begin note("r") r end
+let theArray(): Array(Int) = begin note("a") a end
+let index(): Int = begin note("i") 1 end
+let value(): Int = begin note("v") 5 end
 
-theTuple().x := value();
-print("tuple field " <> log.s);
-reset();
-theRecord().x := value();
-print("record field " <> log.s);
-reset();
-theTuple().inner.y := value();
-print("nested field " <> log.s);
-reset();
-theArray()[index()] := value();
-print("array element " <> log.s);
+theTuple().x := value()
+print("tuple field " <> log.s)
+reset()
+theRecord().x := value()
+print("record field " <> log.s)
+reset()
+theTuple().inner.y := value()
+print("nested field " <> log.s)
+reset()
+theArray()[index()] := value()
+print("array element " <> log.s)
 
 (* A value that raises does so after the target is evaluated *)
-reset();
-let boom(): Int = begin note("v") raise writer.error end end;
-try theTuple().x := boom() when writer.error then note("!") end;
-print("raising value " <> log.s);
+reset()
+let boom(): Int = begin note("v") raise writer.error end end
+try theTuple().x := boom() when writer.error then note("!") end
+print("raising value " <> log.s)

@@ -2,15 +2,16 @@
 
 unsound module strutil : Strutil
 import
+    ascii : Ascii
+    conv : Conv
+    intOp = int : IntOp
+    real : RealOp
+    stringOp = string : StringOp
+    word : Word
+
+    collections/vector : collections/Vector
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
-    collections/vector : collections/Vector
-    stringOp = string : StringOp
-    ascii: Ascii
-    conv: Conv
-    real: RealOp
-    word: Word
-    intOp = int: IntOp
 export
     (* Exception raised on string parsing or invalid argument errors *)
     let error: Exception = exception error: Ok end
@@ -44,8 +45,7 @@ export
             end
         end
 
-    let wordToString(w: word.T): String =
-        formatWord(w 10)
+    let wordToString(w: word.T): String = formatWord(w 10)
 
     (* ======================================================================
      * Character Classification
@@ -63,8 +63,7 @@ export
             {{v >= 65} /\ {v <= 90}} \/ {{v >= 97} /\ {v <= 122}}
         end
 
-    let isAlnum(c: Char): Bool =
-        isAlpha(c) \/ isDigit(c)
+    let isAlnum(c: Char): Bool = isAlpha(c) \/ isDigit(c)
 
     let isSpace(c: Char): Bool =
         begin
@@ -127,8 +126,7 @@ export
             end
         end
 
-    let find(s: String sub: String): Int =
-        findFrom(s sub 0)
+    let find(s: String sub: String): Int = findFrom(s sub 0)
 
     let rfind(s: String sub: String): Int =
         begin
@@ -150,8 +148,7 @@ export
             end
         end
 
-    let contains(s: String sub: String): Bool =
-        find(s sub) >= 0
+    let contains(s: String sub: String): Bool = find(s sub) >= 0
 
     let stripLeading(s: String): String =
         begin
@@ -472,7 +469,7 @@ export
         end
 
     let toIntBase(s: String base: Int): Int =
-        begin 
+        begin
             let res = tryToIntBase(s base)
             if maybe.isSome(:Int res) then
                 maybe.unwrap(:Int res)
@@ -481,11 +478,9 @@ export
             end
         end
 
-    let tryToInt(s: String): maybe.T(Int) =
-        tryToIntBase(s 10)
+    let tryToInt(s: String): maybe.T(Int) = tryToIntBase(s 10)
 
-    let toInt(s: String): Int =
-        toIntBase(s 10)
+    let toInt(s: String): Int = toIntBase(s 10)
 
     let tryToWordBase(s: String base: Int): maybe.T(word.T) =
         begin
@@ -532,7 +527,7 @@ export
         end
 
     let toWordBase(s: String base: Int): word.T =
-        begin 
+        begin
             let res = tryToWordBase(s base)
             if maybe.isSome(:word.T res) then
                 maybe.unwrap(:word.T res)
@@ -541,11 +536,9 @@ export
             end
         end
 
-    let tryToWord(s: String): maybe.T(word.T) =
-        tryToWordBase(s 10)
+    let tryToWord(s: String): maybe.T(word.T) = tryToWordBase(s 10)
 
-    let toWord(s: String): word.T =
-        toWordBase(s 10)
+    let toWord(s: String): word.T = toWordBase(s 10)
 
     (* The real a valid real string denotes, correctly rounded (C's strtod); -
      * is the minus sign *)
@@ -586,7 +579,7 @@ export
         end
 
     let toReal(s: String): Real =
-        begin 
+        begin
             let res = tryToReal(s)
             if maybe.isSome(:Real res) then
                 maybe.unwrap(:Real res)
@@ -605,7 +598,7 @@ export
         end
 
     let toBool(s: String): Bool =
-        begin 
+        begin
             let res = tryToBool(s)
             if maybe.isSome(:Bool res) then
                 maybe.unwrap(:Bool res)

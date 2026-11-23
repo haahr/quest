@@ -2,17 +2,19 @@
 
 module inline : Inline
 import
-    questlang/types/model : questlang/types/Model
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/ir/nodes : questlang/ir/Nodes
-    questlang/ir/walk : questlang/ir/Walk
-    questlang/ir/clone : questlang/ir/Clone
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/ir/clone : questlang/ir/Clone
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/types/model : questlang/types/Model
 export
     Let Variable = nodes.Variable
     Let Atom = nodes.Atom
@@ -175,7 +177,7 @@ export
                     case used[k]
                         when atomVar with x then
                             if not(hashMap.contains(bound x.v.id))
-                                andif not(hashMap.contains(seen x.v.id)) then
+                                    andif not(hashMap.contains(seen x.v.id)) then
                                 hashMap.insert(seen x.v.id true)
                                 vector.append(found x.v)
                             end
@@ -193,11 +195,12 @@ export
             let stmts = walk.walkStatements(f.body true)
             let var found = false
             for i = 0 upto {vector.length(stmts) - 1} do
-                let o = case vector.get(stmts i)
-                    when sLet with x then maybe.some(x.value)
-                    when sDo with x then maybe.some(x.value)
-                    else maybe.none(:nodes.Op)
-                end
+                let o =
+                    case vector.get(stmts i)
+                        when sLet with x then maybe.some(x.value)
+                        when sDo with x then maybe.some(x.value)
+                        else maybe.none(:nodes.Op)
+                    end
                 if maybe.isSome(o) then
                     case maybe.unwrap(o)
                         when opCallExternal with x then if extent x.typeArgs > 0 then found := true end
@@ -213,9 +216,11 @@ export
         begin
             let c = walk.statementCall(st)
             if maybe.isSome(c) andif maybe.isSome(maybe.unwrap(c).callee)
-                andif nodes.same(maybe.unwrap(maybe.unwrap(c).callee) v)
-            then c
-            else maybe.none() end
+                    andif nodes.same(maybe.unwrap(maybe.unwrap(c).callee) v) then
+                c
+            else
+                maybe.none()
+            end
         end
 
     (* Whether a type argument is the type parameter itself *)
@@ -249,10 +254,11 @@ export
                             if not(isParameter(c.typeArgs[k] f.typeParams[k])) then other := true end
                         end
                         for k = 0 upto {extent c.args - 1} do
-                            let same = case c.args[k]
-                                when atomVar with x then nodes.same(x.v f.params[k].v)
-                                when atomConst then false
-                            end
+                            let same =
+                                case c.args[k]
+                                    when atomVar with x then nodes.same(x.v f.params[k].v)
+                                    when atomConst then false
+                                end
                             if not(same) then static[k] := false end
                         end
                         (* The callee is the call's use of f; any other is a
@@ -399,7 +405,7 @@ export
         end
 
     let expand(f: nodes.Function typeArgs: Array(model.Type) args: Array(Atom) byRef: Array(maybe.T(Variable))
-        reads: Array(Read) into: maybe.T(Variable) pos: Int rest: Array(Stmt) labels: clone.Labels): Array(Stmt) =
+            reads: Array(Read) into: maybe.T(Variable) pos: Int rest: Array(Stmt) labels: clone.Labels): Array(Stmt) =
         begin
             let c = clonerAt(f typeArgs labels)
             let result = maybe.unwrapOr(into nodes.newVar("r" clone.ty(c f.resultType) false))
@@ -453,7 +459,7 @@ export
         end
 
     let specialize(f: nodes.Function static: Array(Bool) typeArgs: Array(model.Type) args: Array(Atom)
-        reads: Array(Read) into: maybe.T(Variable) pos: Int rest: Array(Stmt) labels: clone.Labels): Array(Stmt) =
+            reads: Array(Read) into: maybe.T(Variable) pos: Int rest: Array(Stmt) labels: clone.Labels): Array(Stmt) =
         begin
             let c = clonerAt(f typeArgs labels)
             let result = maybe.unwrapOr(into nodes.newVar("r" clone.ty(c f.resultType) false))
@@ -482,7 +488,10 @@ export
                     let q = clone.fresh(c p)
                     vector.append(params tuple let v = q let mode = "value" end)
                     vector.append(types tuple
-                        let name = q.hint let type = q.type let isVar = false let isOut = false
+                        let name = q.hint
+                        let type = q.type
+                        let isVar = false
+                        let isOut = false
                     end)
                     vector.append(passed args[i])
                 end
@@ -509,7 +518,7 @@ export
                 end
             end
             let g = nodes.newFunction(inner array of :nodes.TypeParam end vector.toArray(params)
-                resultType body f.traceName)
+                    resultType body f.traceName)
             let all = vector.copy(bound)
             let funs = option sFuns of Stmt with
                 let var functions = array of g end
@@ -517,7 +526,7 @@ export
             end
             vector.append(all funs)
             let call = nodes.letStmt(result nodes.call(maybe.some(inner) array of :model.Type end
-                vector.toArray(passed) maybe.none() maybe.none() maybe.none()))
+                    vector.toArray(passed) maybe.none() maybe.none() maybe.none()))
             nodes.positionAt(call pos)
             vector.append(all call)
             for i = 0 upto {extent rest - 1} do vector.append(all rest[i]) end

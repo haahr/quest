@@ -3,16 +3,17 @@
 
 module regexp : Regexp
 import
-    syn = util/regexpSyntax : util/RegexpSyntax
-    prog = util/regexpProgram : util/RegexpProgram
-    vm = util/regexpMatch : util/RegexpMatch
-    util/maybe : util/Maybe
+    ascii : Ascii
+    stringOp = string : StringOp
+
+    collections/bitset : collections/Bitset
     collections/vector : collections/Vector
     util/iter : util/Iter
+    util/maybe : util/Maybe
+    vm = util/regexpMatch : util/RegexpMatch
+    prog = util/regexpProgram : util/RegexpProgram
+    syn = util/regexpSyntax : util/RegexpSyntax
     sb = util/stringBuilder : util/StringBuilder
-    collections/bitset : collections/Bitset
-    stringOp = string : StringOp
-    ascii: Ascii
 export
     Let SyntaxError = Tuple message: String offset: Int end
     let syntax: Exception(SyntaxError) = syn.syntax
@@ -108,7 +109,7 @@ export
     let repeat(re: RE min: Int max: Int greedy: Bool): RE =
         begin
             if {min < 0} \/ {min > syn.maxRepeat} \/ {max < ~1} \/ {max > syn.maxRepeat}
-                \/ {{max >= 0} /\ {max < min}} then
+                    \/ {{max >= 0} /\ {max < min}} then
                 raise error end
             end
             option repeat of syn.Node with let body = re let min = min let max = max let greedy = greedy end
@@ -149,8 +150,8 @@ export
             (* a name twice, which only patterns built as values can have *)
             for i = 1 upto program.groups do
                 for j = 1 upto {i - 1} do
-                    if not(stringOp.isEmpty(program.names[i])) andif stringOp.equal(program.names[i] program.names[j])
-                    then
+                    if not(stringOp.isEmpty(program.names[i]))
+                            andif stringOp.equal(program.names[i] program.names[j]) then
                         raise error end
                     end
                 end
@@ -182,8 +183,7 @@ export
         else maybe.some(:Match tuple let subject = s let slots = maybe.unwrap(:Array(Int) found) let re = r end)
         end
 
-    let checkStart(s: String start: Int): Ok =
-        if {start < 0} \/ {start > stringOp.length(s)} then raise error end end
+    let checkStart(s: String start: Int): Ok = if {start < 0} \/ {start > stringOp.length(s)} then raise error end end
 
     let findFrom(r: T s: String start: Int): maybe.T(Match) =
         begin

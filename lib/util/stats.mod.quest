@@ -7,15 +7,16 @@
 
 module stats : Stats
 import
-    util/iter : util/Iter
-    util/rational : util/Rational
-    util/bignum : util/Bignum
-    util/maybe : util/Maybe
-    util/sort : util/Sort
+    real : RealOp
+    word : Word
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    real: RealOp
-    word: Word
+    util/bignum : util/Bignum
+    util/iter : util/Iter
+    util/maybe : util/Maybe
+    util/rational : util/Rational
+    util/sort : util/Sort
 export
     let error: Exception = exception error: Ok end
 
@@ -65,31 +66,32 @@ export
                 p.count := i + 1
             end
             let partials = p.at
-            let sum = if p.count is 0 then
-                0.0
-            else
-                let var n = p.count - 1
-                let var hi = partials[n]
-                let var lo = 0.0
-                let var stopped = false
-                while {n > 0} andif not(stopped) do
-                    let x = hi
-                    n := n - 1
-                    let y = partials[n]
-                    hi := x ++ y
-                    let yr = hi -- x
-                    lo := y -- yr
-                    if not(realEqual(lo 0.0)) then stopped := true end
+            let sum =
+                if p.count is 0 then
+                    0.0
+                else
+                    let var n = p.count - 1
+                    let var hi = partials[n]
+                    let var lo = 0.0
+                    let var stopped = false
+                    while {n > 0} andif not(stopped) do
+                        let x = hi
+                        n := n - 1
+                        let y = partials[n]
+                        hi := x ++ y
+                        let yr = hi -- x
+                        lo := y -- yr
+                        if not(realEqual(lo 0.0)) then stopped := true end
+                    end
+                    if {n > 0} andif {{{lo << 0.0} andif {partials[n - 1] << 0.0}}
+                            orif {{lo >> 0.0} andif {partials[n - 1] >> 0.0}}} then
+                        let y = lo ** 2.0
+                        let x = hi ++ y
+                        let yr = x -- hi
+                        if realEqual(y yr) then hi := x end
+                    end
+                    hi
                 end
-                if {n > 0} andif {{{lo << 0.0} andif {partials[n - 1] << 0.0}}
-                        orif {{lo >> 0.0} andif {partials[n - 1] >> 0.0}}} then
-                    let y = lo ** 2.0
-                    let x = hi ++ y
-                    let yr = x -- hi
-                    if realEqual(y yr) then hi := x end
-                end
-                hi
-            end
             tuple let sum = sum let count = p.values end
         end
 
@@ -157,7 +159,8 @@ export
                 if c.count is 0 then c.first := x end
                 c.count := c.count + 1
                 if realEqual(x 0.0) then c.zero := true
-                else c.total := rational.add(c.total rational.fromReal(1.0 // x)) end
+                else c.total := rational.add(c.total rational.fromReal(1.0 // x))
+                end
             end
             needs(c.count 1)
             if c.zero then
@@ -348,8 +351,11 @@ export
                 yy[i] := dy ** dy
             end
             tuple
-                let xbar = xbar let ybar = ybar
-                let sxy = fsum(iter.ofArray(xy)) let sxx = fsum(iter.ofArray(xx)) let syy = fsum(iter.ofArray(yy))
+                let xbar = xbar
+                let ybar = ybar
+                let sxy = fsum(iter.ofArray(xy))
+                let sxx = fsum(iter.ofArray(xx))
+                let syy = fsum(iter.ofArray(yy))
             end
         end
 

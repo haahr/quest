@@ -2,42 +2,44 @@
 
 module engine : Engine
 import
-    questlang/codegen/choice : questlang/codegen/Choice
-    questlang/common/location : questlang/common/Location
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/syntax/ast : questlang/syntax/Ast
-    questlang/types/env : questlang/types/Env
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
-    questlang/typechecker/typecheck : questlang/typechecker/Typecheck
-    questlang/typechecker/application : questlang/typechecker/Application
-    questlang/config/abi : questlang/config/Abi
-    questlang/modules/paths : questlang/modules/Paths
-    questlang/common/files : questlang/common/Files
-    questlang/modules/graph : questlang/modules/Graph
-    questlang/modules/units : questlang/modules/Units
-    questlang/modules/stdlib : questlang/modules/Stdlib
-    questlang/modules/elaboration : questlang/modules/Elaboration
-    questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
-    questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
-    questlang/modules/artifacts/moduleCompiler : questlang/modules/artifacts/ModuleCompiler
-    questlang/build/logger : questlang/build/Logger
-    questlang/build/workers : questlang/build/Workers
-    passes = questlang/ir/pipeline : questlang/ir/Pipeline
-    cBackend = questlang/codegen/backend : questlang/codegen/Backend
-    questlang/build/compilerRunner : questlang/build/CompilerRunner
-    collections/vector : collections/Vector
+    conv : Conv
+    raised : Raised
+    stringOp = string : StringOp
+    system : System
+    writer : Writer
+
     collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    os/fileStats : os/FileStats
+    pathLib = os/path : os/Path
     util/hash : util/Hash
     util/maybe : util/Maybe
-    pathLib = os/path : os/Path
-    os/fileStats : os/FileStats
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
-    writer : Writer
-    system : System
-    raised : Raised
+
+    questlang/build/compilerRunner : questlang/build/CompilerRunner
+    questlang/build/logger : questlang/build/Logger
+    questlang/build/workers : questlang/build/Workers
+    cBackend = questlang/codegen/backend : questlang/codegen/Backend
+    questlang/codegen/choice : questlang/codegen/Choice
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/files : questlang/common/Files
+    questlang/common/location : questlang/common/Location
+    questlang/config/abi : questlang/config/Abi
+    passes = questlang/ir/pipeline : questlang/ir/Pipeline
+    questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
+    questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
+    questlang/modules/artifacts/moduleCompiler : questlang/modules/artifacts/ModuleCompiler
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/stdlib : questlang/modules/Stdlib
+    questlang/modules/units : questlang/modules/Units
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/typechecker/application : questlang/typechecker/Application
+    questlang/typechecker/typecheck : questlang/typechecker/Typecheck
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/symbols : questlang/types/Symbols
 export
     let buildError: Exception(String) = exception buildError: String end
 
@@ -121,12 +123,13 @@ export
         begin
             let var found = false
             for i = 0 upto {vector.length(xs) - 1} do if eq(vector.get(xs i) x) then
-                found := true end end
+                found := true
+            end end
             found
         end
 
     let new(buildDir: maybe.T(String) includePaths: Array(String) verbose: Bool nogc: Bool extraObjects: Array(String)
-        resolver: maybe.T(graph.Resolver)): T =
+            resolver: maybe.T(graph.Resolver)): T =
         begin
             let dir = absolutePath(maybe.unwrapOr(buildDir ".build"))
             let includes = array of(extent includePaths dir)
@@ -203,11 +206,12 @@ export
         begin
             let main = absolutePath(mainFile)
             let rel = files.relativeTo(str(pathLib.parent(main)) files.absolute(system.currentDirectory()))
-            let dir = if maybe.isSome(rel) andif {stringOp.length(maybe.unwrap(rel)) > 0} then
-                pathLib.child(eng.buildDir maybe.unwrap(rel))
-            else
-                eng.buildDir
-            end
+            let dir =
+                if maybe.isSome(rel) andif {stringOp.length(maybe.unwrap(rel)) > 0} then
+                    pathLib.child(eng.buildDir maybe.unwrap(rel))
+                else
+                    eng.buildDir
+                end
             str(pathLib.child(dir files.stem(str(main))))
         end
 
@@ -220,7 +224,7 @@ export
         end
 
     let unitModuleRefs(imports: Array(ImportRef) implicit: Array(passes.ImplicitImport) currentDir: maybe.T(String)
-        includePaths: Array(String) programDir: maybe.T(String) res: graph.Resolver):
+            includePaths: Array(String) programDir: maybe.T(String) res: graph.Resolver):
             Array(manifest.ImportedModuleRef) =
         begin
             let roots = graph.rootsOf(includePaths programDir)
@@ -230,8 +234,10 @@ export
                 if not(contains(seen name)) then
                     vector.append(seen name)
                     vector.append(refs tuple
-                        let name = name let interfaceName = interfaceName
-                        let source = maybe.unwrapOr(source "") let path = path
+                        let name = name
+                        let interfaceName = interfaceName
+                        let source = maybe.unwrapOr(source "")
+                        let path = path
                     end)
                 end
             for i = 0 upto {extent imports - 1} do
@@ -246,11 +252,12 @@ export
             end
             for i = 0 upto {extent implicit - 1} do
                 let m = graph.resolveModule(res implicit[i].canonicalPath currentDir roots)
-                let iface = if stringOp.length(implicit[i].interfacePath) > 0 then
-                    graph.interfaceName(graph.resolveInterface(res implicit[i].interfacePath currentDir roots))
-                else
-                    ""
-                end
+                let iface =
+                    if stringOp.length(implicit[i].interfacePath) > 0 then
+                        graph.interfaceName(graph.resolveInterface(res implicit[i].interfacePath currentDir roots))
+                    else
+                        ""
+                    end
                 add(graph.canonicalName(m) iface m.source implicit[i].canonicalPath)
             end
             vector.toArray(refs)
@@ -263,7 +270,7 @@ export
      * still match. Transitive interface imports are re-resolved from the
      * importing interface's recorded directory. *)
     let importResolutionChange(m: manifest.ModuleManifest currentDir: maybe.T(String) includePaths: Array(String)
-        programDir: maybe.T(String) res: graph.Resolver): maybe.T(String) =
+            programDir: maybe.T(String) res: graph.Resolver): maybe.T(String) =
         begin
             let roots = graph.rootsOf(includePaths programDir)
             let var change = maybe.none(:String)
@@ -275,7 +282,7 @@ export
                     if not(paths.sameSource(found.source iface.source)) then
                         change := maybe.some("interface " <> quoted(iface.path) <> " now resolves to "
                             <> orNoSource(maybe.unwrapOr(found.source "")) <> ", not "
-                                <> orNoSource(iface.source))
+                            <> orNoSource(iface.source))
                     elsif not(eq(graph.interfaceName(found) iface.name)) then
                         change := maybe.some("interface " <> quoted(iface.path) <> " is now named "
                             <> quoted(graph.interfaceName(found)) <> ", not " <> quoted(iface.name))
@@ -289,7 +296,7 @@ export
                     if not(paths.sameSource(found.source mod.source)) then
                         change := maybe.some("module " <> quoted(mod.path) <> " now resolves to "
                             <> orNoSource(maybe.unwrapOr(found.source "")) <> ", not "
-                                <> orNoSource(mod.source))
+                            <> orNoSource(mod.source))
                     elsif not(eq(graph.canonicalName(found) mod.name)) then
                         change := maybe.some("module " <> quoted(mod.path) <> " is now named "
                             <> quoted(graph.canonicalName(found)) <> ", not " <> quoted(mod.name))
@@ -315,7 +322,10 @@ export
                     if not(eq(m.backend choice.forFile(eng.backends name library))) then
                         maybe.some("compiled by the " <> m.backend <> " backend")
                     elsif choice.isWasm(m.backend) andif system.isFile(choice.codeFile(a.c m.backend))
-                        andif not(eq(cBackend.objectRuntimeStamp(maybe.unwrapOr(files.readText(choice.codeFile(a.c m.backend)) "")) cBackend.runtimeStamp())) then
+                            andif not(eq(cBackend.objectRuntimeStamp(maybe.unwrapOr(files.readText(choice.codeFile(a.c
+                                    m.backend))
+                                    ""))
+                                    cBackend.runtimeStamp())) then
                         (* Reject a WebAssembly object built against a
                          * different runtime's types, which instantiation would
                          * fail on *)
@@ -325,12 +335,16 @@ export
                     end
                 end
             (* Its code file is the one its recorded backend wrote *)
-            let recorded = if system.isFile(a.qm) then manifest.readQm(a.qm) else maybe.none(:manifest.ModuleManifest) end
-            let code = if maybe.isSome(recorded) then
-                choice.codeFile(a.c maybe.unwrap(recorded).backend)
-            else a.c end
+            let recorded =
+                if system.isFile(a.qm) then manifest.readQm(a.qm) else maybe.none(:manifest.ModuleManifest) end
+            let code =
+                if maybe.isSome(recorded) then
+                    choice.codeFile(a.c maybe.unwrap(recorded).backend)
+                else
+                    a.c
+                end
             manifest.unitStaleness(source a.qm code a.o
-                maybe.some(changed))
+                    maybe.some(changed))
         end
 
     (* Why a unit is stale: artifactStaleness's reason, or, when the build
@@ -338,7 +352,8 @@ export
      * that *)
     let unitStaleness(eng: T source: String a: graph.ModuleArtifacts programDir: maybe.T(String)): maybe.T(String) =
         if stringOp.length(eng.reportInferable) > 0 then maybe.some("reporting inferable type arguments")
-        else artifactStaleness(eng source a programDir) end
+        else artifactStaleness(eng source a programDir)
+        end
 
     (* Compiles a main routine into its .main.qm, .main.c, and .main.o,
      * returning the modules it imports *)
@@ -355,7 +370,7 @@ export
             let e = env.new()
             e.reportInferable := eng.reportInferable
             env.withUnitSource(e location.file(sm) fun():
-                Array(manifest.ImportedModuleRef)
+                    Array(manifest.ImportedModuleRef)
                 begin
                     let prog = units.parseUnit(sm)
                     for i = 0 upto {vector.length(prog.form.phrases) - 1} do
@@ -386,12 +401,12 @@ export
                                     let ifacePath = maybe.unwrapOr(it.interfacePath it.interfaceName)
                                     log(eng "RESOLVE INTERFACE" quoted(ifacePath))
                                     if maybe.isNone(env.lookupInterface(e ifacePath))
-                                        andif maybe.isNone(env.lookupInterface(e it.interfaceName)) then
+                                            andif maybe.isNone(env.lookupInterface(e it.interfaceName)) then
                                         elaboration.loadInterface(ifacePath e)
                                         ok
                                     end
                                     vector.append(interfaces
-                                        moduleCompiler.interfaceRef(env.resolveInterface(e ifacePath) ifacePath))
+                                            moduleCompiler.interfaceRef(env.resolveInterface(e ifacePath) ifacePath))
                                     vector.append(imports tuple
                                         let interfacePath = ifacePath
                                         let names = vector.toArray(it.names)
@@ -410,9 +425,9 @@ export
                     let backend = choice.forUnit(eng.backends choice.programUnit)
                     let translated = cBackend.programToC(typed e maybe.some(sm) false false backend)
                     let modules = unitModuleRefs(vector.toArray(imports)
-                        passes.implicitImports(translated.unit typed) e.currentDir
+                            passes.implicitImports(translated.unit typed) e.currentDir
                             vector.toArray(e.includePaths)
-                        e.programDir eng.resolver)
+                            e.programDir eng.resolver)
 
                     let code = choice.codeFile(a.c backend)
                     log(eng "EMIT C" code)
@@ -421,16 +436,16 @@ export
                     writer.close(w)
                     log(eng "HOST COMPILE" "clang -c " <> code <> " -o " <> a.o)
                     compilerRunner.compileCToObject(code a.o search eng.nogc eng.compiler
-                        vector.toArray(vector.concat(vector.fromArray(eng.extraCFlags)
-                            vector.fromArray(cBackend.cFlags(backend)))))
+                            vector.toArray(vector.concat(vector.fromArray(eng.extraCFlags)
+                                    vector.fromArray(cBackend.cFlags(backend)))))
 
                     let direct = vector.toArray(interfaces)
                     let indirect = interfaceCompiler.indirectInterfaceRefs(direct vector.toArray(e.includePaths)
-                        e.programDir eng.resolver)
+                            e.programDir eng.resolver)
                     log(eng "WRITE QM" a.qm)
                     manifest.writeQm(manifest.newManifest("<main>" maybe.none(:String) files.absolute(mainFile)
-                        files.absolute(a.o) modules
-                        vector.toArray(vector.concat(interfaces vector.fromArray(indirect))) backend) a.qm)
+                            files.absolute(a.o) modules
+                            vector.toArray(vector.concat(interfaces vector.fromArray(indirect))) backend) a.qm)
                     modules
                 end)
         end
@@ -441,7 +456,9 @@ export
             let m = manifest.readQm(qm)
             if maybe.isSome(m) then
                 maybe.some(maybe.unwrap(m).name)
-            else maybe.none() end
+            else
+                maybe.none()
+            end
         end
 
     (* An importer's expectation of a module's interface *)
@@ -518,7 +535,7 @@ export
      * an outcome at each compiled module's index and none for the rest, which
      * the parent compiles in-process when their turn arrives. *)
     let compileWave(eng: T wave: Array(Popped) search: Array(String) programDir: maybe.T(String))
-        : Array(maybe.T(workers.Outcome)) =
+            : Array(maybe.T(workers.Outcome)) =
         begin
             let outcomes = array of(extent wave maybe.none(:workers.Outcome))
             let indexes = vector.new(:Int)
@@ -582,7 +599,7 @@ export
      * eng.logger and not written here; buildModules and buildMain call this
      * through flushingLog, which writes them out even if it raises. *)
     let unflushedBuildModules(eng: T roots: Array(manifest.ImportedModuleRef) importer: String
-        programDir: maybe.T(String)): Array(String) =
+            programDir: maybe.T(String)): Array(String) =
         begin
             (* The queue and what the build has learned: the modules
              * discovered (by name and lowercased name), the sources importers
@@ -634,11 +651,13 @@ export
                     (* Modules are keyed by their canonical names, ignoring case
                      * as mangling does (docs/modules.md section 2.3) *)
                     let norm = paths.lower(name)
-                    vector.append(expectedOf(norm) tuple let importer = importer let interfaceName =
-                        iface end)
+                    vector.append(expectedOf(norm) tuple
+                        let importer = importer
+                        let interfaceName = iface
+                    end)
                     let existing = manifestOf(norm)
                     if maybe.isSome(existing)
-                        andif maybe.isSome(maybe.unwrap(existing).interfaceName) then
+                            andif maybe.isSome(maybe.unwrap(existing).interfaceName) then
                         let actual = maybe.unwrap(maybe.unwrap(existing).interfaceName)
                         if not(eq(actual iface)) then fail(:Ok conformanceError(importer name iface actual)) end
                         log(eng "VERIFY INTERFACE" quoted(name) <> " implements " <> quoted(actual) <> ", satisfies "
@@ -689,24 +708,29 @@ export
                      * without one names its modules only by their canonical
                      * names *)
                     let recorded = recordedSource(item)
-                    let found = if maybe.isSome(recorded)
-                        andif system.isFile(maybe.unwrap(recorded)) then
-                        recorded
-                    else
-                        paths.findCanonicalModuleSource(item search programDir)
-                    end
-                    let canon = if maybe.isSome(found) then
-                        graph.canonicalName(graph.resolveFile(eng.resolver maybe.unwrap(found)
-                            graph.rootsOf(search programDir)))
-                    else
-                        paths.lower(item)
-                    end
+                    let found =
+                        if maybe.isSome(recorded)
+                                andif system.isFile(maybe.unwrap(recorded)) then
+                            recorded
+                        else
+                            paths.findCanonicalModuleSource(item search programDir)
+                        end
+                    let canon =
+                        if maybe.isSome(found) then
+                            graph.canonicalName(graph.resolveFile(eng.resolver maybe.unwrap(found)
+                                    graph.rootsOf(search programDir)))
+                        else
+                            paths.lower(item)
+                        end
                     (* Resolve the active build variant for this module
                      * (docs/build-process.md section 6.4), overriding whatever
                      * file path the importer recorded *)
-                    let src = if maybe.isSome(found) then
-                        maybe.some(paths.chooseVariant(maybe.unwrap(found) eng.resolver.variantOf(canon)))
-                    else found end
+                    let src =
+                        if maybe.isSome(found) then
+                            maybe.some(paths.chooseVariant(maybe.unwrap(found) eng.resolver.variantOf(canon)))
+                        else
+                            found
+                        end
                     let targetDir = graph.unitArtifactDir(str(eng.buildDir) canon)
                     system.makeDirectory(targetDir)
                     let artifactStem = graph.artifactStem(canon)
@@ -719,7 +743,7 @@ export
                         for i = 0 upto {extent eng.extraObjects - 1} do
                             let s = paths.lower(files.stem(str(eng.extraObjects[i])))
                             if maybe.isNone(foundObject)
-                                andif {eq(s artifactStem) orif eq(s paths.lower(item))} then
+                                    andif {eq(s artifactStem) orif eq(s paths.lower(item))} then
                                 foundObject := maybe.some(str(eng.extraObjects[i]))
                             end
                         end
@@ -730,8 +754,11 @@ export
                             let o = maybe.unwrap(foundObject)
                             let dir = stringOp.getSub(o 0 {stringOp.length(o) - stringOp.length(files.baseName(o))})
                             let qmCandidate = dir <> files.stem(o) <> ".qm"
-                            a := tuple let qm = if system.isFile(qmCandidate) then qmCandidate else a.qm end
-                                let c = a.c let o = o end
+                            a := tuple
+                                let qm = if system.isFile(qmCandidate) then qmCandidate else a.qm end
+                                let c = a.c
+                                let o = o
+                            end
                             if system.isFile(qmCandidate) andif not(abi.hasCurrentAbi(qmCandidate)) then
                                 fail(:Ok abi.incompatibleArtifactMessage(qmCandidate))
                             end
@@ -749,9 +776,9 @@ export
                              * section 5.2) *)
                             let beside = graph.artifactsIn(files.parent(maybe.unwrap(src)) artifactStem)
                             if not(eq(beside.qm a.qm))
-                                andif maybe.isNone(unitStaleness(eng maybe.unwrap(src) beside programDir))
-                                andif eq(maybe.unwrapOr(manifestName(beside.qm) "") canon)
-                                andif maybe.isSome(manifestName(beside.qm)) then
+                                    andif maybe.isNone(unitStaleness(eng maybe.unwrap(src) beside programDir))
+                                    andif eq(maybe.unwrapOr(manifestName(beside.qm) "") canon)
+                                    andif maybe.isSome(manifestName(beside.qm)) then
                                 a := beside
                                 reason := maybe.none()
                             end
@@ -765,8 +792,12 @@ export
                         note("EVAL STALENESS" quoted(item) <> " -> UP TO DATE")
                     end
                     tuple
-                        let item = item let src = src let targetDir = targetDir let a = a
-                        let stale = maybe.isSome(reason) let notes = notes
+                        let item = item
+                        let src = src
+                        let targetDir = targetDir
+                        let a = a
+                        let stale = maybe.isSome(reason)
+                        let notes = notes
                         let failure = maybe.none()
                     end
                 end
@@ -775,9 +806,13 @@ export
                     let notes = vector.new(:Note)
                     let failed = fun(failure: All() Ok): Popped
                         tuple
-                            let item = item let src = maybe.none() let targetDir = ""
+                            let item = item
+                            let src = maybe.none()
+                            let targetDir = ""
                             let a = tuple let qm = "" let c = "" let o = "" end
-                            let stale = false let notes = notes let failure = maybe.some(failure)
+                            let stale = false
+                            let notes = notes
+                            let failure = maybe.some(failure)
                         end
                     try
                         pop(item notes)
@@ -840,23 +875,26 @@ export
                         let text = files.readText(src)
                         if maybe.isSome(text) then
                             case units.unitDeclaration(units.parseUnit(location.newSourceMap(src
-                                maybe.unwrap(text))) src)
+                                    maybe.unwrap(text))) src)
                                 when moduleDecl with d then
                                     for i = 0 upto {vector.length(d.decl.imports) - 1} do
                                         let it = vector.get(d.decl.imports i)
                                         let modulePaths = ast.effectiveModulePaths(it)
                                         for j = 0 upto {vector.length(it.names) - 1} do
-                                            let path = if {j < vector.length(modulePaths)}
-                                                andif {stringOp.length(vector.get(modulePaths j)) > 0} then
-                                                vector.get(modulePaths j)
-                                            else
-                                                vector.get(it.names j)
-                                            end
+                                            let path =
+                                                if {j < vector.length(modulePaths)}
+                                                        andif {stringOp.length(vector.get(modulePaths j)) > 0} then
+                                                    vector.get(modulePaths j)
+                                                else
+                                                    vector.get(it.names j)
+                                                end
                                             let m = graph.resolveModule(eng.resolver path
-                                                maybe.some(files.parent(src)) roots)
+                                                    maybe.some(files.parent(src)) roots)
                                             vector.append(found tuple
-                                                let name = graph.canonicalName(m) let interfaceName = ""
-                                                let source = maybe.unwrapOr(m.source "") let path = path
+                                                let name = graph.canonicalName(m)
+                                                let interfaceName = ""
+                                                let source = maybe.unwrapOr(m.source "")
+                                                let path = path
                                             end)
                                         end
                                     end
@@ -894,7 +932,7 @@ export
                         for i = 0 upto {extent imports - 1} do
                             let dep = imports[i]
                             if not(isDiscovered(dep.name)) andif not(isDiscovered(paths.lower(dep.name)))
-                                andif {preparedIndex(dep.name) < 0} then
+                                    andif {preparedIndex(dep.name) < 0} then
                                 (* Where its importer's manifest will say it is *)
                                 if stringOp.length(dep.source) > 0 then recordSource(dep.name dep.source) end
                                 add(popped(dep.name))
@@ -910,7 +948,7 @@ export
 
                 (* Follow the queue through the modules popped *)
                 while {head < vector.length(queue)}
-                    andif {preparedIndex(vector.get(queue head)) >= 0} do
+                        andif {preparedIndex(vector.get(queue head)) >= 0} do
                     let item = vector.get(queue head)
                     head := head + 1
                     let p = maybe.unwrap(preparedOf(item))
@@ -922,23 +960,25 @@ export
                         let raiseAgain = maybe.unwrap(p.failure)
                         raiseAgain()
                     end
-                    let m = if p.stale then
-                        if maybe.isSome(outcomeOf(item)) then
-                            let o = maybe.unwrap(outcomeOf(item))
-                            writer.putString(writer.err o.stderr)
-                            workers.raiseFailure(o)
+                    let m =
+                        if p.stale then
+                            if maybe.isSome(outcomeOf(item)) then
+                                let o = maybe.unwrap(outcomeOf(item))
+                                writer.putString(writer.err o.stderr)
+                                workers.raiseFailure(o)
+                            else
+                                typecheck.install()
+                                moduleCompiler.compileModuleFile(maybe.unwrap(p.src) maybe.some(p.targetDir)
+                                        search eng.compiler eng.nogc eng.extraCFlags maybe.some(str(eng.buildDir))
+                                        programDir maybe.some(eng.resolver) eng.backends eng.reportInferable)
+                                ok
+                            end
+                            manifest.readQm(p.a.qm)
                         else
-                            typecheck.install()
-                            moduleCompiler.compileModuleFile(maybe.unwrap(p.src) maybe.some(p.targetDir)
-                                search eng.compiler eng.nogc eng.extraCFlags maybe.some(str(eng.buildDir))
-                                programDir maybe.some(eng.resolver) eng.backends eng.reportInferable)
-                            ok
+                            if system.isFile(p.a.qm) then manifest.readQm(p.a.qm)
+                            else maybe.none(:manifest.ModuleManifest)
+                            end
                         end
-                        manifest.readQm(p.a.qm)
-                    else
-                        if system.isFile(p.a.qm) then manifest.readQm(p.a.qm)
-                        else maybe.none(:manifest.ModuleManifest) end
-                    end
 
                     if maybe.isSome(m) then
                         let mf = maybe.unwrap(m)
@@ -949,11 +989,12 @@ export
                             verifyModuleInterface(paths.lower(mf.name) mf.interfaceName)
                         end
                     end
-                    let imported = if maybe.isSome(m) then
-                        maybe.unwrap(m).importedModules
-                    else
-                        array of :manifest.ImportedModuleRef end
-                    end
+                    let imported =
+                        if maybe.isSome(m) then
+                            maybe.unwrap(m).importedModules
+                        else
+                            array of :manifest.ImportedModuleRef end
+                        end
                     if not(contains(linked p.a.o)) then vector.append(linked p.a.o) end
                     let deps = array of(extent imported "")
                     for i = 0 upto {extent imported - 1} do deps[i] := imported[i].name end
@@ -971,7 +1012,7 @@ export
                 let entry = tuple let name = name let expected = hashMap.find(expected name) end
                 let mf = manifestOf(entry.name)
                 if maybe.isSome(mf)
-                    andif maybe.isSome(maybe.unwrap(mf).interfaceName) then
+                        andif maybe.isSome(maybe.unwrap(mf).interfaceName) then
                     let actual = maybe.unwrap(maybe.unwrap(mf).interfaceName)
                     for j = 0 upto {vector.length(entry.expected) - 1} do
                         let r = vector.get(entry.expected j)
@@ -987,7 +1028,7 @@ export
             let cycle = detectModuleCycle(moduleGraph)
             if maybe.isSome(cycle) then
                 fail(:Ok "Cyclic module dependency detected: " <> strutil.join(" -> "
-                    vector.fromArray(maybe.unwrap(cycle))))
+                        vector.fromArray(maybe.unwrap(cycle))))
             end
             vector.toArray(linked)
         end
@@ -1012,14 +1053,15 @@ export
             log(eng "POP QUEUE" quoted(item) <> " (kind=main)")
             let a = mainArtifacts(eng main)
             let reason = unitStaleness(eng main a maybe.some(files.parent(main)))
-            let imported = if maybe.isSome(reason) then
-                log(eng "EVAL STALENESS" quoted(item) <> " -> STALE (" <> maybe.unwrap(reason) <> ")")
-                log(eng "COMPILE MAIN" quoted(item))
-                compileMainUnit(eng main)
-            else
-                log(eng "EVAL STALENESS" quoted(item) <> " -> UP TO DATE")
-                maybe.unwrap(manifest.readQm(a.qm)).importedModules
-            end
+            let imported =
+                if maybe.isSome(reason) then
+                    log(eng "EVAL STALENESS" quoted(item) <> " -> STALE (" <> maybe.unwrap(reason) <> ")")
+                    log(eng "COMPILE MAIN" quoted(item))
+                    compileMainUnit(eng main)
+                else
+                    log(eng "EVAL STALENESS" quoted(item) <> " -> UP TO DATE")
+                    maybe.unwrap(manifest.readQm(a.qm)).importedModules
+                end
             let objects = unflushedBuildModules(eng imported item maybe.some(files.parent(main)))
             let n = extent eng.extraObjects
             let linked = vector.new(:String)
@@ -1035,19 +1077,19 @@ export
      * returns or raises an exception *)
     let flushingLog(A::TYPE eng: T body: All() A): A =
         begin
-            let result = try
-                body()
-            else with r then
-                logger.flush(eng.logger)
-                raised.reraise(:A r)
-            end
+            let result =
+                try
+                    body()
+                else with r then
+                    logger.flush(eng.logger)
+                    raised.reraise(:A r)
+                end
             logger.flush(eng.logger)
             result
         end
 
     let buildModules(eng: T roots: Array(manifest.ImportedModuleRef) importer: String programDir: maybe.T(String))
-        : Array(String) =
-        flushingLog(eng fun(): Array(String) unflushedBuildModules(eng roots importer programDir))
+            : Array(String) = flushingLog(eng fun(): Array(String) unflushedBuildModules(eng roots importer programDir))
 
     let buildMain(eng: T mainFile: String output: maybe.T(String)): Ok =
         flushingLog(eng fun(): Ok unflushedBuildMain(eng mainFile output))

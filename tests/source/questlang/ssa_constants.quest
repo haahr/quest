@@ -14,16 +14,17 @@
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
-    questlang/ssa/parser : questlang/ssa/Parser
-    questlang/ssa/printer : questlang/ssa/Printer
-    questlang/ssa/passes/constants : questlang/ssa/passes/Constants
-    questlang/ssa/verify : questlang/ssa/Verify
-    util/strutil : util/Strutil
-    collections/vector : collections/Vector
     writer : Writer
-;
 
-let emit(s: String): Ok = writer.putString(writer.output s);
+    collections/vector : collections/Vector
+    util/strutil : util/Strutil
+
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/passes/constants : questlang/ssa/passes/Constants
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/verify : questlang/ssa/Verify
+
+let emit(s: String): Ok = writer.putString(writer.output s)
 
 let show(title: String lines: Array(String)): Ok =
     begin
@@ -34,7 +35,7 @@ let show(title: String lines: Array(String)): Ok =
         emit("-- after constants\n")
         emit(printer.formatUnit(u))
         try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
-    end;
+    end
 
 (* A function adding the global at g to its argument *)
 let user(g: String): Array(String) = array of
@@ -46,7 +47,7 @@ let user(g: String): Array(String) = array of
     "  return %3"
     "}"
     ""
-end;
+end
 
 (* The lines of parts, one after another *)
 let unit(parts: Array(Array(String))): Array(String) =
@@ -56,7 +57,7 @@ let unit(parts: Array(Array(String))): Array(String) =
             for j = 0 upto {extent parts[k] - 1} do vector.append(:String lines parts[k][j]) end
         end
         vector.toArray(:String lines)
-    end;
+    end
 
 show("an integer, in an initialization guarded by a flag" unit(array of
     user("g_one")
@@ -83,7 +84,7 @@ show("an integer, in an initialization guarded by a flag" unit(array of
         "data initialized writable zero 8"
         "data g_one writable zero 8"
     end
-end));
+end))
 
 show("a symbol's address" array of
     "function get(): ptr {"
@@ -103,7 +104,7 @@ show("a symbol's address" array of
     ""
     "data f_closure words [0, 0]"
     "data g_f writable zero 8"
-end);
+end)
 
 show("stored after a call of a runtime function that writes no memory" unit(array of
     user("g")
@@ -121,7 +122,7 @@ show("stored after a call of a runtime function that writes no memory" unit(arra
         "data name text \"failed\""
         "data g writable zero 8"
     end
-end));
+end))
 
 show("a module's, stored after registrations and its imports' initialization" unit(array of
     user("g")
@@ -158,7 +159,7 @@ show("a module's, stored after registrations and its imports' initialization" un
         "data frames words [0]"
         "data g writable zero 8"
     end
-end));
+end))
 
 show("stored after a write barrier's call" unit(array of
     user("g")
@@ -175,7 +176,7 @@ show("stored after a write barrier's call" unit(array of
         ""
         "data g writable zero 8"
     end
-end));
+end))
 
 show("stored after a call of a function that calls one that loads it" unit(array of
     user("g")
@@ -198,7 +199,7 @@ show("stored after a call of a function that calls one that loads it" unit(array
         ""
         "data g writable zero 8"
     end
-end));
+end))
 
 show("stored after a call of another unit's function" unit(array of
     user("g")
@@ -214,7 +215,7 @@ show("stored after a call of another unit's function" unit(array of
         ""
         "data g writable zero 8"
     end
-end));
+end))
 
 show("stored after a call of a module's initialization, not from one" unit(array of
     user("g")
@@ -230,7 +231,7 @@ show("stored after a call of a module's initialization, not from one" unit(array
         ""
         "data g writable zero 8"
     end
-end));
+end))
 
 show("stored twice" unit(array of
     user("g")
@@ -247,7 +248,7 @@ show("stored twice" unit(array of
         ""
         "data g writable zero 8"
     end
-end));
+end))
 
 show("stored after a call" unit(array of
     user("g")
@@ -264,7 +265,7 @@ show("stored after a call" unit(array of
         ""
         "data g writable zero 8"
     end
-end));
+end))
 
 show("loaded before it is stored, in an earlier block" unit(array of
     user("g")
@@ -282,7 +283,7 @@ show("loaded before it is stored, in an earlier block" unit(array of
         ""
         "data g writable zero 8"
     end
-end));
+end))
 
 show("its address passed on" unit(array of
     user("g")
@@ -298,7 +299,7 @@ show("its address passed on" unit(array of
         ""
         "data g writable zero 8"
     end
-end));
+end))
 
 show("exported" unit(array of
     user("g")
@@ -313,7 +314,7 @@ show("exported" unit(array of
         ""
         "data g exported writable zero 8"
     end
-end));
+end))
 
 show("stored in a loop" unit(array of
     user("g")
@@ -333,7 +334,7 @@ show("stored in a loop" unit(array of
         ""
         "data g writable zero 8"
     end
-end));
+end))
 
 show("loaded a byte at a time" array of
     "function use(): int {"
@@ -352,7 +353,7 @@ show("loaded a byte at a time" array of
     "}"
     ""
     "data g writable zero 8"
-end);
+end)
 
 show("stored a value that is not a constant" unit(array of
     user("g")
@@ -366,4 +367,4 @@ show("stored a value that is not a constant" unit(array of
         ""
         "data g writable zero 8"
     end
-end));
+end))

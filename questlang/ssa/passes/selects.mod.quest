@@ -2,10 +2,11 @@
 
 module selects : Selects
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/cfg : questlang/ssa/Cfg
     collections/vector : collections/Vector
     util/maybe : util/Maybe
+
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let Function = ssa.Function
 
@@ -22,9 +23,9 @@ export
     let speculable(defs: Array(maybe.T(ssa.Inst)) i: ssa.Inst): Bool =
         case i.op
             when opConst, opRealConst, opSymbol, opNull, opAdd, opSub, opMul, opMulHiU, opAnd, opOr, opXor, opShl,
-                opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul,
-                opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal,
-                opSext8, opZext8, opCopy, opPtrAdd, opToVal, opFromVal, opSelect then
+                    opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul,
+                    opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal,
+                    opSext8, opZext8, opCopy, opPtrAdd, opToVal, opFromVal, opSelect then
                 true
             when opLoad then
                 maybe.isSome(defs[i.args[0]])
@@ -55,14 +56,17 @@ export
                     when termNone, termBranch, termSwitch, termReturn, termTailCall, termTry, termUnreachable then
                         direct
                 end
-            else direct end
+            else
+                direct
+            end
         end
 
     (* Whether a branch to the arms yes and no can be a jump with selects:
      * both go to one block, and the arguments they pass differently are few
      * and none of them a real *)
     let convertible(f: Function yes: ssa.Target no: ssa.Target): Bool =
-        if yes.block isnot no.block then false
+        if yes.block isnot no.block then
+            false
         else
             let params = ssa.block(f yes.block).params
             let var selects = 0
@@ -91,7 +95,8 @@ export
             let params = ssa.block(f to.block).params
             let args = array of(extent to.args 0)
             for k = 0 upto {extent to.args - 1} do
-                if to.args[k] is no.target.args[k] then args[k] := to.args[k]
+                if to.args[k] is no.target.args[k] then
+                    args[k] := to.args[k]
                 else
                     let v = ssa.newValue(f ssa.typeOf(f vector.get(params k)))
                     let i = ssa.inst(ssa.opSelect array of cond to.args[k] no.target.args[k] end array of v end)

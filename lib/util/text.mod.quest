@@ -8,10 +8,11 @@
 
 module text : Text
 import
-    collections/vector : collections/Vector
-    sb = util/stringBuilder : util/StringBuilder
     ascii : Ascii
     stringOp = string : StringOp
+
+    collections/vector : collections/Vector
+    sb = util/stringBuilder : util/StringBuilder
 export
     Let Options = Tuple
         width: Int
@@ -126,7 +127,7 @@ export
                 while {e < n} andif isSpace(at(s e)) do e := e + 1 end
                 e
             elsif {i > 0} andif isWordPunct(at(s i - 1)) andif {dashesFrom(i) >= 2}
-                andif {{i + dashesFrom(i)} < n} andif isWord(at(s i + dashesFrom(i))) then
+                    andif {{i + dashesFrom(i)} < n} andif isWord(at(s i + dashesFrom(i))) then
                 i + dashesFrom(i)
             else
                 (* The lazy run: try each end j after i, while the bytes are not
@@ -135,15 +136,17 @@ export
                 let var found = ~1
                 while found < 0 do
                     if {j < n} andif {at(s j) is '-'}
-                        andif {{letterAt(j - 1) /\ letterAt(j - 2)}
-                            \/ {letterAt(j - 1) /\ {{j - 2} >= 0} andif {at(s j - 2) is '-'} andif letterAt(j - 3)}}
-                        andif letterAt(j + 1)
-                        andif {letterAt(j + 2) \/ {{{j + 2} < n} andif {at(s j + 2) is '-'} andif letterAt(j + 3)}} then
+                            andif {{letterAt(j - 1) /\ letterAt(j - 2)}
+                                    \/ {letterAt(j - 1) /\ {{j - 2} >= 0} andif {at(s j - 2) is '-'}
+                                            andif letterAt(j - 3)}}
+                            andif letterAt(j + 1)
+                            andif {letterAt(j + 2)
+                                    \/ {{{j + 2} < n} andif {at(s j + 2) is '-'} andif letterAt(j + 3)}} then
                         found := j + 1
                     elsif {j >= n} orif isSpace(at(s j)) then
                         found := j
                     elsif isWordPunct(at(s j - 1)) andif {dashesFrom(j) >= 2} andif {{j + dashesFrom(j)} < n}
-                        andif isWord(at(s j + dashesFrom(j))) then
+                            andif isWord(at(s j + dashesFrom(j))) then
                         found := j
                     else
                         j := j + 1
@@ -162,7 +165,8 @@ export
             let var i = 0
             while i < n do
                 let e =
-                    if breakOnHyphens then chunkEnd(s i)
+                    if breakOnHyphens then
+                        chunkEnd(s i)
                     else
                         let space = isSpace(at(s i))
                         let var k = i
@@ -265,7 +269,7 @@ export
                 if not(vector.empty(line)) then
                     let left = total - first
                     if {o.maxLines <= 0} \/ {{vector.length(lines) + 1} < o.maxLines}
-                        \/ {{{left is 0} \/ {{left is 1} andif isBlank(all[first])}} /\ {length <= width}} then
+                            \/ {{{left is 0} \/ {{left is 1} andif isBlank(all[first])}} /\ {length <= width}} then
                         vector.append(lines indent <> joined(line))
                     else
                         (* The last line: chunks dropped from its end until the
@@ -332,8 +336,14 @@ export
                 end
             end
             fillWith(sb.toString(b) tuple
-                let width = width let initialIndent = "" let subsequentIndent = "" let breakLongWords = true
-                let breakOnHyphens = true let tabSize = 8 let maxLines = 1 let placeholder = placeholder
+                let width = width
+                let initialIndent = ""
+                let subsequentIndent = ""
+                let breakLongWords = true
+                let breakOnHyphens = true
+                let tabSize = 8
+                let maxLines = 1
+                let placeholder = placeholder
             end)
         end
 
@@ -385,7 +395,7 @@ export
                     else
                         let var common = 0
                         while {common < size(margin)} andif {common < size(indent)}
-                            andif {at(margin common) is at(indent common)} do
+                                andif {at(margin common) is at(indent common)} do
                             common := common + 1
                         end
                         margin := sub(margin 0 common)
@@ -435,6 +445,5 @@ export
             sb.toString(b)
         end
 
-    let indent(s: String prefix: String): String =
-        indentIf(s prefix fun(line: String): Bool not(isBlank(line)))
+    let indent(s: String prefix: String): String = indentIf(s prefix fun(line: String): Bool not(isBlank(line)))
 end

@@ -2,18 +2,20 @@
 
 module native : Native
 import
-    questlang/ir/nodes : questlang/ir/Nodes
-    questlang/codegen/c/printer : questlang/codegen/c/Printer
-    questlang/repr/syntax : questlang/repr/Syntax
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    ssaBuild = questlang/ssa/build : questlang/ssa/Build
-    ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
-    ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
-    questlang/codegen/c/ssac : questlang/codegen/c/Ssac
-    arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
+    stringOp = string : StringOp
+
     collections/vector : collections/Vector
     util/maybe : util/Maybe
-    stringOp = string : StringOp
+
+    arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
+    questlang/codegen/c/printer : questlang/codegen/c/Printer
+    questlang/codegen/c/ssac : questlang/codegen/c/Ssac
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/repr/syntax : questlang/repr/Syntax
+    ssaBuild = questlang/ssa/build : questlang/ssa/Build
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
+    ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
 export
     let unsupported: Exception(String) = exception unsupported: String end
 
@@ -26,7 +28,9 @@ export
                 if maybe.isSome(datum) then
                     let d = maybe.unwrap(datum)
                     vector.append(built.data tuple
-                        let symbol = d.symbol let exported = true let writable = false
+                        let symbol = d.symbol
+                        let exported = true
+                        let writable = false
                         let contents = option contentsText of ssa.Contents with let text = d.text end
                     end)
                 end
@@ -42,8 +46,10 @@ export
             when arm64.unsupported with m then raise unsupported with m end
             end
         else
-            let c: String = try printer.printC(unit interfaceHeader) when printer.unsupported with m then
-                raise unsupported with m end end
+            let c: String =
+                try printer.printC(unit interfaceHeader) when printer.unsupported with m then
+                    raise unsupported with m end
+                end
             if maybe.isSome(datum) then
                 let d = maybe.unwrap(datum)
                 c <> "\nconst char " <> d.symbol <> "[] = " <> syntax.cString(d.text) <> ";\n"

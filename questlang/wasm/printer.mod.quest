@@ -2,14 +2,16 @@
 
 module printer : Printer
 import
-    questlang/wasm/model : questlang/wasm/Model
+    ascii : Ascii
+    conv : Conv
+    stringOp = string : StringOp
+    word : Word
+
     collections/vector : collections/Vector
     sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
-    ascii : Ascii
-    word : Word
-    conv : Conv
-    stringOp = string : StringOp
+
+    questlang/wasm/model : questlang/wasm/Model
 export
     Let Builder = sb.T
     Let Module = model.Module
@@ -28,7 +30,8 @@ export
      * unsigned word so that the minimum Int, whose signed negation overflows,
      * formats correctly. *)
     let signed(n: Int): String =
-        if n >= 0 then conv.int(n)
+        if n >= 0 then
+            conv.int(n)
         else
             let b = sb.new()
             sb.word(b word.sub(word.fromInt(0) word.fromInt(n)))
@@ -43,7 +46,8 @@ export
         begin
             let b = sb.new()
             for k = 12 downto 0 do
-                sb.char(b stringOp.getChar("0123456789abcdef" word.toInt(word.extract(word.fromInt(fraction) {4 * k} 4))))
+                sb.char(b
+                        stringOp.getChar("0123456789abcdef" word.toInt(word.extract(word.fromInt(fraction) {4 * k} 4))))
             end
             let s = sb.toString(b)
             let var n = 13
@@ -74,16 +78,18 @@ export
             let fraction = word.toInt(word.extract(w 0 52))
             let digits = fractionDigits(fraction)
             let point = if stringOp.isEmpty(digits) then "" else "." <> digits end
-            sign <> if field is 2047 then
-                if fraction is 0 then "inf"
-                else "nan:0x" <> hexWord(fraction)
+            sign
+                <> if field is 2047 then
+                    if fraction is 0 then "inf"
+                    else "nan:0x" <> hexWord(fraction)
+                    end
+                elsif field is 0 then
+                    if fraction is 0 then "0x0p+0" else "0x0" <> point <> "p-1022" end
+                else
+                    let e = field - 1023
+                    "0x1" <> point <> "p" <> {if e >= 0 then "+" else "-" end}
+                        <> conv.int(if e >= 0 then e else 0 - e end)
                 end
-            elsif field is 0 then
-                if fraction is 0 then "0x0p+0" else "0x0" <> point <> "p-1022" end
-            else
-                let e = field - 1023
-                "0x1" <> point <> "p" <> {if e >= 0 then "+" else "-" end} <> conv.int(if e >= 0 then e else 0 - e end)
-            end
         end
 
     (* Formats s as a WebAssembly quoted string, escaping double quotes,
@@ -94,7 +100,8 @@ export
             sb.char(b '"')
             for k = 0 upto stringOp.length(s) - 1 do
                 let c = ascii.val(stringOp.getChar(s k))
-                if {c >= 0x20} andif {c < 0x7F} andif {c isnot 0x22} andif {c isnot 0x5C} then sb.char(b ascii.char(c))
+                if {c >= 0x20} andif {c < 0x7F} andif {c isnot 0x22} andif {c isnot 0x5C} then
+                    sb.char(b ascii.char(c))
                 else
                     sb.char(b '\\')
                     sb.str(b hexDigit(c / 16))
@@ -134,7 +141,8 @@ export
                 when heapNoExtern then "nullexternref" when heapExn then "exnref" when heapNoExn then "nullexnref"
                 else ""
             end
-        else "(ref " <> {if nullable then "null " else "" end} <> heapType(m h) <> ")"
+        else
+            "(ref " <> {if nullable then "null " else "" end} <> heapType(m h) <> ")"
         end
 
     let valType(m: Module t: ValType): String =
@@ -146,7 +154,8 @@ export
     (* Formats a non-empty array of value types as " (<keyword> ...)", such as
      * " (param i64 i32)" or " (result eqref)", or "" when ts is empty *)
     let typeList(m: Module keyword: String ts: Array(ValType)): String =
-        if extent ts is 0 then ""
+        if extent ts is 0 then
+            ""
         else
             let b = sb.new()
             sb.str(b " (" <> keyword)
@@ -157,11 +166,12 @@ export
 
     let storage(m: Module f: model.Field): String =
         begin
-            let t = case f.storage
-                when storageI8 then "i8"
-                when storageI16 then "i16"
-                when storageValue with x then valType(m x.type)
-            end
+            let t =
+                case f.storage
+                    when storageI8 then "i8"
+                    when storageI16 then "i16"
+                    when storageValue with x then valType(m x.type)
+                end
             if f.mutable then "(mut " <> t <> ")" else t end
         end
 
@@ -174,7 +184,7 @@ export
                 for k = 0 upto extent x.fields - 1 do
                     let f = x.fields[k]
                     sb.str(b " (field " <> {if stringOp.isEmpty(f.name) then "" else "$" <> f.name <> " " end}
-                          <> storage(m f) <> ")")
+                        <> storage(m f) <> ")")
                 end
                 sb.str(b ")")
                 sb.toString(b)
@@ -184,7 +194,8 @@ export
     let subType(m: Module t: model.SubType): String =
         begin
             let named = if stringOp.isEmpty(t.name) then "" else " $" <> t.name end
-            if t.final andif {extent t.supers is 0} then "(type" <> named <> " " <> composite(m t.composite) <> ")"
+            if t.final andif {extent t.supers is 0} then
+                "(type" <> named <> " " <> composite(m t.composite) <> ")"
             else
                 let b = sb.new()
                 sb.str(b "(type" <> named <> " (sub")
@@ -213,7 +224,8 @@ export
             let n = vector.length(c.labels)
             if {d < 0} orif {d > n} then fail("a branch of depth " <> conv.int(d) <> " in " <> conv.int(n) <> " blocks")
             end
-            if d is n then conv.int(d)
+            if d is n then
+                conv.int(d)
             else
                 let name = vector.get(c.labels {{n - 1} - d})
                 let var shadowed = false
@@ -286,20 +298,21 @@ export
             let b = sb.new()
             for k = 0 upto extent args - 1 do
                 let a = args[k]
-                let text = case o.imms[k]
-                    when immType then typeId(m a)
-                    when immFunc then id(spaceName(m isFunc ns.functions a) a)
-                    when immLocal then id(if {a >= 0} andif {a < extent c.locals} then c.locals[a] else "" end a)
-                    when immGlobal then id(spaceName(m isGlobal ns.globals a) a)
-                    when immTag then id(spaceName(m isTag ns.tags a) a)
-                    when immData then id(spaceName(m notImported ns.data a) a)
-                    when immMemory then if a is 0 then "" else conv.int(a) end
-                    when immLabel then label(c a)
-                    when immField then fieldId(m args[k - 1] a)
-                    when immCount then conv.int(a)
-                    when immI32, immI64 then signed(a)
-                    when immOffset then if a is 0 then "" else "offset=" <> conv.int(a) end
-                end
+                let text =
+                    case o.imms[k]
+                        when immType then typeId(m a)
+                        when immFunc then id(spaceName(m isFunc ns.functions a) a)
+                        when immLocal then id(if {a >= 0} andif {a < extent c.locals} then c.locals[a] else "" end a)
+                        when immGlobal then id(spaceName(m isGlobal ns.globals a) a)
+                        when immTag then id(spaceName(m isTag ns.tags a) a)
+                        when immData then id(spaceName(m notImported ns.data a) a)
+                        when immMemory then if a is 0 then "" else conv.int(a) end
+                        when immLabel then label(c a)
+                        when immField then fieldId(m args[k - 1] a)
+                        when immCount then conv.int(a)
+                        when immI32, immI64 then signed(a)
+                        when immOffset then if a is 0 then "" else "offset=" <> conv.int(a) end
+                    end
                 if not(stringOp.isEmpty(text)) then sb.str(b " " <> text) end
             end
             sb.toString(b)
@@ -324,9 +337,10 @@ export
         case i
             when instOp with x then x.op.name <> immediates(m ns c x.op x.args)
             when instBlock with x then
-                let keyword = case x.kind
-                    when kindBlock then "block" when kindLoop then "loop" when kindIf then "if"
-                end
+                let keyword =
+                    case x.kind
+                        when kindBlock then "block" when kindLoop then "loop" when kindIf then "if"
+                    end
                 vector.append(c.labels x.label)
                 keyword <> named(x.label) <> blockType(m x.type)
             when instTryTable with x then
@@ -352,7 +366,7 @@ export
             when instRefCast with x then "ref.cast " <> refType(m x.type.nullable x.type.heap)
             when instBrOnCast with x then
                 {if x.fail then "br_on_cast_fail " else "br_on_cast " end} <> label(c x.label) <> " "
-                <> refType(m x.from.nullable x.from.heap) <> " " <> refType(m x.to.nullable x.to.heap)
+                    <> refType(m x.from.nullable x.from.heap) <> " " <> refType(m x.to.nullable x.to.heap)
             when instSelect with x then "select" <> typeList(m "result" x.types)
         end
 
@@ -381,13 +395,13 @@ export
 
     let importText(m: Module i: model.Import): String =
         "(import " <> quoted(i.moduleName) <> " " <> quoted(i.field) <> " "
-        <> case i.kind
-            when importFunc with x then "(func" <> named(i.name) <> " (type " <> typeId(m x.type) <> "))"
-            when importMemory with x then "(memory" <> named(i.name) <> limits(x.min x.max) <> ")"
-            when importGlobal with x then "(global" <> named(i.name) <> " " <> globalType(m x.type x.mutable) <> ")"
-            when importTag with x then "(tag" <> named(i.name) <> " (type " <> typeId(m x.type) <> "))"
-        end
-        <> ")"
+            <> case i.kind
+                when importFunc with x then "(func" <> named(i.name) <> " (type " <> typeId(m x.type) <> "))"
+                when importMemory with x then "(memory" <> named(i.name) <> limits(x.min x.max) <> ")"
+                when importGlobal with x then "(global" <> named(i.name) <> " " <> globalType(m x.type x.mutable) <> ")"
+                when importTag with x then "(tag" <> named(i.name) <> " (type " <> typeId(m x.type) <> "))"
+            end
+            <> ")"
 
     let constant(m: Module ns: Names insts: Array(Inst)): String =
         begin
@@ -400,16 +414,17 @@ export
     let function(b: Builder m: Module ns: Names f: model.Function): Ok =
         begin
             let t = model.typeAt(m f.type)
-            let params = case t.composite
-                when compFunc with x then x.params
-                else
-                    fail("function " <> f.name <> "'s type " <> conv.int(f.type) <> " is not a function type")
-                    array of :ValType end
-            end
+            let params =
+                case t.composite
+                    when compFunc with x then x.params
+                    else
+                        fail("function " <> f.name <> "'s type " <> conv.int(f.type) <> " is not a function type")
+                        array of :ValType end
+                end
             let results = case t.composite when compFunc with x then x.results else array of :ValType end end
             if {extent f.params} isnot {extent params} then
                 fail("function " <> f.name <> " names " <> conv.int(extent f.params) <> " parameters of "
-                     <> conv.int(extent params))
+                    <> conv.int(extent params))
             end
             sb.str(b "  (func" <> named(f.name) <> " (type " <> typeId(m f.type) <> ")")
             for k = 0 upto extent params - 1 do
@@ -434,13 +449,13 @@ export
 
     let exportText(m: Module ns: Names e: model.Export): String =
         "(export " <> quoted(e.field) <> " "
-        <> case e.kind
-            when exportFunc then "(func " <> id(spaceName(m isFunc ns.functions e.index) e.index) <> ")"
-            when exportMemory then "(memory " <> conv.int(e.index) <> ")"
-            when exportGlobal then "(global " <> id(spaceName(m isGlobal ns.globals e.index) e.index) <> ")"
-            when exportTag then "(tag " <> id(spaceName(m isTag ns.tags e.index) e.index) <> ")"
-        end
-        <> ")"
+            <> case e.kind
+                when exportFunc then "(func " <> id(spaceName(m isFunc ns.functions e.index) e.index) <> ")"
+                when exportMemory then "(memory " <> conv.int(e.index) <> ")"
+                when exportGlobal then "(global " <> id(spaceName(m isGlobal ns.globals e.index) e.index) <> ")"
+                when exportTag then "(tag " <> id(spaceName(m isTag ns.tags e.index) e.index) <> ")"
+            end
+            <> ")"
 
     let print(m: Module): String =
         begin
@@ -449,7 +464,8 @@ export
             sb.str(b "(module" <> named(m.name) <> "\n")
             for g = 0 upto vector.length(m.types) - 1 do
                 let group = vector.get(m.types g)
-                if extent group is 1 then sb.str(b "  " <> subType(m group[0]) <> "\n")
+                if extent group is 1 then
+                    sb.str(b "  " <> subType(m group[0]) <> "\n")
                 else
                     sb.str(b "  (rec\n")
                     for k = 0 upto extent group - 1 do sb.str(b "    " <> subType(m group[k]) <> "\n") end
@@ -470,7 +486,7 @@ export
             for k = 0 upto vector.length(m.globals) - 1 do
                 let g = vector.get(m.globals k)
                 sb.str(b "  (global" <> named(g.name) <> " " <> globalType(m g.type g.mutable) <> constant(m ns g.init)
-                      <> ")\n")
+                    <> ")\n")
             end
             for k = 0 upto vector.length(m.exports) - 1 do
                 sb.str(b "  " <> exportText(m ns vector.get(m.exports k)) <> "\n")

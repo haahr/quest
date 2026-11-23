@@ -9,86 +9,87 @@
  * render at a width no line reaches. *)
 
 import
-    pp = util/prettyPrint : util/PrettyPrint
-    writer : Writer
     conv : Conv
-;
-let <+> = pp.<+>;
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
-let t(s: String): pp.T = pp.text(s);
+    writer : Writer
+
+    pp = util/prettyPrint : util/PrettyPrint
+let <+> = pp.
+    <+> let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+let t(s: String): pp.T = pp.text(s)
 
 let show(name: String d: pp.T widths: Array(Int)): Ok =
     for i = 0 upto {extent(widths) - 1} do
         print("-- " <> name <> " at " <> conv.int(widths[i]))
         print("|" <> pp.render(d widths[i]) <> "|")
-    end;
+    end
 
 (* Wadler's tree: a name, and its children in brackets *)
-Let Rec Tree = Tuple name: String children: Array(Tree) end;
-let leaf(name: String): Tree = tuple let name = name let children = array of :Tree end end;
-let node(name: String children: Array(Tree)): Tree = tuple let name = name let children = children end;
+Let Rec Tree = Tuple name: String children: Array(Tree) end
+let leaf(name: String): Tree = tuple let name = name let children = array of :Tree end end
+let node(name: String children: Array(Tree)): Tree = tuple let name = name let children = children end
 let rec showTree(tree: Tree): pp.T =
-    if extent(tree.children) is 0 then t(tree.name)
+    if extent(tree.children) is 0 then
+        t(tree.name)
     else
         let docs = array of(extent(tree.children) pp.empty)
         for i = 0 upto {extent(tree.children) - 1} do docs[i] := showTree(tree.children[i]) end
         t(tree.name) <+> pp.bracket("[" "," "]" 2 docs)
-    end;
+    end
 let tree = showTree(node("aaa" array of
     node("bbbbb" array of leaf("ccc") leaf("dd") end)
     leaf("eee")
     node("ffff" array of leaf("gg") leaf("hhh") leaf("ii") end)
-end));
-show("tree" tree array of 80 30 20 10 end);
+end))
+show("tree" tree array of 80 30 20 10 end)
 
-let member(name: String value: pp.T): pp.T = t("\"" <> name <> "\": ") <+> value;
+let member(name: String value: pp.T): pp.T = t("\"" <> name <> "\": ") <+> value
 let json = pp.bracket("{" "," "}" 2 array of
     member("name" t("\"quest\""))
     member("versions" pp.bracket("[" "," "]" 2 array of t("1") t("2") t("3") end))
     member("authors" pp.bracket("[" "," "]" 2 array of t("\"Cardelli\"") t("\"Wadler\"") t("\"Leijen\"") end))
     member("empty" pp.bracket("[" "," "]" 2 array of :pp.T end))
-end);
-show("json" json array of 100 60 40 20 end);
+end)
+show("json" json array of 100 60 40 20 end)
 
-let call(f: String args: Array(pp.T)): pp.T = t(f) <+> pp.bracket("(" "," ")" 4 args);
+let call(f: String args: Array(pp.T)): pp.T = t(f) <+> pp.bracket("(" "," ")" 4 args)
 let calls = call("outer" array of
     call("inner" array of t("alpha") t("beta") end)
     t("gamma")
     call("other" array of call("deep" array of t("x") end) t("delta") end)
-end);
-show("calls" calls array of 80 40 25 12 end);
+end)
+show("calls" calls array of 80 40 25 12 end)
 
 let words = array of
     t("Wadler's") t("printer") t("lays") t("out") t("text") t("in") t("lines") t("that") t("fit") t("a") t("width,")
     t("choosing") t("for") t("each") t("group") t("whether") t("its") t("breaks") t("are") t("spaces.")
-end;
-show("fill" pp.fill("" words) array of 40 25 12 end);
+end
+show("fill" pp.fill("" words) array of 40 25 12 end)
 show("fill with commas" pp.fill("," array of t("one") t("two") t("three") t("four") t("five") t("six") end)
-    array of 20 12 end);
+        array of 20 12 end)
 
 let block = t("let ") <+> pp.align(pp.concat(array of t("x = 1") pp.hardLine t("y = 2") pp.hardLine t("z = 3") end))
-    <+> pp.hardLine <+> t("in x + y + z");
-show("aligned" block array of 40 end);
-let hung = t("result: ") <+> pp.hang(2 pp.sep("" array of t("first") t("second") t("third") end));
-show("hung" hung array of 40 20 end);
+    <+> pp.hardLine <+> t("in x + y + z")
+show("aligned" block array of 40 end)
+let hung = t("result: ") <+> pp.hang(2 pp.sep("" array of t("first") t("second") t("third") end))
+show("hung" hung array of 40 20 end)
 
-let hard = pp.group(t("a") <+> pp.line <+> t("b") <+> pp.hardLine <+> t("c") <+> pp.line <+> t("d"));
-show("hard" hard array of 80 end);
+let hard = pp.group(t("a") <+> pp.line <+> t("b") <+> pp.hardLine <+> t("c") <+> pp.line <+> t("d"))
+show("hard" hard array of 80 end)
 
 (* f(x) fits by itself at 12, but not with the text after it on its line *)
 let followed = pp.group(t("f(") <+> pp.nest(2 pp.softBreak <+> t("x")) <+> pp.softBreak <+> t(")"))
-    <+> t(" + something long");
-show("followed" followed array of 40 12 end);
+    <+> t(" + something long")
+show("followed" followed array of 40 12 end)
 
-let alternative = pp.group(t("a") <+> pp.breakOr(" | ") <+> t("b") <+> pp.breakOr(" | ") <+> t("c"));
-show("breakOr" alternative array of 20 5 end);
+let alternative = pp.group(t("a") <+> pp.breakOr(" | ") <+> t("b") <+> pp.breakOr(" | ") <+> t("c"))
+show("breakOr" alternative array of 20 5 end)
 
-print("flat [" <> pp.renderFlat(json) <> "]");
-print("flat hard [" <> pp.renderFlat(hard) <> "]");
+print("flat [" <> pp.renderFlat(json) <> "]")
+print("flat hard [" <> pp.renderFlat(hard) <> "]")
 print("cat " <> pp.render(pp.cat(t("x") pp.cat(pp.empty t("y"))) 10) <> " "
-    <> pp.render(pp.concat(array of t("p") t("q") t("r") end) 10) <> " [" <> pp.render(pp.empty 10) <> "]");
-print("text with a newline " <> try begin let d = pp.text("a\nb") "none" end when pp.error then "error" end);
-print("width 0 " <> try pp.render(tree 0) when pp.error then "error" end);
+    <> pp.render(pp.concat(array of t("p") t("q") t("r") end) 10) <> " [" <> pp.render(pp.empty 10) <> "]")
+print("text with a newline " <> try begin let d = pp.text("a\nb") "none" end when pp.error then "error" end)
+print("width 0 " <> try pp.render(tree 0) when pp.error then "error" end)
 
 (* The properties *)
 let lines(s: String): Array(String) =
@@ -107,11 +108,11 @@ let lines(s: String): Array(String) =
         end
         result[k] := string.getSub(s start string.length(s) - start)
         result
-    end;
-let documents = array of tree json calls pp.fill("" words) block hung hard followed alternative end;
-let flatOnes = array of true true true true false true false true true end;
-let var trailing = 0;
-let var flatDiffers = 0;
+    end
+let documents = array of tree json calls pp.fill("" words) block hung hard followed alternative end
+let flatOnes = array of true true true true false true false true true end
+let var trailing = 0
+let var flatDiffers = 0
 for i = 0 upto {extent(documents) - 1} do
     for width = 1 upto 60 do
         let ls = lines(pp.render(documents[i] width))
@@ -123,5 +124,5 @@ for i = 0 upto {extent(documents) - 1} do
     if flatOnes[i] andif not(string.equal(pp.renderFlat(documents[i]) pp.render(documents[i] 1000))) then
         flatDiffers := flatDiffers + 1
     end
-end;
-print("properties: trailing spaces " <> conv.int(trailing) <> ", flat differs " <> conv.int(flatDiffers));
+end
+print("properties: trailing spaces " <> conv.int(trailing) <> ", flat differs " <> conv.int(flatDiffers))

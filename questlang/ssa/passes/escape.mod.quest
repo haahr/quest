@@ -2,15 +2,17 @@
 
 module escape : Escape
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    conv : Conv
+    stringOp = string : StringOp
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+
     questlang/ssa/cfg : questlang/ssa/Cfg
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/passes/proxyFold : questlang/ssa/passes/ProxyFold
     questlang/ssa/passes/tailCalls : questlang/ssa/passes/TailCalls
-    collections/vector : collections/Vector
-    collections/hashMap : collections/HashMap
-    util/hash : util/Hash
-    stringOp = string : StringOp
-    conv : Conv
 export
     Def Verdict = Tuple value: Int bytes: Int escapes: Bool reason: String end
 
@@ -47,7 +49,8 @@ export
     let firstLoadOnly(f: Function): Bool =
         begin
             let entry = ssa.block(f 0)
-            if vector.length(entry.params) is 0 then false
+            if vector.length(entry.params) is 0 then
+                false
             else
                 let inSet = array of(vector.length(f.types) false)
                 inSet[vector.get(entry.params 0)] := true
@@ -65,13 +68,14 @@ export
                                 end
                             end
                         end
-                        let used = case blk.term
-                            when termBranch with x then array of x.cond end
-                            when termSwitch with x then array of x.value end
-                            when termReturn with x then x.values
-                            when termTailCall with x then x.call.args
-                            when termNone, termJump, termTry, termUnreachable then array of :Int end
-                        end
+                        let used =
+                            case blk.term
+                                when termBranch with x then array of x.cond end
+                                when termSwitch with x then array of x.value end
+                                when termReturn with x then x.values
+                                when termTailCall with x then x.call.args
+                                when termNone, termJump, termTry, termUnreachable then array of :Int end
+                            end
                         for j = 0 upto {extent used - 1} do if inSet[used[j]] then only := false end end
                         let ts = ssa.targets(blk.term)
                         for t = 0 upto {extent ts - 1} do
@@ -117,7 +121,8 @@ export
                 if s.alive[a] then begin s.alive[a] := false s.reasons[a] := "merged" end end
                 false
             end
-        else false end
+        else false
+        end
 
     let escapes(s: State a: Int reason: String): Ok =
         if s.alive[a] then begin s.alive[a] := false s.reasons[a] := reason end end
@@ -199,7 +204,8 @@ export
                             for j = 0 upto {extent t.args - 1} do
                                 let p = vector.get(params j)
                                 if bound[p] is ~1 then bound[p] := t.args[j]
-                                elsif bound[p] isnot t.args[j] then bound[p] := ~2 end
+                                elsif bound[p] isnot t.args[j] then bound[p] := ~2
+                                end
                             end
                         end
                     end
@@ -229,9 +235,10 @@ export
                             for k = 0 upto {vector.length(blk.insts) - 1} do
                                 let i = vector.get(blk.insts k)
                                 for j = 0 upto {extent i.args - 1} do
-                                    if {i.args[j] is v} andif
-                                        {{extent i.results is 0} orif not(isProxyTest(s i.results[0]))}
-                                    then only := false end
+                                    if {i.args[j] is v}
+                                            andif {{extent i.results is 0} orif not(isProxyTest(s i.results[0]))} then
+                                        only := false
+                                    end
                                 end
                             end
                             let uses = ssa.terminatorUses(blk.term)
@@ -252,7 +259,8 @@ export
                                 let a = s.ptr[v]
                                 if {ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opStore)} andif {j is 0} then
                                     let o = s.off[v] + i.imm
-                                    if not(inBounds(a o i.width)) then escapes(s a "accessed outside it")
+                                    if not(inBounds(a o i.width)) then
+                                        escapes(s a "accessed outside it")
                                     else
                                         (* A word holding its pointer holds
                                          * nothing else *)
@@ -264,8 +272,8 @@ export
                                         let var overlaps = false
                                         if w < 0 then
                                             for x = 0 upto {extent s.selfHas[a] - 1} do
-                                                if s.selfHas[a][x] andif {o < {{x * 8} + 8}} andif
-                                                    {{x * 8} < {o + i.width}} then overlaps := true end
+                                                if s.selfHas[a][x] andif {o < {{x * 8} + 8}}
+                                                        andif {{x * 8} < {o + i.width}} then overlaps := true end
                                             end
                                         end
                                         if holds andif ssa.isOp(i ssa.opStore) andif not(pointerStored) then
@@ -276,19 +284,24 @@ export
                                     end
                                 elsif ssa.isOp(i ssa.opStore) andif {j is 1} then
                                     if s.ptr[i.args[0]] isnot a then escapes(s a "stored") end
-                                elsif ssa.isOp(i ssa.opPtrAdd) andif {j is 0} andif s.d.isConst[i.args[1]] then ok
-                                elsif ssa.isOp(i ssa.opUnproxy) then ok
+                                elsif ssa.isOp(i ssa.opPtrAdd) andif {j is 0} andif s.d.isConst[i.args[1]] then
+                                    ok
+                                elsif ssa.isOp(i ssa.opUnproxy) then
+                                    ok
                                 elsif ssa.isOp(i ssa.opPtrToInt) then
                                     if not(onlyProxyTests(i.results[0])) then escapes(s a "converted to an integer") end
-                                elsif ssa.isCall(i) andif proxyFold.isBarrier(i.symbol) then ok
+                                elsif ssa.isCall(i) andif proxyFold.isBarrier(i.symbol) then
+                                    ok
                                 elsif ssa.isOp(i ssa.opCall) andif {j is 0} andif {s.allocValue[a] is v}
-                                    andif not(holdsItself(s a)) andif s.loadOnly(i.symbol)
-                                then
+                                        andif not(holdsItself(s a)) andif s.loadOnly(i.symbol) then
                                     (* A closure passed to its own code, which
                                      * reads its captures and keeps nothing *)
                                     ok
-                                elsif ssa.isCall(i) then escapes(s a "passed to " <> i.symbol)
-                                else escapes(s a "used by " <> ssa.opcodeName(i.op)) end
+                                elsif ssa.isCall(i) then
+                                    escapes(s a "passed to " <> i.symbol)
+                                else
+                                    escapes(s a "used by " <> ssa.opcodeName(i.op))
+                                end
                             end
                         end
                     end
@@ -338,10 +351,9 @@ export
                 let blk = ssa.block(f b)
                 for k = 0 upto {vector.length(blk.insts) - 1} do
                     let i = vector.get(blk.insts k)
-                    if ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol "quest_alloc") andif
-                        {extent i.args is 2} andif {extent i.results is 1} andif isConst[i.args[0]] andif
-                        {constant[i.args[0]] > 0}
-                    then
+                    if ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol "quest_alloc")
+                            andif {extent i.args is 2} andif {extent i.results is 1} andif isConst[i.args[0]]
+                            andif {constant[i.args[0]] > 0} then
                         vector.append(values i.results[0])
                         vector.append(sizes constant[i.args[0]])
                     end
@@ -356,11 +368,16 @@ export
                 selfOff[a] := array of({{allocBytes[a] + 7} / 8} 0)
             end
             let s = tuple
-                let f = f let d = d
-                let allocValue = vector.toArray(values) let allocBytes = allocBytes
-                let alive = array of(n true) let reasons = array of(n "")
-                let ptr = array of(nValues ~1) let off = array of(nValues 0)
-                let selfHas = selfHas let selfOff = selfOff
+                let f = f
+                let d = d
+                let allocValue = vector.toArray(values)
+                let allocBytes = allocBytes
+                let alive = array of(n true)
+                let reasons = array of(n "")
+                let ptr = array of(nValues ~1)
+                let off = array of(nValues 0)
+                let selfHas = selfHas
+                let selfOff = selfOff
                 let reach = array of(nBlocks true)
                 let loadOnly = loadOnly
             end
@@ -393,7 +410,9 @@ export
             let verdicts = array of(n tuple let value = 0 let bytes = 0 let escapes = false let reason = "" end)
             for a = 0 upto {n - 1} do
                 verdicts[a] := tuple
-                    let value = s.allocValue[a] let bytes = s.allocBytes[a] let escapes = not(s.alive[a])
+                    let value = s.allocValue[a]
+                    let bytes = s.allocBytes[a]
+                    let escapes = not(s.alive[a])
                     let reason = s.reasons[a]
                 end
             end
@@ -441,7 +460,9 @@ export
                                             typeCode(ssa.typeOf(f i.args[1]))
                                         elsif {pass is 1} andif ssa.isOp(i ssa.opLoad) then
                                             typeCode(ssa.typeOf(f i.results[0]))
-                                        else ~1 end
+                                        else
+                                            ~1
+                                        end
                                     if {t >= 0} andif {wordType[a][w] < 0} then wordType[a][w] := t end
                                 end
                             end
@@ -476,7 +497,7 @@ export
                                 let a = s.ptr[result]
                                 let words = extent s.selfHas[a]
                                 let slot = ssa.instruction(ssa.opSlot array of :Int end i.results
-                                    ssa.newSlot(f {words * 8} 8) "" 0 false ssa.emptySignature)
+                                        ssa.newSlot(f {words * 8} 8) "" 0 false ssa.emptySignature)
                                 slot.loc := i.loc
                                 vector.append(kept slot)
                                 for w = 0 upto {words - 1} do
@@ -484,18 +505,22 @@ export
                                         let zero = proxyFold.zeroOf(f kept typeOfCode(wordType[a][w]) i.loc)
                                         let width = if wordWide[a][w] then 8 else 1 end
                                         let store = ssa.instruction(ssa.opStore array of result zero end
-                                            array of :Int end {w * 8} "" width false ssa.emptySignature)
+                                                array of :Int end {w * 8} "" width false ssa.emptySignature)
                                         store.loc := i.loc
                                         vector.append(kept store)
                                     end
                                 end
-                            elsif {result >= 0} andif isPointer(result) then ok
-                            elsif ssa.isOp(i ssa.opStore) andif isPointer(i.args[1]) then ok
-                            elsif ssa.isOp(i ssa.opPtrToInt) andif isPointer(i.args[0]) then ok
-                            elsif ssa.isCall(i) andif proxyFold.isBarrier(i.symbol) andif isPointer(i.args[0]) then ok
+                            elsif {result >= 0} andif isPointer(result) then
+                                ok
+                            elsif ssa.isOp(i ssa.opStore) andif isPointer(i.args[1]) then
+                                ok
+                            elsif ssa.isOp(i ssa.opPtrToInt) andif isPointer(i.args[0]) then
+                                ok
+                            elsif ssa.isCall(i) andif proxyFold.isBarrier(i.symbol) andif isPointer(i.args[0]) then
+                                ok
                             elsif {result >= 0} andif proxyTest[result] then
                                 let zero = ssa.instruction(ssa.opConst array of :Int end i.results 0 "" 0 false
-                                    ssa.emptySignature)
+                                        ssa.emptySignature)
                                 zero.loc := i.loc
                                 vector.append(kept zero)
                             elsif access andif isPointer(i.args[0]) then
@@ -506,7 +531,9 @@ export
                                  * round, so what it holds is not invariant *)
                                 i.invariant := false
                                 vector.append(kept i)
-                            else vector.append(kept i) end
+                            else
+                                vector.append(kept i)
+                            end
                         end
                         vector.clear(blk.insts)
                         for k = 0 upto {vector.length(kept) - 1} do

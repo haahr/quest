@@ -2,12 +2,13 @@
 
 module syntax : Syntax
 import
+    ascii : Ascii
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/vector : collections/Vector
     sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
-    ascii : Ascii
 export
     (* An internal error: a negative number where a nonnegative one belongs (the
      * bootstrap's assertion) *)
@@ -20,7 +21,8 @@ export
     let cIntLiteral(n: Int): String =
         if n >= 0 then cInt(n) <> "LL"
         elsif {0 - n} < 0 then "(-" <> cInt({0 - n} - 1) <> "LL - 1)"
-        else "(-" <> cInt(0 - n) <> "LL)" end
+        else "(-" <> cInt(0 - n) <> "LL)"
+        end
 
     let cReal(r: Real): String =
         begin
@@ -30,11 +32,12 @@ export
             elsif stringOp.equal(text "~inf") then
                 "(-INFINITY)"
             else
-                let s = if {stringOp.length(text) > 0} andif {stringOp.getChar(text 0) is '~'} then
-                    "-" <> stringOp.getSub(text 1 {stringOp.length(text) - 1})
-                else
-                    text
-                end
+                let s =
+                    if {stringOp.length(text) > 0} andif {stringOp.getChar(text 0) is '~'} then
+                        "-" <> stringOp.getSub(text 1 {stringOp.length(text) - 1})
+                    else
+                        text
+                    end
                 if strutil.contains(s "e") orif strutil.contains(s ".") then s else s <> ".0" end
             end
         end

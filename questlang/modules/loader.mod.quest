@@ -2,29 +2,31 @@
 
 module loader : Loader
 import
-    questlang/common/pyRepr : questlang/common/PyRepr
-    questlang/common/location : questlang/common/Location
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/syntax/ast : questlang/syntax/Ast
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/types/env : questlang/types/Env
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
-    questlang/modules/paths : questlang/modules/Paths
-    questlang/common/files : questlang/common/Files
-    questlang/modules/units : questlang/modules/Units
-    questlang/modules/graph : questlang/modules/Graph
-    questlang/modules/elaboration : questlang/modules/Elaboration
-    questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
-    questlang/types/model : questlang/types/Model
-    collections/hashMap : collections/HashMap
-    collections/vector : collections/Vector
-    util/maybe : util/Maybe
-    util/strutil : util/Strutil
-    util/hash : util/Hash
-    system : System
-    stringOp = string : StringOp
     conv : Conv
     raised : Raised
+    stringOp = string : StringOp
+    system : System
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/files : questlang/common/Files
+    questlang/common/location : questlang/common/Location
+    questlang/common/pyRepr : questlang/common/PyRepr
+    questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/units : questlang/modules/Units
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
 export
     (* The scopes of the .qi files loaded in this process, with their
      * modification times: an interface is elaborated once for all the units
@@ -66,12 +68,13 @@ export
                     vector.pop(stack)
                     e.currentDir := savedDir
                 end
-            let result = try
-                body()
-            else with r then
-                restore()
-                raised.reraise(:A r)
-            end
+            let result =
+                try
+                    body()
+                else with r then
+                    restore()
+                    raised.reraise(:A r)
+                end
             restore()
             result
         end
@@ -95,10 +98,10 @@ export
                 maybe.none()
             elsif maybe.isSome(resolved.source) then
                 maybe.some(ancestor(maybe.unwrap(resolved.source)
-                    extent files.parts(graph.canonicalName(resolved))))
+                        extent files.parts(graph.canonicalName(resolved))))
             elsif maybe.isSome(resolved.prebuilt) andif strutil.contains(resolved.path "/") then
                 maybe.some(ancestor(maybe.unwrap(resolved.prebuilt)
-                    extent files.parts(paths.lower(resolved.path))))
+                        extent files.parts(paths.lower(resolved.path))))
             else
                 maybe.some(files.absolute(maybe.unwrapOr(e.currentDir ".")))
             end
@@ -161,28 +164,29 @@ export
                     end
                     scope
                 end
-            let existing = if maybe.isNone(unitFile) then
-                env.lookupInterface(e name)
-            else
-                let loaded = graph.interfaceScope(e.units canon)
-                if maybe.isSome(loaded) then maybe.some(register(maybe.unwrap(loaded))) else loaded end
-            end
+            let existing =
+                if maybe.isNone(unitFile) then
+                    env.lookupInterface(e name)
+                else
+                    let loaded = graph.interfaceScope(e.units canon)
+                    if maybe.isSome(loaded) then maybe.some(register(maybe.unwrap(loaded))) else loaded end
+                end
             if maybe.isSome(existing) then
                 maybe.unwrap(existing)
             else
                 (* Cycle detection *)
                 for i = 0 upto {vector.length(e.loadingInterfaces) - 1} do
                     if stringOp.equal(vector.get(e.loadingInterfaces i) canon) then
-                        diagnostics.fail(:Ok "Cyclic dependency detected in interface imports: " <>
-                            chain(e.loadingInterfaces canon) 0)
+                        diagnostics.fail(:Ok "Cyclic dependency detected in interface imports: "
+                            <> chain(e.loadingInterfaces canon) 0)
                     end
                 end
                 (* The .qi records the interface's imports as written in its
                  * source, so they are resolved from there *)
                 let loadQi = fun(qi: String): Scope
                     loading(e files.parent(maybe.unwrapOr(intSource qi)) e.loadingInterfaces canon
-                        fun(): Scope
-                        env.withUnitNames(e fun(): Scope interfaceCompiler.loadInterfaceFromQiFile(qi e)))
+                            fun(): Scope
+                                env.withUnitNames(e fun(): Scope interfaceCompiler.loadInterfaceFromQiFile(qi e)))
                 (* With a build directory, or in C compilation, the interface is
                  * loaded from its .qi, which is rebuilt first if stale
                  * (docs/build-process.md section 5) *)
@@ -191,7 +195,7 @@ export
                 if maybe.isSome(root) then
                     let outRoot = maybe.unwrap(root)
                     let qi = interfaceCompiler.ensureResolvedInterfaceArtifacts(resolved outRoot
-                        maybe.none() e.units.resolver).qiFile
+                            maybe.none() e.units.resolver).qiFile
                     if files.isFile(qi) then
                         (* outRoot goes first among the search roots, so that
                          * later resolutions in e (this interface's own
@@ -206,28 +210,33 @@ export
                         env.searchFirst(e outRoot)
                         let mtime = files.modifiedNs(qi)
                         let cached = hashMap.get(loadedQis qi)
-                        let scope = if maybe.isSome(cached) andif
-                                {maybe.unwrap(cached).mtime >= mtime} then
-                            maybe.unwrap(cached).scope
-                        else
-                            let s = loadQi(qi)
-                            hashMap.insert(loadedQis qi tuple let mtime = mtime let scope = s end)
-                            s
-                        end
+                        let scope =
+                            if maybe.isSome(cached)
+                                    andif {maybe.unwrap(cached).mtime >= mtime} then
+                                maybe.unwrap(cached).scope
+                            else
+                                let s = loadQi(qi)
+                                hashMap.insert(loadedQis qi tuple let mtime = mtime let scope = s end)
+                                s
+                            end
                         fromArtifacts := maybe.some(register(scope))
                     end
                 end
                 (* A fresh .qi on the search path (from a standalone
                  * compilation), else the source *)
-                let fresh = if maybe.isSome(fromArtifacts) then
-                    maybe.none(:String) else graph.freshInterfaceQi(resolved) end
+                let fresh =
+                    if maybe.isSome(fromArtifacts) then
+                        maybe.none(:String)
+                    else
+                        graph.freshInterfaceQi(resolved)
+                    end
                 if maybe.isSome(fromArtifacts) then
                     maybe.unwrap(fromArtifacts)
                 elsif maybe.isNone(fresh) then
                     diagnostics.fail("Undefined interface '" <> name <> "': cannot find interface file for '"
-                        <> name <>
-                        "' (looked for '" <> normName <> ".qi' or '" <> normName <> ".int.quest' in " <>
-                        pyRepr.strList(paths.searchedDirs(e.currentDir listedIncludePaths(e))) <> ")" 0)
+                        <> name
+                        <> "' (looked for '" <> normName <> ".qi' or '" <> normName <> ".int.quest' in "
+                        <> pyRepr.strList(paths.searchedDirs(e.currentDir listedIncludePaths(e))) <> ")" 0)
                 elsif strutil.endsWith(maybe.unwrap(fresh) ".qi") then
                     register(loadQi(maybe.unwrap(fresh)))
                 else
@@ -236,23 +245,25 @@ export
                     let scope = env.withUnitSource(e location.file(sm) fun(): Scope
                         begin
                             let prog = units.parseUnit(sm)
-                            let decl = case units.unitDeclaration(prog file)
-                                when interfaceDecl with d then d.decl
-                                else diagnostics.fail(:ast.InterfaceDecl "internal: not an interface" 0)
-                            end
+                            let decl =
+                                case units.unitDeclaration(prog file)
+                                    when interfaceDecl with d then d.decl
+                                    else diagnostics.fail(:ast.InterfaceDecl "internal: not an interface" 0)
+                                end
                             if not(stringOp.equal(paths.lower(decl.name) paths.lastSegment(normName))) then
                                 diagnostics.fail(:Ok "Interface declared in '" <> files.baseName(file)
-                                    <> "' has name '" <>
-                                    decl.name <> "', which does not match file name" 0)
+                                    <> "' has name '"
+                                    <> decl.name <> "', which does not match file name" 0)
                             end
                             let typed = loading(e files.parent(file) e.loadingInterfaces canon
-                                fun(): typedAst.Binding
-                                    env.withUnitNames(e fun(): typedAst.Binding
-                                        elaboration.elaborateInterface(decl 0 e)))
-                            let s = case typed.form
-                                when bindInterface with x then x.scope
-                                else diagnostics.fail(:Scope "internal: not an interface" 0)
-                            end
+                                    fun(): typedAst.Binding
+                                        env.withUnitNames(e fun(): typedAst.Binding
+                                            elaboration.elaborateInterface(decl 0 e)))
+                            let s =
+                                case typed.form
+                                    when bindInterface with x then x.scope
+                                    else diagnostics.fail(:Scope "internal: not an interface" 0)
+                                end
                             if not(stringOp.equal(decl.name name)) then env.registerInterface(e decl.name s) end
                             s
                         end)
@@ -273,18 +284,19 @@ export
                 (* Cycle detection *)
                 for i = 0 upto {vector.length(e.loadingModules) - 1} do
                     if stringOp.equal(paths.lower(vector.get(e.loadingModules i)) paths.lower(canon)) then
-                        diagnostics.fail(:Ok "Cyclic dependency detected in module imports: " <>
-                            chain(e.loadingModules canon) 0)
+                        diagnostics.fail(:Ok "Cyclic dependency detected in module imports: "
+                            <> chain(e.loadingModules canon) 0)
                     end
                 end
                 let synthesizePrecompiled(): typedAst.Binding =
                     begin
                         let found = env.lookupInterface(e expectedInterface)
-                        let target = if maybe.isSome(found) then
-                            maybe.unwrap(found)
-                        else
-                            loadInterface(expectedInterface e)
-                        end
+                        let target =
+                            if maybe.isSome(found) then
+                                maybe.unwrap(found)
+                            else
+                                loadInterface(expectedInterface e)
+                            end
                         (* All importers share one export scope. Its opaque
                          * types are named after the module's declared name,
                          * as elaborating its source does, and those the module
@@ -293,20 +305,25 @@ export
                          * be the type of an else binder, docs/raised.md
                          * section 3.2), else os/code's value.T would differ
                          * from os/value's. *)
-                        let exportScope = if maybe.isSome(u.exportScope) then
-                            maybe.unwrap(u.exportScope)
-                        else
-                            let externalTypes = elaboration.extractModuleExternalTypes(filePath)
-                            let s = elaboration.createModuleExportScope(paths.declaredModuleName(filePath canon) canon
-                                target e maybe.some(externalTypes))
-                            u.exportScope := maybe.some(s)
-                            s
-                        end
+                        let exportScope =
+                            if maybe.isSome(u.exportScope) then
+                                maybe.unwrap(u.exportScope)
+                            else
+                                let externalTypes = elaboration.extractModuleExternalTypes(filePath)
+                                let s =
+                                    elaboration.createModuleExportScope(paths.declaredModuleName(filePath canon) canon
+                                            target e maybe.some(externalTypes))
+                                u.exportScope := maybe.some(s)
+                                s
+                            end
                         env.registerModule(e canon exportScope)
                         if not(stringOp.equal(name canon)) then env.registerModule(e name exportScope) end
                         let typed = typedAst.binding(0 option bindModule of typedAst.BindingForm with
-                            let name = canon let interfaceName = expectedInterface let bindings = array of :typedAst.Binding end
-                            let scope = exportScope let isPrecompiled = true
+                            let name = canon
+                            let interfaceName = expectedInterface
+                            let bindings = array of :typedAst.Binding end
+                            let scope = exportScope
+                            let isPrecompiled = true
                             let symbolId = maybe.none()
                         end)
                         u.typedModule := maybe.some(typed)
@@ -315,7 +332,7 @@ export
                 if u.precompiled then
                     synthesizePrecompiled()
                 elsif e.compilingC andif {strutil.contains(canon "/") orif strutil.contains(name "/")}
-                    andif maybe.isSome(filePath) then
+                        andif maybe.isSome(filePath) then
                     (* Separate compilation of hierarchical modules: importers
                      * are typed against the module's interface, and building
                      * its object is left to the build (docs/build-process.md
@@ -331,9 +348,9 @@ export
                         synthesizePrecompiled()
                     else
                         let normName = paths.lower(name)
-                        diagnostics.fail("Undefined module '" <> name <> "': cannot find module file for '" <>
-                            name <> "' (looked for '" <> normName <> ".mod.quest' or '" <> normName <> ".o' in " <>
-                            pyRepr.strList(paths.searchedDirs(e.currentDir listedIncludePaths(e))) <> ")" 0)
+                        diagnostics.fail("Undefined module '" <> name <> "': cannot find module file for '"
+                            <> name <> "' (looked for '" <> normName <> ".mod.quest' or '" <> normName <> ".o' in "
+                            <> pyRepr.strList(paths.searchedDirs(e.currentDir listedIncludePaths(e))) <> ")" 0)
                     end
                 else
                     loadModuleSource(name expectedInterface e maybe.unwrap(filePath) canon u)
@@ -352,8 +369,8 @@ export
      * result is renamed to canon, the name C symbols use for it, and
      * registered in e under name and canon. *)
     and loadModuleSource(
-        name: String expectedInterface: String e: env.T file: String canon: String u: graph.Unit
-    ): typedAst.Binding =
+            name: String expectedInterface: String e: env.T file: String canon: String u: graph.Unit
+            ): typedAst.Binding =
         begin
             let sm = readUnit(file "module")
             let fileName = files.baseName(file)
@@ -363,28 +380,31 @@ export
                     let phrases = prog.form.phrases
                     let n = vector.length(phrases)
                     if n isnot 1 then
-                        diagnostics.fail(:Ok "Module file '" <> fileName <> "' must contain only a single module definition, " <>
-                            "but found " <> conv.int(n) <> " phrases" 0)
+                        diagnostics.fail(:Ok "Module file '" <> fileName
+                            <> "' must contain only a single module definition, "
+                            <> "but found " <> conv.int(n) <> " phrases" 0)
                     end
                     let p = vector.get(phrases 0)
-                    let decl = case p.form
-                        when phraseModule with x then x.modDecl
-                        else
-                            diagnostics.fail(:ast.ModuleDecl "Expected module definition in '" <> fileName <>
-                                "', but found " <> units.phraseClassName(p) 0)
-                    end
+                    let decl =
+                        case p.form
+                            when phraseModule with x then x.modDecl
+                            else
+                                diagnostics.fail(:ast.ModuleDecl "Expected module definition in '" <> fileName
+                                    <> "', but found " <> units.phraseClassName(p) 0)
+                        end
                     let normName = paths.lower(name)
                     let expectedBase = paths.lower(stringOp.getSub(fileName 0 strutil.find(fileName ".")))
-                    if not(stringOp.equal(paths.lower(decl.name) expectedBase)) orif
-                            not(stringOp.equal(paths.lower(decl.name) paths.lastSegment(normName))) then
-                        diagnostics.fail(:Ok "Module declared in '" <> fileName <> "' has name '" <> decl.name <>
-                            "', which does not match file name" 0)
+                    if not(stringOp.equal(paths.lower(decl.name) expectedBase))
+                            orif not(stringOp.equal(paths.lower(decl.name) paths.lastSegment(normName))) then
+                        diagnostics.fail(:Ok "Module declared in '" <> fileName <> "' has name '" <> decl.name
+                            <> "', which does not match file name" 0)
                     end
-                    if not(stringOp.equal(decl.interfaceName expectedInterface)) andif
-                            not(stringOp.equal(paths.lastSegment(decl.interfaceName) expectedInterface)) andif
-                            not(stringOp.equal(decl.interfaceName paths.lastSegment(expectedInterface))) then
-                        diagnostics.fail(:Ok "Module '" <> decl.name <> "' in '" <> fileName <> "' implements interface '" <>
-                            decl.interfaceName <> "', expected '" <> expectedInterface <> "'" 0)
+                    if not(stringOp.equal(decl.interfaceName expectedInterface))
+                            andif not(stringOp.equal(paths.lastSegment(decl.interfaceName) expectedInterface))
+                            andif not(stringOp.equal(decl.interfaceName paths.lastSegment(expectedInterface))) then
+                        diagnostics.fail(:Ok "Module '" <> decl.name <> "' in '" <> fileName
+                            <> "' implements interface '"
+                            <> decl.interfaceName <> "', expected '" <> expectedInterface <> "'" 0)
                     end
                     (* The interface the importer expects, which the module's
                      * header names unless it cannot be resolved from the
@@ -392,43 +412,51 @@ export
                     let importerInterface = env.lookupInterface(e expectedInterface)
                     let savedScope = e.currentScope
                     let restoreScope = fun(): Ok e.currentScope := savedScope
-                    let elaborated = try
-                        loading(e files.parent(file) e.loadingModules canon fun(): typedAst.Binding
-                            env.withUnitNames(e fun(): typedAst.Binding
-                                begin
-                                    if maybe.isSome(importerInterface) andif
-                                            maybe.isNone(env.resolveInterface(e decl.interfaceName).source) then
-                                        env.registerInterface(e decl.interfaceName maybe.unwrap(importerInterface))
-                                    elsif maybe.isNone(env.lookupInterface(e decl.interfaceName)) then
-                                        loadInterface(decl.interfaceName e)
-                                        ok
-                                    end
-                                    e.currentScope := symbols.newScope(maybe.some(e.baseScope) "temp_load_" <> decl.name)
-                                    elaboration.elaborateModule(decl p.span.startOffset e)
-                                end))
-                    else with r then
-                        begin
-                            restoreScope()
-                            raised.reraise(:typedAst.Binding r)
+                    let elaborated =
+                        try
+                            loading(e files.parent(file) e.loadingModules canon fun(): typedAst.Binding
+                                env.withUnitNames(e fun(): typedAst.Binding
+                                    begin
+                                        if maybe.isSome(importerInterface)
+                                                andif maybe.isNone(env.resolveInterface(e
+                                                        decl.interfaceName).source) then
+                                            env.registerInterface(e decl.interfaceName maybe.unwrap(importerInterface))
+                                        elsif maybe.isNone(env.lookupInterface(e decl.interfaceName)) then
+                                            loadInterface(decl.interfaceName e)
+                                            ok
+                                        end
+                                        e.currentScope :=
+                                                symbols.newScope(maybe.some(e.baseScope) "temp_load_" <> decl.name)
+                                        elaboration.elaborateModule(decl p.span.startOffset e)
+                                    end))
+                        else with r then
+                            begin
+                                restoreScope()
+                                raised.reraise(:typedAst.Binding r)
+                            end
                         end
-                    end
                     restoreScope()
                     elaborated
                 end)
             (* The module is named in C symbols by its canonical name, as
              * importers refer to it *)
-            let named = case typed.form
-                when bindModule with x then
-                    if stringOp.equal(paths.lower(x.name) paths.lower(canon)) then
-                        typed
-                    else
-                        typedAst.binding(typed.offset option bindModule of typedAst.BindingForm with
-                            let name = canon let interfaceName = x.interfaceName let bindings = x.bindings let scope = x.scope
-                            let isPrecompiled = x.isPrecompiled let symbolId = x.symbolId
-                        end)
-                    end
-                else typed
-            end
+            let named =
+                case typed.form
+                    when bindModule with x then
+                        if stringOp.equal(paths.lower(x.name) paths.lower(canon)) then
+                            typed
+                        else
+                            typedAst.binding(typed.offset option bindModule of typedAst.BindingForm with
+                                let name = canon
+                                let interfaceName = x.interfaceName
+                                let bindings = x.bindings
+                                let scope = x.scope
+                                let isPrecompiled = x.isPrecompiled
+                                let symbolId = x.symbolId
+                            end)
+                        end
+                    else typed
+                end
             let scope = elaboration.moduleScope(named)
             env.registerModule(e name scope)
             if not(stringOp.equal(canon name)) then env.registerModule(e canon scope) end

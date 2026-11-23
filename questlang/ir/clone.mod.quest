@@ -2,15 +2,17 @@
 
 module clone : Clone
 import
-    questlang/types/model : questlang/types/Model
-    questlang/ir/nodes : questlang/ir/Nodes
-    questlang/ir/walk : questlang/ir/Walk
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/types/model : questlang/types/Model
 export
     Let Type = model.Type
     Let Variable = nodes.Variable
@@ -48,8 +50,11 @@ export
         begin
             let c = newCloner(subst)
             tuple
-                let subst = c.subst let vars = c.vars let labels = c.labels
-                let relabeling = c.relabeling let sharesCode = true
+                let subst = c.subst
+                let vars = c.vars
+                let labels = c.labels
+                let relabeling = c.relabeling
+                let sharesCode = true
             end
         end
 
@@ -57,8 +62,11 @@ export
         begin
             let c = newCloner(subst)
             tuple
-                let subst = c.subst let vars = c.vars let labels = c.labels
-                let relabeling = maybe.some(counter) let sharesCode = false
+                let subst = c.subst
+                let vars = c.vars
+                let labels = c.labels
+                let relabeling = maybe.some(counter)
+                let sharesCode = false
             end
         end
 
@@ -119,14 +127,18 @@ export
     let optAtom(c: Cloner a: maybe.T(Atom)): maybe.T(Atom) =
         if maybe.isSome(a) then maybe.some(atom(c maybe.unwrap(a))) else a end
 
-    let staticDescriptor(c: Cloner d: nodes.StaticDescriptor): nodes.StaticDescriptor = nodes.newStaticDescriptor(ty(c d.type) d.echo)
+    let staticDescriptor(c: Cloner d: nodes.StaticDescriptor): nodes.StaticDescriptor =
+        nodes.newStaticDescriptor(ty(c d.type) d.echo)
 
     let rec descriptor(c: Cloner d: nodes.Descriptor): nodes.Descriptor =
         case d
             when descVar with x then option descVar of nodes.Descriptor with let v = var1(c x.v) end
             when descStatic with x then option descStatic of nodes.Descriptor with let d = staticDescriptor(c x.d) end
             when descInstantiate with x then
-                option descInstantiate of nodes.Descriptor with let template = ty(c x.template) let args = descriptors(c x.args) end
+                option descInstantiate of nodes.Descriptor with
+                    let template = ty(c x.template)
+                    let args = descriptors(c x.args)
+                end
         end
 
     and descriptors(c: Cloner ds: Array(nodes.Descriptor)): Array(nodes.Descriptor) =
@@ -188,12 +200,16 @@ export
     let offsetTable(c: Cloner t: maybe.T(nodes.OffsetTable)): maybe.T(nodes.OffsetTable) =
         if maybe.isSome(t) then
             let x = maybe.unwrap(t)
-            let registered = if maybe.isSome(x.registered) then
-                let r = maybe.unwrap(x.registered)
-                maybe.some(tuple let view = staticDescriptor(c r.view) let layout = staticDescriptor(c r.layout) end)
-            else
-                x.registered
-            end
+            let registered =
+                if maybe.isSome(x.registered) then
+                    let r = maybe.unwrap(x.registered)
+                    maybe.some(tuple
+                        let view = staticDescriptor(c r.view)
+                        let layout = staticDescriptor(c r.layout)
+                    end)
+                else
+                    x.registered
+                end
             maybe.some(tuple
                 let id = x.id
                 let view = ty(c x.view)
@@ -231,7 +247,9 @@ export
                 when sLetRec with x then for j = 0 upto {extent x.vars - 1} do fresh(c x.vars[j]) end
                 when sSwitch with x then
                     for j = 0 upto {extent x.cases - 1} do
-                        if maybe.isSome(x.cases[j].binder) then begin fresh(c maybe.unwrap(x.cases[j].binder)) ok end end
+                        if maybe.isSome(x.cases[j].binder) then
+                            begin fresh(c maybe.unwrap(x.cases[j].binder)) ok end
+                        end
                     end
                 when sInspect with x then
                     for j = 0 upto {extent x.cases - 1} do
@@ -256,7 +274,9 @@ export
     and copyFunction(c: Cloner f: nodes.Function): nodes.Function =
         begin
             let params = array of(extent f.params tuple let v = f.v let mode = "" end)
-            for i = 0 upto {extent f.params - 1} do params[i] := tuple let v = var1(c f.params[i].v) let mode = f.params[i].mode end end
+            for i = 0 upto {extent f.params - 1} do
+                params[i] := tuple let v = var1(c f.params[i].v) let mode = f.params[i].mode end
+            end
             nodes.newFunction(var1(c f.v) f.typeParams params ty(c f.resultType) copyBody(c f.body) f.traceName)
         end
 
@@ -267,93 +287,155 @@ export
             when opAtom with x then nodes.opOfAtom(atom(c x.atom))
             when opPrim with x then
                 option opPrim of Op with
-                    let op = x.op let var args = atoms(c x.args) let offset = x.offset let var access = x.access
+                    let op = x.op
+                    let var args = atoms(c x.args)
+                    let offset = x.offset
+                    let var access = x.access
                     let var descriptor = optDescriptor(c x.descriptor)
                 end
             when opCall with x then
                 option opCall of Op with
-                    let var callee = optVar(c x.callee) let var typeArgs = tys(c x.typeArgs) let var args = atoms(c x.args)
-                    let var moduleRef = x.moduleRef let var member = x.member let var calleeType = optTy(c x.calleeType)
+                    let var callee = optVar(c x.callee)
+                    let var typeArgs = tys(c x.typeArgs)
+                    let var args = atoms(c x.args)
+                    let var moduleRef = x.moduleRef
+                    let var member = x.member
+                    let var calleeType = optTy(c x.calleeType)
                     let var descriptors = descriptors(c x.descriptors)
                 end
             when opTypeApp with x then
                 option opTypeApp of Op with
-                    let var callee = optVar(c x.callee) let var typeArgs = tys(c x.typeArgs) let var moduleRef = x.moduleRef
-                    let var member = x.member let var calleeType = optTy(c x.calleeType) let var plans = plans(c x.plans)
-                    let var thunkSymbols = x.thunkSymbols let var descriptors = descriptors(c x.descriptors)
-                    let var thunkParams = if maybe.isSome(x.thunkParams) then
-                        maybe.some(descriptorParams(c maybe.unwrap(x.thunkParams)))
-                    else
-                        x.thunkParams
-                    end
+                    let var callee = optVar(c x.callee)
+                    let var typeArgs = tys(c x.typeArgs)
+                    let var moduleRef = x.moduleRef
+                    let var member = x.member
+                    let var calleeType = optTy(c x.calleeType)
+                    let var plans = plans(c x.plans)
+                    let var thunkSymbols = x.thunkSymbols
+                    let var descriptors = descriptors(c x.descriptors)
+                    let var thunkParams =
+                        if maybe.isSome(x.thunkParams) then
+                            maybe.some(descriptorParams(c maybe.unwrap(x.thunkParams)))
+                        else
+                            x.thunkParams
+                        end
                 end
-            when opModuleMember with x then option opModuleMember of Op with let var moduleRef = x.moduleRef let var member = x.member end
+            when opModuleMember with x then
+                option opModuleMember of Op with let var moduleRef = x.moduleRef let var member = x.member end
             when opBuiltin with x then option opBuiltin of Op with let name = x.name end
             when opExternal with x then option opExternal of Op with let symbol = x.symbol end
             when opCallExternal with x then
                 option opCallExternal of Op with
-                    let symbol = x.symbol let var typeArgs = tys(c x.typeArgs) let var args = atoms(c x.args)
+                    let symbol = x.symbol
+                    let var typeArgs = tys(c x.typeArgs)
+                    let var args = atoms(c x.args)
                     let var descriptors = descriptors(c x.descriptors)
                 end
             when opMakeClosure with x then
                 option opMakeClosure of Op with
-                    let var code = if c.sharesCode then x.code else copyFunction(c x.code) end let var captures = atoms(c x.captures) let var typeArgs = tys(c x.typeArgs)
+                    let var code = if c.sharesCode then x.code else copyFunction(c x.code) end
+                    let var captures = atoms(c x.captures)
+                    let var typeArgs = tys(c x.typeArgs)
                     let var descriptors = descriptors(c x.descriptors)
                 end
             when opEnvField with x then option opEnvField of Op with let var env = atom(c x.env) let index = x.index end
             when opConvert with x then
-                option opConvert of Op with let var value = atom(c x.value) let var plan = maybe.unwrap(plan(c maybe.some(x.plan))) end
+                option opConvert of Op with
+                    let var value = atom(c x.value)
+                    let var plan = maybe.unwrap(plan(c maybe.some(x.plan)))
+                end
             when opMakeTuple with x then
                 option opMakeTuple of Op with
-                    let var args = atoms(c x.args) let typeComponents = typeComponents(c x.typeComponents) let var embedded = x.embedded
+                    let var args = atoms(c x.args)
+                    let typeComponents = typeComponents(c x.typeComponents)
+                    let var embedded = x.embedded
                 end
             when opTupleField with x then
                 option opTupleField of Op with
-                    let var tup = atom(c x.tup) let var index = x.index let var access = x.access let var viewMap = optVar(c x.viewMap)
+                    let var tup = atom(c x.tup)
+                    let var index = x.index
+                    let var access = x.access
+                    let var viewMap = optVar(c x.viewMap)
                 end
             when opMakeRecord with x then
                 let fields = vector.new(:nodes.FieldAtom)
                 for i = 0 upto {extent x.fields - 1} do
-                    vector.append(fields tuple let name = x.fields[i].name let atom = atom(c x.fields[i].atom) let isVar = x.fields[i].isVar end)
+                    vector.append(fields tuple
+                        let name = x.fields[i].name
+                        let atom = atom(c x.fields[i].atom)
+                        let isVar = x.fields[i].isVar
+                    end)
                 end
                 option opMakeRecord of Op with
-                    let var fields = vector.toArray(fields) let var embedded = x.embedded
-                    let var runtimeOffsets = x.runtimeOffsets let var descriptor = optDescriptor(c x.descriptor)
-                    let var offsets = offsetTable(c x.offsets) let var viewDescriptor = optDescriptor(c x.viewDescriptor)
+                    let var fields = vector.toArray(fields)
+                    let var embedded = x.embedded
+                    let var runtimeOffsets = x.runtimeOffsets
+                    let var descriptor = optDescriptor(c x.descriptor)
+                    let var offsets = offsetTable(c x.offsets)
+                    let var viewDescriptor = optDescriptor(c x.viewDescriptor)
                 end
             when opRecordField with x then
                 option opRecordField of Op with
-                    let var recordAtom = atom(c x.recordAtom) let name = x.name let var stored = x.stored
-                    let var descriptor = optDescriptor(c x.descriptor) let var viewMap = optVar(c x.viewMap)
+                    let var recordAtom = atom(c x.recordAtom)
+                    let name = x.name
+                    let var stored = x.stored
+                    let var descriptor = optDescriptor(c x.descriptor)
+                    let var viewMap = optVar(c x.viewMap)
                 end
-            when opMakeVariant with x then option opMakeVariant of Op with let tag = x.tag let var payload = optAtom(c x.payload) end
+            when opMakeVariant with x then
+                option opMakeVariant of Op with let tag = x.tag let var payload = optAtom(c x.payload) end
             when opMakeOption with x then
                 option opMakeOption of Op with
-                    let tag = x.tag let var payload = optAtom(c x.payload) let var ordinalAtom = optAtom(c x.ordinalAtom)
-                    let offset = x.offset let cases = x.cases let var access = x.access
+                    let tag = x.tag
+                    let var payload = optAtom(c x.payload)
+                    let var ordinalAtom = optAtom(c x.ordinalAtom)
+                    let offset = x.offset
+                    let cases = x.cases
+                    let var access = x.access
                 end
             when opIsTag with x then
                 option opIsTag of Op with
-                    let var value = atom(c x.value) let tag = x.tag let var access = x.access let var viewMap = optVar(c x.viewMap)
+                    let var value = atom(c x.value)
+                    let tag = x.tag
+                    let var access = x.access
+                    let var viewMap = optVar(c x.viewMap)
                 end
             when opPayload with x then
                 option opPayload of Op with
-                    let var value = atom(c x.value) let tag = x.tag let offset = x.offset let var access = x.access
-                    let var components = x.components let ordinalIndex = x.ordinalIndex let var viewMap = optVar(c x.viewMap)
+                    let var value = atom(c x.value)
+                    let tag = x.tag
+                    let offset = x.offset
+                    let var access = x.access
+                    let var components = x.components
+                    let ordinalIndex = x.ordinalIndex
+                    let var viewMap = optVar(c x.viewMap)
                     let var decided = x.decided
                 end
             when opOrdinal with x then
                 option opOrdinal of Op with
-                    let var value = atom(c x.value) let cases = x.cases let var access = x.access let var viewMap = optVar(c x.viewMap)
+                    let var value = atom(c x.value)
+                    let cases = x.cases
+                    let var access = x.access
+                    let var viewMap = optVar(c x.viewMap)
                 end
             when opMakeArray with x then option opMakeArray of Op with let var args = atoms(c x.args) end
             when opArrayRep with x then
-                option opArrayRep of Op with let var count = atom(c x.count) let var init = atom(c x.init) let offset = x.offset end
+                option opArrayRep of Op with
+                    let var count = atom(c x.count)
+                    let var init = atom(c x.init)
+                    let offset = x.offset
+                end
             when opIndex with x then
-                option opIndex of Op with let var arr = atom(c x.arr) let var index = atom(c x.index) let offset = x.offset end
+                option opIndex of Op with
+                    let var arr = atom(c x.arr)
+                    let var index = atom(c x.index)
+                    let offset = x.offset
+                end
             when opMakeAuto with x then
                 option opMakeAuto of Op with
-                    let witness = ty(c x.witness) let autoType = ty(c x.autoType) let var payload = atom(c x.payload)
+                    let witness = ty(c x.witness)
+                    let autoType = ty(c x.autoType)
+                    let var payload = atom(c x.payload)
                     let var descriptor = optDescriptor(c x.descriptor)
                 end
             when opMakeException with x then
@@ -364,18 +446,34 @@ export
             when opIsSet with x then option opIsSet of Op with let var v = var1(c x.v) end
             when opAddrCell with x then option opAddrCell of Op with let var init = atom(c x.init) end
             when opAddrField with x then
-                option opAddrField of Op with let var base = atom(c x.base) let name = x.name let var viewMap = optVar(c x.viewMap) end
+                option opAddrField of Op with
+                    let var base = atom(c x.base)
+                    let name = x.name
+                    let var viewMap = optVar(c x.viewMap)
+                end
             when opAddrComponent with x then
                 option opAddrComponent of Op with
-                    let var base = atom(c x.base) let index = x.index let var access = x.access let var viewMap = optVar(c x.viewMap)
+                    let var base = atom(c x.base)
+                    let index = x.index
+                    let var access = x.access
+                    let var viewMap = optVar(c x.viewMap)
                 end
             when opAddrElement with x then
-                option opAddrElement of Op with let var base = atom(c x.base) let var index = atom(c x.index) let offset = x.offset end
+                option opAddrElement of Op with
+                    let var base = atom(c x.base)
+                    let var index = atom(c x.index)
+                    let offset = x.offset
+                end
             when opLoad with x then option opLoad of Op with let var address = atom(c x.address) end
         end
 
     and copyCase(c: Cloner k: nodes.Case): nodes.Case =
-        tuple let tags = k.tags let var body = copyBody(c k.body) let var binder = optVar(c k.binder) let var components = k.components end
+        tuple
+            let tags = k.tags
+            let var body = copyBody(c k.body)
+            let var binder = optVar(c k.binder)
+            let var components = k.components
+        end
 
     and copyArm(c: Cloner a: maybe.T(nodes.InspectArm)): maybe.T(nodes.InspectArm) =
         if maybe.isNone(a) then
@@ -386,16 +484,23 @@ export
             for i = 0 upto {extent x.descriptors - 1} do
                 let p = x.descriptors[i]
                 vector.append(pairs
-                    if maybe.isSome(p) then
-                        let dp = maybe.unwrap(p)
-                        maybe.some(tuple let source = descriptor(c dp.source) let target = descriptor(c dp.target) end)
-                    else
-                        p
-                    end)
+                        if maybe.isSome(p) then
+                            let dp = maybe.unwrap(p)
+                            maybe.some(tuple
+                                let source = descriptor(c dp.source)
+                                let target = descriptor(c dp.target)
+                            end)
+                        else
+                            p
+                        end)
             end
             maybe.some(tuple
-                let converted = x.converted let exact = x.exact let shared = x.shared let plan = plan(c x.plan)
-                let layoutError = x.layoutError let var descriptors = vector.toArray(pairs)
+                let converted = x.converted
+                let exact = x.exact
+                let shared = x.shared
+                let plan = plan(c x.plan)
+                let layoutError = x.layoutError
+                let var descriptors = vector.toArray(pairs)
             end)
         end
 
@@ -411,75 +516,143 @@ export
 
     and copyStmt(c: Cloner s: Stmt): Stmt =
         case s
-            when sLet with x then option sLet of Stmt with let var pos = x.pos let var v = var1(c x.v) let var value = copyOp(c x.value) end
-            when sVarDecl with x then option sVarDecl of Stmt with let var pos = x.pos let var v = var1(c x.v) let var init = optAtom(c x.init) end
-            when sAssign with x then option sAssign of Stmt with let var pos = x.pos let var v = var1(c x.v) let var value = atom(c x.value) end
-            when sStoreAt with x then option sStoreAt of Stmt with let var pos = x.pos let var value = atom(c x.value) let var address = atom(c x.address) end
+            when sLet with x then
+                option sLet of Stmt with
+                    let var pos = x.pos
+                    let var v = var1(c x.v)
+                    let var value = copyOp(c x.value)
+                end
+            when sVarDecl with x then
+                option sVarDecl of Stmt with
+                    let var pos = x.pos
+                    let var v = var1(c x.v)
+                    let var init = optAtom(c x.init)
+                end
+            when sAssign with x then
+                option sAssign of Stmt with
+                    let var pos = x.pos
+                    let var v = var1(c x.v)
+                    let var value = atom(c x.value)
+                end
+            when sStoreAt with x then
+                option sStoreAt of Stmt with
+                    let var pos = x.pos
+                    let var value = atom(c x.value)
+                    let var address = atom(c x.address)
+                end
             when sStoreField with x then
                 option sStoreField of Stmt with
-                    let var pos = x.pos let var value = atom(c x.value) let var base = atom(c x.base) let name = x.name let var viewMap = optVar(c x.viewMap)
+                    let var pos = x.pos
+                    let var value = atom(c x.value)
+                    let var base = atom(c x.base)
+                    let name = x.name
+                    let var viewMap = optVar(c x.viewMap)
                 end
             when sStoreComponent with x then
                 option sStoreComponent of Stmt with
-                    let var pos = x.pos let var value = atom(c x.value) let var base = atom(c x.base) let index = x.index let var access = x.access
+                    let var pos = x.pos
+                    let var value = atom(c x.value)
+                    let var base = atom(c x.base)
+                    let index = x.index
+                    let var access = x.access
                     let var viewMap = optVar(c x.viewMap)
                 end
             when sStoreElement with x then
                 option sStoreElement of Stmt with
-                    let var pos = x.pos let var value = atom(c x.value) let var base = atom(c x.base) let var index = atom(c x.index) let offset = x.offset
+                    let var pos = x.pos
+                    let var value = atom(c x.value)
+                    let var base = atom(c x.base)
+                    let var index = atom(c x.index)
+                    let offset = x.offset
                 end
             when sDo with x then option sDo of Stmt with let var pos = x.pos let var value = copyOp(c x.value) end
             when sFuns with x then
                 let functions = vector.new(:nodes.Function)
                 for i = 0 upto {extent x.functions - 1} do vector.append(functions copyFunction(c x.functions[i])) end
                 option sFuns of Stmt with let var functions = vector.toArray(functions) let recursive = x.recursive end
-            when sLetRec with x then option sLetRec of Stmt with let var vars = vars(c x.vars) let var body = copyBody(c x.body) end
+            when sLetRec with x then
+                option sLetRec of Stmt with let var vars = vars(c x.vars) let var body = copyBody(c x.body) end
             when sIf with x then
-                option sIf of Stmt with let var pos = x.pos let var cond = atom(c x.cond) let var thenBody = copyBody(c x.thenBody) let var elseBody = copyBody(c x.elseBody) end
+                option sIf of Stmt with
+                    let var pos = x.pos
+                    let var cond = atom(c x.cond)
+                    let var thenBody = copyBody(c x.thenBody)
+                    let var elseBody = copyBody(c x.elseBody)
+                end
             when sSwitch with x then
                 let cases = vector.new(:nodes.Case)
                 for i = 0 upto {extent x.cases - 1} do vector.append(cases copyCase(c x.cases[i])) end
                 option sSwitch of Stmt with
-                    let var pos = x.pos let var value = atom(c x.value) let var cases = vector.toArray(cases) let var elseBody = optBody(c x.elseBody)
-                    let var access = x.access let var viewMap = optVar(c x.viewMap) let var decided = x.decided
+                    let var pos = x.pos
+                    let var value = atom(c x.value)
+                    let var cases = vector.toArray(cases)
+                    let var elseBody = optBody(c x.elseBody)
+                    let var access = x.access
+                    let var viewMap = optVar(c x.viewMap)
+                    let var decided = x.decided
                 end
             when sInspect with x then
                 let cases = vector.new(:nodes.InspectCase)
                 for i = 0 upto {extent x.cases - 1} do vector.append(cases copyInspectCase(c x.cases[i])) end
                 option sInspect of Stmt with
-                    let var pos = x.pos let var value = atom(c x.value) let var cases = vector.toArray(cases)
-                    let var elseBody = optBody(c x.elseBody) let autoType = optTy(c x.autoType) let offset = x.offset
-                    let var witness = if maybe.isSome(x.witness) then
-                        let w = maybe.unwrap(x.witness)
-                        maybe.some(tuple let v = var1(c w.v) let symbols = w.symbols end)
-                    else
-                        x.witness
-                    end
+                    let var pos = x.pos
+                    let var value = atom(c x.value)
+                    let var cases = vector.toArray(cases)
+                    let var elseBody = optBody(c x.elseBody)
+                    let autoType = optTy(c x.autoType)
+                    let offset = x.offset
+                    let var witness =
+                        if maybe.isSome(x.witness) then
+                            let w = maybe.unwrap(x.witness)
+                            maybe.some(tuple let v = var1(c w.v) let symbols = w.symbols end)
+                        else
+                            x.witness
+                        end
                 end
-            when sLoop with x then option sLoop of Stmt with let label = label1(c x.label) let var body = copyBody(c x.body) end
+            when sLoop with x then
+                option sLoop of Stmt with let label = label1(c x.label) let var body = copyBody(c x.body) end
             when sTry with x then
                 option sTry of Stmt with
-                    let var body = copyBody(c x.body) let var exc = var1(c x.exc) let var handler = copyBody(c x.handler)
-                    let catching = x.catching let var catches = atoms(c x.catches)
+                    let var body = copyBody(c x.body)
+                    let var exc = var1(c x.exc)
+                    let var handler = copyBody(c x.handler)
+                    let catching = x.catching
+                    let var catches = atoms(c x.catches)
                 end
             when sJoin with x then
                 option sJoin of Stmt with
-                    let label = label1(c x.label) let var params = vars(c x.params) let var continuation = copyBody(c x.continuation)
+                    let label = label1(c x.label)
+                    let var params = vars(c x.params)
+                    let var continuation = copyBody(c x.continuation)
                     let var body = copyBody(c x.body)
                 end
             when sEcho with x then
                 option sEcho of Stmt with
-                    let var pos = x.pos let var value = atom(c x.value) let type = ty(c x.type) let prefix = x.prefix let var descriptor = optDescriptor(c x.descriptor)
+                    let var pos = x.pos
+                    let var value = atom(c x.value)
+                    let type = ty(c x.type)
+                    let prefix = x.prefix
+                    let var descriptor = optDescriptor(c x.descriptor)
                 end
             when sEchoText with x then option sEchoText of Stmt with let text = x.text end
             when sReturn with x then option sReturn of Stmt with let var pos = x.pos let var value = atom(c x.value) end
-            when sJump with x then option sJump of Stmt with let var pos = x.pos let label = label1(c x.label) let var args = atoms(c x.args) end
+            when sJump with x then
+                option sJump of Stmt with
+                    let var pos = x.pos
+                    let label = label1(c x.label)
+                    let var args = atoms(c x.args)
+                end
             when sBreak with x then option sBreak of Stmt with let var pos = x.pos let label = label1(c x.label) end
-            when sContinue with x then option sContinue of Stmt with let var pos = x.pos let label = label1(c x.label) end
+            when sContinue with x then
+                option sContinue of Stmt with let var pos = x.pos let label = label1(c x.label) end
             when sRaise with x then
                 option sRaise of Stmt with
-                    let var pos = x.pos let var exc = atom(c x.exc) let var payload = optAtom(c x.payload) let offset = x.offset
-                    let payloadText = x.payloadText let var descriptor = optDescriptor(c x.descriptor)
+                    let var pos = x.pos
+                    let var exc = atom(c x.exc)
+                    let var payload = optAtom(c x.payload)
+                    let offset = x.offset
+                    let payloadText = x.payloadText
+                    let var descriptor = optDescriptor(c x.descriptor)
                 end
             when sReraise with x then option sReraise of Stmt with let var pos = x.pos let var exc = var1(c x.exc) end
             when sUnreachable then s
@@ -488,7 +661,9 @@ export
     and copyBody(c: Cloner b: Body): Body =
         begin
             let statements = vector.new(:Stmt)
-            for i = 0 upto {vector.length(b.statements) - 1} do vector.append(statements copyStmt(c vector.get(b.statements i))) end
+            for i = 0 upto {vector.length(b.statements) - 1} do
+                vector.append(statements copyStmt(c vector.get(b.statements i)))
+            end
             tuple let id = nodes.newBody().id let var statements = statements end
         end
 end

@@ -2,143 +2,145 @@
  * syntax of section 2 parsed and simplified, written out by show; every syntax
  * error, with its offset; and the same patterns built as values *)
 
-import regexp = util/regexp : util/Regexp;
-import writer: Writer;
-import conv: Conv;
+import conv : Conv
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+import regexp = util/regexp : util/Regexp
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
 let p(pattern: String): Ok =
     print(pattern <> "  =>  " <> try regexp.show(regexp.parse(pattern))
-        when regexp.syntax with e then "syntax error at " <> conv.int(e.offset) <> ": " <> e.message end);
+    when regexp.syntax with e then "syntax error at " <> conv.int(e.offset) <> ": " <> e.message end)
 
 (* 1. Literals, escapes, and merging *)
-p("abc");
-p("a.b");
-p("\\.\\*\\+\\?\\(\\)\\[\\]\\{\\}\\|\\^\\$\\\\");
-p("\\t\\n\\r\\f\\v\\a");
-p("\\x41\\x{42}\\x{000043}\\0\\012\\101");
-p("a{");
-p("a{x}");
-p("a{2");
-p("");
+p("abc")
+p("a.b")
+p("\\.\\*\\+\\?\\(\\)\\[\\]\\{\\}\\|\\^\\$\\\\")
+p("\\t\\n\\r\\f\\v\\a")
+p("\\x41\\x{42}\\x{000043}\\0\\012\\101")
+p("a{")
+p("a{x}")
+p("a{2")
+p("")
 
 (* 2. Classes *)
-p("[abc]");
-p("[a-z0-9_]");
-p("[^a-z]");
-p("[]a]");
-p("[a-]");
-p("[-a]");
-p("[\\d\\s]");
-p("[^\\D]");
-p("[[:alpha:][:digit:]]");
-p("[[:^space:]]");
-p("[\\x00-\\x1f]");
-p("[[:]");
-p("\\d\\w\\s");
-p("\\D");
-p("[a]");
+p("[abc]")
+p("[a-z0-9_]")
+p("[^a-z]")
+p("[]a]")
+p("[a-]")
+p("[-a]")
+p("[\\d\\s]")
+p("[^\\D]")
+p("[[:alpha:][:digit:]]")
+p("[[:^space:]]")
+p("[\\x00-\\x1f]")
+p("[[:]")
+p("\\d\\w\\s")
+p("\\D")
+p("[a]")
 
 (* 3. Repetition *)
-p("a*b+c?");
-p("a*?b+?c??");
-p("a{3}b{2,}c{1,4}d{0,0}e{1,1}");
-p("a{2,5}?");
-p("(?U)a*b*?");
-p("(ab)*");
-p("^*");
+p("a*b+c?")
+p("a*?b+?c??")
+p("a{3}b{2,}c{1,4}d{0,0}e{1,1}")
+p("a{2,5}?")
+p("(?U)a*b*?")
+p("(ab)*")
+p("^*")
 
 (* 4. Alternation, groups, and flags *)
-p("a|b|c");
-p("a|");
-p("|");
-p("(a)(?:b)(?P<word>c)(?<other>d)");
-p("((a)|b)+");
-p("(?i)Ab[x-z]");
-p("(?i)[^a]");
-p("a(?i)b|c");
-p("(?i:a)b");
-p("(?i)a(?-i)b");
-p("(?s).(?-s).");
-p("^a$");
-p("(?m)^a$");
-p("\\A\\z\\b\\B");
-p("(?ims-U:x)");
+p("a|b|c")
+p("a|")
+p("|")
+p("(a)(?:b)(?P<word>c)(?<other>d)")
+p("((a)|b)+")
+p("(?i)Ab[x-z]")
+p("(?i)[^a]")
+p("a(?i)b|c")
+p("(?i:a)b")
+p("(?i)a(?-i)b")
+p("(?s).(?-s).")
+p("^a$")
+p("(?m)^a$")
+p("\\A\\z\\b\\B")
+p("(?ims-U:x)")
 
 (* 5. Syntax errors, with where each is found *)
-p("a**");
-p("a*+");
-p("*a");
-p("+");
-p("{2}");
-p("(a");
-p("a)");
-p("((a)");
-p("[a");
-p("[z-a]");
-p("[a-\\d]");
-p("[[:nope:]]");
-p("\\");
-p("\\q");
-p("\\1");
-p("\\pL");
-p("\\x4");
-p("\\x{}");
-p("\\x{100}");
-p("[\\b]");
-p("a{1001}");
-p("a{3,2}");
-p("(?=a)");
-p("(?!a)");
-p("(?<=a)");
-p("(?<!a)");
-p("(?P=name)");
-p("(?P<>a)");
-p("(?<1a>b)");
-p("(?P<x>a)(?P<x>b)");
-p("(?z)");
-p("(?)");
-p("(?i");
+p("a**")
+p("a*+")
+p("*a")
+p("+")
+p("{2}")
+p("(a")
+p("a)")
+p("((a)")
+p("[a")
+p("[z-a]")
+p("[a-\\d]")
+p("[[:nope:]]")
+p("\\")
+p("\\q")
+p("\\1")
+p("\\pL")
+p("\\x4")
+p("\\x{}")
+p("\\x{100}")
+p("[\\b]")
+p("a{1001}")
+p("a{3,2}")
+p("(?=a)")
+p("(?!a)")
+p("(?<=a)")
+p("(?<!a)")
+p("(?P=name)")
+p("(?P<>a)")
+p("(?<1a>b)")
+p("(?P<x>a)(?P<x>b)")
+p("(?z)")
+p("(?)")
+p("(?i")
 
 (* 6. Patterns as values *)
-let show(re: regexp.RE): Ok = print(regexp.show(re));
-show(regexp.literal("ab"));
-show(regexp.literal(""));
-show(regexp.set("ca"));
-show(regexp.range('a' 'f'));
-show(regexp.seq(array of regexp.literal("x") regexp.literal("y") regexp.digit end));
-show(regexp.alt(array of regexp.literal("x") regexp.alt(array of regexp.literal("y") regexp.literal("z") end) end));
-show(regexp.alt(array of :regexp.RE end));
-show(regexp.star(regexp.plus(regexp.opt(regexp.literal("a")))));
-show(regexp.repeat(regexp.literal("a") 2 ~1 false));
-show(regexp.capture(regexp.namedCapture("n" regexp.wordByte)));
-show(regexp.caseless(regexp.seq(array of regexp.literal("Hi") regexp.range('x' 'z') end)));
-show(regexp.complement(regexp.alt(array of regexp.range('a' 'c') regexp.literal("z") regexp.digit end)));
-show(regexp.complement(regexp.parse("[^\\n]")));
+let show(re: regexp.RE): Ok = print(regexp.show(re))
+show(regexp.literal("ab"))
+show(regexp.literal(""))
+show(regexp.set("ca"))
+show(regexp.range('a' 'f'))
+show(regexp.seq(array of regexp.literal("x") regexp.literal("y") regexp.digit end))
+show(regexp.alt(array of regexp.literal("x") regexp.alt(array of regexp.literal("y") regexp.literal("z") end) end))
+show(regexp.alt(array of :regexp.RE end))
+show(regexp.star(regexp.plus(regexp.opt(regexp.literal("a")))))
+show(regexp.repeat(regexp.literal("a") 2 ~1 false))
+show(regexp.capture(regexp.namedCapture("n" regexp.wordByte)))
+show(regexp.caseless(regexp.seq(array of regexp.literal("Hi") regexp.range('x' 'z') end)))
+show(regexp.complement(regexp.alt(array of regexp.range('a' 'c') regexp.literal("z") regexp.digit end)))
+show(regexp.complement(regexp.parse("[^\\n]")))
 show(regexp.seq(array of regexp.lineStart regexp.lineEnd regexp.textStart regexp.textEnd
-                         regexp.wordBoundary regexp.notWordBoundary end));
-show(regexp.seq(array of regexp.anyByte regexp.notNewline regexp.space end));
-let digits(n: Int): regexp.RE = regexp.repeat(regexp.digit n n true);
-show(regexp.seq(array of regexp.namedCapture("y" digits(4)) regexp.literal("-") regexp.namedCapture("m" digits(2)) end));
-show(regexp.parse("(?P<y>\\d{4})-(?P<m>\\d{2})"));
+    regexp.wordBoundary regexp.notWordBoundary
+end))
+show(regexp.seq(array of regexp.anyByte regexp.notNewline regexp.space end))
+let digits(n: Int): regexp.RE = regexp.repeat(regexp.digit n n true)
+show(regexp.seq(array of regexp.namedCapture("y" digits(4)) regexp.literal("-") regexp.namedCapture("m" digits(2)) end))
+show(regexp.parse("(?P<y>\\d{4})-(?P<m>\\d{2})"))
 
 (* An array changed after it made a pattern changes nothing *)
-let parts = array of regexp.literal("a") regexp.literal("b") end;
-let ab = regexp.seq(parts);
-parts[1] := regexp.literal("c");
-show(ab);
+let parts = array of regexp.literal("a") regexp.literal("b") end
+let ab = regexp.seq(parts)
+parts[1] := regexp.literal("c")
+show(ab)
 
 (* 7. The values' errors *)
 let check(what: String make: All() regexp.RE): Ok =
-    print(what <> ": " <> try regexp.show(make()) when regexp.error then "regexp.error" end);
-check("range backwards" fun(): regexp.RE regexp.range('z' 'a'));
-check("repeat min ~1" fun(): regexp.RE regexp.repeat(regexp.digit ~1 2 true));
-check("repeat max < min" fun(): regexp.RE regexp.repeat(regexp.digit 3 2 true));
-check("repeat max ~2" fun(): regexp.RE regexp.repeat(regexp.digit 0 ~2 true));
-check("repeat 1001" fun(): regexp.RE regexp.repeat(regexp.digit 1001 ~1 true));
-check("name empty" fun(): regexp.RE regexp.namedCapture("" regexp.digit));
-check("name 1x" fun(): regexp.RE regexp.namedCapture("1x" regexp.digit));
-check("name a-b" fun(): regexp.RE regexp.namedCapture("a-b" regexp.digit));
-check("name _1" fun(): regexp.RE regexp.namedCapture("_1" regexp.digit));
-check("complement of ab" fun(): regexp.RE regexp.complement(regexp.literal("ab")));
+    print(what <> ": " <> try regexp.show(make()) when regexp.error then "regexp.error" end)
+check("range backwards" fun(): regexp.RE regexp.range('z' 'a'))
+check("repeat min ~1" fun(): regexp.RE regexp.repeat(regexp.digit ~1 2 true))
+check("repeat max < min" fun(): regexp.RE regexp.repeat(regexp.digit 3 2 true))
+check("repeat max ~2" fun(): regexp.RE regexp.repeat(regexp.digit 0 ~2 true))
+check("repeat 1001" fun(): regexp.RE regexp.repeat(regexp.digit 1001 ~1 true))
+check("name empty" fun(): regexp.RE regexp.namedCapture("" regexp.digit))
+check("name 1x" fun(): regexp.RE regexp.namedCapture("1x" regexp.digit))
+check("name a-b" fun(): regexp.RE regexp.namedCapture("a-b" regexp.digit))
+check("name _1" fun(): regexp.RE regexp.namedCapture("_1" regexp.digit))
+check("complement of ab" fun(): regexp.RE regexp.complement(regexp.literal("ab")))
 check("complement of a*" fun(): regexp.RE regexp.complement(regexp.star(regexp.literal("a"))))

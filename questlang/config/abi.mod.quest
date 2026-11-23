@@ -2,14 +2,16 @@
 
 module abi : Abi
 import
-    pathLib = util/path : util/Path
-    questlang/common/files : questlang/common/Files
-    util/json : util/Json
-    questlang/common/jsonCache : questlang/common/JsonCache
-    util/maybe : util/Maybe
-    util/strutil : util/Strutil
-    stringOp = string : StringOp
     conv : Conv
+    stringOp = string : StringOp
+
+    util/json : util/Json
+    util/maybe : util/Maybe
+    pathLib = util/path : util/Path
+    util/strutil : util/Strutil
+
+    questlang/common/files : questlang/common/Files
+    questlang/common/jsonCache : questlang/common/JsonCache
 export
     let abiVersion = 88
 
@@ -27,14 +29,15 @@ export
             else
                 try
                     let top = jsonCache.parseShared(maybe.unwrap(text))
-                    let data = case top
-                        when jObject with x then
-                            let value = json.get(x.o "value")
-                            let isObject = maybe.isSome(value)
-                                andif case maybe.unwrap(value) when jObject then true else false end
-                            if isObject then maybe.unwrap(value) else top end
-                        else top
-                    end
+                    let data =
+                        case top
+                            when jObject with x then
+                                let value = json.get(x.o "value")
+                                let isObject = maybe.isSome(value)
+                                    andif case maybe.unwrap(value) when jObject then true else false end
+                                if isObject then maybe.unwrap(value) else top end
+                            else top
+                        end
                     case data
                         when jObject with x then json.get(x.o key)
                         else maybe.none()
@@ -101,13 +104,13 @@ export
             if maybe.isSome(found) andif {maybe.unwrap(found) is abiVersion} then
                 let byText = if maybe.isSome(by) then "producer '" <> maybe.unwrap(by) <> "'"
                     else "no producer"
-                end
+                    end
                 "Precompiled artifact '" <> artifact <> "' records " <> byText <> ", but this compiler is '"
                     <> producer <> "', and its source is not available to rebuild it"
             else
                 let foundText = if maybe.isSome(found) then "ABI version " <> conv.int(maybe.unwrap(found))
                     else "no ABI version"
-                end
+                    end
                 "Precompiled artifact '" <> artifact <> "' records " <> foundText
                     <> ", but this compiler requires ABI version " <> conv.int(abiVersion)
                     <> ", and its source is not available to rebuild it"

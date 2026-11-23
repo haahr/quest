@@ -12,15 +12,16 @@
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
-    questlang/ssa/parser : questlang/ssa/Parser
-    questlang/ssa/printer : questlang/ssa/Printer
-    questlang/ssa/passes/selects : questlang/ssa/passes/Selects
-    questlang/ssa/verify : questlang/ssa/Verify
-    util/strutil : util/Strutil
     writer : Writer
-;
 
-let emit(s: String): Ok = writer.putString(writer.output s);
+    util/strutil : util/Strutil
+
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/passes/selects : questlang/ssa/passes/Selects
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/verify : questlang/ssa/Verify
+
+let emit(s: String): Ok = writer.putString(writer.output s)
 
 let show(title: String lines: Array(String)): Ok =
     begin
@@ -31,7 +32,7 @@ let show(title: String lines: Array(String)): Ok =
         emit("-- after selects\n")
         emit(printer.formatUnit(u))
         try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
-    end;
+    end
 
 show("a carry" array of
     "function carry(%0: int, %1: int): int {"
@@ -48,7 +49,7 @@ show("a carry" array of
     "b3(%6: int):"
     "  return %6"
     "}"
-end);
+end)
 
 show("arms straight to their join" array of
     "function least(%0: int, %1: int): int {"
@@ -58,7 +59,7 @@ show("arms straight to their join" array of
     "b1(%3: int):"
     "  return %3"
     "}"
-end);
+end)
 
 show("one arm straight, one through a block" array of
     "function clamp(%0: int): int {"
@@ -71,7 +72,7 @@ show("one arm straight, one through a block" array of
     "b2(%3: int):"
     "  return %3"
     "}"
-end);
+end)
 
 show("pointers, and an argument passed alike" array of
     "function choose(%0: int, %1: ptr, %2: ptr): ptr {"
@@ -84,7 +85,7 @@ show("pointers, and an argument passed alike" array of
     "b3(%3: ptr, %4: int):"
     "  return %3"
     "}"
-end);
+end)
 
 show("the same arguments: a jump" array of
     "function same(%0: int, %1: int): int {"
@@ -97,7 +98,7 @@ show("the same arguments: a jump" array of
     "b3(%2: int):"
     "  return %2"
     "}"
-end);
+end)
 
 show("reals" array of
     "function reals(%0: int, %1: real, %2: real): real {"
@@ -106,7 +107,7 @@ show("reals" array of
     "b1(%3: real):"
     "  return %3"
     "}"
-end);
+end)
 
 show("arms with instructions that can run first: an add, a global's loads" array of
     "function busy(%0: int, %1: int): int {"
@@ -122,7 +123,7 @@ show("arms with instructions that can run first: an add, a global's loads" array
     "b3(%5: int):"
     "  return %5"
     "}"
-end);
+end)
 
 show("arms with instructions that cannot: a load through a pointer, a division" array of
     "function loads(%0: int, %1: ptr, %2: int): int {"
@@ -147,7 +148,7 @@ show("arms with instructions that cannot: a load through a pointer, a division" 
     "b3(%4: int):"
     "  return %4"
     "}"
-end);
+end)
 
 show("an arm's block reached from elsewhere" array of
     "function shared(%0: int, %1: int, %2: int): int {"
@@ -162,7 +163,7 @@ show("an arm's block reached from elsewhere" array of
     "b4():"
     "  jump b3(%2)"
     "}"
-end);
+end)
 
 show("arms to different blocks" array of
     "function apart(%0: int, %1: int): int {"
@@ -173,7 +174,7 @@ show("arms to different blocks" array of
     "b2():"
     "  return %0"
     "}"
-end);
+end)
 
 show("three arguments passed differently" array of
     "function three(%0: int, %1: int, %2: int, %3: int): int {"
@@ -184,4 +185,4 @@ show("three arguments passed differently" array of
     "  %8: int = add %7, %6"
     "  return %8"
     "}"
-end);
+end)

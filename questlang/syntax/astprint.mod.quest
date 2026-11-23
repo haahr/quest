@@ -7,14 +7,16 @@
 
 module astprint : AstPrint
 import
-    questlang/common/pyRepr : questlang/common/PyRepr
-    questlang/syntax/ast : questlang/syntax/Ast
+    conv : Conv
+    raised : Raised
+    stringOp = string : StringOp
+
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
-    stringOp = string : StringOp
-    conv : Conv
-    raised : Raised
+
+    questlang/common/pyRepr : questlang/common/PyRepr
+    questlang/syntax/ast : questlang/syntax/Ast
 export
     (* ======================================================================
      * 1. S-Expressions
@@ -42,8 +44,7 @@ export
     let real(r: Real): S = atom(pyRepr.number(conv.real(r)))
     let strs(items: vector.T(String)): S = option strs of S with let items = items end
     let seq(items: Array(S)): S = option seq of S with let items = items end
-    let node(name: String fields: Array(Field)): S =
-        option node of S with let name = name let fields = fields end
+    let node(name: String fields: Array(Field)): S = option node of S with let name = name let fields = fields end
     let leaf(name: String): S = node(name array of :Field end)
     let f(name: String value: S): Field = tuple let name = name let value = value end
 
@@ -299,8 +300,13 @@ export
                 node("LetValueBindingGroup" array of f("bindings" each(x.bindings ex)) end)
             when declTypeBinding with x then
                 typeBinding(tuple
-                    let offset = e.span.startOffset let name = x.name let typeVal = x.typeVal let params = x.params
-                    let bound = x.bound let isRec = x.isRec let isDef = x.isDef
+                    let offset = e.span.startOffset
+                    let name = x.name
+                    let typeVal = x.typeVal
+                    let params = x.params
+                    let bound = x.bound
+                    let isRec = x.isRec
+                    let isDef = x.isDef
                 end)
             when declTypeBindingGroup with x then
                 node("TypeBindingGroup" array of f("bindings" each(x.bindings ex)) end)
@@ -326,7 +332,11 @@ export
             f("name" optStr(b.name)) f("value" ex(b.value)) f("type_annot" optTy(b.typeAnnot)) f("is_var" flag(b.isVar))
         end))
     and recordBinding(r: ast.RecordBinding): S =
-        at(r.offset node("RecordBinding" array of f("name" str(r.name)) f("value" ex(r.value)) f("is_var" flag(r.isVar)) end))
+        at(r.offset
+                node("RecordBinding" array of f("name" str(r.name))
+                    f("value" ex(r.value))
+                    f("is_var" flag(r.isVar))
+                end))
     and caseBranch(c: ast.CaseBranch): S =
         at(c.offset node("CaseBranch" array of
             f("tags" strs(c.tags)) f("binder" optStr(c.binder)) f("binder_type" optTy(c.binderType))
@@ -337,7 +347,7 @@ export
         at(i.offset node("InspectBranch" array of
             f("match_type" ty(i.matchType))
             f("binders" each(i.binders
-                fun(x: ast.InspectBinder): S seq(array of str(x.name) optTy(x.typeAnnot) end)))
+                    fun(x: ast.InspectBinder): S seq(array of str(x.name) optTy(x.typeAnnot) end)))
             f("body" ex(i.body))
         end))
     and tryBranch(t: ast.TryBranch): S =
@@ -538,11 +548,12 @@ export
     let dumpWithOffsets(node: ast.Program): String =
         begin
             options.offsets := true
-            let text = try
-                show(program(node))
-            else with r then
-                begin options.offsets := false raised.reraise(:String r) end
-            end
+            let text =
+                try
+                    show(program(node))
+                else with r then
+                    begin options.offsets := false raised.reraise(:String r) end
+                end
             options.offsets := false
             text
         end

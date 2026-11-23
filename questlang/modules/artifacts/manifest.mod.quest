@@ -2,16 +2,18 @@
 
 module manifest : Manifest
 import
-    questlang/common/files : questlang/common/Files
-    questlang/config/abi : questlang/config/Abi
-    util/json : util/Json
-    questlang/common/jsonCache : questlang/common/JsonCache
+    stringOp = string : StringOp
+    system : System
+    writer : Writer
+
     collections/vector : collections/Vector
+    util/json : util/Json
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    writer : Writer
-    system : System
+
+    questlang/common/files : questlang/common/Files
+    questlang/common/jsonCache : questlang/common/JsonCache
+    questlang/config/abi : questlang/config/Abi
 export
     Let ImportedModuleRef = Tuple name: String interfaceName: String source: String path: String end
     Let ImportedInterfaceRef = Tuple name: String source: String mtime: Real path: String dir: String end
@@ -28,15 +30,21 @@ export
     end
 
     let newManifest(name: String interfaceName: maybe.T(String) source: String object: String
-        importedModules: Array(ImportedModuleRef) importedInterfaces: Array(ImportedInterfaceRef) backend: String)
-        : ModuleManifest =
+            importedModules: Array(ImportedModuleRef) importedInterfaces: Array(ImportedInterfaceRef) backend: String)
+            : ModuleManifest =
         begin
             let version = abi.abiVersion
             let compiler = abi.producer
             tuple
-            let name = name let interfaceName = interfaceName let source = source let object = object
-            let importedModules = importedModules let importedInterfaces = importedInterfaces
-            let abi = maybe.some(version) let producer = maybe.some(compiler) let backend = backend
+                let name = name
+                let interfaceName = interfaceName
+                let source = source
+                let object = object
+                let importedModules = importedModules
+                let importedInterfaces = importedInterfaces
+                let abi = maybe.some(version)
+                let producer = maybe.some(compiler)
+                let backend = backend
             end
         end
 
@@ -107,7 +115,8 @@ export
                     let stringValue(v: maybe.T(json.Value)): maybe.T(String) =
                         if maybe.isNone(v) then maybe.none()
                         else case maybe.unwrap(v) when jString with y then
-                            maybe.some(y.s) else maybe.none() end
+                            maybe.some(y.s) else maybe.none()
+                        end
                         end
                     let required(v: json.Value key: String): String =
                         begin
@@ -118,7 +127,8 @@ export
                     let itemsOf(v: maybe.T(json.Value)): vector.T(json.Value) =
                         if maybe.isNone(v) then vector.new()
                         else case maybe.unwrap(v) when jArray with x then
-                            x.items else raise malformed as vector.T(json.Value) end end
+                            x.items else raise malformed as vector.T(json.Value) end
+                        end
                         end
                     let name = required(data "name")
                     let interfaceName = stringValue(member(data "interface"))
@@ -127,8 +137,10 @@ export
                     for i = 0 upto {vector.length(modules) - 1} do
                         let m = vector.get(modules i)
                         vector.append(mods tuple
-                            let name = required(m "name") let interfaceName = required(m "interface")
-                            let source = stringMember(m "source" "") let path = stringMember(m "path" "")
+                            let name = required(m "name")
+                            let interfaceName = required(m "interface")
+                            let source = stringMember(m "source" "")
+                            let path = stringMember(m "path" "")
                         end)
                     end
                     let interfaces = itemsOf(member(data "imported_interfaces"))
@@ -138,27 +150,37 @@ export
                         let t = member(m "mtime")
                         let mtime = if maybe.isNone(t) then 0.0
                             else case maybe.unwrap(t) when jNumber with y then
-                                strutil.toReal(y.text) else raise malformed as Real end end
+                                strutil.toReal(y.text) else raise malformed as Real end
+                            end
                             end
                         vector.append(ifaces tuple
-                            let name = required(m "name") let source = stringMember(m "source" "") let mtime = mtime
-                            let path = stringMember(m "path" "") let dir = stringMember(m "dir" "")
+                            let name = required(m "name")
+                            let source = stringMember(m "source" "")
+                            let mtime = mtime
+                            let path = stringMember(m "path" "")
+                            let dir = stringMember(m "dir" "")
                         end)
                     end
                     let a = member(data "abi")
                     let abiVersion = if maybe.isNone(a) then maybe.none(:Int)
                         else case maybe.unwrap(a)
                             when jNumber with y then if y.isInteger then
-                                strutil.tryToInt(y.text) else maybe.none(:Int) end
+                                strutil.tryToInt(y.text)
+                            else
+                                maybe.none(:Int)
+                            end
                             else maybe.none(:Int)
                         end
                         end
                     maybe.some(tuple
-                        let name = name let interfaceName = interfaceName let source = stringMember(data "source" "")
+                        let name = name
+                        let interfaceName = interfaceName
+                        let source = stringMember(data "source" "")
                         let object = stringMember(data "object" "")
                         let importedModules = vector.toArray(mods)
                         let importedInterfaces = vector.toArray(ifaces)
-                        let abi = abiVersion let producer = stringValue(member(data "producer"))
+                        let abi = abiVersion
+                        let producer = stringValue(member(data "producer"))
                         let backend = stringMember(data "backend" "c")
                     end)
                 when json.error then
@@ -237,7 +259,7 @@ export
         end
 
     let unitStaleness(source: String qm: String c: String o: String
-        importsChanged: maybe.T(All(m: ModuleManifest) maybe.T(String))): maybe.T(String) =
+            importsChanged: maybe.T(All(m: ModuleManifest) maybe.T(String))): maybe.T(String) =
         if not(system.isFile(qm)) orif not(system.isFile(c)) orif not(system.isFile(o)) then
             maybe.some("missing artifacts in " <> files.normalize(qm <> "/.."))
         elsif newer(source qm) orif newer(source c) orif newer(c o) then
@@ -249,7 +271,7 @@ export
             else
                 let man = maybe.unwrap(m)
                 if {stringOp.length(man.source) is 0}
-                    orif not(stringOp.equal(files.absolute(man.source) files.absolute(source))) then
+                        orif not(stringOp.equal(files.absolute(man.source) files.absolute(source))) then
                     let recorded = if stringOp.length(man.source) > 0 then man.source else "none recorded" end
                     maybe.some("artifacts built from a different source (" <> recorded <> ")")
                 elsif isManifestStale(man qm) then

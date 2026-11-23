@@ -2,12 +2,14 @@
 
 module machine : Machine
 import
+    conv : Conv
+
+    collections/bitset : collections/Bitset
+    collections/vector : collections/Vector
+    sb = util/stringBuilder : util/StringBuilder
+
     targets = questlang/codegen/machine/target : questlang/codegen/machine/Target
     questlang/ssa/cfg : questlang/ssa/Cfg
-    collections/vector : collections/Vector
-    collections/bitset : collections/Bitset
-    sb = util/stringBuilder : util/StringBuilder
-    conv : Conv
 export
     Def Kind = Option kindOrdinary kindMove kindJump kindBranch kindCall kindReturn end
     Def Operand = Tuple var reg: Int defines: Bool end
@@ -27,12 +29,16 @@ export
 
     let newFunction(physical: Int): Function =
         tuple
-            let blocks = vector.new() let firstVirtual = physical let classes = vector.new()
+            let blocks = vector.new()
+            let firstVirtual = physical
+            let classes = vector.new()
         end
     let newBlock(f: Function): Int =
         begin
             vector.append(f.blocks tuple
-                let params = vector.new(:Int) let insts = vector.new(:Inst) let var raised = false
+                let params = vector.new(:Int)
+                let insts = vector.new(:Inst)
+                let var raised = false
             end)
             vector.length(f.blocks) - 1
         end
@@ -115,7 +121,9 @@ export
                         if dead(i) then
                             count(i ~1)
                             changed := true
-                        else vector.append(kept i) end
+                        else
+                            vector.append(kept i)
+                        end
                     end
                     vector.clear(insts)
                     for j = 0 upto {vector.length(kept) - 1} do
@@ -187,7 +195,7 @@ export
                     for a = 0 upto {extent i.operands - 1} do
                         let o = i.operands[a]
                         if isVirtual(f o.reg) andif not(o.defines)
-                            andif not(bitset.contains(defs[b] index(f o.reg))) then
+                                andif not(bitset.contains(defs[b] index(f o.reg))) then
                             add(uses[b] index(f o.reg))
                         end
                     end

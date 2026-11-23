@@ -4,10 +4,11 @@
 
 module regexpMatch : RegexpMatch
 import
-    prog = util/regexpProgram : util/RegexpProgram
-    util/maybe : util/Maybe
+    ascii : Ascii
     stringOp = string : StringOp
-    ascii: Ascii
+
+    util/maybe : util/Maybe
+    prog = util/regexpProgram : util/RegexpProgram
 export
     (* The threads at one offset, in priority order, as a sparse set of
      * instructions: pcs[0 .. count - 1], with sparse[pc] where pc is in pcs,
@@ -114,7 +115,7 @@ export
     (* A pattern that is bytes and nothing else, found directly: its first
      * byte, then the rest compared, rather than run as a program *)
     let literalSearch(p: prog.Program lit: String s: String start: Int anchored: Bool full: Bool nslots: Int)
-        : maybe.T(Array(Int)) =
+            : maybe.T(Array(Int)) =
         begin
             let n = stringOp.length(s)
             let m = stringOp.length(lit)
@@ -222,13 +223,15 @@ export
                                         if {pos < n} andif {byteAt(s pos) is p.x[pc]} then
                                             pos := pos + 1
                                             pc := pc + 1
-                                        else going := false
+                                        else
+                                            going := false
                                         end
                                     elsif op is prog.opClass then
                                         if {pos < n} andif p.classes[{256 * p.x[pc]} + byteAt(s pos)] then
                                             pos := pos + 1
                                             pc := pc + 1
-                                        else going := false
+                                        else
+                                            going := false
                                         end
                                     elsif op is prog.opSplit then
                                         push(pc jobSecond pos)
@@ -296,139 +299,139 @@ export
             if maybe.isSome(:String p.literal) then
                 literalSearch(p maybe.unwrap(:String p.literal) s start anchored full nslots)
             elsif {nslots > 0} andif {{extent p.op} <= maxBacktrackProgram}
-                andif {{{extent p.op} * {stringOp.length(s) + 1}} <= maxBacktrackVisits} then
+                    andif {{{extent p.op} * {stringOp.length(s) + 1}} <= maxBacktrackVisits} then
                 backtrack(p s start anchored full nslots)
             else
-            let scratch = obtain(p nslots)
-            let var cur = scratch.first
-            let var nxt = scratch.second
-            cur.count := 0
-            nxt.count := 0
-            let work = scratch.work
-            let stack = scratch.stack
-            let unset = scratch.unset
-            let best = scratch.best
+                let scratch = obtain(p nslots)
+                let var cur = scratch.first
+                let var nxt = scratch.second
+                cur.count := 0
+                nxt.count := 0
+                let work = scratch.work
+                let stack = scratch.stack
+                let unset = scratch.unset
+                let best = scratch.best
 
-            (* Adds to l the thread at pc0, at offset at, with the slots
-             * src[off ...]: it and every instruction it reaches without
-             * consuming a byte, in priority order *)
-            let add(l: List pc0: Int at: Int src: Array(Int) off: Int): Ok =
-                begin
-                    for k = 0 upto {nslots - 1} do work[k] := src[off + k] end
-                    let var top = 0
-                    stack[0] := pc0
-                    top := 2
-                    while top > 0 do
-                        top := top - 2
-                        let a = stack[top]
-                        if a < 0 then
-                            work[~1 - a] := stack[top + 1]
-                        elsif not(has(l a)) then
-                            let i = l.count
-                            l.sparse[a] := i
-                            l.pcs[i] := a
-                            l.count := i + 1
-                            let op = p.op[a]
-                            if op is prog.opJump then
-                                stack[top] := p.x[a]
-                                top := top + 2
-                            elsif op is prog.opSplit then
-                                (* x is taken first, so pushed last *)
-                                stack[top] := p.y[a]
-                                stack[top + 2] := p.x[a]
-                                top := top + 4
-                            elsif op is prog.opSave then
-                                let slot = p.x[a]
-                                if slot < nslots then
-                                    stack[top] := ~1 - slot
-                                    stack[top + 1] := work[slot]
+                (* Adds to l the thread at pc0, at offset at, with the slots
+                 * src[off ...]: it and every instruction it reaches without
+                 * consuming a byte, in priority order *)
+                let add(l: List pc0: Int at: Int src: Array(Int) off: Int): Ok =
+                    begin
+                        for k = 0 upto {nslots - 1} do work[k] := src[off + k] end
+                        let var top = 0
+                        stack[0] := pc0
+                        top := 2
+                        while top > 0 do
+                            top := top - 2
+                            let a = stack[top]
+                            if a < 0 then
+                                work[~1 - a] := stack[top + 1]
+                            elsif not(has(l a)) then
+                                let i = l.count
+                                l.sparse[a] := i
+                                l.pcs[i] := a
+                                l.count := i + 1
+                                let op = p.op[a]
+                                if op is prog.opJump then
+                                    stack[top] := p.x[a]
                                     top := top + 2
-                                    work[slot] := at
-                                end
-                                stack[top] := a + 1
-                                top := top + 2
-                            elsif op is prog.opAssert then
-                                if holds(p.x[a] s at n) then
+                                elsif op is prog.opSplit then
+                                    (* x is taken first, so pushed last *)
+                                    stack[top] := p.y[a]
+                                    stack[top + 2] := p.x[a]
+                                    top := top + 4
+                                elsif op is prog.opSave then
+                                    let slot = p.x[a]
+                                    if slot < nslots then
+                                        stack[top] := ~1 - slot
+                                        stack[top + 1] := work[slot]
+                                        top := top + 2
+                                        work[slot] := at
+                                    end
                                     stack[top] := a + 1
                                     top := top + 2
+                                elsif op is prog.opAssert then
+                                    if holds(p.x[a] s at n) then
+                                        stack[top] := a + 1
+                                        top := top + 2
+                                    end
+                                else
+                                    (* a byte, a class, or the match: a thread *)
+                                    for k = 0 upto {nslots - 1} do l.caps[{nslots * i} + k] := work[k] end
                                 end
-                            else
-                                (* a byte, a class, or the match: a thread *)
-                                for k = 0 upto {nslots - 1} do l.caps[{nslots * i} + k] := work[k] end
                             end
                         end
                     end
-                end
 
-            (* an anchored pattern is tried at start only, and a search with no
-             * thread running skips to a byte a match can begin with *)
-            let once = anchored \/ p.anchored
-            let skip = p.startSet
-            let canSkip = extent skip > 0
-            let prefixSize = stringOp.length(p.prefix)
-            let prefixFirst = if prefixSize > 0 then stringOp.getChar(p.prefix 0) else ' ' end
-            let var matched = false
-            let var pos = start
-            let var running = true
-            while running do
-                if {cur.count is 0} andif not(matched) andif not(once) andif canSkip then
-                    if prefixSize > 1 then
-                        (* to the prefix's next occurrence *)
-                        let at(i: Int): Bool =
-                            {{i + prefixSize} <= n} andif {stringOp.getChar(s i) is prefixFirst}
-                                andif stringOp.equalSub(s i prefixSize p.prefix 0 prefixSize)
-                        while {pos < n} andif not(at(pos)) do pos := pos + 1 end
-                    else
-                        while {pos < n} andif not(skip[byteAt(s pos)]) do pos := pos + 1 end
-                    end
-                    (* a match begins with a byte, and none is left *)
-                    if pos >= n then running := false end
-                end
-                if running andif not(matched) andif {not(once) orif {pos is start}} then add(cur 0 pos unset 0) end
-                if cur.count > 0 then
-                    let c = if pos < n then byteAt(s pos) else ~1 end
-                    nxt.count := 0
-                    let var i = 0
-                    while i < cur.count do
-                        let pc = cur.pcs[i]
-                        let op = p.op[pc]
-                        if op is prog.opMatch then
-                            if not(full) orif {pos is n} then
-                                matched := true
-                                for k = 0 upto {nslots - 1} do best[k] := cur.caps[{nslots * i} + k] end
-                                (* the threads after this one have lower
-                                 * priority; without captures, any match will
-                                 * do *)
-                                i := cur.count
-                                if not(captures) then running := false end
-                            end
-                        elsif op is prog.opByte then
-                            if c is p.x[pc] then add(nxt pc + 1 pos + 1 cur.caps nslots * i) end
-                        elsif op is prog.opClass then
-                            if {c >= 0} andif p.classes[{256 * p.x[pc]} + c] then
-                                add(nxt pc + 1 pos + 1 cur.caps nslots * i)
-                            end
+                (* an anchored pattern is tried at start only, and a search with no
+                 * thread running skips to a byte a match can begin with *)
+                let once = anchored \/ p.anchored
+                let skip = p.startSet
+                let canSkip = extent skip > 0
+                let prefixSize = stringOp.length(p.prefix)
+                let prefixFirst = if prefixSize > 0 then stringOp.getChar(p.prefix 0) else ' ' end
+                let var matched = false
+                let var pos = start
+                let var running = true
+                while running do
+                    if {cur.count is 0} andif not(matched) andif not(once) andif canSkip then
+                        if prefixSize > 1 then
+                            (* to the prefix's next occurrence *)
+                            let at(i: Int): Bool =
+                                {{i + prefixSize} <= n} andif {stringOp.getChar(s i) is prefixFirst}
+                                    andif stringOp.equalSub(s i prefixSize p.prefix 0 prefixSize)
+                            while {pos < n} andif not(at(pos)) do pos := pos + 1 end
+                        else
+                            while {pos < n} andif not(skip[byteAt(s pos)]) do pos := pos + 1 end
                         end
-                        i := i + 1
+                        (* a match begins with a byte, and none is left *)
+                        if pos >= n then running := false end
                     end
-                    let t = cur
-                    cur := nxt
-                    nxt := t
-                elsif matched \/ once then
-                    running := false
+                    if running andif not(matched) andif {not(once) orif {pos is start}} then add(cur 0 pos unset 0) end
+                    if cur.count > 0 then
+                        let c = if pos < n then byteAt(s pos) else ~1 end
+                        nxt.count := 0
+                        let var i = 0
+                        while i < cur.count do
+                            let pc = cur.pcs[i]
+                            let op = p.op[pc]
+                            if op is prog.opMatch then
+                                if not(full) orif {pos is n} then
+                                    matched := true
+                                    for k = 0 upto {nslots - 1} do best[k] := cur.caps[{nslots * i} + k] end
+                                    (* the threads after this one have lower
+                                     * priority; without captures, any match will
+                                     * do *)
+                                    i := cur.count
+                                    if not(captures) then running := false end
+                                end
+                            elsif op is prog.opByte then
+                                if c is p.x[pc] then add(nxt pc + 1 pos + 1 cur.caps nslots * i) end
+                            elsif op is prog.opClass then
+                                if {c >= 0} andif p.classes[{256 * p.x[pc]} + c] then
+                                    add(nxt pc + 1 pos + 1 cur.caps nslots * i)
+                                end
+                            end
+                            i := i + 1
+                        end
+                        let t = cur
+                        cur := nxt
+                        nxt := t
+                    elsif matched \/ once then
+                        running := false
+                    end
+                    if {pos >= n} \/ not(running) then running := false else pos := pos + 1 end
                 end
-                if {pos >= n} \/ not(running) then running := false else pos := pos + 1 end
-            end
-            scratch.busy := false
-            if matched then
-                (* a copy, since a match keeps its slots and the scratch is
-                 * reused *)
-                let slots = array of(nslots ~1)
-                for k = 0 upto {nslots - 1} do slots[k] := best[k] end
-                maybe.some(:Array(Int) slots)
-            else
-                maybe.none(:Array(Int))
-            end
+                scratch.busy := false
+                if matched then
+                    (* a copy, since a match keeps its slots and the scratch is
+                     * reused *)
+                    let slots = array of(nslots ~1)
+                    for k = 0 upto {nslots - 1} do slots[k] := best[k] end
+                    maybe.some(:Array(Int) slots)
+                else
+                    maybe.none(:Array(Int))
+                end
             end
         end
 end

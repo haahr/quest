@@ -3,25 +3,27 @@
 
 module codegen : Codegen
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/codegen/machine/machine : questlang/codegen/machine/Machine
-    questlang/codegen/machine/regalloc : questlang/codegen/machine/Regalloc
-    questlang/codegen/arm64/asm : questlang/codegen/arm64/Asm
-    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
-    questlang/codegen/arm64/printer : questlang/codegen/arm64/Printer
-    questlang/codegen/arm64/select : questlang/codegen/arm64/Select
-    questlang/codegen/arm64/target : questlang/codegen/arm64/Target
-    questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
+    conv : Conv
+    stringOp = string : StringOp
+    system : System
+
+    collections/bitset : collections/Bitset
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    collections/bitset : collections/Bitset
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
-    system : System
+
+    questlang/codegen/arm64/asm : questlang/codegen/arm64/Asm
+    questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
     questlang/codegen/arm64/peephole : questlang/codegen/arm64/Peephole
+    questlang/codegen/arm64/printer : questlang/codegen/arm64/Printer
+    questlang/codegen/arm64/select : questlang/codegen/arm64/Select
+    questlang/codegen/arm64/target : questlang/codegen/arm64/Target
+    questlang/codegen/machine/machine : questlang/codegen/machine/Machine
+    questlang/codegen/machine/regalloc : questlang/codegen/machine/Regalloc
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let Function = ssa.Function
     Let Lines = vector.T(String)
@@ -98,16 +100,19 @@ export
      * back to DWARF unwind tables, which libunwind must interpret on every
      * stack frame during an exception raise (docs/arm64.md section 3.10). *)
     let savedFirsts = array of target.x(20) target.x(22) target.x(24) target.x(26) target.x(28) target.d(9)
-        target.d(11) target.d(13) target.d(15) end
+        target.d(11) target.d(13) target.d(15)
+    end
     let savedSeconds = array of target.x(19) target.x(21) target.x(23) target.x(25) target.x(27) target.d(8)
-        target.d(10) target.d(12) target.d(14) end
+        target.d(10) target.d(12) target.d(14)
+    end
 
     (* Loads or stores the 8-byte frame slot at sp + off. Offsets up to 32760
      * (8 * 4095) fit in a scaled immediate; larger offsets compute the base
      * page in x16 first. *)
     let frameAccess(s: select.Selection off: Int access: All(base: Int m: minst.Mode) minst.Inst):
             Array(machine.Inst) =
-        if off <= 32760 then array of select.make(s machine.kindOrdinary access(sp minst.offset(off))) end
+        if off <= 32760 then
+            array of select.make(s machine.kindOrdinary access(sp minst.offset(off))) end
         else
             let low = off - {4096 * {off / 4096}}
             array of
@@ -124,10 +129,12 @@ export
         case op
             when opBrk then true
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
-                opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
-                opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
-                opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opNop, opLabel, opJumpTable, opJumpEntry,
-                opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
+                    opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp,
+                    opCcmpImm,
+                    opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl,
+                    opBlr,
+                    opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opNop, opLabel, opJumpTable, opJumpEntry,
+                    opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
                 false
         end
 
@@ -234,8 +241,7 @@ export
      * conservatively: a val's pointer-ness depends on its runtime type
      * descriptor, and an int may hold pointer bits from ptrToInt after the
      * ptr itself is dead), and 0 for real (never a pointer) *)
-    let wordClass(t: ssa.Type): Int =
-        case t when typePtr then 1 when typeInt, typeVal then 2 when typeReal then 0 end
+    let wordClass(t: ssa.Type): Int = case t when typePtr then 1 when typeInt, typeVal then 2 when typeReal then 0 end
 
     (* Builds the GC root map for each call site in each block, in code order,
      * using the same backward liveness walk as describeLive (docs/arm64.md
@@ -283,8 +289,8 @@ export
                                             let var r = ~1
                                             for x = 0 upto 9 do if h is target.x(19 + x) then r := x end end
                                             if r < 0 then
-                                                raise unsupported with "a value live across a call in " <>
-                                                    target.description.registers[h].name
+                                                raise unsupported with "a value live across a call in "
+                                                    <> target.description.registers[h].name
                                                 end
                                             end
                                             if class > classes[r] then classes[r] := class end
@@ -295,7 +301,8 @@ export
                             let var registers = 0
                             for x = 9 downto 0 do registers := {4 * registers} + classes[x] end
                             vector.append(found tuple
-                                let registers = registers let slots = vector.toArray(slots)
+                                let registers = registers
+                                let slots = vector.toArray(slots)
                             end)
                         end
                         for k = 0 upto {extent i.operands - 1} do
@@ -329,15 +336,17 @@ export
             let m = s.f
             let cold = coldBlocks(s)
             let a = regalloc.allocate(m target.description fun(i: machine.Inst): Bool select.rematerializable(s i)
-                fun(b: Int): Bool cold[b])
+                    fun(b: Int): Bool cold[b])
             (* The stack slots, then (below) the slots of registers stored in
              * memory *)
             let slots = vector.new(:FrameSlot)
             for k = 0 upto {extent s.slotAt - 1} do
                 let slot = vector.get(f.slots k)
                 vector.append(slots tuple
-                    let offset = s.slotAt[k] let bytes = alignUp(if slot.bytes > 0 then slot.bytes else 8 end 8)
-                    let type = maybe.none(:ssa.Type) let id = k
+                    let offset = s.slotAt[k]
+                    let bytes = alignUp(if slot.bytes > 0 then slot.bytes else 8 end 8)
+                    let type = maybe.none(:ssa.Type)
+                    let id = k
                 end)
             end
             let n = machine.virtuals(m)
@@ -367,13 +376,16 @@ export
                     when typeVal then 2
                     when typeReal then 3
                 end
-            let slotOf = if s.entersTry then
-                begin
-                    let own = array of(n ~1)
-                    for v = 0 upto {n - 1} do own[v] := v end
-                    own
+            let slotOf =
+                if s.entersTry then
+                    begin
+                        let own = array of(n ~1)
+                        for v = 0 upto {n - 1} do own[v] := v end
+                        own
+                    end
+                else
+                    regalloc.shareSlots(m a kind)
                 end
-            else regalloc.shareSlots(m a kind) end
             let offsetOf = array of(n ~1)
             let var at = s.slotsEnd
             for v = 0 upto {n - 1} do
@@ -382,17 +394,22 @@ export
                     if offsetOf[k] < 0 then
                         offsetOf[k] := at
                         vector.append(slots tuple
-                            let offset = at let bytes = 8
-                            let type = maybe.some(vector.get(s.types v)) let id = v
+                            let offset = at
+                            let bytes = 8
+                            let type = maybe.some(vector.get(s.types v))
+                            let id = v
                         end)
                         at := at + 8
                     end
                     spillAt[v] := offsetOf[k]
                 end
             end
-            let liveAtCalls = if stringOp.equal(system.getEnv("QUEST_LIVE_SLOTS") "1") then
-                describeLive(s a spillAt)
-            else array of(vector.length(m.blocks) array of :String end) end
+            let liveAtCalls =
+                if stringOp.equal(system.getEnv("QUEST_LIVE_SLOTS") "1") then
+                    describeLive(s a spillAt)
+                else
+                    array of(vector.length(m.blocks) array of :String end)
+                end
             let maps = if s.entersTry then array of(vector.length(m.blocks) array of :CallMap end)
                 else callMaps(s a spillAt) end
             regalloc.rewrite(m a lowering)
@@ -402,8 +419,12 @@ export
                 if s.entersTry orif used then vector.append(savedList k) end
             end
             tuple
-                let selection = s let size = alignUp(at 16) let slots = vector.toArray(slots)
-                let saved = vector.toArray(savedList) let liveAtCalls = liveAtCalls let maps = maps
+                let selection = s
+                let size = alignUp(at 16)
+                let slots = vector.toArray(slots)
+                let saved = vector.toArray(savedList)
+                let liveAtCalls = liveAtCalls
+                let maps = maps
             end
         end
 
@@ -506,9 +527,10 @@ export
             when opAdr then option opAdr of minst.Op with let label = l end
             when opJumpEntry with x then minst.jumpEntry(x.table l).op
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
-                opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
-                opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opBSymbol, opBl, opBlr, opBr,
-                opRet, opBrk, opNop, opLabel, opJumpTable, opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
+                    opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp,
+                    opCcmpImm,
+                    opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opBSymbol, opBl, opBlr, opBr,
+                    opRet, opBrk, opNop, opLabel, opJumpTable, opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
                 op
         end
 
@@ -554,7 +576,8 @@ export
             let better(a: Int b: Int): Bool =
                 if depth[a] isnot depth[b] then depth[a] > depth[b]
                 elsif calls[a] isnot calls[b] then not(calls[a])
-                else at[a] < at[b] end
+                else at[a] < at[b]
+                end
             let var cur = vector.get(s.layout 0)
             let var next = 0
             place(cur)
@@ -572,7 +595,8 @@ export
                     if open(vector.get(s.layout next)) then best := vector.get(s.layout next) end
                     next := next + 1
                 end
-                if best < 0 then done := true
+                if best < 0 then
+                    done := true
                 else
                     place(best)
                     cur := best
@@ -592,7 +616,8 @@ export
      * uses frameless unwind info; garbage collection can never see it on the
      * stack because it makes no calls. *)
     let frameless(c: Compiled): Bool =
-        if {extent c.saved > 0} orif {c.size > 0} then false
+        if {extent c.saved > 0} orif {c.size > 0} then
+            false
         else
             let m = c.selection.f
             let var none = true
@@ -686,9 +711,12 @@ export
                      * drop the jump. An unconditional jump to the next block
                      * also falls through. *)
                     let c = peephole.conditional(op)
-                    let following = if {j + 1} < count then
-                        maybe.some(vector.get(insts j + 1))
-                    else maybe.none(:machine.Inst) end
+                    let following =
+                        if {j + 1} < count then
+                            maybe.some(vector.get(insts j + 1))
+                        else
+                            maybe.none(:machine.Inst)
+                        end
                     let invert = maybe.isSome(c) andif {final[i.target] is next} andif {{j + 2} is count}
                         andif machine.isKind(maybe.unwrap(following) machine.kindJump)
                         andif {final[maybe.unwrap(following).target] isnot next}
@@ -700,7 +728,7 @@ export
                             last := l
                         end
                         if machine.isKind(i machine.kindReturn) andif not(isBrk(op)) andif not(isTableEnd(op))
-                            andif not(bare) then
+                                andif not(bare) then
                             restore(e)
                         end
                         if invert then
@@ -742,9 +770,12 @@ export
                     when opLabel with x then
                         if strutil.startsWith(x.label marker) then
                             vector.append(sites tuple
-                                let offset = at let map = vector.get(mapped vector.length(sites))
+                                let offset = at
+                                let map = vector.get(mapped vector.length(sites))
                             end)
-                        else vector.append(code i) end
+                        else
+                            vector.append(code i)
+                        end
                     else
                         at := at + printer.count(i.op)
                         vector.append(code i)
@@ -759,8 +790,10 @@ export
             tuple
                 let code = code
                 let frame = if s.entersTry then maybe.none() else maybe.some(tuple
-                    let below = {{16 * extent c.saved} + c.size} / 8 let saved = savedMask
-                    let undescribed = s.slotsEnd / 8 let calls = vector.toArray(sites)
+                    let below = {{16 * extent c.saved} + c.size} / 8
+                    let saved = savedMask
+                    let undescribed = s.slotsEnd / 8
+                    let calls = vector.toArray(sites)
                 end) end
             end
         end
@@ -797,7 +830,7 @@ export
                     for k = 0 upto {extent site.map.slots - 1} do
                         let slot = site.map.slots[k]
                         vector.append(parts
-                            "sp+" <> conv.int(8 * {slot / 2}) <> " " <> className(1 + {slot % 2}))
+                                "sp+" <> conv.int(8 * {slot / 2}) <> " " <> className(1 + {slot % 2}))
                     end
                     vector.append(lines "call returning at " <> conv.int(site.offset) <> ": "
                         <> if vector.empty(parts) then "nothing live" else strutil.join(", " parts) end)
@@ -853,8 +886,9 @@ export
                                         put(defined f.symbol false)
                                         changed := true
                                     end
-                                when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable
-                                    then ok
+                                when termNone, termJump, termBranch, termSwitch, termReturn, termTry,
+                                        termUnreachable then
+                                    ok
                             end
                         end
                     end
@@ -919,7 +953,7 @@ export
                 if maybe.isSome(frames[k]) andif {extent maybe.unwrap(:Frame frames[k]).calls > 0} then
                     let f = maybe.unwrap(frames[k])
                     vector.append(listed
-                        tuple let index = k let description = vector.length(bytes) end)
+                            tuple let index = k let description = vector.length(bytes) end)
                     leb(bytes f.below)
                     leb(bytes f.saved)
                     leb(bytes f.undescribed)
@@ -936,7 +970,8 @@ export
                 end
             end
             tuple
-                let listed = vector.toArray(listed) let descriptions = vector.toArray(bytes)
+                let listed = vector.toArray(listed)
+                let descriptions = vector.toArray(bytes)
             end
         end
 
@@ -946,14 +981,20 @@ export
     let compiled(u: ssa.Unit defined: hashMap.T(String Bool)): Compiled =
         begin
             let machines = array of(vector.length(u.functions) tuple
-                let symbol = "" let exported = false let code = vector.new(:minst.Inst) let endLabel = ""
+                let symbol = ""
+                let exported = false
+                let code = vector.new(:minst.Inst)
+                let endLabel = ""
             end)
             let frames = array of(vector.length(u.functions) maybe.none(:Frame))
             for k = 0 upto {vector.length(u.functions) - 1} do
                 let f = vector.get(u.functions k)
                 let made = machineCode(f k defined)
                 machines[k] := tuple
-                    let symbol = f.symbol let exported = f.exported let code = made.code let endLabel = endLabel(k)
+                    let symbol = f.symbol
+                    let exported = f.exported
+                    let code = made.code
+                    let endLabel = endLabel(k)
                 end
                 frames[k] := made.frame
             end
@@ -964,8 +1005,7 @@ export
         begin
             let defined = definedSymbols(u)
             let lines = vector.new(:String)
-            let appendAll(ls: Array(String)): Ok =
-                for k = 0 upto {extent ls - 1} do vector.append(lines ls[k]) end
+            let appendAll(ls: Array(String)): Ok = for k = 0 upto {extent ls - 1} do vector.append(lines ls[k]) end
             appendAll(asm.unitStart)
             (* The line table's files, and its debugging information if the
              * unit's own file is known and the unit has code *)
@@ -994,18 +1034,20 @@ export
                 let listed = array of(extent t.listed tuple let symbol = "" let description = 0 end)
                 for k = 0 upto {extent listed - 1} do
                     listed[k] := tuple
-                        let symbol = machines[t.listed[k].index].symbol let description = t.listed[k].description
+                        let symbol = machines[t.listed[k].index].symbol
+                        let description = t.listed[k].description
                     end
                 end
                 appendAll(asm.frames(framesSymbol if extent machines > 0 then machines[0].symbol else "" end listed
-                    t.descriptions))
+                        t.descriptions))
             end
             if debugged then
                 let functions = array of(vector.length(u.functions)
-                    tuple let symbol = "" let endLabel = "" end)
+                        tuple let symbol = "" let endLabel = "" end)
                 for k = 0 upto {extent functions - 1} do
                     functions[k] := tuple
-                        let symbol = vector.get(u.functions k).symbol let endLabel = endLabel(k)
+                        let symbol = vector.get(u.functions k).symbol
+                        let endLabel = endLabel(k)
                     end
                 end
                 appendAll(asm.debugInfo(files[0] functions))
@@ -1025,7 +1067,8 @@ export
         begin
             let made = compiled(u definedSymbols(u))
             encode.unit(made.machines dataBesidesFrames(u) vector.toArray(u.files)
-                if hasFrames(u) then maybe.some(frameTable(made.frames))
-                else maybe.none() end)
+                    if hasFrames(u) then maybe.some(frameTable(made.frames))
+                    else maybe.none()
+                    end)
         end
 end

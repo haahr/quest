@@ -32,11 +32,12 @@
 
 module hashMap : HashMap
 import
-    util/hash : util/Hash
-    util/maybe : util/Maybe
+    word : Word
+
     collections/vector : collections/Vector
+    util/hash : util/Hash
     iterLib = util/iter : util/Iter
-    word: Word
+    util/maybe : util/Maybe
 export
     let emptySlot: Int = ~1
     let tombstoneSlot: Int = ~2
@@ -89,7 +90,8 @@ export
 
     (* The next slot of a probe from slot i *)
     let nextSlot(i: Int pert: word.T mask: word.T): Int =
-        word.toInt(word.andBits(word.add(word.add(word.mul(word.fromInt(5) word.fromInt(i)) word.fromInt(1)) pert) mask))
+        word.toInt(word.andBits(word.add(word.add(word.mul(word.fromInt(5) word.fromInt(i)) word.fromInt(1)) pert)
+                mask))
 
     (* A map that holds capacity entries before its table grows *)
     let newWithCapacity(K::TYPE V::TYPE)(capacity: Int equal: All(k1: K k2: K) Bool hash: All(k: K) word.T): T(K V) =
@@ -138,7 +140,8 @@ export
                 else
                     (* A tombstone matches nothing; a live slot's entry is
                      * never deleted *)
-                    if {slot >= 0} andif {word.toInt(word.xorBits(t.hashes[slot] h)) is 0} andif m.equal(t.keys[slot] key) then
+                    if {slot >= 0} andif {word.toInt(word.xorBits(t.hashes[slot] h)) is 0}
+                            andif m.equal(t.keys[slot] key) then
                         result := slot
                         searching := false
                     else
@@ -325,7 +328,8 @@ export
                 if slot is emptySlot then
                     searching := false
                 else
-                    if {slot >= 0} andif {word.toInt(word.xorBits(t.hashes[slot] h)) is 0} andif m.equal(t.keys[slot] key) then
+                    if {slot >= 0} andif {word.toInt(word.xorBits(t.hashes[slot] h)) is 0}
+                            andif m.equal(t.keys[slot] key) then
                         foundSlot := i
                         denseIdx := slot
                         searching := false
@@ -416,32 +420,32 @@ export
 
     let map(K::TYPE V::TYPE W::TYPE)(m: T(K V) f: All(k: K v: V) W): T(K W) =
         fold(:K :V :T(K W) m newWithCapacity(:K :W m.count m.equal m.hash)
-            fun(acc: T(K W) k: K v: V): T(K W)
-                begin
-                    insert(:K :W acc k f(k v))
-                    acc
-                end)
+                fun(acc: T(K W) k: K v: V): T(K W)
+                    begin
+                        insert(:K :W acc k f(k v))
+                        acc
+                    end)
 
     let filter(K::TYPE V::TYPE)(m: T(K V) pred: All(k: K v: V) Bool): T(K V) =
         fold(:K :V :T(K V) m newWithCapacity(:K :V m.count m.equal m.hash)
-            fun(acc: T(K V) k: K v: V): T(K V)
-                begin
-                    if pred(k v) then
-                        insert(:K :V acc k v)
-                    end
-                    acc
-                end)
+                fun(acc: T(K V) k: K v: V): T(K V)
+                    begin
+                        if pred(k v) then
+                            insert(:K :V acc k v)
+                        end
+                        acc
+                    end)
 
     let filterMap(K::TYPE V::TYPE W::TYPE)(m: T(K V) f: All(k: K v: V) maybe.T(W)): T(K W) =
         fold(:K :V :T(K W) m newWithCapacity(:K :W m.count m.equal m.hash)
-            fun(acc: T(K W) k: K v: V): T(K W)
-                begin
-                    let opt: maybe.T(W) = f(k v)
-                    if maybe.isSome(:W opt) then
-                        insert(:K :W acc k maybe.unwrap(:W opt))
-                    end
-                    acc
-                end)
+                fun(acc: T(K W) k: K v: V): T(K W)
+                    begin
+                        let opt: maybe.T(W) = f(k v)
+                        if maybe.isSome(:W opt) then
+                            insert(:K :W acc k maybe.unwrap(:W opt))
+                        end
+                        acc
+                    end)
 
     (* An iterator of read(t i) for each live entry i of m's table, in order.
      * Its position is the dense index c.i; more moves it past deleted
@@ -481,7 +485,7 @@ export
     let valueIter(K::TYPE V::TYPE)(m: T(K V)): iterLib.T(V) = walker(m fun(t: Table(K V) i: Int): V t.values[i])
 
     let fromEntries(K::TYPE V::TYPE)(it: iterLib.T(Entry(K V)) equal: All(k1: K k2: K) Bool hash: All(k: K) word.T)
-        : T(K V) =
+            : T(K V) =
         begin
             let m = new(:K :V equal hash)
             while iterLib.more(it) do

@@ -7,15 +7,16 @@
  * original prints nothing, since it overrides print. *)
 
 import
-    support/bench : support/Bench
-    support/lists : support/Lists
-    support/reals : support/Reals
-    stringOp = string : StringOp
-    real : RealOp
     ascii : Ascii
     conv : Conv
     reader : Reader
+    real : RealOp
+    stringOp = string : StringOp
     writer : Writer
+
+    support/bench : support/Bench
+    support/lists : support/Lists
+    support/reals : support/Reals
 
 let makestring(i: Int): String = conv.int(i)
 
@@ -57,7 +58,8 @@ let isDigit(c: Char): Bool = {ord(c) >= ord('0')} andif {ord(c) <= ord('9')}
 let inputLine(r: reader.T): Chars =
     begin
         let rec chars(): Chars =
-            if not(reader.more(r)) then lists.nil(:Char)
+            if not(reader.more(r)) then
+                lists.nil(:Char)
             else
                 begin
                     let c = reader.getChar(r)
@@ -153,7 +155,8 @@ let sort(A::TYPE)(gt: All(a: A b: A) Bool l: lists.T(A)): lists.T(A) =
                 when cons with c1 then
                     case c1.tl
                         when cons with c2 then
-                            if lists.null(:lists.T(A))(c2.tl) then m2(c1.hd c2.hd)
+                            if lists.null(:lists.T(A))(c2.tl) then
+                                m2(c1.hd c2.hd)
                             else
                                 begin
                                     let first = m2(c1.hd c2.hd)
@@ -225,7 +228,8 @@ let rec rm(A::TYPE)(s: Set(A) x: A): Set(A) =
     end
 
 let rec intersect1(A::TYPE)(a: Set(A) b: Set(A) c: lists.T(A)): Set(A) =
-    if lists.null(:A)(b.l) then setOf(:A)(b.eqf c)
+    if lists.null(:A)(b.l) then
+        setOf(:A)(b.eqf c)
     else
         case a.l
             when cons with x then
@@ -314,7 +318,7 @@ let opcodeEq(a: Opcode b: Opcode): Bool =
             case b
                 when oFetch with y then
                     {x.immutable is y.immutable} andif {x.offset is y.offset} andif regEq(x.ptr y.ptr)
-                    andif regEq(x.dst y.dst)
+                        andif regEq(x.dst y.dst)
                 else false
             end
         when oStore with x then
@@ -330,14 +334,14 @@ let opcodeEq(a: Opcode b: Opcode): Bool =
             case b
                 when oArith with y then
                     {arithopIndex(x.oper) is arithopIndex(y.oper)} andif regEq(x.src1 y.src1)
-                    andif regEq(x.src2 y.src2) andif regEq(x.dst y.dst)
+                        andif regEq(x.src2 y.src2) andif regEq(x.dst y.dst)
                 else false
             end
         when oArithi with x then
             case b
                 when oArithi with y then
                     {arithopIndex(x.oper) is arithopIndex(y.oper)} andif regEq(x.src1 y.src1) andif {x.src2 is y.src2}
-                    andif regEq(x.dst y.dst)
+                        andif regEq(x.dst y.dst)
                 else false
             end
         when oMove with x then
@@ -346,7 +350,7 @@ let opcodeEq(a: Opcode b: Opcode): Bool =
             case b
                 when oBranch with y then
                     {comparisonIndex(x.test) is comparisonIndex(y.test)} andif regEq(x.src1 y.src1)
-                    andif regEq(x.src2 y.src2) andif regEq(x.dst y.dst) andif regsEq(x.live y.live)
+                        andif regEq(x.src2 y.src2) andif regEq(x.dst y.dst) andif regsEq(x.live y.live)
                 else false
             end
         when oJump with x then
@@ -431,7 +435,7 @@ let read(i: Opcode): Set(Int) =
 let maxreg(li: lists.T(Opcode)): Int =
     begin
         let r = set(:Int)(listUnion(:Int)(lists.append(:Set(Int))(lists.map(:Opcode :Set(Int))(writeO li)
-                                                                  lists.map(:Opcode :Set(Int))(read li))))
+                lists.map(:Opcode :Set(Int))(read li))))
         lists.foldr(:Int :Int)(fun(a: Int b: Int): Int if a > b then a else b end 0 r)
     end
 
@@ -448,10 +452,11 @@ let classify(i: Opcode): Codetype =
             else option ctAssignment of Codetype with i end
             end
         when oBranch with x then
-            if {comparisonIndex(x.test) is comparisonIndex(option cIeq of Comparison end)} andif {x.src1.i is x.src2.i}
-            then
+            if {comparisonIndex(x.test) is comparisonIndex(option cIeq of Comparison end)}
+                    andif {x.src1.i is x.src2.i} then
                 option ctFlow of Codetype with x.dst.i i end
-            else option ctComparison of Codetype with x.dst.i i end
+            else
+                option ctComparison of Codetype with x.dst.i i end
             end
         when oJump then option ctExit of Codetype with i end
         when oLabel with x then option ctTarget of Codetype with x.lab.i i end
@@ -542,7 +547,8 @@ let readline(f: reader.T): lists.T(Opcode) =
                 let rec f(l: Chars): Got(Chars) =
                     case l
                         when cons with c then
-                            if c.hd is '/' then got(:Chars)(lists.nil(:Char) c.tl)
+                            if c.hd is '/' then
+                                got(:Chars)(lists.nil(:Char) c.tl)
                             else
                                 begin
                                     let s = f(c.tl)
@@ -599,7 +605,8 @@ let readline(f: reader.T): lists.T(Opcode) =
                 f(0 lists.nil(:Int) digits)
             end
         let rec require(a: String i: Int l: Chars): Chars =
-            if i is stringOp.length(a) then l
+            if i is stringOp.length(a) then
+                l
             else
                 case l
                     when cons with c then
@@ -623,7 +630,8 @@ let readline(f: reader.T): lists.T(Opcode) =
         let live(l: Chars): Regs =
             begin
                 let rec f(l: Chars): Regs =
-                    if starts(l ")") then lists.nil(:Reg)
+                    if starts(l ")") then
+                        lists.nil(:Reg)
                     else
                         begin
                             let r = regp(l)
@@ -715,13 +723,16 @@ let readline(f: reader.T): lists.T(Opcode) =
                     let i = lab(b(after(l "LABWORD")))
                     option oLabword of Opcode with i.v end
                 end
-            elsif starts(l "NOP") then nop
-            else error(:Opcode)("illegal opcode name")
+            elsif starts(l "NOP") then
+                nop
+            else
+                error(:Opcode)("illegal opcode name")
             end
         let rec lines(): lists.T(Opcode) =
             begin
                 let l = inputLine(f)
-                if lists.null(:Char)(l) then lists.nil(:Opcode)
+                if lists.null(:Char)(l) then
+                    lists.nil(:Opcode)
                 else
                     begin
                         let o = opcode(b(l))
@@ -754,8 +765,7 @@ let xstr(i: Opcode): String =
     begin
         let r(x: Reg): String = x.s <> "/R" <> smlInt(x.i)
         let lb(x: Label): String = x.s <> "/L" <> smlInt(x.i)
-        let rl(l: Regs): String =
-            lists.foldl(:Reg :String)(fun(x: Reg s: String): String s <> r(x) <> " " "" l)
+        let rl(l: Regs): String = lists.foldl(:Reg :String)(fun(x: Reg s: String): String s <> r(x) <> " " "" l)
         let cat(a: Array(String)): String = stringOp.conc(a)
         case i
             when oFetch with x then
@@ -832,7 +842,8 @@ let breaki(l: lists.T(Opcode)): lists.T(Opcode) =
                                 option oMove of Opcode with nr x.dst end
                             end)
                         end
-                    else one(i)
+                    else
+                        one(i)
                     end
                 when oArithi with x then
                     if x.dst.i is x.src1.i then
@@ -843,7 +854,8 @@ let breaki(l: lists.T(Opcode)): lists.T(Opcode) =
                                 option oMove of Opcode with nr x.dst end
                             end)
                         end
-                    else one(i)
+                    else
+                        one(i)
                     end
                 when oFetch with x then
                     if x.ptr.i is x.dst.i then
@@ -854,7 +866,8 @@ let breaki(l: lists.T(Opcode)): lists.T(Opcode) =
                                 option oMove of Opcode with nr x.dst end
                             end)
                         end
-                    else one(i)
+                    else
+                        one(i)
                     end
                 when oMove with x then if x.src.i is x.dst.i then lists.nil(:Opcode) else one(i) end
                 else one(i)
@@ -960,9 +973,9 @@ let rec bBrxx(n: Int rl: Regs): lists.T(Opcode) =
     elsif n is 1 then one(bogus(rl lists.map(:Reg :Reg)(fun(r: Reg): Reg bogusReg(r 1) rl)))
     else
         lists.cons(:Opcode)(
-            bogus(lists.map(:Reg :Reg)(fun(r: Reg): Reg bogusReg(r n - 1) rl)
-                  lists.map(:Reg :Reg)(fun(r: Reg): Reg bogusReg(r n) rl))
-            bBrxx(n - 1 rl))
+                bogus(lists.map(:Reg :Reg)(fun(r: Reg): Reg bogusReg(r n - 1) rl)
+                        lists.map(:Reg :Reg)(fun(r: Reg): Reg bogusReg(r n) rl))
+                bBrxx(n - 1 rl))
     end
 
 let bBrx(n: Int rl: Regs): lists.T(Opcode) =
@@ -990,10 +1003,11 @@ let addDelay(il: lists.T(Opcode)): lists.T(Opcode) =
                     when oArithi with x then cons(i app(idem(regList(x.src1) regList(x.dst)) bAss(d x.dst)))
                     when oMove with x then cons(i idem(regList(x.src) regList(x.dst)))
                     when oBranch with x then
-                        if isFlow(i) then one(i)
+                        if isFlow(i) then
+                            one(i)
                         else
                             bBr(option oBranch of Opcode with x.test x.src1 x.src2 x.dst x.live end
-                                d regs(array of x.src1 x.src2 end))
+                                    d regs(array of x.src1 x.src2 end))
                         end
                     else one(i)
                 end
@@ -1024,7 +1038,11 @@ let rec rmBogus(il: lists.T(Opcode)): lists.T(Opcode) =
                     when oMove then cons(i)
                     when oBranch with x then
                         cons(option oBranch of Opcode with
-                            x.test unbogusReg(x.src1) unbogusReg(x.src2) x.dst x.live
+                            x.test
+                            unbogusReg(x.src1)
+                            unbogusReg(x.src2)
+                            x.dst
+                            x.live
                         end)
                     when oBogus then rmBogus(t)
                     else cons(i)
@@ -1084,17 +1102,18 @@ let tTest(t: Opcode): TestOrName = option tTest of TestOrName with t end
 
 let attach(t: Opcode dt: Dag df: Dag): Dag =
     newdag(add(:Opcode)(union(:Opcode)(dt.tests df.tests) t)
-           fun(x: Opcode y: Bool): TestOrName
-               if opcodeEq(x t) then if y then dt.root else df.root end
-               else try dt.sel(x y) when dagNotFound then df.sel(x y) end
-               end
-           tTest(t)
-           union(:String)(dt.succ df.succ))
+            fun(x: Opcode y: Bool): TestOrName
+                if opcodeEq(x t) then if y then dt.root else df.root end
+                else try dt.sel(x y) when dagNotFound then df.sel(x y) end
+                end
+            tTest(t)
+            union(:String)(dt.succ df.succ))
 
 let rec reach(d: Dag tn: TestOrName): Dag =
     case tn
         when tTest with x then
-            if not(member(:Opcode)(d.tests x.t)) then throw(:Dag)(dagNotFound)
+            if not(member(:Opcode)(d.tests x.t)) then
+                throw(:Dag)(dagNotFound)
             else
                 begin
                     let dt = reach(d d.sel(x.t true))
@@ -1205,9 +1224,9 @@ let tst(t: Opcode): TestOrAssign = option tst of TestOrAssign with t end
 let nodeSets(n: Node f: All(x: TestOrAssign) Set(Int)): Set(Int) =
     begin
         let a = listUnion(:Int)(lists.cons(:Set(Int))(makeInt
-            lists.map(:Opcode :Set(Int))(fun(o: Opcode): Set(Int) f(ass(o)) set(:Opcode)(n.a))))
+                lists.map(:Opcode :Set(Int))(fun(o: Opcode): Set(Int) f(ass(o)) set(:Opcode)(n.a))))
         union(:Int)(a listUnion(:Int)(lists.cons(:Set(Int))(makeInt
-            lists.map(:Opcode :Set(Int))(fun(o: Opcode): Set(Int) f(tst(o)) set(:Opcode)(n.d.tests)))))
+                lists.map(:Opcode :Set(Int))(fun(o: Opcode): Set(Int) f(tst(o)) set(:Opcode)(n.d.tests)))))
     end
 let readNode(n: Node): Set(Int) = nodeSets(n readTA)
 let writeNode(n: Node): Set(Int) = nodeSets(n writeTA)
@@ -1243,7 +1262,7 @@ let rec dead(p: Program r: Int n: Node done: Set(String)): Bool =
         let ntn(n: String): Node = try nameToNode(p n) when nameToNodeE then throw(:Node)(deadE) end
         let next = lists.foldr(:String :lists.T(String))(nfil lists.nil(:String) set(:String)(succ(p n)))
         not(member(:Int)(readNode(n) r))
-        andif {member(:Int)(writeNode(n) r) orif drl(lists.map(:String :Node)(ntn next))}
+            andif {member(:Int)(writeNode(n) r) orif drl(lists.map(:String :Node)(ntn next))}
     end
 
 let deadset(p: Program rs: Set(Int) n: Node): Bool =
@@ -1288,7 +1307,8 @@ let delete(p: Program n: Node): Program =
                         rmNode(lists.foldr(:Node :Program)(updt p s) n)
                     end
                 end
-            else p
+            else
+                p
             end
         end
     else throw(:Program)(deleteHd)
@@ -1321,14 +1341,16 @@ let canMoveOp(p: Program x: Opcode moveSet: Set(Node) m: Node): Bool =
             if lists.length(:Node)(ms) > 1 then false
             else lists.foldr(:Opcode :Bool)(all true set(:Opcode)(lists.hd(:Node)(ms).a))
             end
-        else canMoveOp1(p x moveSet m)
+        else
+            canMoveOp1(p x moveSet m)
         end
     end
 
 Let NamePair = Tuple a: String b: String end
 
 let moveOp(p: Program x: Opcode moveSet: Set(Node) m: Node): Program =
-    if not(canMoveOp(p x moveSet m)) then p
+    if not(canMoveOp(p x moveSet m)) then
+        p
     else
         begin
             let primedPairs = tuple let var l = lists.nil(:NamePair) end
@@ -1419,7 +1441,8 @@ let closure(bigP: Program entry: Node): Program =
                             let np = dfs(addNode(p c.hd) c.hd set(:Node)(succNodes(bigP c.hd)))
                             dfs(np parent c.tl)
                         end
-                    else dfs(p parent c.tl)
+                    else
+                        dfs(p parent c.tl)
                     end
                 else p
             end
@@ -1475,9 +1498,9 @@ let moveThingsNode(bigP: Program nm: String fenceSet: Set(String)): Program =
         let sNmList(p: Program): lists.T(String) = filterSucc(p nm fenceSet)
         let nd(nm: String): Node = try ntn(bigP nm) when moveThingsNodeE then error(:Node)("nd  nm") end
         let au = listUnionEQ(:Opcode)(opcodeEq
-            lists.map(:String :Set(Opcode))(fun(nm: String): Set(Opcode) nd(nm).a sNmList(bigP)))
+                lists.map(:String :Set(Opcode))(fun(nm: String): Set(Opcode) nd(nm).a sNmList(bigP)))
         let tu = listUnionEQ(:Opcode)(opcodeEq
-            lists.map(:String :Set(Opcode))(fun(nm: String): Set(Opcode) nd(nm).d.tests sNmList(bigP)))
+                lists.map(:String :Set(Opcode))(fun(nm: String): Set(Opcode) nd(nm).d.tests sNmList(bigP)))
         let ms(p: Program a: Opcode): lists.T(String) =
             begin
                 let f(nm: String l: lists.T(String)): lists.T(String) =
@@ -1548,7 +1571,8 @@ let rec cpress(window: Int p: Program fenceSet: Set(String) everinFenceSet: Set(
                 end
             when cpress2 then throw(:Program)(cpress5)
             end
-        else filled
+        else
+            filled
         end
     end
 
@@ -1737,7 +1761,11 @@ let writeP(entryMap: LabelMap lblFun: All() Int p: Program): Code =
         let zero = reg(0 "zero")
         let ubranch(frm: String nm: String): Opcode =
             option oBranch of Opcode with
-                option cIeq of Comparison end zero zero reg(lblmap(nm) "node" <> nm) brList(frm)
+                option cIeq of Comparison end
+                zero
+                zero
+                reg(lblmap(nm) "node" <> nm)
+                brList(frm)
             end
         let cbranch(b: Opcode frm: String nm: String): Opcode =
             case b
@@ -1770,7 +1798,8 @@ let writeP(entryMap: LabelMap lblFun: All() Int p: Program): Code =
                                                 else false
                                             end
                                         end
-                                    else true
+                                    else
+                                        true
                                     end
                                 else false
                             end
@@ -1813,7 +1842,8 @@ let writeP(entryMap: LabelMap lblFun: All() Int p: Program): Code =
                                                 let r2 =
                                                     if member(:String)(r1.done nxt) then
                                                         doneCode(r1.done lists.nil(:Opcode))
-                                                    else dfs(r1.done lists.cons(:String)(nxt lists.nil(:String)))
+                                                    else
+                                                        dfs(r1.done lists.cons(:String)(nxt lists.nil(:String)))
                                                     end
                                                 let lbl =
                                                     if strEq(nxt p.f.name) orif member(:String)(r2.done nxt) then nops()
@@ -1822,7 +1852,8 @@ let writeP(entryMap: LabelMap lblFun: All() Int p: Program): Code =
                                                 let rest = lists.append(:Opcode)(lbl r2.code)
                                                 doneCode(r2.done lists.append(:Opcode)(r1.code rest))
                                             end
-                                        else throw(:DoneCode)(dfsSurprise)
+                                        else
+                                            throw(:DoneCode)(dfsSurprise)
                                         end
                                     else f(done nm c1.hd)
                                 end
@@ -1830,7 +1861,7 @@ let writeP(entryMap: LabelMap lblFun: All() Int p: Program): Code =
                         end
                     let r = dfs(add(:String)(done nm) nc.nl)
                     doneCode(r.done lists.cons(:Opcode)(nop lists.append(:Opcode)(nodelabel
-                        lists.append(:Opcode)(a lists.append(:Opcode)(nc.cd r.code)))))
+                            lists.append(:Opcode)(a lists.append(:Opcode)(nc.cd r.code)))))
                 end
             end
         let r = f(makeStr "badname" p.n0.name)

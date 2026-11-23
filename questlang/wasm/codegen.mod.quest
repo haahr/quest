@@ -8,29 +8,31 @@
 
 module codegen : Codegen
 import
-    ir = questlang/ir/nodes : questlang/ir/Nodes
-    questlang/ir/walk : questlang/ir/Walk
-    questlang/repr/layout : questlang/repr/Layout
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/repr/genericLayout : questlang/repr/GenericLayout
-    questlang/repr/staticdata : questlang/repr/StaticData
-    questlang/repr/externals : questlang/repr/Externals
-    questlang/ir/describe : questlang/ir/Describe
-    questlang/wasm/model : questlang/wasm/Model
-    reuse = questlang/wasm/locals : questlang/wasm/Locals
-    questlang/wasm/ops : questlang/wasm/Ops
-    questlang/wasm/printer : questlang/wasm/Printer
-    questlang/wasm/runtime : questlang/wasm/Runtime
-    rt = questlang/wasm/runtimeTypes : questlang/wasm/RuntimeTypes
+    ascii : Ascii
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    ascii : Ascii
-    conv : Conv
+
+    questlang/ir/describe : questlang/ir/Describe
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/repr/externals : questlang/repr/Externals
+    questlang/repr/genericLayout : questlang/repr/GenericLayout
+    questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/repr/staticdata : questlang/repr/StaticData
+    reuse = questlang/wasm/locals : questlang/wasm/Locals
+    questlang/wasm/model : questlang/wasm/Model
+    questlang/wasm/ops : questlang/wasm/Ops
+    questlang/wasm/printer : questlang/wasm/Printer
+    questlang/wasm/runtime : questlang/wasm/Runtime
+    rt = questlang/wasm/runtimeTypes : questlang/wasm/RuntimeTypes
 export
     Let Inst = model.Inst
     Let ValType = model.ValType
@@ -155,17 +157,23 @@ export
             (* toString empties the builder, so the key is taken once *)
             let text = sb.toString(key)
             let known = hashMap.get(g.funcTypes text)
-            if maybe.isSome(known) then maybe.unwrap(known)
+            if maybe.isSome(known) then
+                maybe.unwrap(known)
             else
-                    let n = typeCount(g.m)
-                    vector.append(g.m.types array of
-                        tuple let name = "" let final = true let supers = array of :Int end
-                            let composite = option compFunc of model.Composite with
-                                let params = params let results = results end
+                let n = typeCount(g.m)
+                vector.append(g.m.types array of
+                    tuple
+                        let name = ""
+                        let final = true
+                        let supers = array of :Int end
+                        let composite = option compFunc of model.Composite with
+                            let params = params
+                            let results = results
                         end
-                    end)
-                    hashMap.insert(g.funcTypes text n)
-                    n
+                    end
+                end)
+                hashMap.insert(g.funcTypes text n)
+                n
             end
         end
 
@@ -272,7 +280,6 @@ export
      * named *)
     let selfLabel = "<self>"
 
-
     let newF(g: G params: Array(String) results: Array(ValType) fnId: Int): F =
         begin
             let names = hashMap.new(:String :Int stringOp.equal hash.string)
@@ -305,8 +312,7 @@ export
             when labelAfter then b?labelAfter when labelIf then b?labelIf when labelTry then b?labelTry
         end
 
-    let open(f: F name: String kind: LabelKind): Ok =
-        vector.append(f.labels tuple let name = name let kind = kind end)
+    let open(f: F name: String kind: LabelKind): Ok = vector.append(f.labels tuple let name = name let kind = kind end)
     let close(f: F): Ok =
         begin
             vector.pop(f.labels)
@@ -375,24 +381,28 @@ export
     (* v's globals, made the first time it is named: the first of one for
      * each of its parts *)
     let global(f: F v: ir.Variable): Int =
-        if hashMap.contains(f.g.globals v.id) then hashMap.find(f.g.globals v.id)
+        if hashMap.contains(f.g.globals v.id) then
+            hashMap.find(f.g.globals v.id)
         else
-                let ts = varParts(f.g v)
-                let n = model.importedGlobals(f.g.m) + vector.length(f.g.m.globals)
-                for k = 0 upto extent ts - 1 do
-                    let init = case ts[k]
+            let ts = varParts(f.g v)
+            let n = model.importedGlobals(f.g.m) + vector.length(f.g.m.globals)
+            for k = 0 upto extent ts - 1 do
+                let init =
+                    case ts[k]
                         when valI64 then model.i64Const(0)
                         when valI32 then model.i32Const(0)
                         when valF64 then model.f64Const(0.0)
                         else option instRefNull of Inst with let heap = option heapNone of model.HeapType end end
                     end
-                    vector.append(f.g.m.globals tuple
-                        let name = fresh(f.g.names v.hint) let type = ts[k] let mutable = true
-                        let init = array of init end
-                    end)
-                end
-                hashMap.insert(f.g.globals v.id n)
-                n
+                vector.append(f.g.m.globals tuple
+                    let name = fresh(f.g.names v.hint)
+                    let type = ts[k]
+                    let mutable = true
+                    let init = array of init end
+                end)
+            end
+            hashMap.insert(f.g.globals v.id n)
+            n
         end
 
     (* A new local of type t, for the code's own use *)
@@ -424,11 +434,17 @@ export
             n
         end
     let fieldOf(name: String t: ValType mutable: Bool): model.Field =
-        tuple let name = name let storage = option storageValue of model.Storage with let type = t end
-            let mutable = mutable end
+        tuple
+            let name = name
+            let storage = option storageValue of model.Storage with let type = t end
+            let mutable = mutable
+        end
     let hashField = fieldOf("hash" model.i32 true)
     let structSub(name: String final: Bool super: Int fields: Array(model.Field)): model.SubType =
-        tuple let name = name let final = final let supers = array of super end
+        tuple
+            let name = name
+            let final = final
+            let supers = array of super end
             let composite = option compStruct of model.Composite with let fields = fields end
         end
 
@@ -459,19 +475,20 @@ export
         begin
             let q = quantified(t)
             let s = q.body
-            if {q.count > 0} andif not(shapes.kindIs(s shapes.shapeFun)) then typeOnlySig(q)
+            if {q.count > 0} andif not(shapes.kindIs(s shapes.shapeFun)) then
+                typeOnlySig(q)
             else
-            if not(shapes.kindIs(s shapes.shapeFun)) then fail("a call of a value of no function type") end
-            (* each quantifier's descriptors first (section 3.2) *)
-            let ps = vector.new(:ValType)
-            for k = 0 upto q.count - 1 do vector.append(ps model.eqref) end
-            for k = 0 upto extent s.params - 1 do
-                let pp = if stringOp.equal(s.params[k].mode "value") then parts(s.params[k].shape.type)
-                    else locationParts
-                    end
-                for j = 0 upto extent pp - 1 do vector.append(ps pp[j]) end
-            end
-            tuple let params = vector.toArray(ps) let results = parts(shapes.result(s).type) end
+                if not(shapes.kindIs(s shapes.shapeFun)) then fail("a call of a value of no function type") end
+                (* each quantifier's descriptors first (section 3.2) *)
+                let ps = vector.new(:ValType)
+                for k = 0 upto q.count - 1 do vector.append(ps model.eqref) end
+                for k = 0 upto extent s.params - 1 do
+                    let pp = if stringOp.equal(s.params[k].mode "value") then parts(s.params[k].shape.type)
+                        else locationParts
+                        end
+                    for j = 0 upto extent pp - 1 do vector.append(ps pp[j]) end
+                end
+                tuple let params = vector.toArray(ps) let results = parts(shapes.result(s).type) end
             end
         end
     (* How many parameters a function type has, its descriptors among them *)
@@ -516,10 +533,11 @@ export
     let closU(g: G n: Int): Int =
         begin
             let key = "U" <> conv.int(n)
-            if hashMap.contains(g.closTypes key) then hashMap.find(g.closTypes key)
+            if hashMap.contains(g.closTypes key) then
+                hashMap.find(g.closTypes key)
             else
                 let t = addType(g structSub("closU" <> conv.int(n) false tClos
-                    array of hashField fieldOf("uniform" model.ref(uniformType(g n)) false) end))
+                        array of hashField fieldOf("uniform" model.ref(uniformType(g n)) false) end))
                 hashMap.insert(g.closTypes key t)
                 t
             end
@@ -535,7 +553,8 @@ export
     let closS(g: G sig: Signature n: Int): Int =
         begin
             let key = "S" <> conv.int(n) <> ":" <> sigText(g sig)
-            if hashMap.contains(g.closTypes key) then hashMap.find(g.closTypes key)
+            if hashMap.contains(g.closTypes key) then
+                hashMap.find(g.closTypes key)
             else
                 let u = closU(g n)
                 let t = addType(g structSub("" false u array of
@@ -551,7 +570,8 @@ export
      * its parts a mutable field (so that a recursive value's can be filled
      * in) *)
     let ownType(g: G fn: ir.Function): Int =
-        if hashMap.contains(g.ownTypes fn.id) then hashMap.find(g.ownTypes fn.id)
+        if hashMap.contains(g.ownTypes fn.id) then
+            hashMap.find(g.ownTypes fn.id)
         else
             let sig = closureSig(fn.v.type)
             let n = arity(fn.v.type)
@@ -563,7 +583,7 @@ export
                 vector.append(fields fieldOf("d" <> conv.int(k) model.eqref true))
             end
             let captures = maybe.unwrapOr(hashMap.get(g.captureTypes fn.id)
-                array of :ir.Type end)
+                    array of :ir.Type end)
             for k = 0 upto extent captures - 1 do
                 let ps = parts(captures[k])
                 for j = 0 upto extent ps - 1 do
@@ -572,7 +592,7 @@ export
                 end
             end
             let t = addType(g structSub(fresh(g.names fn.v.hint <> ".closure") true closS(g sig n)
-                vector.toArray(fields)))
+                    vector.toArray(fields)))
             hashMap.insert(g.ownTypes fn.id t)
             t
         end
@@ -582,7 +602,7 @@ export
     let captureField(g: G fn: ir.Function index: Int): Int =
         begin
             let captures = maybe.unwrapOr(hashMap.get(g.captureTypes fn.id)
-                array of :ir.Type end)
+                    array of :ir.Type end)
             let var at = 3 + capturedDescriptors(fn)
             for k = 0 upto index - 1 do at := at + extent parts(captures[k]) end
             at
@@ -600,15 +620,16 @@ export
     (* v's local, made the first time it is bound; an unboxed tuple's first,
      * of one for each of its components *)
     let local(f: F v: ir.Variable): Int =
-        if hashMap.contains(f.locals v.id) then hashMap.find(f.locals v.id)
+        if hashMap.contains(f.locals v.id) then
+            hashMap.find(f.locals v.id)
         else
-                let n = f.nparams + vector.length(f.declared)
-                let ts = varParts(f.g v)
-                for k = 0 upto extent ts - 1 do
-                    vector.append(f.declared tuple let name = fresh(f.names v.hint) let type = ts[k] end)
-                end
-                hashMap.insert(f.locals v.id n)
-                n
+            let n = f.nparams + vector.length(f.declared)
+            let ts = varParts(f.g v)
+            for k = 0 upto extent ts - 1 do
+                vector.append(f.declared tuple let name = fresh(f.names v.hint) let type = ts[k] end)
+            end
+            hashMap.insert(f.locals v.id n)
+            n
         end
 
     let isLocated(f: F v: ir.Variable): Bool = hashMap.contains(f.g.located v.id)
@@ -651,8 +672,11 @@ export
         begin
             let n = model.importedGlobals(g.m) + vector.length(g.m.globals)
             vector.append(g.m.globals tuple
-                let name = fresh(g.names name) let type = model.eqref let mutable = true
-                let init = array of option instRefNull of Inst with let heap = option heapNone of model.HeapType end end end
+                let name = fresh(g.names name)
+                let type = model.eqref
+                let mutable = true
+                let init =
+                    array of option instRefNull of Inst with let heap = option heapNone of model.HeapType end end end
             end)
             n
         end
@@ -728,7 +752,6 @@ export
             when atomConst with x then constant(f x.c)
         end
 
-
     let atomType(a: ir.Atom): ValType = valType(ir.atomType(a))
 
     (* Returns the function index of this unit's local copy of boxInt or
@@ -740,7 +763,8 @@ export
     let intBoxing(g: G field: String): Int =
         begin
             let key = "own." <> field
-            if hashMap.contains(g.runtimeFunctions key) then hashMap.find(g.runtimeFunctions key)
+            if hashMap.contains(g.runtimeFunctions key) then
+                hashMap.find(g.runtimeFunctions key)
             else
                 let tBoxInt = rt.index("boxInt")
                 let i31 = option heapI31 of model.HeapType end
@@ -771,13 +795,16 @@ export
                     end "small"))
                     emit(f i1(ops.localGet 0))
                     emit(f option instBrOnCast of Inst with
-                        let fail = false let label = 0
+                        let fail = false
+                        let label = 0
                         let from = tuple let nullable = true let heap = option heapEq of model.HeapType end end
                         let to = tuple let nullable = false let heap = i31 end
                     end)
                     emit(f option instRefCast of Inst with
-                        let type = tuple let nullable = false
-                            let heap = option heapIndex of model.HeapType with let index = tBoxInt end end
+                        let type = tuple
+                            let nullable = false
+                            let heap = option heapIndex of model.HeapType with let index = tBoxInt end
+                        end
                     end)
                     emit(f i2(ops.structGet tBoxInt 0))
                     emit(f i(ops.returnOp))
@@ -787,8 +814,11 @@ export
                 end
                 let index = model.importedFunctions(g.m) + vector.length(g.m.functions)
                 vector.append(g.m.functions tuple
-                    let name = fresh(g.names field) let type = funcType(g array of if boxing then model.i64 else model.eqref end end results)
-                    let params = array of if boxing then "n" else "e" end end let locals = f.declared let body = f.code
+                    let name = fresh(g.names field)
+                    let type = funcType(g array of if boxing then model.i64 else model.eqref end end results)
+                    let params = array of if boxing then "n" else "e" end end
+                    let locals = f.declared
+                    let body = f.code
                 end)
                 hashMap.insert(g.runtimeFunctions key index)
                 index
@@ -802,7 +832,8 @@ export
             emit(f i1(ops.call intBoxing(f.g field)))
         elsif hashMap.contains(f.g.runtimeFunctions field) then
             emit(f i1(ops.call hashMap.find(f.g.runtimeFunctions field)))
-        else fail("the runtime's " <> field)
+        else
+            fail("the runtime's " <> field)
         end
 
     (* A built-in exception's global, imported from the runtime first *)
@@ -879,9 +910,15 @@ export
         begin
             let kind = describe.echoValueKind(t)
             let named = fun(k: String): Bool stringOp.equal(kind k)
-            if named("Int") then 1 elsif named("Bool") then 2 elsif named("Char") then 3 elsif named("String") then 4
-            elsif named("Ok") then 5 elsif named("Word") orif named("Word.T") orif named("word.T") then 6
-            elsif named("fun") then 7 elsif named("hidden") then 8 else 9
+            if named("Int") then 1
+            elsif named("Bool") then 2
+            elsif named("Char") then 3
+            elsif named("String") then 4
+            elsif named("Ok") then 5
+            elsif named("Word") orif named("Word.T") orif named("word.T") then 6
+            elsif named("fun") then 7
+            elsif named("hidden") then 8
+            else 9
             end
         end
 
@@ -910,8 +947,7 @@ export
 
     (* Whether the unit named name is one of the runtime's, which import no
      * runtime unit but the core *)
-    let isRuntimeUnit(name: String): Bool =
-        stringOp.equal(name "wasm/core") orif stringOp.equal(name "wasm/print")
+    let isRuntimeUnit(name: String): Bool = stringOp.equal(name "wasm/core") orif stringOp.equal(name "wasm/print")
 
     (* Emits a call to the runtime unit function named by key (for example,
      * "wasm/core.member"). Because a Quest function's native entry takes its
@@ -920,7 +956,8 @@ export
     let runtimeUnitCall(f: F key: String): Ok =
         if hashMap.contains(f.g.runtimeUnits key) then
             emit(f i1(ops.call hashMap.find(f.g.runtimeUnits key)))
-        else fail("the runtime's " <> key)
+        else
+            fail("the runtime's " <> key)
         end
 
     (* A descriptor's kind, as wasm/core numbers them, from its form's
@@ -968,13 +1005,14 @@ export
                 let entries = vector.get(g.unit.modules k).abstractTypes
                 for j = 0 upto extent entries - 1 do vector.append(plain entries[j].descriptor.type) end
             end
-            let collected = try
+            let collected =
+                try
                     staticdata.collectDescriptors(plain echoed maybe.some(g.naming)
-                        hashMap.new(stringOp.equal hash.string))
+                            hashMap.new(stringOp.equal hash.string))
                 when staticdata.missingDescriptor with msg then
                     fail("a descriptor: " <> msg)
                     staticdata.collectDescriptors(vector.new() vector.new()
-                        maybe.some(g.naming) hashMap.new(stringOp.equal hash.string))
+                            maybe.some(g.naming) hashMap.new(stringOp.equal hash.string))
                 end
             let forms = vector.new(:staticdata.DescriptorForm)
             for k = 0 upto extent staticdata.descriptorKinds - 1 do
@@ -1023,16 +1061,19 @@ export
                     emit(f i1(ops.globalGet f.g.noClosure))
                     emit(f model.i64Const(form.index))
                     runtimeUnitCall(f "wasm/core.boundVar")
-                else emit(f i1(ops.globalGet descGlobal(f form.symbol)))
+                else
+                    emit(f i1(ops.globalGet descGlobal(f form.symbol)))
                 end
             when descVar with x then atomParts(f ir.atomOfVar(x.v))
             when descInstantiate with x then
-                let form = try staticdata.descriptorForm(x.template maybe.some(f.g.naming))
+                let form =
+                    try staticdata.descriptorForm(x.template maybe.some(f.g.naming))
                     when staticdata.missingDescriptor with msg then
                         fail("a descriptor: " <> msg)
                         staticdata.descriptorForm(x.template maybe.some(f.g.naming))
                     end
-                if stringOp.equal(form.kind "base") then emit(f i1(ops.globalGet descGlobal(f form.symbol)))
+                if stringOp.equal(form.kind "base") then
+                    emit(f i1(ops.globalGet descGlobal(f form.symbol)))
                 else
                     emit(f i1(ops.globalGet f.g.noClosure))
                     emit(f i1(ops.globalGet descGlobal(f form.symbol)))
@@ -1064,7 +1105,9 @@ export
             let components = fun(cs: Array(staticdata.Component)): Array(Part)
                 begin
                     let ps = array of(extent cs part(maybe.none() staticdata.nullRef))
-                    for j = 0 upto extent cs - 1 do ps[j] := flagged(cs[j].name cs[j].type if cs[j].isVar then 1 else 0 end) end
+                    for j = 0 upto extent cs - 1 do
+                        ps[j] := flagged(cs[j].name cs[j].type if cs[j].isVar then 1 else 0 end)
+                    end
                     ps
                 end
             let cases = fun(cs: Array(staticdata.Case)): Array(Part)
@@ -1072,23 +1115,24 @@ export
                     let ps = array of(extent cs part(maybe.none() staticdata.nullRef))
                     for j = 0 upto extent cs - 1 do
                         ps[cs[j].tagIndex] := flagged(maybe.some(cs[j].name) cs[j].payload
-                            if cs[j].isVar then 1 else 0 end)
+                                if cs[j].isVar then 1 else 0 end)
                     end
                     ps
                 end
             (* a function type's parameters, each flagged by its mode, then
              * its result, then its quantifiers' bounds *)
-            let function = fun(params: Array(staticdata.FunParam) result: staticdata.Ref bs: Array(staticdata.Ref)): Array(Part)
-                begin
-                    let n = extent params
-                    let ps = array of({n + 1} + extent bs flagged(maybe.none() result 4))
-                    for j = 0 upto n - 1 do
-                        let mode = if params[j].isVar then 1 elsif params[j].isOut then 2 else 0 end
-                        ps[j] := flagged(maybe.none() params[j].type mode)
+            let function =
+                fun(params: Array(staticdata.FunParam) result: staticdata.Ref bs: Array(staticdata.Ref)): Array(Part)
+                    begin
+                        let n = extent params
+                        let ps = array of({n + 1} + extent bs flagged(maybe.none() result 4))
+                        for j = 0 upto n - 1 do
+                            let mode = if params[j].isVar then 1 elsif params[j].isOut then 2 else 0 end
+                            ps[j] := flagged(maybe.none() params[j].type mode)
+                        end
+                        for j = 0 upto extent bs - 1 do ps[{n + 1} + j] := flagged(maybe.none() bs[j] 8) end
+                        ps
                     end
-                    for j = 0 upto extent bs - 1 do ps[{n + 1} + j] := flagged(maybe.none() bs[j] 8) end
-                    ps
-                end
             case d.payload
                 when payloadTuple with x then components(x.elements)
                 when payloadRecord with x then components(x.fields)
@@ -1099,7 +1143,8 @@ export
                 when payloadAuto with x then
                     (* its components, then its bound if it has one *)
                     let cs = components(x.components)
-                    if stringOp.isEmpty(x.bound.symbol) then cs
+                    if stringOp.isEmpty(x.bound.symbol) then
+                        cs
                     else
                         let ps = array of(extent cs + 1 flagged(maybe.none() x.bound 32))
                         for j = 0 upto extent cs - 1 do ps[j] := cs[j] end
@@ -1151,7 +1196,7 @@ export
             for k = 0 upto vector.length(forms) - 1 do
                 let form = vector.get(forms k)
                 vector.append(described
-                    staticdata.describeDescriptor(form maybe.some(f.g.naming) partOf))
+                        staticdata.describeDescriptor(form maybe.some(f.g.naming) partOf))
             end
             for k = 0 upto vector.length(described) - 1 do
                 let d = vector.get(described k)
@@ -1187,7 +1232,8 @@ export
                         noClosure()
                         emit(f model.i64Const(ps[j].ref.index))
                         callCore("boundVar")
-                    else emit(f i1(ops.globalGet descGlobal(f ps[j].ref.symbol)))
+                    else
+                        emit(f i1(ops.globalGet descGlobal(f ps[j].ref.symbol)))
                     end
                     literal(f ps[j].label)
                     callCore("setPart")
@@ -1213,7 +1259,6 @@ export
                 end
             end
         end
-
 
     let tRecord = rt.index("record")
     let tDict = rt.index("dict")
@@ -1270,8 +1315,7 @@ export
             end
         end
     (* Whether the atom is a variable held boxed (a record in its box) *)
-    let isBoxedVar(a: ir.Atom): Bool =
-        case a when atomVar with x then x.v.boxed else false end
+    let isBoxedVar(a: ir.Atom): Bool = case a when atomVar with x then x.v.boxed else false end
     (* A slot's value, read as the variable target holds it: unboxed unless
      * target is held boxed *)
     let unboxFor(f: F t: ir.Type target: maybe.T(ir.Variable)): Ok =
@@ -1307,7 +1351,8 @@ export
             getParts(f v)
             emit(f i1(ops.localGet value))
             emit(f i1(ops.arraySet tSlots))
-        else setParts(f v)
+        else
+            setParts(f v)
         end
 
     (* A located variable's location at its declaration: a slot array of its
@@ -1370,7 +1415,8 @@ export
                     let index = funcType(f.g array of model.eqref end array of model.ref(t) end)
                 end ""))
                 emit(f option instBrOnCast of Inst with
-                    let fail = false let label = 0
+                    let fail = false
+                    let label = 0
                     let from = tuple let nullable = true let heap = option heapEq of model.HeapType end end
                     let to = tuple let nullable = false let heap = heapOf(t) end
                 end)
@@ -1453,7 +1499,8 @@ export
                 emit(f i2(ops.structGet t fSlots))
                 emit(f model.i32Const(index))
                 emit(f i1(ops.arrayGet tSlots))
-            else emit(f i2(ops.structGet t field))
+            else
+                emit(f i2(ops.structGet t field))
             end
             emit(f model.elseInst)
             emit(f i1(ops.globalGet f.g.noClosure))
@@ -1535,12 +1582,14 @@ export
     let caseForm(s: shapes.Shape tag: String): CaseForm =
         begin
             let c = s.cases[tagIndex(s tag)]
-            if maybe.isNone(c.shape) then tuple let count = 0 let isTuple = true end
+            if maybe.isNone(c.shape) then
+                tuple let count = 0 let isTuple = true end
             else
                 let cs = maybe.unwrap(c.shape)
                 if shapes.kindIs(cs shapes.shapeTuple) then
                     tuple let count = extent cs.components let isTuple = true end
-                else tuple let count = 1 let isTuple = false end
+                else
+                    tuple let count = 1 let isTuple = false end
                 end
             end
         end
@@ -1626,10 +1675,11 @@ export
                 emit(f model.endInst)
                 (* A payload is laid out as the case a constant ordinal names,
                  * else as the first's, as the SSA's builder lays it out *)
-                let n = case index
-                    when atomConst with c then case c.c.value when constInt with y then y.n else ~1 end
-                    else ~1
-                end
+                let n =
+                    case index
+                        when atomConst with c then case c.c.value when constInt with y then y.n else ~1 end
+                        else ~1
+                    end
                 let laidOut = if {n >= 0} andif {n < extent x.cases} then x.cases[n]
                     else maybe.unwrapOr(s.cases[0].name "")
                     end
@@ -1650,7 +1700,8 @@ export
     let tagOf(f: F value: ir.Atom access: ir.Access): Ok =
         begin
             atom(f value)
-            if access?proxy andif not(f.g.isRuntime) then proxyAware(f tOption fTag ~1 "wasm/core.proxyTag")
+            if access?proxy andif not(f.g.isRuntime) then
+                proxyAware(f tOption fTag ~1 "wasm/core.proxyTag")
             else
                 accessAs(f tOption access)
                 emit(f i2(ops.structGet tOption fTag))
@@ -1921,7 +1972,8 @@ export
             emit(f model.i64Const(~1))
             emit(f i(ops.i64Eq))
             emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i64 end ""))
-            if remainder then emit(f model.i64Const(0))
+            if remainder then
+                emit(f model.i64Const(0))
             else
                 emit(f model.i64Const(0))
                 atom(f a)
@@ -1980,7 +2032,7 @@ export
                      * core's valIs compares them (quest_option_is) *)
                     let proxied = not(x.access?direct) andif not(f.g.isRuntime)
                     if proxied andif maybe.isSome(x.descriptor)
-                        andif hashMap.contains(f.g.runtimeUnits "wasm/core.valIs") then
+                            andif hashMap.contains(f.g.runtimeUnits "wasm/core.valIs") then
                         emit(f i1(ops.globalGet f.g.noClosure))
                         descriptor(f maybe.unwrap(x.descriptor))
                         atom(f x.args[0])
@@ -2001,7 +2053,7 @@ export
                      * descriptor (quest_variant_is; docs/extensions.md,
                      * Variants as Values) *)
                     if maybe.isNone(x.descriptor)
-                        orif not(hashMap.contains(f.g.runtimeUnits "wasm/core.valIs")) then
+                            orif not(hashMap.contains(f.g.runtimeUnits "wasm/core.valIs")) then
                         fail("is on variants without their descriptor")
                     end
                     emit(f i1(ops.globalGet f.g.noClosure))
@@ -2018,72 +2070,77 @@ export
                         if isBoxedVar(x.args[k]) then
                             castTo(f tRecBox)
                             emit(f i2(ops.structGet tRecBox 0))
-                        else emit(f i(ops.drop))
+                        else
+                            emit(f i(ops.drop))
                         end
                     end
                     emit(f i(ops.refEq))
                     if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
                 else
-                if maybe.isSome(x.descriptor) andif atomType(x.args[0])?valRef then
-                    (* a type parameter's values, as slots hold them: the same
-                     * reference, or two boxed Ints of one value *)
-                    let tBox = rt.index("boxInt")
-                    let a = scratch(f model.eqref)
-                    let b = scratch(f model.eqref)
-                    atom(f x.args[0])
-                    emit(f i1(ops.localTee a))
-                    atom(f x.args[1])
-                    emit(f i1(ops.localTee b))
-                    emit(f i(ops.refEq))
-                    emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i32 end ""))
-                    emit(f model.i32Const(1))
-                    emit(f model.elseInst)
-                    if hashMap.contains(f.g.runtimeUnits "wasm/core.valIs") then
-                        (* by the descriptor, which may be an abstract type's
-                         * whose representation compares otherwise *)
-                        emit(f i1(ops.globalGet f.g.noClosure))
-                        descriptor(f maybe.unwrap(x.descriptor))
-                        emit(f i1(ops.localGet a))
-                        emit(f i1(ops.localGet b))
-                        runtimeUnitCall(f "wasm/core.valIs")
+                    if maybe.isSome(x.descriptor) andif atomType(x.args[0])?valRef then
+                        (* a type parameter's values, as slots hold them: the same
+                         * reference, or two boxed Ints of one value *)
+                        let tBox = rt.index("boxInt")
+                        let a = scratch(f model.eqref)
+                        let b = scratch(f model.eqref)
+                        atom(f x.args[0])
+                        emit(f i1(ops.localTee a))
+                        atom(f x.args[1])
+                        emit(f i1(ops.localTee b))
+                        emit(f i(ops.refEq))
+                        emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i32 end ""))
+                        emit(f model.i32Const(1))
+                        emit(f model.elseInst)
+                        if hashMap.contains(f.g.runtimeUnits "wasm/core.valIs") then
+                            (* by the descriptor, which may be an abstract type's
+                             * whose representation compares otherwise *)
+                            emit(f i1(ops.globalGet f.g.noClosure))
+                            descriptor(f maybe.unwrap(x.descriptor))
+                            emit(f i1(ops.localGet a))
+                            emit(f i1(ops.localGet b))
+                            runtimeUnitCall(f "wasm/core.valIs")
+                        else
+                            for k = 0 upto 1 do
+                                emit(f i1(ops.localGet if k is 0 then a else b end))
+                                emit(f option instRefTest of Inst with
+                                    let type = tuple
+                                        let nullable = false
+                                        let heap = heapOf(tBox)
+                                    end
+                                end)
+                            end
+                            emit(f i(ops.i32And))
+                            emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i32 end ""))
+                            for k = 0 upto 1 do
+                                emit(f i1(ops.localGet if k is 0 then a else b end))
+                                castTo(f tBox)
+                                emit(f i2(ops.structGet tBox 0))
+                            end
+                            emit(f i(ops.i64Eq))
+                            emit(f model.elseInst)
+                            emit(f model.i32Const(0))
+                            emit(f model.endInst)
+                        end
+                        emit(f model.endInst)
+                    elsif x.access?original andif not(f.g.isRuntime) then
+                        (* tuples or options that may be proxies: their
+                         * originals *)
+                        for k = 0 upto 1 do
+                            atom(f x.args[k])
+                            accessAs(f tTuple ir.original)
+                        end
+                        emit(f i(ops.refEq))
                     else
-                    for k = 0 upto 1 do
-                        emit(f i1(ops.localGet if k is 0 then a else b end))
-                        emit(f option instRefTest of Inst with let type = tuple let nullable = false
-                            let heap = heapOf(tBox) end end)
+                        atoms(f x.args)
+                        case atomType(x.args[0])
+                            when valI64 then emit(f i(ops.i64Eq))
+                            when valI32 then emit(f i(ops.i32Eq))
+                            when valRef then emit(f i(ops.refEq))
+                            when valF64 then emit(f i(ops.f64Eq))
+                            else fail("is on a value of no kind")
+                        end
                     end
-                    emit(f i(ops.i32And))
-                    emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i32 end ""))
-                    for k = 0 upto 1 do
-                        emit(f i1(ops.localGet if k is 0 then a else b end))
-                        castTo(f tBox)
-                        emit(f i2(ops.structGet tBox 0))
-                    end
-                    emit(f i(ops.i64Eq))
-                    emit(f model.elseInst)
-                    emit(f model.i32Const(0))
-                    emit(f model.endInst)
-                    end
-                    emit(f model.endInst)
-                elsif x.access?original andif not(f.g.isRuntime) then
-                    (* tuples or options that may be proxies: their
-                     * originals *)
-                    for k = 0 upto 1 do
-                        atom(f x.args[k])
-                        accessAs(f tTuple ir.original)
-                    end
-                    emit(f i(ops.refEq))
-                else
-                atoms(f x.args)
-                case atomType(x.args[0])
-                    when valI64 then emit(f i(ops.i64Eq))
-                    when valI32 then emit(f i(ops.i32Eq))
-                    when valRef then emit(f i(ops.refEq))
-                    when valF64 then emit(f i(ops.f64Eq))
-                    else fail("is on a value of no kind")
-                end
-                end
-                if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
+                    if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
                 end
             when primAnd then
                 atoms(f x.args)
@@ -2345,7 +2402,7 @@ export
      * Externals unavailable on this target compile to a stub that fails if
      * called. *)
     let externalCall(f: F symbol: String args: Array(ir.Atom) descs: Array(ir.Descriptor)
-        target: maybe.T(ir.Variable)): Ok =
+            target: maybe.T(ir.Variable)): Ok =
         begin
             let named = fun(n: String): Bool stringOp.equal(symbol n)
             let through = fun(field: String): Ok begin atoms(f args) runtimeCall(f field) end
@@ -2395,22 +2452,32 @@ export
                 runtimeUnitCall(f "wasm/core." <> maybe.unwrap(core)[1])
                 if named("quest_reader_ready") then emit(f i(ops.i64ExtendI32U)) end
             (* string *)
-            elsif named("quest_string_alloc") then through("stringNew")
-            elsif named("quest_string_get_char") then through("stringGetChar")
-            elsif named("quest_string_set_char") then through("stringSetChar")
-            elsif named("quest_string_get_sub") then through("stringGetSub")
-            elsif named("quest_string_set_sub") then through("stringSetSub")
-            elsif named("quest_string_concat") then through("concat")
-            elsif named("quest_string_equal") then through("stringEqual")
+            elsif named("quest_string_alloc") then
+                through("stringNew")
+            elsif named("quest_string_get_char") then
+                through("stringGetChar")
+            elsif named("quest_string_set_char") then
+                through("stringSetChar")
+            elsif named("quest_string_get_sub") then
+                through("stringGetSub")
+            elsif named("quest_string_set_sub") then
+                through("stringSetSub")
+            elsif named("quest_string_concat") then
+                through("concat")
+            elsif named("quest_string_equal") then
+                through("stringEqual")
             elsif named("quest_string_is_empty") orif named("quest_string_length") then
                 atoms(f args)
                 castTo(f rt.index("string"))
                 emit(f i2(ops.structGet rt.index("string") rt.field("string" "length")))
                 if named("quest_string_is_empty") then emit(f i(ops.i32Eqz)) else emit(f i(ops.i64ExtendI32U)) end
             (* conv *)
-            elsif named("quest_conv_int") then through("convInt")
-            elsif named("quest_conv_char") then quoted(f args '\'')
-            elsif named("quest_conv_string") then quoted(f args '"')
+            elsif named("quest_conv_int") then
+                through("convInt")
+            elsif named("quest_conv_char") then
+                quoted(f args '\'')
+            elsif named("quest_conv_string") then
+                quoted(f args '"')
             (* writer: the core's (coreExternals) *)
             (* ascii, arrayOp, raised, system *)
             elsif named("quest_ascii_char") then
@@ -2448,12 +2515,14 @@ export
                     emit(f i1(ops.globalGet f.g.noClosure))
                     atom(f args[0])
                     runtimeUnitCall(f "wasm/core.exitStatus")
-                else atom(f args[0])
+                else
+                    atom(f args[0])
                 end
                 emit(f i(ops.i32WrapI64))
                 runtimeCall(f "fatal")
                 okValue()
-            elsif named("quest_system_is_terminal") then emit(f model.i32Const(0))
+            elsif named("quest_system_is_terminal") then
+                emit(f model.i32Const(0))
             (* Library externals with no WebAssembly equivalent raise their
              * module's error (section 4.2): no subprocesses, JIT code
              * generation, raw address inspection, or line editing. os/code's
@@ -2468,8 +2537,10 @@ export
                 emit(f i(ops.refIsNull))
             elsif strutil.startsWith(symbol "quest_code_") orif strutil.startsWith(symbol "quest_value_") then
                 raiseAt(f "value.error" maybe.none())
-            elsif named("quest_readline_editing") then emit(f model.i32Const(0))
-            elsif strutil.startsWith(symbol "quest_readline_") then raiseAt(f "readline.error" maybe.none())
+            elsif named("quest_readline_editing") then
+                emit(f model.i32Const(0))
+            elsif strutil.startsWith(symbol "quest_readline_") then
+                raiseAt(f "readline.error" maybe.none())
             (* hash *)
             elsif named("quest_hash_mix") then
                 atoms(f args)
@@ -2494,17 +2565,28 @@ export
                 atoms(f args)
                 emit(f model.i64Const(~1))
                 emit(f i(ops.i64Xor))
-            elsif named("quest_word_and_bits") then binary(ops.i64And)
-            elsif named("quest_word_or_bits") then binary(ops.i64Or)
-            elsif named("quest_word_xor_bits") then binary(ops.i64Xor)
-            elsif named("quest_word_add") then binary(ops.i64Add)
-            elsif named("quest_word_sub") then binary(ops.i64Sub)
-            elsif named("quest_word_mul") then binary(ops.i64Mul)
-            elsif named("quest_word_lt") then binary(ops.i64LtU)
-            elsif named("quest_word_le") then binary(ops.i64LeU)
-            elsif named("quest_word_gt") then binary(ops.i64GtU)
-            elsif named("quest_word_ge") then binary(ops.i64GeU)
-            elsif named("quest_word_to_int") orif named("quest_word_from_int") then atoms(f args)
+            elsif named("quest_word_and_bits") then
+                binary(ops.i64And)
+            elsif named("quest_word_or_bits") then
+                binary(ops.i64Or)
+            elsif named("quest_word_xor_bits") then
+                binary(ops.i64Xor)
+            elsif named("quest_word_add") then
+                binary(ops.i64Add)
+            elsif named("quest_word_sub") then
+                binary(ops.i64Sub)
+            elsif named("quest_word_mul") then
+                binary(ops.i64Mul)
+            elsif named("quest_word_lt") then
+                binary(ops.i64LtU)
+            elsif named("quest_word_le") then
+                binary(ops.i64LeU)
+            elsif named("quest_word_gt") then
+                binary(ops.i64GtU)
+            elsif named("quest_word_ge") then
+                binary(ops.i64GeU)
+            elsif named("quest_word_to_int") orif named("quest_word_from_int") then
+                atoms(f args)
             elsif named("quest_word_pop_count_val") then
                 atoms(f args)
                 emit(f i(ops.i64Popcnt))
@@ -2514,7 +2596,8 @@ export
             elsif named("quest_word_count_trailing_zeros_val") then
                 atoms(f args)
                 emit(f i(ops.i64Ctz))
-            elsif named("quest_word_rotate_val") then binary(ops.i64Rotl)
+            elsif named("quest_word_rotate_val") then
+                binary(ops.i64Rotl)
             elsif named("quest_word_div_val") orif named("quest_word_mod_val") then
                 atom(f args[1])
                 emit(f i(ops.i64Eqz))
@@ -2669,7 +2752,8 @@ export
                 emit(f i(ops.f64ConvertI64S))
             elsif named("quest_real_floor") orif named("quest_real_ceil") orif named("quest_real_trunc") then
                 atoms(f args)
-                emit(f i(if named("quest_real_floor") then ops.f64Floor elsif named("quest_real_ceil") then ops.f64Ceil
+                emit(f i(if named("quest_real_floor") then ops.f64Floor
+                    elsif named("quest_real_ceil") then ops.f64Ceil
                     else ops.f64Trunc end))
                 realToInt(f)
             elsif named("quest_real_round") then
@@ -2722,7 +2806,8 @@ export
             elsif named("quest_word_from_real_val") then
                 atoms(f args)
                 emit(f i(ops.i64ReinterpretF64))
-            else pending(f "the library's external " <> symbol <> ", which this target lacks for now")
+            else
+                pending(f "the library's external " <> symbol <> ", which this target lacks for now")
             end
         end
 
@@ -2738,16 +2823,19 @@ export
                 let inner = stringOp.getSub(symbol stringOp.length(prefix) {{stringOp.length(symbol)
                     - stringOp.length(prefix)} - 1})
                 let var at = ~1
-                for k = 0 upto stringOp.length(inner) - 1 do if {at < 0} andif {stringOp.getChar(inner k) is '_'} then at := k end end
+                for k = 0 upto stringOp.length(inner) - 1 do
+                    if {at < 0} andif {stringOp.getChar(inner k) is '_'} then at := k end
+                end
                 let name = if at < 0 then inner
                     else stringOp.getSub(inner 0 at) <> "." <> stringOp.getSub(inner {at + 1}
-                        {{stringOp.length(inner) - at} - 1})
+                            {{stringOp.length(inner) - at} - 1})
                     end
                 let var known = false
                 for k = 0 upto extent runtime.builtinExceptions - 1 do
                     if stringOp.equal(runtime.builtinExceptions[k] name) then known := true end
                 end
-                if known then emit(f i1(ops.globalGet builtinException(name)))
+                if known then
+                    emit(f i1(ops.globalGet builtinException(name)))
                 else
                     (* one the base does not define: made here, once, as the
                      * unit's initializer evaluates it, its name the C
@@ -2757,7 +2845,8 @@ export
                     let var upper = false
                     for k = 0 upto stringOp.length(name) - 1 do
                         let c = stringOp.getChar(name k)
-                        if {c is '_'} andif {k > at} then upper := true
+                        if {c is '_'} andif {k > at} then
+                            upper := true
                         else
                             sb.char(b if upper andif {ascii.val(c) >= 97} then ascii.char(ascii.val(c) - 32) else c end)
                             upper := false
@@ -2767,18 +2856,26 @@ export
                     literal(f sb.toString(b))
                     emit(f i1(ops.structNew rt.index("exception")))
                 end
-            elsif named("QUEST_REAL_MAX") then emit(f model.f64Const(1.7976931348623157e+308))
-            elsif named("QUEST_REAL_MIN") then emit(f model.f64Const(~1.7976931348623157e+308))
-            elsif named("QUEST_REAL_POS_EPSILON") then emit(f model.f64Const(2.220446049250313e-16))
-            elsif named("QUEST_REAL_NEG_EPSILON") then emit(f model.f64Const(~2.220446049250313e-16))
-            elsif named("QUEST_REAL_E") then emit(f model.f64Const(2.718281828459045))
-            elsif named("QUEST_REAL_PI") then emit(f model.f64Const(3.141592653589793))
+            elsif named("QUEST_REAL_MAX") then
+                emit(f model.f64Const(1.7976931348623157e+308))
+            elsif named("QUEST_REAL_MIN") then
+                emit(f model.f64Const(~1.7976931348623157e+308))
+            elsif named("QUEST_REAL_POS_EPSILON") then
+                emit(f model.f64Const(2.220446049250313e-16))
+            elsif named("QUEST_REAL_NEG_EPSILON") then
+                emit(f model.f64Const(~2.220446049250313e-16))
+            elsif named("QUEST_REAL_E") then
+                emit(f model.f64Const(2.718281828459045))
+            elsif named("QUEST_REAL_PI") then
+                emit(f model.f64Const(3.141592653589793))
             elsif named("QUEST_REAL_INFINITY") then
                 emit(f model.f64Const(1.0))
                 emit(f model.f64Const(0.0))
                 emit(f i(ops.f64Div))
-            elsif named("QUEST_INT_MAX") then emit(f model.i64Const(9223372036854775807))
-            elsif named("QUEST_INT_MIN") then emit(f model.i64Const(~9223372036854775807 - 1))
+            elsif named("QUEST_INT_MAX") then
+                emit(f model.i64Const(9223372036854775807))
+            elsif named("QUEST_INT_MIN") then
+                emit(f model.i64Const(~9223372036854775807 - 1))
             elsif named("quest_writer_output") then
                 emit(f model.i32Const(1))
                 emit(f i(ops.refI31))
@@ -2788,22 +2885,26 @@ export
             elsif maybe.isSome(core) then
                 emit(f i1(ops.globalGet f.g.noClosure))
                 runtimeUnitCall(f "wasm/core." <> maybe.unwrap(core)[1])
-            else pending(f "the library's external " <> symbol <> ", which this target lacks for now")
+            else
+                pending(f "the library's external " <> symbol <> ", which this target lacks for now")
             end
         end
 
     (* The function a call names directly, if it does: a known closure's code
      * (walk.knownClosures), with no type arguments *)
     let directCallee(f: F x: ir.OpCall): maybe.T(Int) =
-        if maybe.isNone(x.callee) then maybe.none()
+        if maybe.isNone(x.callee) then
+            maybe.none()
         else
             let c = maybe.unwrap(x.callee)
-            if not(hashMap.contains(f.g.known c.id)) then maybe.none()
+            if not(hashMap.contains(f.g.known c.id)) then
+                maybe.none()
             else
                 let k = hashMap.find(f.g.known c.id)
                 if {extent x.typeArgs is 0} andif {extent k.typeArgs is 0} then
                     hashMap.get(f.g.functions k.code.id)
-                else maybe.none()
+                else
+                    maybe.none()
                 end
             end
         end
@@ -2817,7 +2918,8 @@ export
             if extent k.captures > 0 then
                 atom(f ir.atomOfVar(c))
                 castTo(f tClos)
-            else emit(f i1(ops.globalGet f.g.noClosure))
+            else
+                emit(f i1(ops.globalGet f.g.noClosure))
             end
         end
 
@@ -2883,7 +2985,8 @@ export
                 if isLocatedParam(body k) then
                     atom(f x.args[k])
                     packLocation(f)
-                else boxedAtom(f x.args[k])
+                else
+                    boxedAtom(f x.args[k])
                 end
             end
             emit(f i1(ops.localGet held))
@@ -2894,7 +2997,8 @@ export
             let q = quantified(c.type)
             let result = if shapes.kindIs(q.body shapes.shapeFun) then shapes.result(q.body).type else q.body.type end
             let plain = {extent sig.results is 1} andif sig.results[0]?valRef andif not(isRecord(result))
-            if tail andif plain then emit(f i1(ops.returnCallRef uniformType(f.g n)))
+            if tail andif plain then
+                emit(f i1(ops.returnCallRef uniformType(f.g n)))
             else
                 emit(f i1(ops.callRef uniformType(f.g n)))
                 unbox(f result)
@@ -2914,15 +3018,19 @@ export
                 descriptors(f x.descriptors)
                 atoms(f x.args)
                 emit(f i1(ops.call maybe.unwrap(direct)))
-            elsif maybe.isSome(x.callee) then closureCall(f x false)
-            elsif maybe.isNone(x.moduleRef) then fail("a call of no function")
+            elsif maybe.isSome(x.callee) then
+                closureCall(f x false)
+            elsif maybe.isNone(x.moduleRef) then
+                fail("a call of no function")
             else
                 case maybe.unwrap(x.moduleRef)
                     when refImport with imp then
                         let member = maybe.unwrapOr(x.member "")
-                        let symbol = if maybe.isSome(imp.i.libPath) then
+                        let symbol =
+                            if maybe.isSome(imp.i.libPath) then
                                 externalSymbol(maybe.unwrap(imp.i.libPath) member)
-                            else maybe.none(:String)
+                            else
+                                maybe.none(:String)
                             end
                         if maybe.isSome(symbol) then
                             (* an external of the library, compiled in place *)
@@ -2948,9 +3056,13 @@ export
                         let v = ir.member(r.m.members member)
                         if maybe.isNone(v) then fail("a call of no member " <> member) end
                         let y = tuple
-                            let var callee = v let var typeArgs = x.typeArgs let var args = x.args
-                            let var moduleRef = maybe.none(:ir.ModuleRef) let var member = maybe.none(:String)
-                            let var calleeType = x.calleeType let var descriptors = x.descriptors
+                            let var callee = v
+                            let var typeArgs = x.typeArgs
+                            let var args = x.args
+                            let var moduleRef = maybe.none(:ir.ModuleRef)
+                            let var member = maybe.none(:String)
+                            let var calleeType = x.calleeType
+                            let var descriptors = x.descriptors
                         end
                         let direct = directCallee(f y)
                         if maybe.isSome(direct) then
@@ -2958,7 +3070,8 @@ export
                             descriptors(f y.descriptors)
                             atoms(f y.args)
                             emit(f i1(ops.call maybe.unwrap(direct)))
-                        else closureCall(f y false)
+                        else
+                            closureCall(f y false)
                         end
                 end
             end
@@ -2975,8 +3088,12 @@ export
             end
             let asCall = fun(callee: maybe.T(ir.Variable) moduleRef: maybe.T(ir.ModuleRef)): ir.OpCall
                 tuple
-                    let var callee = callee let var typeArgs = x.typeArgs let var args = array of :ir.Atom end
-                    let var moduleRef = moduleRef let var member = x.member let var calleeType = x.calleeType
+                    let var callee = callee
+                    let var typeArgs = x.typeArgs
+                    let var args = array of :ir.Atom end
+                    let var moduleRef = moduleRef
+                    let var member = x.member
+                    let var calleeType = x.calleeType
                     let var descriptors = x.descriptors
                 end
             if maybe.isSome(x.callee) then closureCall(f asCall(x.callee maybe.none()) false)
@@ -3041,22 +3158,24 @@ export
      * exceptions *)
     let knownLibraryMember(f: F x: ir.OpModuleMember): Bool =
         begin
-            let name = case x.moduleRef
-                when refImport with imp then maybe.unwrapOr(imp.i.libPath "") <> "."
-                    <> maybe.unwrapOr(x.member "")
-                when refModule then ""
-            end
+            let name =
+                case x.moduleRef
+                    when refImport with imp then maybe.unwrapOr(imp.i.libPath "") <> "."
+                        <> maybe.unwrapOr(x.member "")
+                    when refModule then ""
+                end
             stringOp.equal(name "writer.output") orif stringOp.equal(name "writer.err")
                 orif maybe.isSome(libraryException(name))
         end
 
     let libraryMember(f: F x: ir.OpModuleMember): Ok =
         begin
-            let name = case x.moduleRef
-                when refImport with imp then maybe.unwrapOr(imp.i.libPath "") <> "."
-                    <> maybe.unwrapOr(x.member "")
-                when refModule then ""
-            end
+            let name =
+                case x.moduleRef
+                    when refImport with imp then maybe.unwrapOr(imp.i.libPath "") <> "."
+                        <> maybe.unwrapOr(x.member "")
+                    when refModule then ""
+                end
             if stringOp.equal(name "writer.output") then
                 emit(f model.i32Const(1))
                 emit(f i(ops.refI31))
@@ -3065,7 +3184,8 @@ export
                 emit(f i(ops.refI31))
             elsif maybe.isSome(libraryException(name)) then
                 emit(f i1(ops.globalGet builtinException(maybe.unwrap(libraryException(name)))))
-            else fail("the module member " <> name)
+            else
+                fail("the module member " <> name)
             end
         end
 
@@ -3093,7 +3213,7 @@ export
                 else
                     let m = maybe.unwrapOr(x.member "")
                     if not(hashMap.contains(f.g.importRecords imp.i.canonicalPath))
-                        orif maybe.isNone(imp.i.recordType) then
+                            orif maybe.isNone(imp.i.recordType) then
                         fail("the unit " <> imp.i.canonicalPath <> "'s record")
                     end
                     let first = hashMap.find(f.g.importRecords imp.i.canonicalPath)
@@ -3132,7 +3252,8 @@ export
             let vs = shapes.sortedComponents(shapeOf(view))
             let ls = shapes.sortedComponents(shapeOf(layout))
             let key = conv.int(shapeOf(view).id) <> ":" <> conv.int(shapeOf(layout).id)
-            if hashMap.contains(f.g.dicts key) then hashMap.find(f.g.dicts key)
+            if hashMap.contains(f.g.dicts key) then
+                hashMap.find(f.g.dicts key)
             else
                 let init = vector.new(:Inst)
                 for k = 0 upto extent vs - 1 do
@@ -3151,7 +3272,9 @@ export
                 vector.append(init i1(ops.structNew tDict))
                 let n = model.importedGlobals(f.g.m) + vector.length(f.g.m.globals)
                 vector.append(f.g.m.globals tuple
-                    let name = fresh(f.g.names "dict") let type = model.ref(tDict) let mutable = false
+                    let name = fresh(f.g.names "dict")
+                    let type = model.ref(tDict)
+                    let mutable = false
                     let init = vector.toArray(init)
                 end)
                 hashMap.insert(f.g.dicts key n)
@@ -3164,8 +3287,9 @@ export
     let makeRecord(f: F x: ir.OpMakeRecord target: maybe.T(ir.Variable)): Ok =
         begin
             let runtime = x.runtimeOffsets orif maybe.isNone(x.offsets)
-            if runtime andif {maybe.isNone(x.viewDescriptor) orif maybe.isNone(x.descriptor)}
-            then fail("a record whose table is known only at run time, without its descriptors") end
+            if runtime andif {maybe.isNone(x.viewDescriptor) orif maybe.isNone(x.descriptor)} then
+                fail("a record whose table is known only at run time, without its descriptors")
+            end
             (* its fields in name order: its layout's *)
             let names = array of(extent x.fields "")
             for k = 0 upto extent x.fields - 1 do names[k] := x.fields[k].name end
@@ -3181,7 +3305,9 @@ export
             emit(f model.i32Const(0))
             (* the descriptor of its own type, its layout, which its tables
              * are made for (quest_record_layout) *)
-            let made = if maybe.isNone(x.descriptor) then false
+            let made =
+                if maybe.isNone(x.descriptor) then
+                    false
                 else
                     case maybe.unwrap(x.descriptor)
                         when descStatic with d then hashMap.contains(f.g.descGlobals formOf(f.g d.d).symbol)
@@ -3308,12 +3434,15 @@ export
      * its signature is the uniform one, else a function that unboxes the
      * arguments, calls it, and boxes the result *)
     let uniformEntry(g: G fn: ir.Function): Int =
-        if hashMap.contains(g.uniforms fn.id) then hashMap.find(g.uniforms fn.id)
+        if hashMap.contains(g.uniforms fn.id) then
+            hashMap.find(g.uniforms fn.id)
         else
             let native = hashMap.find(g.functions fn.id)
             let sig = closureSig(fn.v.type)
             let n = arity(fn.v.type)
-            let index = if isUniform(sig n) then native
+            let index =
+                if isUniform(sig n) then
+                    native
                 else
                     let q = quantified(fn.v.type)
                     let s = q.body
@@ -3326,7 +3455,8 @@ export
                      * captures (makeClosure), is never called through: its
                      * uniform entry, which could not box its components as
                      * its result, traps *)
-                    if fn.unboxedResult then emit(f i(ops.unreachable))
+                    if fn.unboxedResult then
+                        emit(f i(ops.unreachable))
                     else
                         emit(f i1(ops.localGet 0))
                         (* descriptors pass as they are *)
@@ -3341,7 +3471,8 @@ export
                         let result = if shapes.kindIs(s shapes.shapeFun) then shapes.result(s).type else s.type end
                         let plain = {extent sig.results is 1} andif sig.results[0]?valRef
                             andif not(isRecord(result))
-                        if plain then emit(f i1(ops.returnCall native))
+                        if plain then
+                            emit(f i1(ops.returnCall native))
                         else
                             emit(f i1(ops.call native))
                             box(f result)
@@ -3349,8 +3480,11 @@ export
                     end
                     let at = model.importedFunctions(g.m) + vector.length(g.m.functions)
                     vector.append(g.m.functions tuple
-                        let name = fresh(g.names fn.v.hint <> ".uniform") let type = uniformType(g n) let params = names
-                        let locals = f.declared let body = f.code
+                        let name = fresh(g.names fn.v.hint <> ".uniform")
+                        let type = uniformType(g n)
+                        let params = names
+                        let locals = f.declared
+                        let body = f.code
                     end)
                     at
                 end
@@ -3364,7 +3498,8 @@ export
      * result's components and so has another type; the closure is there for
      * fn's captures, which a direct call reads from it *)
     let trapNative(g: G fn: ir.Function): Int =
-        if hashMap.contains(g.trapNatives fn.id) then hashMap.find(g.trapNatives fn.id)
+        if hashMap.contains(g.trapNatives fn.id) then
+            hashMap.find(g.trapNatives fn.id)
         else
             let sig = closureSig(fn.v.type)
             let names = array of({extent sig.params + 1} "")
@@ -3374,8 +3509,11 @@ export
             emit(f i(ops.unreachable))
             let at = model.importedFunctions(g.m) + vector.length(g.m.functions)
             vector.append(g.m.functions tuple
-                let name = fresh(g.names fn.v.hint <> ".native") let type = nativeType(g sig) let params = names
-                let locals = f.declared let body = f.code
+                let name = fresh(g.names fn.v.hint <> ".native")
+                let type = nativeType(g sig)
+                let params = names
+                let locals = f.declared
+                let body = f.code
             end)
             hashMap.insert(g.trapNatives fn.id at)
             at
@@ -3384,7 +3522,8 @@ export
     (* A function's static closure, which captures nothing: an immutable
      * global, made once *)
     let staticClosure(g: G fn: ir.Function): Int =
-        if hashMap.contains(g.staticClosures fn.id) then hashMap.find(g.staticClosures fn.id)
+        if hashMap.contains(g.staticClosures fn.id) then
+            hashMap.find(g.staticClosures fn.id)
         else
             let own = ownType(g fn)
             let u = uniformEntry(g fn)
@@ -3393,7 +3532,9 @@ export
             declare(g native)
             let n = model.importedGlobals(g.m) + vector.length(g.m.globals)
             vector.append(g.m.globals tuple
-                let name = fresh(g.names fn.v.hint <> ".static") let type = model.ref(own) let mutable = false
+                let name = fresh(g.names fn.v.hint <> ".static")
+                let type = model.ref(own)
+                let mutable = false
                 let init = array of model.i32Const(0) i1(ops.refFunc u) i1(ops.refFunc native) i1(ops.structNew own) end
             end)
             hashMap.insert(g.staticClosures fn.id n)
@@ -3571,7 +3712,8 @@ export
      * real.error as usual, with ^^ calling util/realmath), String <>, and
      * eager Bool /\ and \/. *)
     let builtinClosure(g: G name: String): Int =
-        if hashMap.contains(g.builtins name) then hashMap.find(g.builtins name)
+        if hashMap.contains(g.builtins name) then
+            hashMap.find(g.builtins name)
         else
             let named = fun(n: String): Bool stringOp.equal(name n)
             let isOneOf = fun(ns: Array(String)): Bool
@@ -3617,7 +3759,8 @@ export
                     emit(nf model.i64Const(0))
                     emit(nf i1(ops.localGet 1))
                     emit(nf i(ops.i64Sub))
-                else emit(nf model.i64Const(0))
+                else
+                    emit(nf model.i64Const(0))
                 end
                 emit(nf i(ops.returnOp))
                 emit(nf model.endInst)
@@ -3636,13 +3779,22 @@ export
             if named("^^") then runtimeUnitCall(nf "util/realmath.pow")
             elsif concat then runtimeCall(nf "concat")
             else
-                emit(nf i(if named("+") then ops.i64Add elsif named("-") then ops.i64Sub elsif named("*") then ops.i64Mul
-                    elsif named("/") then ops.i64DivS elsif named("%") orif named("mod") then ops.i64RemS
-                    elsif named("<") then ops.i64LtS elsif named("<=") then ops.i64LeS elsif named(">") then ops.i64GtS
+                emit(nf i(if named("+") then ops.i64Add
+                    elsif named("-") then ops.i64Sub
+                    elsif named("*") then ops.i64Mul
+                    elsif named("/") then ops.i64DivS
+                    elsif named("%") orif named("mod") then ops.i64RemS
+                    elsif named("<") then ops.i64LtS
+                    elsif named("<=") then ops.i64LeS
+                    elsif named(">") then ops.i64GtS
                     elsif named(">=") then ops.i64GeS
-                    elsif named("++") then ops.f64Add elsif named("--") then ops.f64Sub elsif named("**") then ops.f64Mul
+                    elsif named("++") then ops.f64Add
+                    elsif named("--") then ops.f64Sub
+                    elsif named("**") then ops.f64Mul
                     elsif named("//") then ops.f64Div
-                    elsif named("<<") then ops.f64Lt elsif named("<<=") then ops.f64Le elsif named(">>") then ops.f64Gt
+                    elsif named("<<") then ops.f64Lt
+                    elsif named("<<=") then ops.f64Le
+                    elsif named(">>") then ops.f64Gt
                     elsif named(">>=") then ops.f64Ge
                     elsif named("/\\") then ops.i32And
                     else ops.i32Or end))
@@ -3650,9 +3802,11 @@ export
             end
             let native = model.importedFunctions(g.m) + vector.length(g.m.functions)
             vector.append(g.m.functions tuple
-                let name = fresh(g.names "builtin" <> name) let type = nativeType(g sig)
+                let name = fresh(g.names "builtin" <> name)
+                let type = nativeType(g sig)
                 let params = array of "closure" "a" "b" end
-                let locals = nf.declared let body = nf.code
+                let locals = nf.declared
+                let body = nf.code
             end)
             (* The uniform entry *)
             let uf = newF(g array of "closure" "a" "b" end array of model.eqref end ~1)
@@ -3679,14 +3833,19 @@ export
             end
             let uniform = model.importedFunctions(g.m) + vector.length(g.m.functions)
             vector.append(g.m.functions tuple
-                let name = fresh(g.names "builtin" <> name <> ".uniform") let type = uniformType(g 2)
-                let params = array of "closure" "a" "b" end let locals = uf.declared let body = uf.code
+                let name = fresh(g.names "builtin" <> name <> ".uniform")
+                let type = uniformType(g 2)
+                let params = array of "closure" "a" "b" end
+                let locals = uf.declared
+                let body = uf.code
             end)
             declare(g native)
             declare(g uniform)
             let n = model.importedGlobals(g.m) + vector.length(g.m.globals)
             vector.append(g.m.globals tuple
-                let name = fresh(g.names "builtin" <> name <> ".static") let type = model.ref(s) let mutable = false
+                let name = fresh(g.names "builtin" <> name <> ".static")
+                let type = model.ref(s)
+                let mutable = false
                 let init = array of
                     model.i32Const(0) i1(ops.refFunc uniform) i1(ops.refFunc native) i1(ops.structNew s)
                 end
@@ -3747,8 +3906,11 @@ export
             emit(f i1(ops.call adaptResult))
             let at = model.importedFunctions(g.m) + vector.length(g.m.functions)
             vector.append(g.m.functions tuple
-                let name = fresh(g.names "adapt" <> conv.int(n) <> ".uniform") let type = uniformType(g n)
-                let params = names let locals = f.declared let body = f.code
+                let name = fresh(g.names "adapt" <> conv.int(n) <> ".uniform")
+                let type = uniformType(g n)
+                let params = names
+                let locals = f.declared
+                let body = f.code
             end)
             declare(g at)
             tuple let type = t let entry = at end
@@ -3816,8 +3978,11 @@ export
             let index = model.importedFunctions(g.m) + vector.length(g.m.functions)
             vector.append(g.m.functions tuple
                 let name = fresh(g.names "adaptClosure")
-                let type = funcType(g array of model.eqref model.eqref model.eqref model.i64 end array of model.eqref end)
-                let params = names let locals = f.declared let body = f.code
+                let type =
+                    funcType(g array of model.eqref model.eqref model.eqref model.i64 end array of model.eqref end)
+                let params = names
+                let locals = f.declared
+                let body = f.code
             end)
             hashMap.insert(g.runtimeFunctions "adaptClosure" index)
             index
@@ -3832,11 +3997,12 @@ export
             for b = 0 upto extent bodies - 1 do
                 let ss = walk.walkStatements(bodies[b] true)
                 for k = 0 upto vector.length(ss) - 1 do
-                    let op = case vector.get(ss k)
-                        when sLet with x then maybe.some(x.value)
-                        when sDo with x then maybe.some(x.value)
-                        else maybe.none(:ir.Op)
-                    end
+                    let op =
+                        case vector.get(ss k)
+                            when sLet with x then maybe.some(x.value)
+                            when sDo with x then maybe.some(x.value)
+                            else maybe.none(:ir.Op)
+                        end
                     if maybe.isSome(op) then
                         case maybe.unwrap(op)
                             when opCall with x then
@@ -3866,7 +4032,7 @@ export
             let g = f.g
             let n = arities[k]
             let a = adapterOf(g n hashMap.find(g.runtimeUnits "wasm/core.adaptArg")
-                hashMap.find(g.runtimeUnits "wasm/core.adaptResult"))
+                    hashMap.find(g.runtimeUnits "wasm/core.adaptResult"))
             let mf = newF(g array of "maker" "v" "from" "to" end array of model.eqref end ~1)
             emit(mf model.i32Const(0))
             emit(mf i1(ops.refFunc a.entry))
@@ -3876,8 +4042,11 @@ export
             emit(mf i1(ops.structNew a.type))
             let maker = model.importedFunctions(g.m) + vector.length(g.m.functions)
             vector.append(g.m.functions tuple
-                let name = fresh(g.names "adapt" <> conv.int(n) <> ".maker") let type = uniformType(g 3)
-                let params = array of "maker" "v" "from" "to" end let locals = mf.declared let body = mf.code
+                let name = fresh(g.names "adapt" <> conv.int(n) <> ".maker")
+                let type = uniformType(g 3)
+                let params = array of "maker" "v" "from" "to" end
+                let locals = mf.declared
+                let body = mf.code
             end)
             declare(g maker)
             emit(f i1(ops.globalGet g.noClosure))
@@ -3917,10 +4086,11 @@ export
                 let later = vector.new(:Patch)
                 for k = 0 upto extent x.captures - 1 do
                     let a = x.captures[k]
-                    let pending = case a
-                        when atomVar with v then hashMap.contains(f.deferred v.v.id)
-                        else false
-                    end
+                    let pending =
+                        case a
+                            when atomVar with v then hashMap.contains(f.deferred v.v.id)
+                            else false
+                        end
                     if pending then
                         (* a placeholder for each part, its field set once
                          * the value is bound (f.patches, filled by sLetRec) *)
@@ -3937,9 +4107,14 @@ export
                             end
                         end
                         vector.append(later tuple
-                            let holder = 0 let own = own let field = captureField(f.g fn k) let parts = ps let atom = a
+                            let holder = 0
+                            let own = own
+                            let field = captureField(f.g fn k)
+                            let parts = ps
+                            let atom = a
                         end)
-                    else atom(f a)
+                    else
+                        atom(f a)
                     end
                 end
                 emit(f i1(ops.structNew own))
@@ -3949,8 +4124,13 @@ export
                     for k = 0 upto vector.length(later) - 1 do
                         let pt = vector.get(later k)
                         vector.append(f.patches
-                            tuple let holder = holder let own = pt.own let field = pt.field let parts = pt.parts
-                                let atom = pt.atom end)
+                                tuple
+                                    let holder = holder
+                                    let own = pt.own
+                                    let field = pt.field
+                                    let parts = pt.parts
+                                    let atom = pt.atom
+                                end)
                     end
                 end
             end
@@ -4055,11 +4235,12 @@ export
             elsif named("importedRecord") then
                 (* the payload of the record of a unit this one imports, named
                  * by a constant *)
-                let unitName = case args[0]
-                    when atomConst with c then
-                        case c.c.value when constString with s then s.s else "" end
-                    else ""
-                end
+                let unitName =
+                    case args[0]
+                        when atomConst with c then
+                            case c.c.value when constString with s then s.s else "" end
+                        else ""
+                    end
                 if not(hashMap.contains(f.g.importRecords unitName)) then
                     fail("importedRecord of a unit not imported: " <> unitName)
                 end
@@ -4074,7 +4255,8 @@ export
                 boxedAtom(f args[2])
                 emit(f i1(ops.arraySet tSlots))
                 okValue()
-            elsif named("toAny") then boxedAtom(f args[0])
+            elsif named("toAny") then
+                boxedAtom(f args[0])
             elsif named("fromAny") then
                 atom(f args[0])
                 if maybe.isSome(target) then
@@ -4177,7 +4359,8 @@ export
             elsif named("isSmall") orif named("isBoxedInt") orif named("isRecBox") orif named("isObject") then
                 atom(f args[0])
                 let heap = if named("isSmall") then option heapI31 of model.HeapType end
-                    else heapOf(rt.index(if named("isBoxedInt") then "boxInt" elsif named("isRecBox") then "recBox"
+                    else heapOf(rt.index(if named("isBoxedInt") then "boxInt"
+                        elsif named("isRecBox") then "recBox"
                         else "obj" end))
                     end
                 emit(f option instRefTest of Inst with let type = tuple let nullable = false let heap = heap end end)
@@ -4216,7 +4399,8 @@ export
             elsif named("isNull") then
                 atom(f args[0])
                 emit(f i(ops.refIsNull))
-            elsif named("nullAny") then emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+            elsif named("nullAny") then
+                emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
             elsif named("newI32s") then
                 atom(f args[0])
                 emit(f i(ops.i32WrapI64))
@@ -4252,8 +4436,12 @@ export
                 emit(f i1(ops.arrayGet tSlots))
             elsif named("isProxy") then
                 atom(f args[0])
-                emit(f option instRefTest of Inst with let type = tuple let nullable = false
-                    let heap = heapOf(rt.index("proxy")) end end)
+                emit(f option instRefTest of Inst with
+                    let type = tuple
+                        let nullable = false
+                        let heap = heapOf(rt.index("proxy"))
+                    end
+                end)
             elsif named("newProxy") then
                 emit(f model.i32Const(0))
                 atom(f args[0])
@@ -4303,13 +4491,18 @@ export
                 emit(f i(ops.f64Eq))
             elsif named("isBoxedReal") then
                 atom(f args[0])
-                emit(f option instRefTest of Inst with let type = tuple let nullable = false
-                    let heap = heapOf(rt.index("boxReal")) end end)
+                emit(f option instRefTest of Inst with
+                    let type = tuple
+                        let nullable = false
+                        let heap = heapOf(rt.index("boxReal"))
+                    end
+                end)
             elsif named("dictStored") then
                 atom(f args[0])
                 castTo(f tDict)
                 emit(f i2(ops.structGet tDict 1))
-            elsif named("dynamicError") then raiseAt(f "dynamic.error" maybe.none())
+            elsif named("dynamicError") then
+                raiseAt(f "dynamic.error" maybe.none())
             elsif named("hashOf") then
                 atom(f args[0])
                 castTo(f rt.index("obj"))
@@ -4322,7 +4515,8 @@ export
                 emit(f i(ops.i32WrapI64))
                 emit(f i2(ops.structSet rt.index("obj") 0))
                 okValue()
-            else fail("the external " <> name <> ", which is no intrinsic")
+            else
+                fail("the external " <> name <> ", which is no intrinsic")
             end
             ok
         end
@@ -4330,153 +4524,155 @@ export
     (* The operation's value, on the stack *)
     let operation(f: F o: ir.Op target: maybe.T(ir.Variable)): Ok =
         begin
-        let targetType = fun(): ir.Type
-            if maybe.isSome(target) then maybe.unwrap(target).type
-            else raise unsupported with "an aggregate made and not bound" end
-            end
-        case o
-            when opAtom with x then
-                atom(f x.atom)
-                (* a record or variant copied between a variable that holds it
-                 * boxed (a var parameter's, whose slot holds it so) and one
-                 * that does not *)
-                if maybe.isSome(target) then
-                    let v = maybe.unwrap(target)
-                    let boxedHere = isBoxedVar(x.atom)
-                    if {isRecord(v.type) orif isVariant(v.type)} andif {boxedHere isnot v.boxed} then
-                        if boxedHere then unbox(f v.type) else box(f v.type) end
+            let targetType = fun(): ir.Type
+                if maybe.isSome(target) then maybe.unwrap(target).type
+                else raise unsupported with "an aggregate made and not bound" end
+                end
+            case o
+                when opAtom with x then
+                    atom(f x.atom)
+                    (* a record or variant copied between a variable that holds it
+                     * boxed (a var parameter's, whose slot holds it so) and one
+                     * that does not *)
+                    if maybe.isSome(target) then
+                        let v = maybe.unwrap(target)
+                        let boxedHere = isBoxedVar(x.atom)
+                        if {isRecord(v.type) orif isVariant(v.type)} andif {boxedHere isnot v.boxed} then
+                            if boxedHere then unbox(f v.type) else box(f v.type) end
+                        end
                     end
-                end
-            when opPrim with x then prim(f x)
-            when opCall with x then call(f x)
-            when opModuleMember with x then member(f x target)
-            when opMakeClosure with x then makeClosure(f x)
-            when opEnvField with x then
-                (* capture x.index, from the fields of the function's own
-                 * closure type that hold its parts *)
-                let fn = hashMap.find(f.g.byId f.fnId)
-                let own = ownType(f.g fn)
-                let at = captureField(f.g fn x.index)
-                let captures = hashMap.find(f.g.captureTypes fn.id)
-                for j = 0 upto extent parts(captures[x.index]) - 1 do
-                    atom(f x.env)
-                    castTo(f own)
-                    emit(f i2(ops.structGet own at + j))
-                end
-            when opMakeTuple with x then
-                if maybe.isSome(target) andif maybe.unwrap(target).unboxed then
-                    atoms(f x.args)
-                else newTuple(f x.args)
-                end
-            when opTupleField with x then tupleField(f x target)
-            when opMakeOption with x then makeOption(f x targetType())
-            when opIsTag with x then
-                if maybe.isSome(x.viewMap) then
-                    viewTag(f x.value x.viewMap)
-                    emit(f model.i32Const(tagIndex(shapeOf(ir.atomType(x.value)) x.tag)))
-                elsif isVariantShape(ir.atomType(x.value)) then
-                    variantAtom(f x.value)
-                    emit(f i(ops.drop))
-                    emit(f model.i32Const(tagIndex(shapeOf(ir.atomType(x.value)) x.tag)))
-                else
+                when opPrim with x then prim(f x)
+                when opCall with x then call(f x)
+                when opModuleMember with x then member(f x target)
+                when opMakeClosure with x then makeClosure(f x)
+                when opEnvField with x then
+                    (* capture x.index, from the fields of the function's own
+                     * closure type that hold its parts *)
+                    let fn = hashMap.find(f.g.byId f.fnId)
+                    let own = ownType(f.g fn)
+                    let at = captureField(f.g fn x.index)
+                    let captures = hashMap.find(f.g.captureTypes fn.id)
+                    for j = 0 upto extent parts(captures[x.index]) - 1 do
+                        atom(f x.env)
+                        castTo(f own)
+                        emit(f i2(ops.structGet own at + j))
+                    end
+                when opMakeTuple with x then
+                    if maybe.isSome(target) andif maybe.unwrap(target).unboxed then
+                        atoms(f x.args)
+                    else
+                        newTuple(f x.args)
+                    end
+                when opTupleField with x then tupleField(f x target)
+                when opMakeOption with x then makeOption(f x targetType())
+                when opIsTag with x then
+                    if maybe.isSome(x.viewMap) then
+                        viewTag(f x.value x.viewMap)
+                        emit(f model.i32Const(tagIndex(shapeOf(ir.atomType(x.value)) x.tag)))
+                    elsif isVariantShape(ir.atomType(x.value)) then
+                        variantAtom(f x.value)
+                        emit(f i(ops.drop))
+                        emit(f model.i32Const(tagIndex(shapeOf(ir.atomType(x.value)) x.tag)))
+                    else
+                        let s = optionShape(ir.atomType(x.value))
+                        tagOf(f x.value x.access)
+                        emit(f model.i32Const(tagIndex(s x.tag)))
+                    end
+                    emit(f i(ops.i32Eq))
+                when opPayload with x then
+                    if isVariantShape(ir.atomType(x.value)) then variantPayload(f x targetType() target)
+                    else payload(f x targetType())
+                    end
+                when opOrdinal with x then
                     let s = optionShape(ir.atomType(x.value))
-                    tagOf(f x.value x.access)
-                    emit(f model.i32Const(tagIndex(s x.tag)))
-                end
-                emit(f i(ops.i32Eq))
-            when opPayload with x then
-                if isVariantShape(ir.atomType(x.value)) then variantPayload(f x targetType() target)
-                else payload(f x targetType())
-                end
-            when opOrdinal with x then
-                let s = optionShape(ir.atomType(x.value))
-                if maybe.isSome(x.viewMap) then viewTag(f x.value x.viewMap)
-                else tagOf(f x.value x.access)
-                end
-                (* The tag numbers the shape's cases, by name; the ordinal
-                 * counts the static type's, as written *)
-                let ordinals = array of(extent s.cases 0)
-                for k = 0 upto extent s.cases - 1 do
-                    let name = maybe.unwrapOr(s.cases[k].name "")
-                    for j = 0 upto extent x.cases - 1 do
-                        if stringOp.equal(x.cases[j] name) then ordinals[k] := j end
+                    if maybe.isSome(x.viewMap) then viewTag(f x.value x.viewMap)
+                    else tagOf(f x.value x.access)
                     end
-                end
-                mapI32(f ordinals)
-                emit(f i(ops.i64ExtendI32U))
-            when opMakeArray with x then makeArray(f x.args targetType())
-            when opArrayRep with x then arrayRep(f x targetType())
-            when opIndex with x then index(f x target)
-            when opMakeRecord with x then makeRecord(f x target)
-            when opRecordField with x then recordField(f x target)
-            when opConvert with x then convert(f x target)
-            when opTypeApp with x then typeApp(f x target)
-            when opBuiltin with x then emit(f i1(ops.globalGet builtinClosure(f.g x.name)))
-            when opCallExternal with x then
-                if strutil.startsWith(x.symbol "wasm.") then intrinsic(f x target)
-                else externalCall(f x.symbol x.args x.descriptors target)
-                end
-            when opExternal with x then externalValue(f x.symbol)
-            when opMakeException with x then
-                emit(f model.i32Const(0))
-                literal(f x.name)
-                emit(f i1(ops.structNew rt.index("exception")))
-            when opExceptionPayload with x then
-                atom(f x.exc)
-                runtimeCall(f "payloadOf")
-                if maybe.isSome(target) then unboxFor(f maybe.unwrap(target).type target) end
-            (* the handler's state, a $raised, which raised.reraise throws *)
-            when opCaughtException with x then atom(f x.exc)
-            when opMakeVariant with x then
-                (* its tag, in its type's numbering, and its payload as a
-                 * slot holds it; a case with none holds ok *)
-                emit(f model.i32Const(tagIndex(shapeOf(targetType()) x.tag)))
-                if maybe.isSome(x.payload) then boxedAtom(f maybe.unwrap(x.payload))
-                else
+                    (* The tag numbers the shape's cases, by name; the ordinal
+                     * counts the static type's, as written *)
+                    let ordinals = array of(extent s.cases 0)
+                    for k = 0 upto extent s.cases - 1 do
+                        let name = maybe.unwrapOr(s.cases[k].name "")
+                        for j = 0 upto extent x.cases - 1 do
+                            if stringOp.equal(x.cases[j] name) then ordinals[k] := j end
+                        end
+                    end
+                    mapI32(f ordinals)
+                    emit(f i(ops.i64ExtendI32U))
+                when opMakeArray with x then makeArray(f x.args targetType())
+                when opArrayRep with x then arrayRep(f x targetType())
+                when opIndex with x then index(f x target)
+                when opMakeRecord with x then makeRecord(f x target)
+                when opRecordField with x then recordField(f x target)
+                when opConvert with x then convert(f x target)
+                when opTypeApp with x then typeApp(f x target)
+                when opBuiltin with x then emit(f i1(ops.globalGet builtinClosure(f.g x.name)))
+                when opCallExternal with x then
+                    if strutil.startsWith(x.symbol "wasm.") then intrinsic(f x target)
+                    else externalCall(f x.symbol x.args x.descriptors target)
+                    end
+                when opExternal with x then externalValue(f x.symbol)
+                when opMakeException with x then
                     emit(f model.i32Const(0))
-                    emit(f i(ops.refI31))
-                end
-                if maybe.unwrap(target).boxed then box(f targetType()) end
-            when opMakeAuto with x then
-                (* its witness's descriptor and its other components' tuple *)
-                if maybe.isNone(x.descriptor) then fail("an auto value without its witness") end
-                emit(f model.i32Const(0))
-                descriptor(f maybe.unwrap(x.descriptor))
-                boxedAtom(f x.payload)
-                emit(f i1(ops.structNew rt.index("auto")))
-            (* Locations (section 2.6): a slot array and an index *)
-            when opAddrVar with x then
-                if not(isLocated(f x.v)) then fail("the address of " <> x.v.hint <> ", which is not located") end
-                getParts(f x.v)
-            (* A cell declared without a value holds null until assigned
-             * (sVarDecl): its slot, read without unboxing *)
-            when opIsSet with x then
-                if not(isLocated(f x.v)) then fail("is_set of " <> x.v.hint <> ", which is not located") end
-                getParts(f x.v)
-                emit(f i1(ops.arrayGet tSlots))
-                emit(f i(ops.refIsNull))
-                emit(f i(ops.i32Eqz))
-            when opAddrCell with x then
-                boxedAtom(f x.init)
-                emit(f i2(ops.arrayNewFixed tSlots 1))
-                emit(f model.i32Const(0))
-            when opAddrField with x then
-                if maybe.isSome(x.viewMap) then viewFieldSlot(f x.base x.name x.viewMap)
-                else fieldSlot(f x.base x.name)
-                end
-            when opAddrComponent with x then
-                atom(f x.base)
-                accessAs(f tTuple viewedSlot(x.access x.viewMap))
-                emit(f i2(ops.structGet tTuple fSlots))
-                emit(f model.i32Const(x.index))
-            when opAddrElement with x then
-                checkIndex(f x.base x.index x.offset)
-                elements(f x.base x.index)
-            when opLoad with x then
-                atom(f x.address)
-                emit(f i1(ops.arrayGet tSlots))
-                unboxFor(f shapes.element(shapeOf(ir.atomType(x.address))).type target)
-        end
+                    literal(f x.name)
+                    emit(f i1(ops.structNew rt.index("exception")))
+                when opExceptionPayload with x then
+                    atom(f x.exc)
+                    runtimeCall(f "payloadOf")
+                    if maybe.isSome(target) then unboxFor(f maybe.unwrap(target).type target) end
+                (* the handler's state, a $raised, which raised.reraise throws *)
+                when opCaughtException with x then atom(f x.exc)
+                when opMakeVariant with x then
+                    (* its tag, in its type's numbering, and its payload as a
+                     * slot holds it; a case with none holds ok *)
+                    emit(f model.i32Const(tagIndex(shapeOf(targetType()) x.tag)))
+                    if maybe.isSome(x.payload) then
+                        boxedAtom(f maybe.unwrap(x.payload))
+                    else
+                        emit(f model.i32Const(0))
+                        emit(f i(ops.refI31))
+                    end
+                    if maybe.unwrap(target).boxed then box(f targetType()) end
+                when opMakeAuto with x then
+                    (* its witness's descriptor and its other components' tuple *)
+                    if maybe.isNone(x.descriptor) then fail("an auto value without its witness") end
+                    emit(f model.i32Const(0))
+                    descriptor(f maybe.unwrap(x.descriptor))
+                    boxedAtom(f x.payload)
+                    emit(f i1(ops.structNew rt.index("auto")))
+                (* Locations (section 2.6): a slot array and an index *)
+                when opAddrVar with x then
+                    if not(isLocated(f x.v)) then fail("the address of " <> x.v.hint <> ", which is not located") end
+                    getParts(f x.v)
+                (* A cell declared without a value holds null until assigned
+                 * (sVarDecl): its slot, read without unboxing *)
+                when opIsSet with x then
+                    if not(isLocated(f x.v)) then fail("is_set of " <> x.v.hint <> ", which is not located") end
+                    getParts(f x.v)
+                    emit(f i1(ops.arrayGet tSlots))
+                    emit(f i(ops.refIsNull))
+                    emit(f i(ops.i32Eqz))
+                when opAddrCell with x then
+                    boxedAtom(f x.init)
+                    emit(f i2(ops.arrayNewFixed tSlots 1))
+                    emit(f model.i32Const(0))
+                when opAddrField with x then
+                    if maybe.isSome(x.viewMap) then viewFieldSlot(f x.base x.name x.viewMap)
+                    else fieldSlot(f x.base x.name)
+                    end
+                when opAddrComponent with x then
+                    atom(f x.base)
+                    accessAs(f tTuple viewedSlot(x.access x.viewMap))
+                    emit(f i2(ops.structGet tTuple fSlots))
+                    emit(f model.i32Const(x.index))
+                when opAddrElement with x then
+                    checkIndex(f x.base x.index x.offset)
+                    elements(f x.base x.index)
+                when opLoad with x then
+                    atom(f x.address)
+                    emit(f i1(ops.arrayGet tSlots))
+                    unboxFor(f shapes.element(shapeOf(ir.atomType(x.address))).type target)
+            end
         end
 
     (* Writes text to standard output, through the runtime *)
@@ -4512,52 +4708,58 @@ export
                 runtimeUnitCall(f "wasm/print.echo")
                 emit(f i(ops.drop))
             else
-            let kindIs = fun(k: String): Bool stringOp.equal(kind k)
-            let quoted = fun(quote: Char): Ok
-                begin
-                    emit(f model.i32Const(ascii.val(quote)))
-                    runtimeCall(f "escaped")
-                    runtimeCall(f "concat")
-                    literal(f stringOp.new(1 quote))
-                    runtimeCall(f "concat")
-                end
-            let value = fun(): Ok
-                begin
-                    literal(f x.prefix)
-                    if kindIs("Int") then
-                        atom(f x.value)
-                        runtimeCall(f "decimal")
-                    elsif kindIs("Bool") then
-                        atom(f x.value)
-                        runtimeCall(f "convBool")
-                    elsif kindIs("Char") then
-                        literal(f "'")
-                        atom(f x.value)
-                        runtimeCall(f "convChar")
-                        quoted('\'')
-                    elsif kindIs("String") then
-                        literal(f "\"")
-                        atom(f x.value)
-                        quoted('"')
-                    elsif kindIs("Ok") then literal(f "ok")
-                    elsif kindIs("Real") then realText(f x.value)
-                    elsif kindIs("Word") orif kindIs("Word.T") orif kindIs("word.T") then
-                        literal(f "16#")
-                        atom(f x.value)
-                        runtimeCall(f "hex")
+                let kindIs = fun(k: String): Bool stringOp.equal(kind k)
+                let quoted = fun(quote: Char): Ok
+                    begin
+                        emit(f model.i32Const(ascii.val(quote)))
+                        runtimeCall(f "escaped")
                         runtimeCall(f "concat")
-                        literal(f "#")
+                        literal(f stringOp.new(1 quote))
                         runtimeCall(f "concat")
-                    elsif kindIs("fun") then literal(f "<fun>")
-                    elsif kindIs("hidden") then literal(f "<hidden>")
-                    elsif stringOp.isEmpty(kind) then fail("echo of a value its descriptor writes, without one")
-                    else literal(f "<val>")
                     end
-                    runtimeCall(f "concat")
-                    literal(f suffix <> "\n")
-                    runtimeCall(f "concat")
-                end
-            output(f value)
+                let value = fun(): Ok
+                    begin
+                        literal(f x.prefix)
+                        if kindIs("Int") then
+                            atom(f x.value)
+                            runtimeCall(f "decimal")
+                        elsif kindIs("Bool") then
+                            atom(f x.value)
+                            runtimeCall(f "convBool")
+                        elsif kindIs("Char") then
+                            literal(f "'")
+                            atom(f x.value)
+                            runtimeCall(f "convChar")
+                            quoted('\'')
+                        elsif kindIs("String") then
+                            literal(f "\"")
+                            atom(f x.value)
+                            quoted('"')
+                        elsif kindIs("Ok") then
+                            literal(f "ok")
+                        elsif kindIs("Real") then
+                            realText(f x.value)
+                        elsif kindIs("Word") orif kindIs("Word.T") orif kindIs("word.T") then
+                            literal(f "16#")
+                            atom(f x.value)
+                            runtimeCall(f "hex")
+                            runtimeCall(f "concat")
+                            literal(f "#")
+                            runtimeCall(f "concat")
+                        elsif kindIs("fun") then
+                            literal(f "<fun>")
+                        elsif kindIs("hidden") then
+                            literal(f "<hidden>")
+                        elsif stringOp.isEmpty(kind) then
+                            fail("echo of a value its descriptor writes, without one")
+                        else
+                            literal(f "<val>")
+                        end
+                        runtimeCall(f "concat")
+                        literal(f suffix <> "\n")
+                        runtimeCall(f "concat")
+                    end
+                output(f value)
             end
         end
 
@@ -4565,25 +4767,25 @@ export
      * Statements
      * ====================================================================== *)
 
-
     (* Whether the atom is the variable v *)
-    let isVar(a: ir.Atom v: ir.Variable): Bool =
-        case a when atomVar with x then x.v.id is v.id else false end
+    let isVar(a: ir.Atom v: ir.Variable): Bool = case a when atomVar with x then x.v.id is v.id else false end
 
     (* Whether a join point's continuation only returns its one parameter,
      * or passes it to one that does: a jump to it then returns what it
      * passes *)
     let returnsParam(f: F s: ir.StmtJoin): Bool =
-        if {extent s.params} isnot 1 then false
+        if {extent s.params} isnot 1 then
+            false
         else
             let ss = s.continuation.statements
-            if vector.length(ss) isnot 1 then false
+            if vector.length(ss) isnot 1 then
+                false
             else
                 case vector.get(ss 0)
                     when sReturn with r then isVar(r.value s.params[0])
                     when sJump with j then
                         {extent j.args is 1} andif isVar(j.args[0] s.params[0])
-                        andif maybe.unwrapOr(hashMap.get(f.returning j.label) false)
+                            andif maybe.unwrapOr(hashMap.get(f.returning j.label) false)
                     else false
                 end
             end
@@ -4600,8 +4802,8 @@ export
                 end
             when sJump with j then
                 maybe.isSome(v) andif {extent j.args is 1}
-                andif isVar(j.args[0] maybe.unwrap(v))
-                andif maybe.unwrapOr(hashMap.get(f.returning j.label) false)
+                    andif isVar(j.args[0] maybe.unwrap(v))
+                    andif maybe.unwrapOr(hashMap.get(f.returning j.label) false)
             else false
         end
 
@@ -4641,8 +4843,7 @@ export
         end
 
     (* The index of the function being compiled, ~1 for the top level *)
-    let selfIndex(f: F): Int =
-        if f.fnId < 0 then ~1 else maybe.unwrapOr(hashMap.get(f.g.functions f.fnId) ~1) end
+    let selfIndex(f: F): Int = if f.fnId < 0 then ~1 else maybe.unwrapOr(hashMap.get(f.g.functions f.fnId) ~1) end
     (* If s binds a direct call of the function itself: its variable and the
      * call *)
     let isSelfCall(f: F s: ir.Stmt): maybe.T(Tuple v: ir.Variable call: ir.OpCall end) =
@@ -4653,7 +4854,8 @@ export
                         let d = directCallee(f c)
                         if maybe.isSome(d) andif {maybe.unwrap(d) is selfIndex(f)} andif {selfIndex(f) >= 0} then
                             maybe.some(tuple let v = x.v let call = c end)
-                        else maybe.none()
+                        else
+                            maybe.none()
                         end
                     else maybe.none()
                 end
@@ -4673,7 +4875,8 @@ export
                             maybe.some(tuple let other = p.args[1] let result = x.v end)
                         elsif isVar(p.args[1] v) andif not(isVar(p.args[0] v)) then
                             maybe.some(tuple let other = p.args[0] let result = x.v end)
-                        else maybe.none()
+                        else
+                            maybe.none()
                         end
                     else maybe.none()
                 end
@@ -4690,7 +4893,8 @@ export
      * are excluded because a handler could observe partial accumulation.
      * Returns 1 for addition, 2 for multiplication, or 0 for none. *)
     let accumulation(f: F fn: ir.Function): Int =
-        if {extent f.results isnot 1} orif not(f.results[0]?valI64) orif fn.unboxedResult then 0
+        if {extent f.results isnot 1} orif not(f.results[0]?valI64) orif fn.unboxedResult then
+            0
         else
             let ss = walk.walkStatements(fn.body true)
             let var op = 0
@@ -4716,18 +4920,21 @@ export
      * update and back-branch to the function loop. Returns the number of
      * statements consumed from ss (2 or 3), or 0 if not a site. *)
     let accumulateSite(f: F ss: Array(ir.Stmt) k: Int after: maybe.T(ir.Stmt)): Int =
-        if {f.accOp is 0} orif {{k + 1} >= extent ss} then 0
+        if {f.accOp is 0} orif {{k + 1} >= extent ss} then
+            0
         else
             let call = isSelfCall(f ss[k])
-            if maybe.isNone(call) then 0
+            if maybe.isNone(call) then
+                0
             else
                 let site = maybe.unwrap(call)
                 let c = combining(ss[k + 1] site.v f.accOp)
                 let next = if {k + 2} < extent ss then maybe.some(ss[k + 2]) else after end
                 if maybe.isNone(c) orif maybe.isNone(next)
-                    orif not(returnsResult(f
-                        maybe.some(maybe.unwrap(c).result)
-                        maybe.unwrap(next))) then 0
+                        orif not(returnsResult(f
+                                maybe.some(maybe.unwrap(c).result)
+                                maybe.unwrap(next))) then
+                    0
                 else
                     emit(f i1(ops.localGet f.accLocal))
                     atomAs(f maybe.unwrap(c).other false)
@@ -4763,10 +4970,11 @@ export
                 let direct = directCallee(f c)
                 if maybe.isNone(direct) then
                     if maybe.isSome(c.callee) andif returnsResult(f maybe.unwrap(found).v next)
-                        andif sameTypes(closureSig(maybe.unwrap(c.callee).type).results f.results) then
+                            andif sameTypes(closureSig(maybe.unwrap(c.callee).type).results f.results) then
                         closureCall(f c true)
                         true
-                    else false
+                    else
+                        false
                     end
                 else
                     let d = maybe.unwrap(direct)
@@ -4776,16 +4984,18 @@ export
                         closureArg(f c)
                         atoms(f c.args)
                         if {f.fnId >= 0} andif hasLabel(f selfLabel)
-                            andif {maybe.unwrapOr(hashMap.get(f.g.functions f.fnId) ~1) is d} then
+                                andif {maybe.unwrapOr(hashMap.get(f.g.functions f.fnId) ~1) is d} then
                             (* itself: its parameters set, last first, and a
                              * branch to the loop around its code *)
                             for k = 0 upto f.nparams - 1 do emit(f i1(ops.localSet {f.nparams - 1} - k)) end
                             emit(f i1(ops.br depth(f selfLabel option labelRepeat of LabelKind end)))
                             f.selfTail := true
-                        else emit(f i1(ops.returnCall d))
+                        else
+                            emit(f i1(ops.returnCall d))
                         end
                         true
-                    else false
+                    else
+                        false
                     end
                 end
             end
@@ -4802,7 +5012,8 @@ export
                         when compFunc with t then extent t.results
                         else 1
                     end
-                else 1
+                else
+                    1
                 end
             else 1
         end
@@ -4815,7 +5026,8 @@ export
                     when opPrim with p then
                         if p.op?primConcat andif {extent p.args is 2} then
                             maybe.some(tuple let v = x.v let args = p.args end)
-                        else maybe.none()
+                        else
+                            maybe.none()
                         end
                     else maybe.none()
                 end
@@ -4831,7 +5043,8 @@ export
     let concatSite(f: F ss: Array(ir.Stmt) k: Int): Int =
         begin
             let first = concatOf(ss[k])
-            if maybe.isNone(first) then 0
+            if maybe.isNone(first) then
+                0
             else
                 let once = fun(v: ir.Variable): Bool
                     {maybe.unwrapOr(hashMap.get(f.g.uses v.id) 0) is 1} andif not(isLocated(f v))
@@ -4857,7 +5070,8 @@ export
                                 vector.append(joined vector.get(parts p))
                             end
                             parts := joined
-                        else going := false
+                        else
+                            going := false
                         end
                         if going then
                             last := next.v
@@ -4865,7 +5079,8 @@ export
                         end
                     end
                 end
-                if j is k + 1 then 0
+                if j is k + 1 then
+                    0
                 else
                     let n = vector.length(parts)
                     let var at = 0
@@ -4937,7 +5152,8 @@ export
             when sSwitch with x then switch(f x)
             when sVarDecl with x then
                 if isLocated(f x.v) then
-                    if maybe.isSome(x.init) then atomFor(f maybe.unwrap(x.init) x.v)
+                    if maybe.isSome(x.init) then
+                        atomFor(f maybe.unwrap(x.init) x.v)
                     else
                         (* no value until it is assigned: a slot that holds
                          * none, which its box would have been *)
@@ -5025,7 +5241,8 @@ export
                 (* a payload written by its descriptor, the report's *)
                 if {kind is 9} andif maybe.isSome(x.descriptor) then
                     descriptor(f maybe.unwrap(x.descriptor))
-                else emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+                else
+                    emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
                 end
                 runtimeCall(f "raise")
                 emit(f i(ops.unreachable))
@@ -5043,7 +5260,8 @@ export
                 emit(f model.blockInst(option blockValue of model.BlockType with let type = model.eqref end ""))
                 open(f base <> ".handler" option labelIf of LabelKind end)
                 emit(f option instTryTable of Inst with
-                    let type = empty let label = ""
+                    let type = empty
+                    let label = ""
                     let catches = array of
                         tuple let kind = option catchTag of model.CatchKind end let tag = 0 let label = 0 end
                     end
@@ -5288,14 +5506,21 @@ export
                         end
                         store(f binder)
                     elsif proxied andif anyProxy(c.components)
-                        andif not(shapes.kindIs(shapes.shape(binder.type) shapes.shapeOk)) then
+                            andif not(shapes.kindIs(shapes.shape(binder.type) shapes.shapeOk)) then
                         (* through a proxy, the original's payload seen at the
                          * case's type: a proxy of it, or its one component *)
                         if shapes.kindIs(shapes.shape(binder.type) shapes.shapeTuple) then
                             emit(f i1(ops.localGet raw))
-                            emit(f option instRefTest of Inst with let type = tuple let nullable = false
-                                let heap = heapOf(tOption) end end)
-                            emit(f model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
+                            emit(f option instRefTest of Inst with
+                                let type = tuple
+                                    let nullable = false
+                                    let heap = heapOf(tOption)
+                                end
+                            end)
+                            emit(f
+                                    model.ifInst(option blockValue of model.BlockType with
+                                        let type = model.eqref
+                                    end ""))
                             emit(f i1(ops.localGet opt))
                             emit(f model.elseInst)
                             emit(f i1(ops.globalGet f.g.noClosure))
@@ -5338,7 +5563,11 @@ export
     (* Fills in the function at index, which has no parameters *)
     let fill(f: F index: Int name: String type: Int): Ok =
         vector.set(f.g.m.functions {index - model.importedFunctions(f.g.m)} tuple
-            let name = name let type = type let params = array of :String end let locals = f.declared let body = f.code
+            let name = name
+            let type = type
+            let params = array of :String end
+            let locals = f.declared
+            let body = f.code
         end)
 
     (* Parameter k's parts: its variable's, or a location's where the
@@ -5348,7 +5577,7 @@ export
         begin
             let body = quantified(fn.v.type).body
             if shapes.kindIs(body shapes.shapeFun) andif {k < extent body.params}
-                andif isLocation(body.params[k].shape.type) then locationParts
+                    andif isLocation(body.params[k].shape.type) then locationParts
             else varParts(g fn.params[k].v)
             end
         end
@@ -5435,7 +5664,8 @@ export
              * compiled, so that the rest of the unit, a library's above all,
              * runs (section 4.1); a program's, and the runtime's, fail here *)
             let lenient = not(g.unit.isProgram) andif not(g.isRuntime)
-            let compiled = try
+            let compiled =
+                try
                     begin
                         (* its view maps, one for each bounded type parameter
                          * whose values it reads through the bound *)
@@ -5483,7 +5713,10 @@ export
             let at = maybe.unwrap(hashMap.get(g.functions fn.id)) - model.importedFunctions(g.m)
             let given = vector.get(g.m.functions at)
             vector.set(g.m.functions at tuple
-                let name = given.name let type = given.type let params = names let locals = compiled.declared
+                let name = given.name
+                let type = given.type
+                let params = names
+                let locals = compiled.declared
                 let body = compiled.code
             end)
         end
@@ -5509,7 +5742,8 @@ export
      * boundary (section 5.1): an Int or a Bool boxed or unboxed, as an
      * abstract type's value whose representation is one crosses *)
     let convertRep(f: F from: ValType to: ValType): Ok =
-        if sameType(from to) then ok
+        if sameType(from to) then
+            ok
         else
             case from
                 when valRef then
@@ -5565,7 +5799,8 @@ export
         for k = 0 upto extent m.abstractTypes - 1 do
             let e = m.abstractTypes[k]
             let naming = maybe.some(f.g.naming)
-            let symbol = try staticdata.descriptorForm(e.descriptor.type naming).symbol
+            let symbol =
+                try staticdata.descriptorForm(e.descriptor.type naming).symbol
                 when staticdata.missingDescriptor then ""
                 end
             if not(stringOp.isEmpty(symbol)) andif hashMap.contains(f.g.descGlobals symbol) then
@@ -5595,10 +5830,12 @@ export
             (* The built-in exceptions, the first globals *)
             for k = 0 upto extent runtime.builtinExceptions - 1 do
                 vector.append(m.imports tuple
-                    let moduleName = runtime.name let field = runtime.exceptionField(runtime.builtinExceptions[k])
+                    let moduleName = runtime.name
+                    let field = runtime.exceptionField(runtime.builtinExceptions[k])
                     let name = runtime.builtinExceptions[k]
                     let kind = option importGlobal of model.ImportKind with
-                        let type = model.ref(rt.index("exception")) let mutable = false
+                        let type = model.ref(rt.index("exception"))
+                        let mutable = false
                     end
                 end)
             end
@@ -5615,7 +5852,8 @@ export
                             let field = if j is 0 then "record.payload" else "record.dict" end
                             let name = ""
                             let kind = option importGlobal of model.ImportKind with
-                                let type = model.eqref let mutable = true
+                                let type = model.eqref
+                                let mutable = true
                             end
                         end)
                     end
@@ -5625,7 +5863,9 @@ export
              * passes, which it never reads *)
             let noClosure = model.importedGlobals(m) + vector.length(m.globals)
             vector.append(m.globals tuple
-                let name = "noClosure" let type = model.ref(rt.index("clos")) let mutable = false
+                let name = "noClosure"
+                let type = model.ref(rt.index("clos"))
+                let mutable = false
                 let init = array of model.i32Const(0) model.op(ops.structNew array of rt.index("clos") end) end
             end)
             let g = tuple
@@ -5673,7 +5913,7 @@ export
                 hashMap.insert(g.byId fn.id fn)
                 if isAdapter(fn) then
                     hashMap.insert(g.captureTypes fn.id
-                        array of maybe.unwrap(fn.env).type end)
+                            array of maybe.unwrap(fn.env).type end)
                 end
             end
             let bodies = walk.unitBodies(unit)
@@ -5690,7 +5930,7 @@ export
                                             vector.append(ts ir.atomType(c.captures[j]))
                                         end
                                         hashMap.insert(g.captureTypes c.code.id
-                                            vector.toArray(ts))
+                                                vector.toArray(ts))
                                     end
                                 else ok
                             end
@@ -5702,13 +5942,17 @@ export
             for k = 0 upto extent runtime.exports - 1 do
                 let e = runtime.exports[k]
                 vector.append(m.imports tuple
-                    let moduleName = runtime.name let field = e.field let name = fresh(g.names e.field)
+                    let moduleName = runtime.name
+                    let field = e.field
+                    let name = fresh(g.names e.field)
                     let kind = option importFunc of model.ImportKind with let type = funcType(g e.params e.results) end
                 end)
                 hashMap.insert(g.runtimeFunctions e.field k)
             end
             vector.append(m.imports tuple
-                let moduleName = runtime.name let field = runtime.tagField let name = fresh(g.names "error")
+                let moduleName = runtime.name
+                let field = runtime.tagField
+                let name = fresh(g.names "error")
                 let kind = option importTag of model.ImportKind with
                     let type = funcType(g array of model.eqref end noTypes)
                 end
@@ -5719,7 +5963,9 @@ export
                 begin
                     let index = model.importedFunctions(m)
                     vector.append(m.imports tuple
-                        let moduleName = unitName let field = field let name = fresh(g.names unitName <> "." <> field)
+                        let moduleName = unitName
+                        let field = field
+                        let name = fresh(g.names unitName <> "." <> field)
                         let kind = option importFunc of model.ImportKind with let type = type end
                     end)
                     index
@@ -5727,9 +5973,9 @@ export
             for k = 0 upto extent unit.imports - 1 do
                 let i = unit.imports[k]
                 if isUnitImport(moduleName i)
-                    andif not(hashMap.contains(g.importInits i.canonicalPath)) then
+                        andif not(hashMap.contains(g.importInits i.canonicalPath)) then
                     hashMap.insert(g.importInits i.canonicalPath
-                        importFunction(unitName(i) "init" funcType(g noTypes noTypes)))
+                            importFunction(unitName(i) "init" funcType(g noTypes noTypes)))
                 end
             end
             (* Import functions from the Quest runtime units at their interface
@@ -5744,9 +5990,9 @@ export
             let described = not(isRuntimeUnit(moduleName)) andif maybe.isSome(unit.staticData)
                 andif {abstracts orif {vector.length(maybe.unwrap(unit.staticData).descriptors) > 0}}
             let runtimeImport = fun(unitName: String field: String params: Array(ValType)
-                results: Array(ValType)): Bool
+                    results: Array(ValType)): Bool
                 hashMap.insert(g.runtimeUnits unitName <> "." <> field
-                    importFunction(unitName field funcType(g withClosure(params) results)))
+                        importFunction(unitName field funcType(g withClosure(params) results)))
             let e = model.eqref
             let n = model.i64
             (* Import wasm/print when a unit echoes descriptor-formatted values
@@ -5761,7 +6007,7 @@ export
                     case vector.get(ss k)
                         when sEcho with x then
                             if stringOp.isEmpty(describe.echoValueKind(x.type))
-                                andif maybe.isSome(x.descriptor) then echoes := true end
+                                    andif maybe.isSome(x.descriptor) then echoes := true end
                         else ok
                     end
                 end
@@ -5769,13 +6015,13 @@ export
             let printed = {described andif echoes} orif {asProgram andif not(isRuntimeUnit(moduleName))}
             if printed then
                 hashMap.insert(g.runtimeUnits "wasm/print.init"
-                    importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
+                        importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
                 runtimeImport("wasm/print" "show" array of e e end array of e end)
             end
             if g.isPhrase then
                 if not(hashMap.contains(g.runtimeUnits "wasm/print.init")) then
                     hashMap.insert(g.runtimeUnits "wasm/print.init"
-                        importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
+                            importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
                 end
                 runtimeImport("wasm/print" "echoText" array of e end array of e end)
             end
@@ -5795,7 +6041,7 @@ export
             end
             if described then
                 hashMap.insert(g.runtimeUnits "wasm/core.init"
-                    importFunction("wasm/core" "init" funcType(g noTypes noTypes)))
+                        importFunction("wasm/core" "init" funcType(g noTypes noTypes)))
                 runtimeImport("wasm/core" "base" array of n end array of e end)
                 runtimeImport("wasm/core" "newDesc" array of n e n n end array of e end)
                 runtimeImport("wasm/core" "setPart" array of e n e e end array of e end)
@@ -5831,34 +6077,35 @@ export
                     case vector.get(ss k)
                         when sEcho with x then
                             if stringOp.equal(describe.echoValueKind(x.type) "Real")
-                                andif not(hashMap.contains(g.runtimeUnits "util/realconv.magnitude")) then
+                                    andif not(hashMap.contains(g.runtimeUnits "util/realconv.magnitude")) then
                                 runtimeImport("util/realconv" "magnitude" array of model.f64 end
-                                    array of model.eqref end)
+                                        array of model.eqref end)
                             end
                         else ok
                     end
-                    let op = case vector.get(ss k)
-                        when sLet with x then maybe.some(x.value)
-                        when sDo with x then maybe.some(x.value)
-                        else maybe.none(:ir.Op)
-                    end
+                    let op =
+                        case vector.get(ss k)
+                            when sLet with x then maybe.some(x.value)
+                            when sDo with x then maybe.some(x.value)
+                            else maybe.none(:ir.Op)
+                        end
                     if maybe.isSome(op) then
                         let register = fun(callee: maybe.T(ir.Variable) moduleRef: maybe.T(ir.ModuleRef)
-                            member: maybe.T(String) calleeType: maybe.T(ir.Type)): Ok
+                                member: maybe.T(String) calleeType: maybe.T(ir.Type)): Ok
                             if maybe.isSome(moduleRef) andif maybe.isNone(callee) then
                                 case maybe.unwrap(moduleRef)
                                     when refImport with imp then
                                         let key = imp.i.canonicalPath <> "." <> maybe.unwrapOr(member "")
                                         let known = hashMap.contains(g.importFunctions key)
-                                        let fast = maybe.isSome(imp.i.libPath) andif
-                                            maybe.isSome(externalSymbol(maybe.unwrap(imp.i.libPath)
-                                                maybe.unwrapOr(member "")))
+                                        let fast = maybe.isSome(imp.i.libPath)
+                                            andif maybe.isSome(externalSymbol(maybe.unwrap(imp.i.libPath)
+                                                    maybe.unwrapOr(member "")))
                                         if isUnitImport(moduleName imp.i) andif not(known) andif not(fast)
-                                            andif maybe.isSome(calleeType) then
+                                                andif maybe.isSome(calleeType) then
                                             let sig = closureSig(maybe.unwrap(calleeType))
                                             hashMap.insert(g.importFunctions key
-                                                importFunction(unitName(imp.i)
-                                                    maybe.unwrapOr(member "") nativeType(g sig)))
+                                                    importFunction(unitName(imp.i)
+                                                            maybe.unwrapOr(member "") nativeType(g sig)))
                                         end
                                     else ok
                                 end
@@ -5869,8 +6116,9 @@ export
                                     runtimeImport("util/realconv" field array of model.eqref end array of model.f64 end)
                                 elsif stringOp.equal(field "format") then
                                     runtimeImport("util/realconv" field array of model.f64 model.i32 model.i64 end
-                                        array of model.eqref end)
-                                else runtimeImport("util/realconv" field array of model.f64 end array of model.eqref end)
+                                            array of model.eqref end)
+                                else
+                                    runtimeImport("util/realconv" field array of model.f64 end array of model.eqref end)
                                 end
                             end
                         let realmathImport = fun(field: String arity: Int): Ok
@@ -5889,7 +6137,7 @@ export
                                 realconvImport(maybe.unwrap(realconvFunction(symbol)))
                                 let append = "wasm/core.sbAppendString"
                                 if stringOp.equal(symbol "quest_sb_append_real")
-                                    andif not(hashMap.contains(g.runtimeUnits append)) then
+                                        andif not(hashMap.contains(g.runtimeUnits append)) then
                                     runtimeImport("wasm/core" "sbAppendString" repTypes("ee") repTypes("e"))
                                 end
                             elsif not(g.isCore) andif maybe.isSome(coreExternal(symbol)) then
@@ -5906,7 +6154,7 @@ export
                                         when refImport with imp then
                                             if maybe.isSome(imp.i.libPath) then
                                                 let sym = externalSymbol(maybe.unwrap(imp.i.libPath)
-                                                    maybe.unwrapOr(c.member ""))
+                                                        maybe.unwrapOr(c.member ""))
                                                 if maybe.isSome(sym) then coreFunction(maybe.unwrap(sym)) end
                                             end
                                         else ok
@@ -5919,11 +6167,11 @@ export
                                 let hostPrefix = "wasm.host."
                                 if strutil.startsWith(c.symbol hostPrefix) then
                                     let field = stringOp.getSub(c.symbol stringOp.length(hostPrefix)
-                                        {stringOp.length(c.symbol) - stringOp.length(hostPrefix)})
+                                            {stringOp.length(c.symbol) - stringOp.length(hostPrefix)})
                                     if not(hashMap.contains(g.runtimeUnits "quest.host." <> field)) then
                                         hashMap.insert(g.runtimeUnits "quest.host." <> field
-                                            importFunction("quest.host" field funcType(g
-                                                array of(extent c.args model.i32) array of model.i32 end)))
+                                                importFunction("quest.host" field funcType(g
+                                                        array of(extent c.args model.i32) array of model.i32 end)))
                                     end
                                 elsif stringOp.equal(c.symbol "wasm.raisedName") then
                                     if not(hashMap.contains(g.runtimeUnits "wasm/print.show")) then
@@ -5931,10 +6179,10 @@ export
                                     end
                                     if not(hashMap.contains(g.runtimeUnits "wasm/print.init")) then
                                         hashMap.insert(g.runtimeUnits "wasm/print.init"
-                                            importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
+                                                importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
                                     end
-                                elsif stringOp.equal(c.symbol "wasm.print.capture") orif
-                                    stringOp.equal(c.symbol "wasm.print.captured") then
+                                elsif stringOp.equal(c.symbol "wasm.print.capture")
+                                        orif stringOp.equal(c.symbol "wasm.print.captured") then
                                     let field = stringOp.getSub(c.symbol 11 {stringOp.length(c.symbol) - 11})
                                     if not(hashMap.contains(g.runtimeUnits "wasm/print." <> field)) then
                                         runtimeImport("wasm/print" field noTypes array of e end)
@@ -5942,7 +6190,7 @@ export
                                     (* print initialized before its capture *)
                                     if not(hashMap.contains(g.runtimeUnits "wasm/print.init")) then
                                         hashMap.insert(g.runtimeUnits "wasm/print.init"
-                                            importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
+                                                importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
                                     end
                                 end
                             when opExternal with c then coreFunction(c.symbol)
@@ -5956,7 +6204,7 @@ export
             end
             (* A program's _start flushes the files' writers when it ends *)
             if g.unit.isProgram andif not(g.isRuntime)
-                andif not(hashMap.contains(g.runtimeUnits "wasm/core.flushWriters")) then
+                    andif not(hashMap.contains(g.runtimeUnits "wasm/core.flushWriters")) then
                 runtimeImport("wasm/core" "flushWriters" repTypes("") repTypes("e"))
             end
             (* The core initialized before any of its functions is called *)
@@ -5977,7 +6225,7 @@ export
             let usesRealconv1 = usesRealconv orif hashMap.contains(g.runtimeUnits "util/realconv.format")
             if usesRealconv1 then
                 hashMap.insert(g.runtimeUnits "util/realconv.init"
-                    importFunction("util/realconv" "init" funcType(g noTypes noTypes)))
+                        importFunction("util/realconv" "init" funcType(g noTypes noTypes)))
             end
             let var usesRealmath = false
             for k = 0 upto extent realmathExternals - 1 do
@@ -5987,11 +6235,11 @@ export
             end
             if usesRealmath then
                 hashMap.insert(g.runtimeUnits "util/realmath.init"
-                    importFunction("util/realmath" "init" funcType(g noTypes noTypes)))
+                        importFunction("util/realmath" "init" funcType(g noTypes noTypes)))
             end
             if usesCore() andif not(hashMap.contains(g.runtimeUnits "wasm/core.init")) then
                 hashMap.insert(g.runtimeUnits "wasm/core.init"
-                    importFunction("wasm/core" "init" funcType(g noTypes noTypes)))
+                        importFunction("wasm/core" "init" funcType(g noTypes noTypes)))
             end
             (* Each function's index and type, before any is compiled, so that
              * a call, a tail call above all, knows its callee's signature
@@ -6004,8 +6252,11 @@ export
                 let sig = signature(g fn)
                 hashMap.insert(g.functions fn.id base + k)
                 vector.append(m.functions tuple
-                    let name = fresh(g.names fn.v.hint) let type = funcType(g sig.params sig.results)
-                    let params = array of :String end let locals = vector.new(:model.Local) let body = vector.new(:Inst)
+                    let name = fresh(g.names fn.v.hint)
+                    let type = funcType(g sig.params sig.results)
+                    let params = array of :String end
+                    let locals = vector.new(:model.Local)
+                    let body = vector.new(:Inst)
                 end)
             end
             (* The top level's and _start's (a module's init), before the
@@ -6013,16 +6264,22 @@ export
             let mainIndex = base + vector.length(unit.functions)
             for k = 0 upto if asProgram then 1 else 0 end do
                 vector.append(m.functions tuple
-                    let name = "" let type = placeholder let params = array of :String end
-                    let locals = vector.new(:model.Local) let body = vector.new(:Inst)
+                    let name = ""
+                    let type = placeholder
+                    let params = array of :String end
+                    let locals = vector.new(:model.Local)
+                    let body = vector.new(:Inst)
                 end)
             end
             let descIndex = mainIndex + if asProgram then 2 else 1 end
             let forms = if described then descriptorGlobals(g) else vector.new(:staticdata.DescriptorForm) end
             if described then
                 vector.append(m.functions tuple
-                    let name = "" let type = placeholder let params = array of :String end
-                    let locals = vector.new(:model.Local) let body = vector.new(:Inst)
+                    let name = ""
+                    let type = placeholder
+                    let params = array of :String end
+                    let locals = vector.new(:model.Local)
+                    let body = vector.new(:Inst)
                 end)
             end
             for k = 0 upto vector.length(unit.functions) - 1 do
@@ -6048,7 +6305,7 @@ export
                     end
                     if described then emit(f i1(ops.call descIndex)) end
                     if {described andif echoes} orif g.isPhrase
-                        orif hashMap.contains(g.runtimeUnits "wasm/print.capture") then
+                            orif hashMap.contains(g.runtimeUnits "wasm/print.capture") then
                         emit(f i1(ops.call hashMap.find(g.runtimeUnits "wasm/print.init")))
                     end
                 end
@@ -6066,7 +6323,9 @@ export
                 let mod = vector.get(unit.modules {nmodules - 1})
                 let flag = model.importedGlobals(m) + vector.length(m.globals)
                 vector.append(m.globals tuple
-                    let name = "initialized" let type = model.i32 let mutable = true
+                    let name = "initialized"
+                    let type = model.i32
+                    let mutable = true
                     let init = array of model.i32Const(0) end
                 end)
                 let initF = newF(g array of :String end noTypes ~1)
@@ -6086,7 +6345,9 @@ export
                 fill(initF mainIndex "init" placeholder)
                 let exportFunction = fun(field: String index: Int): Ok
                     vector.append(m.exports tuple
-                        let field = field let kind = option exportFunc of model.ExportKind end let index = index
+                        let field = field
+                        let kind = option exportFunc of model.ExportKind end
+                        let index = index
                     end)
                 exportFunction("init" mainIndex)
                 if maybe.isNone(mod.recordVar) then fail("a module without its record") end
@@ -6095,7 +6356,8 @@ export
                 for j = 0 upto 1 do
                     vector.append(m.exports tuple
                         let field = if j is 0 then "record.payload" else "record.dict" end
-                        let kind = option exportGlobal of model.ExportKind end let index = first + j
+                        let kind = option exportGlobal of model.ExportKind end
+                        let index = first + j
                     end)
                 end
                 (* The functions of a module's record, at their interface types'
@@ -6122,7 +6384,7 @@ export
                                 else
                                     (* converted to its interface's types *)
                                     if {extent outer.params isnot extent innerParams}
-                                        orif {extent outer.results isnot 1} orif {extent inner.results isnot 1} then
+                                            orif {extent outer.results isnot 1} orif {extent inner.results isnot 1} then
                                         fail("an exported function whose interface type differs in its parts: "
                                             <> sigText(g outer) <> " against " <> sigText(g inner))
                                     end
@@ -6137,9 +6399,11 @@ export
                                     convertRep(wf inner.results[0] outer.results[0])
                                     let at = model.importedFunctions(m) + vector.length(m.functions)
                                     vector.append(m.functions tuple
-                                        let name = fresh(g.names name <> ".export") let type = nativeType(g outer)
+                                        let name = fresh(g.names name <> ".export")
+                                        let type = nativeType(g outer)
                                         let params = names
-                                        let locals = wf.declared let body = wf.code
+                                        let locals = wf.declared
+                                        let body = wf.code
                                     end)
                                     exportFunction(prefix <> name at)
                                 end
@@ -6159,7 +6423,8 @@ export
                                 vector.append(m.exports tuple
                                     let field = declared.name
                                         <> if j is 0 then ".record.payload" else ".record.dict" end
-                                    let kind = option exportGlobal of model.ExportKind end let index = at + j
+                                    let kind = option exportGlobal of model.ExportKind end
+                                    let index = at + j
                                 end)
                             end
                             exportMembers(declared declared.name <> ".")
@@ -6167,67 +6432,73 @@ export
                     end
                 end
             else
-            (* The program's top level *)
-            let flushWriters = fun(f: F): Ok
-                if hashMap.contains(g.runtimeUnits "wasm/core.flushWriters") then
-                    emit(f i1(ops.globalGet g.noClosure))
-                    runtimeUnitCall(f "wasm/core.flushWriters")
-                    emit(f i(ops.drop))
-                end
-            let mainF = newF(g array of :String end noTypes ~1)
-            initRuntime(mainF)
-            initImports(mainF)
-            for k = 0 upto nmodules - 1 do registerAbstracts(mainF vector.get(unit.modules k)) end
-            adaptersPast(mainF pastArities)
-            (* the modules the program defines, in order, then its top
-             * level *)
-            for k = 0 upto nmodules - 1 do body(mainF vector.get(unit.modules k).init) end
-            body(mainF unit.main)
-            fill(mainF mainIndex fresh(g.names "main") placeholder)
-            (* _start: the top level, and an uncaught exception's report *)
-            let start = newF(g array of :String end noTypes ~1)
-            emit(start model.blockInst(option blockValue of model.BlockType with let type = model.eqref end "uncaught"))
-            emit(start option instTryTable of Inst with
-                let type = empty let label = ""
-                let catches = array of
-                    tuple let kind = option catchTag of model.CatchKind end let tag = 0 let label = 0 end
-                end
-            end)
-            emit(start i1(ops.call mainIndex))
-            flushWriters(start)
-            emit(start model.endInst)
-            emit(start i(ops.returnOp))
-            emit(start model.endInst)
-            (* the payload as print's show writes it, if its descriptor
-             * writes it *)
-            let tRaised = rt.index("raised")
-            let state = scratch(start model.refNull(tRaised))
-            castTo(start tRaised)
-            emit(start i1(ops.localTee state))
-            emit(start i1(ops.localGet state))
-            emit(start i2(ops.structGet tRaised rt.field("raised" "desc")))
-            emit(start i(ops.refIsNull))
-            emit(start model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
-            emit(start option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
-            emit(start model.elseInst)
-            runtimeUnitCall(start "wasm/print.init")
-            emit(start i1(ops.globalGet g.noClosure))
-            emit(start i1(ops.localGet state))
-            emit(start i2(ops.structGet tRaised rt.field("raised" "payload")))
-            emit(start i1(ops.localGet state))
-            emit(start i2(ops.structGet tRaised rt.field("raised" "desc")))
-            runtimeUnitCall(start "wasm/print.show")
-            emit(start model.endInst)
-            flushWriters(start)
-            runtimeCall(start "uncaught")
-            fill(start mainIndex + 1 "_start" placeholder)
-            vector.append(m.exports tuple
-                let field = "_start" let kind = option exportFunc of model.ExportKind end let index = mainIndex + 1
-            end)
+                (* The program's top level *)
+                let flushWriters = fun(f: F): Ok
+                    if hashMap.contains(g.runtimeUnits "wasm/core.flushWriters") then
+                        emit(f i1(ops.globalGet g.noClosure))
+                        runtimeUnitCall(f "wasm/core.flushWriters")
+                        emit(f i(ops.drop))
+                    end
+                let mainF = newF(g array of :String end noTypes ~1)
+                initRuntime(mainF)
+                initImports(mainF)
+                for k = 0 upto nmodules - 1 do registerAbstracts(mainF vector.get(unit.modules k)) end
+                adaptersPast(mainF pastArities)
+                (* the modules the program defines, in order, then its top
+                 * level *)
+                for k = 0 upto nmodules - 1 do body(mainF vector.get(unit.modules k).init) end
+                body(mainF unit.main)
+                fill(mainF mainIndex fresh(g.names "main") placeholder)
+                (* _start: the top level, and an uncaught exception's report *)
+                let start = newF(g array of :String end noTypes ~1)
+                emit(start
+                        model.blockInst(option blockValue of model.BlockType with
+                            let type = model.eqref
+                        end "uncaught"))
+                emit(start option instTryTable of Inst with
+                    let type = empty
+                    let label = ""
+                    let catches = array of
+                        tuple let kind = option catchTag of model.CatchKind end let tag = 0 let label = 0 end
+                    end
+                end)
+                emit(start i1(ops.call mainIndex))
+                flushWriters(start)
+                emit(start model.endInst)
+                emit(start i(ops.returnOp))
+                emit(start model.endInst)
+                (* the payload as print's show writes it, if its descriptor
+                 * writes it *)
+                let tRaised = rt.index("raised")
+                let state = scratch(start model.refNull(tRaised))
+                castTo(start tRaised)
+                emit(start i1(ops.localTee state))
+                emit(start i1(ops.localGet state))
+                emit(start i2(ops.structGet tRaised rt.field("raised" "desc")))
+                emit(start i(ops.refIsNull))
+                emit(start model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
+                emit(start option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+                emit(start model.elseInst)
+                runtimeUnitCall(start "wasm/print.init")
+                emit(start i1(ops.globalGet g.noClosure))
+                emit(start i1(ops.localGet state))
+                emit(start i2(ops.structGet tRaised rt.field("raised" "payload")))
+                emit(start i1(ops.localGet state))
+                emit(start i2(ops.structGet tRaised rt.field("raised" "desc")))
+                runtimeUnitCall(start "wasm/print.show")
+                emit(start model.endInst)
+                flushWriters(start)
+                runtimeCall(start "uncaught")
+                fill(start mainIndex + 1 "_start" placeholder)
+                vector.append(m.exports tuple
+                    let field = "_start"
+                    let kind = option exportFunc of model.ExportKind end
+                    let index = mainIndex + 1
+                end)
             end
             if sb.length(g.strings) > 0 then
                 vector.append(m.data
-                    tuple let name = "strings" let bytes = sb.toString(g.strings) let offset = ~1 end)
+                        tuple let name = "strings" let bytes = sb.toString(g.strings) let offset = ~1 end)
             end
             (* The locals that are never live together share one *)
             reuse.reuse(m)

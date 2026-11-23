@@ -2,20 +2,21 @@
 
 module autoValues : AutoValues
 import
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/syntax/ast : questlang/syntax/Ast
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/types/env : questlang/types/Env
-    questlang/types/kinds : questlang/types/Kinds
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
-    questlang/typechecker/checker : questlang/typechecker/Checker
-    questlang/typechecker/checks : questlang/typechecker/Checks
-    questlang/typechecker/escape : questlang/typechecker/Escape
-    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
     collections/vector : collections/Vector
     util/maybe : util/Maybe
+
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/typechecker/checker : questlang/typechecker/Checker
+    questlang/typechecker/checks : questlang/typechecker/Checks
+    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
+    questlang/typechecker/escape : questlang/typechecker/Escape
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/kinds : questlang/types/Kinds
+    questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let Type = model.Type
 
@@ -33,8 +34,9 @@ export
     let isAutoType(t: model.Type): Bool = case model.unalias(t).form when typeAuto then true else false end
 
     let checkDynamicTypeArgs(
-        allType: model.Type typeArgs: Array(model.Type) offset: Int check: All(t: model.Type what: String offset: Int) Ok
-    ): Ok =
+            allType: model.Type typeArgs: Array(model.Type) offset: Int
+            check: All(t: model.Type what: String offset: Int) Ok
+            ): Ok =
         case allType.form
             when typeAll with a then
                 case a.body.form
@@ -42,9 +44,13 @@ export
                         if {extent a.quantifiers is 1} andif {extent f.params is 1} andif {extent typeArgs > 0} then
                             let aId = a.quantifiers[0].symbolId
                             let isA(t: model.Type): Bool =
-                                case model.unalias(t).form when typeVariable with v then v.symbolId is aId else false end
+                                case model.unalias(t).form
+                                    when typeVariable with v then v.symbolId is aId
+                                    else false
+                                end
                             let paramT = f.params[0].type
-                            if {isA(paramT) andif isAutoType(f.result)} orif {isAutoType(paramT) andif isA(f.result)} then
+                            if {isA(paramT) andif isAutoType(f.result)}
+                                    orif {isAutoType(paramT) andif isA(f.result)} then
                                 check(typeArgs[0] "The type of a dynamic value" offset)
                             end
                         end
@@ -62,8 +68,8 @@ export
                     let targetTyped = checker.synthExpr(c x.target e loopDepth)
                     let autoType = model.evaluateLazily(targetTyped.type symbols.lookup)
                     if not(isAutoType(autoType)) then
-                        diagnostics.fail(:Ok "Target of inspect must have an Auto type (such as Dynamic), got '" <>
-                            model.show(autoType) <> "'" x.target.span.startOffset)
+                        diagnostics.fail(:Ok "Target of inspect must have an Auto type (such as Dynamic), got '"
+                            <> model.show(autoType) <> "'" x.target.span.startOffset)
                     end
                     (* A branch matches a supertype of the value's type
                      * component only when the signature's type parameter is
@@ -88,20 +94,23 @@ export
                                 let syms = vector.new(:symbols.ValueSymbol)
                                 for j = 0 upto {vector.length(branch.binders) - 1} do
                                     let binder = vector.get(branch.binders j)
-                                    let bType = if maybe.isSome(binder.typeAnnot) then
-                                        let annot = maybe.unwrap(binder.typeAnnot)
-                                        let t = elaborateTypes.elaborateType(annot e)
-                                        if not(subtyping.isSubtype(armType t env.lookupOf(e))) then
-                                            diagnostics.fail(:Ok "Inspect binder '" <> binder.name <>
-                                                "' has components of type '" <> model.show(armType) <>
-                                                "', which is not a subtype of the declared type '" <> model.show(t) <>
-                                                "'" annot.span.startOffset)
+                                    let bType =
+                                        if maybe.isSome(binder.typeAnnot) then
+                                            let annot = maybe.unwrap(binder.typeAnnot)
+                                            let t = elaborateTypes.elaborateType(annot e)
+                                            if not(subtyping.isSubtype(armType t env.lookupOf(e))) then
+                                                diagnostics.fail(:Ok "Inspect binder '" <> binder.name
+                                                    <> "' has components of type '" <> model.show(armType)
+                                                    <> "', which is not a subtype of the declared type '"
+                                                    <> model.show(t)
+                                                    <> "'" annot.span.startOffset)
+                                            end
+                                            t
+                                        else
+                                            armType
                                         end
-                                        t
-                                    else
-                                        armType
-                                    end
-                                    let sym = symbols.newValueSymbol(binder.name bType false false false c.functionDepth 0)
+                                    let sym =
+                                        symbols.newValueSymbol(binder.name bType false false false c.functionDepth 0)
                                     symbols.declareValue(e.currentScope sym)
                                     vector.append(syms sym)
                                 end
@@ -111,21 +120,25 @@ export
                                 end
                             end)
                         vector.append(branches tuple
-                            let offset = branch.offset let matchType = matchT let binders = arm.binders
-                            let body = arm.body let exact = exact
+                            let offset = branch.offset
+                            let matchType = matchT
+                            let binders = arm.binders
+                            let body = arm.body
+                            let exact = exact
                         end)
                         vector.append(bodies arm.body)
                     end
                     let elseTyped = checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
                     let types = checker.branchTypes(maybe.none() vector.toArray(bodies) elseTyped)
-                    let resultType = if maybe.isSome(expected) then
-                        maybe.unwrap(expected)
-                    elsif extent types > 0 then
-                        checks.joinTypes(types e expr.span.startOffset
-                            maybe.some("Cannot find common supertype join for inspect branch types '{t1}' and '{t2}'"))
-                    else
-                        model.okType
-                    end
+                    let resultType =
+                        if maybe.isSome(expected) then
+                            maybe.unwrap(expected)
+                        elsif extent types > 0 then
+                            checks.joinTypes(types e expr.span.startOffset
+                                    maybe.some("Cannot find common supertype join for inspect branch types '{t1}' and '{t2}'"))
+                        else
+                            model.okType
+                        end
                     typedAst.expr(expr.span.startOffset resultType option exprInspect of typedAst.ExprForm with
                         let target = targetTyped
                         let branches = vector.toArray(branches)
@@ -150,45 +163,49 @@ export
             when exprAuto with x then
                 begin
                     if maybe.isNone(expected) then
-                        diagnostics.fail(:Ok "Cannot infer the type of an auto value; give it an expected Auto type " <>
-                            "(e.g. let p:Auto A::TYPE with a:A end = auto :Int with 3 end)" expr.span.startOffset)
+                        diagnostics.fail(:Ok "Cannot infer the type of an auto value; give it an expected Auto type "
+                            <> "(e.g. let p:Auto A::TYPE with a:A end = auto :Int with 3 end)" expr.span.startOffset)
                     end
                     let expectedType = maybe.unwrap(expected)
                     let autoType = model.evaluateLazily(expectedType symbols.lookup)
-                    let kindBound = case autoType.form
-                        when typeAuto with a then a.kindBound
-                        else
-                            diagnostics.fail(:model.Kind "Auto value used where a value of type '" <>
-                                model.show(expectedType) <> "' is expected; auto values have Auto types"
-                                expr.span.startOffset)
-                    end
+                    let kindBound =
+                        case autoType.form
+                            when typeAuto with a then a.kindBound
+                            else
+                                diagnostics.fail(:model.Kind "Auto value used where a value of type '"
+                                    <> model.show(expectedType) <> "' is expected; auto values have Auto types"
+                                        expr.span.startOffset)
+                        end
                     let witness = elaborateTypes.elaborateType(x.witnessType e)
                     let witnessOffset = x.witnessType.span.startOffset
                     checkClosedType(witness "The type component of an auto value" witnessOffset)
-                    checkWitnessKind(witness kindBound e "Type component '" <> model.show(witness) <>
-                        "' of the auto value does not have kind '" <> checks.describeKind(kindBound) <>
-                        "' required by '" <> model.show(expectedType) <> "'" witnessOffset)
+                    checkWitnessKind(witness kindBound e "Type component '" <> model.show(witness)
+                        <> "' of the auto value does not have kind '" <> checks.describeKind(kindBound)
+                        <> "' required by '" <> model.show(expectedType) <> "'" witnessOffset)
                     let payloadType = model.autoPayloadType(autoType maybe.some(witness))
                     let payloadTyped = env.localScoped(e "auto_value" fun(s: symbols.Scope): typedAst.Expr
                         begin
                             if maybe.isSome(x.witnessName) then
                                 let name = maybe.unwrap(x.witnessName)
-                                let localBound = if maybe.isSome(x.witnessBound) then
-                                    elaborateTypes.elaborateKind(maybe.unwrap(x.witnessBound) e)
-                                else
-                                    model.typeKind
-                                end
-                                checkWitnessKind(witness localBound e "Type component '" <> model.show(witness) <>
-                                    "' of the auto value does not have the declared kind '" <>
-                                    checks.describeKind(localBound) <> "' of '" <> name <> "'" witnessOffset)
+                                let localBound =
+                                    if maybe.isSome(x.witnessBound) then
+                                        elaborateTypes.elaborateKind(maybe.unwrap(x.witnessBound) e)
+                                    else
+                                        model.typeKind
+                                    end
+                                checkWitnessKind(witness localBound e "Type component '" <> model.show(witness)
+                                    <> "' of the auto value does not have the declared kind '"
+                                    <> checks.describeKind(localBound) <> "' of '" <> name <> "'" witnessOffset)
                                 symbols.declareType(e.currentScope
-                                    symbols.newTypeSymbol(name env.freshSymbolId(e) localBound maybe.some(witness)))
+                                        symbols.newTypeSymbol(name env.freshSymbolId(e) localBound maybe.some(witness)))
                                 ok
                             end
                             checker.checkExpr(c x.payload payloadType e loopDepth)
                         end)
                     typedAst.expr(expr.span.startOffset expectedType option exprAuto of typedAst.ExprForm with
-                        let witnessType = witness let autoType = autoType let payload = payloadTyped
+                        let witnessType = witness
+                        let autoType = autoType
+                        let payload = payloadTyped
                     end)
                 end
             else internal("an auto value" expr)

@@ -2,15 +2,17 @@
 
 module model : Model
 import
-    questlang/common/keys : questlang/common/Keys
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/common/keys : questlang/common/Keys
 export
     (* Raised on an internal error: a limit of the model reached *)
     let internalError: Exception(String) = exception internalError: String end
@@ -814,22 +816,23 @@ export
                     let var changed = false
                     for i = 0 upto {extent x.fields - 1} do
                         let c = x.fields[i]
-                        let c2 = case c
-                            when tupleField with f then
-                                tupleField(f.name substitute(f.type current) f.isVar)
-                            when tupleTypeFormal with f then
-                                option tupleTypeFormal of TupleComponent with
-                                    let name = f.name
-                                    let symbolId = f.symbolId
-                                    let bound = substituteInKind(f.bound current)
-                                end
-                            when tupleTypeBinding with f then
-                                option tupleTypeBinding of TupleComponent with
-                                    let name = f.name
-                                    let type = substitute(f.type current)
-                                    let bound = substituteOptKind(f.bound current)
-                                end
-                        end
+                        let c2 =
+                            case c
+                                when tupleField with f then
+                                    tupleField(f.name substitute(f.type current) f.isVar)
+                                when tupleTypeFormal with f then
+                                    option tupleTypeFormal of TupleComponent with
+                                        let name = f.name
+                                        let symbolId = f.symbolId
+                                        let bound = substituteInKind(f.bound current)
+                                    end
+                                when tupleTypeBinding with f then
+                                    option tupleTypeBinding of TupleComponent with
+                                        let name = f.name
+                                        let type = substitute(f.type current)
+                                        let bound = substituteOptKind(f.bound current)
+                                    end
+                            end
                         case c when tupleTypeFormal with f then current := minus(current f.symbolId) else ok end
                         if not(sameComponent(c c2)) then changed := true end
                         vector.append(fields c2)
@@ -850,7 +853,7 @@ export
                         let type = substituteOpt(v.type subst)
                         if not(sameOpt(type v.type)) then changed := true end
                         vector.append(variants
-                            tuple let name = v.name let type = type let isVar = v.isVar end)
+                                tuple let name = v.name let type = type let isVar = v.isVar end)
                     end
                     if changed then variantType(vector.toArray(variants)) else t end
                 end
@@ -1066,13 +1069,14 @@ export
                     let nodes = vector.new(:Type)
                     for i = 0 upto {extent x.bindings - 1} do vector.append(nodes recGroupType(x.bindings i)) end
                     let first = vector.get(nodes 0)
-                    let shared = if extent first.siblings > 0 then
-                        first.siblings
-                    else
-                        let all = vector.toArray(nodes)
-                        for i = 0 upto {extent all - 1} do all[i].siblings := all end
-                        all
-                    end
+                    let shared =
+                        if extent first.siblings > 0 then
+                            first.siblings
+                        else
+                            let all = vector.toArray(nodes)
+                            for i = 0 upto {extent all - 1} do all[i].siblings := all end
+                            all
+                        end
                     t.siblings := shared
                     shared
                 end
@@ -1084,49 +1088,53 @@ export
         if maybe.isSome(t.unfolded) then
             maybe.unwrap(t.unfolded)
         else
-            let unfolded = case t.form
-                when typeRec with x then substitute(x.body singleSubst(x.symbolId t))
-                when typeRecGroup with x then
-                    begin
-                        let nodes = siblings(t)
-                        let subst = newSubst()
-                        for i = 0 upto {extent x.bindings - 1} do
-                            hashMap.insert(subst x.bindings[i].symbolId nodes[i])
-                        end
-                        substitute(x.bindings[x.activeIndex].body subst)
-                    end
-                when typeAlias with a then
-                    case a.target.form
-                        when typeRec with r then substitute(r.body singleSubst(r.symbolId t))
-                        when typeRecGroup with g then
-                            begin
-                                (* Each other binding of the group is an alias
-                                 * named after it, qualified as this alias is
-                                 * (m.Forest unfolds with m.Tree) *)
-                                let current = g.bindings[g.activeIndex].name
-                                let qualifier = if strutil.endsWith(a.name current) then
-                                    stringOp.getSub(a.name 0 {stringOp.length(a.name) - stringOp.length(current)})
-                                else
-                                    ""
-                                end
-                                let nodes = siblings(a.target)
-                                let subst = newSubst()
-                                for i = 0 upto {extent g.bindings - 1} do
-                                    let b = g.bindings[i]
-                                    let node = nodes[i]
-                                    let replacement = if same(node a.target) then
-                                        t
-                                    else
-                                        aliasType(qualifier <> b.name b.symbolId node)
-                                    end
-                                    hashMap.insert(subst b.symbolId replacement)
-                                end
-                                substitute(g.bindings[g.activeIndex].body subst)
+            let unfolded =
+                case t.form
+                    when typeRec with x then substitute(x.body singleSubst(x.symbolId t))
+                    when typeRecGroup with x then
+                        begin
+                            let nodes = siblings(t)
+                            let subst = newSubst()
+                            for i = 0 upto {extent x.bindings - 1} do
+                                hashMap.insert(subst x.bindings[i].symbolId nodes[i])
                             end
-                        else t
-                    end
-                else t
-            end
+                            substitute(x.bindings[x.activeIndex].body subst)
+                        end
+                    when typeAlias with a then
+                        case a.target.form
+                            when typeRec with r then substitute(r.body singleSubst(r.symbolId t))
+                            when typeRecGroup with g then
+                                begin
+                                    (* Each other binding of the group is an alias
+                                     * named after it, qualified as this alias is
+                                     * (m.Forest unfolds with m.Tree) *)
+                                    let current = g.bindings[g.activeIndex].name
+                                    let qualifier =
+                                        if strutil.endsWith(a.name current) then
+                                            stringOp.getSub(a.name 0
+                                                    {stringOp.length(a.name) - stringOp.length(current)})
+                                        else
+                                            ""
+                                        end
+                                    let nodes = siblings(a.target)
+                                    let subst = newSubst()
+                                    for i = 0 upto {extent g.bindings - 1} do
+                                        let b = g.bindings[i]
+                                        let node = nodes[i]
+                                        let replacement =
+                                            if same(node a.target) then
+                                                t
+                                            else
+                                                aliasType(qualifier <> b.name b.symbolId node)
+                                            end
+                                        hashMap.insert(subst b.symbolId replacement)
+                                    end
+                                    substitute(g.bindings[g.activeIndex].body subst)
+                                end
+                            else t
+                        end
+                    else t
+                end
             t.unfolded := maybe.some(unfolded)
             unfolded
         end
@@ -1157,11 +1165,12 @@ export
                         when typeOperator with f then
                             begin
                                 let subst = newSubst()
-                                let n = if extent f.params < extent x.arguments then
-                                    extent f.params
-                                else
-                                    extent x.arguments
-                                end
+                                let n =
+                                    if extent f.params < extent x.arguments then
+                                        extent f.params
+                                    else
+                                        extent x.arguments
+                                    end
                                 for i = 0 upto {n - 1} do
                                     hashMap.insert(subst f.params[i].symbolId x.arguments[i])
                                 end
@@ -1217,7 +1226,7 @@ export
                 case fields[i]
                     when tupleField with f then
                         vector.append(result
-                            tuple let name = f.name let type = f.type let isVar = f.isVar end)
+                                tuple let name = f.name let type = f.type let isVar = f.isVar end)
                     else ok
                 end
             end
@@ -1315,17 +1324,18 @@ export
         case t.form
             when typeAuto with x then
                 begin
-                    let w = if maybe.isSome(witness) then
-                        maybe.unwrap(witness)
-                    else
-                        abstractType(x.typeParam x.symbolId x.kindBound)
-                    end
+                    let w =
+                        if maybe.isSome(witness) then
+                            maybe.unwrap(witness)
+                        else
+                            abstractType(x.typeParam x.symbolId x.kindBound)
+                        end
                     let subst = singleSubst(x.symbolId w)
                     let fields = vector.new(:TupleComponent)
                     for i = 0 upto {extent x.signature - 1} do
                         let f = x.signature[i]
                         vector.append(fields
-                            tupleField(maybe.some(f.name) substitute(f.type subst) f.isVar))
+                                tupleField(maybe.some(f.name) substitute(f.type subst) f.isVar))
                     end
                     tupleType(vector.toArray(fields))
                 end
@@ -1346,11 +1356,12 @@ export
                             matches := false
                         elsif hasId(f.type.fv x.symbolId) then
                             let u = unalias(f.type)
-                            let isParam = case u.form
-                                when typeVariable with v then v.symbolId is x.symbolId
-                                when typeAbstract with v then v.symbolId is x.symbolId
-                                else false
-                            end
+                            let isParam =
+                                case u.form
+                                    when typeVariable with v then v.symbolId is x.symbolId
+                                    when typeAbstract with v then v.symbolId is x.symbolId
+                                    else false
+                                end
                             if not(isParam) then matches := false end
                         end
                     end
@@ -1361,13 +1372,13 @@ export
 
     (* The primitives the environment declares under their own names *)
     let isBuiltinPrimitive(name: String t: Type): Bool =
-        {stringOp.equal(name "Int") andif same(t intType)} orif
-            {stringOp.equal(name "Real") andif same(t realType)} orif
-            {stringOp.equal(name "Bool") andif same(t boolType)} orif
-            {stringOp.equal(name "Char") andif same(t charType)} orif
-            {stringOp.equal(name "String") andif same(t stringType)} orif
-            {stringOp.equal(name "Ok") andif same(t okType)} orif
-            {stringOp.equal(name "Exception") andif same(t exceptionType)}
+        {stringOp.equal(name "Int") andif same(t intType)}
+            orif {stringOp.equal(name "Real") andif same(t realType)}
+            orif {stringOp.equal(name "Bool") andif same(t boolType)}
+            orif {stringOp.equal(name "Char") andif same(t charType)}
+            orif {stringOp.equal(name "String") andif same(t stringType)}
+            orif {stringOp.equal(name "Ok") andif same(t okType)}
+            orif {stringOp.equal(name "Exception") andif same(t exceptionType)}
 
     let aliasReference(name: String symbolId: Int target: Type): Type =
         if isBuiltinPrimitive(name target) then target else aliasType(name symbolId target) end
@@ -1481,142 +1492,143 @@ export
                     for i = 0 upto {extent fields - 1} do
                         let f = fields[i]
                         vector.append(result
-                            tuple let name = f.name let type = mt(f.type) let isVar = f.isVar end)
+                                tuple let name = f.name let type = mt(f.type) let isVar = f.isVar end)
                     end
                     vector.toArray(result)
                 end
-            let rebuilt = case t.form
-                when typeException with x then exceptionOf(mt(x.payload))
-                when typeTuple with x then
-                    begin
-                        let fields = vector.new(:TupleComponent)
-                        for i = 0 upto {extent x.fields - 1} do
-                            vector.append(fields case x.fields[i]
-                                when tupleField with f then tupleField(f.name mt(f.type) f.isVar)
-                                when tupleTypeFormal with f then
-                                    option tupleTypeFormal of TupleComponent with
-                                        let name = f.name
-                                        let symbolId = f.symbolId
-                                        let bound = mk(f.bound)
-                                    end
-                                when tupleTypeBinding with f then
-                                    option tupleTypeBinding of TupleComponent with
-                                        let name = f.name
-                                        let type = mt(f.type)
-                                        let bound = mOptK(f.bound)
-                                    end
-                            end)
+            let rebuilt =
+                case t.form
+                    when typeException with x then exceptionOf(mt(x.payload))
+                    when typeTuple with x then
+                        begin
+                            let fields = vector.new(:TupleComponent)
+                            for i = 0 upto {extent x.fields - 1} do
+                                vector.append(fields case x.fields[i]
+                                    when tupleField with f then tupleField(f.name mt(f.type) f.isVar)
+                                    when tupleTypeFormal with f then
+                                        option tupleTypeFormal of TupleComponent with
+                                            let name = f.name
+                                            let symbolId = f.symbolId
+                                            let bound = mk(f.bound)
+                                        end
+                                    when tupleTypeBinding with f then
+                                        option tupleTypeBinding of TupleComponent with
+                                            let name = f.name
+                                            let type = mt(f.type)
+                                            let bound = mOptK(f.bound)
+                                        end
+                                end)
+                            end
+                            tupleType(vector.toArray(fields))
                         end
-                        tupleType(vector.toArray(fields))
-                    end
-                when typeRecord with x then recordType(mFields(x.fields) x.provenance)
-                when typeVariant with x then
-                    begin
-                        let variants = vector.new(:VariantField)
-                        for i = 0 upto {extent x.variants - 1} do
-                            let v = x.variants[i]
-                            vector.append(variants tuple
-                                let name = v.name
-                                let type = mOptT(v.type)
-                                let isVar = v.isVar
-                            end)
+                    when typeRecord with x then recordType(mFields(x.fields) x.provenance)
+                    when typeVariant with x then
+                        begin
+                            let variants = vector.new(:VariantField)
+                            for i = 0 upto {extent x.variants - 1} do
+                                let v = x.variants[i]
+                                vector.append(variants tuple
+                                    let name = v.name
+                                    let type = mOptT(v.type)
+                                    let isVar = v.isVar
+                                end)
+                            end
+                            variantType(vector.toArray(variants))
                         end
-                        variantType(vector.toArray(variants))
-                    end
-                when typeOption with x then
-                    begin
-                        let options = vector.new(:OptionField)
-                        for i = 0 upto {extent x.options - 1} do
-                            let o = x.options[i]
-                            vector.append(options
-                                tuple let name = o.name let payload = mOptT(o.payload) end)
+                    when typeOption with x then
+                        begin
+                            let options = vector.new(:OptionField)
+                            for i = 0 upto {extent x.options - 1} do
+                                let o = x.options[i]
+                                vector.append(options
+                                        tuple let name = o.name let payload = mOptT(o.payload) end)
+                            end
+                            optionType(vector.toArray(options))
                         end
-                        optionType(vector.toArray(options))
-                    end
-                when typeFun with x then
-                    begin
-                        let params = vector.new(:Param)
-                        for i = 0 upto {extent x.params - 1} do
-                            let p = x.params[i]
-                            vector.append(params tuple
-                                let name = p.name
-                                let type = mt(p.type)
-                                let isVar = p.isVar
-                                let isOut = p.isOut
-                            end)
+                    when typeFun with x then
+                        begin
+                            let params = vector.new(:Param)
+                            for i = 0 upto {extent x.params - 1} do
+                                let p = x.params[i]
+                                vector.append(params tuple
+                                    let name = p.name
+                                    let type = mt(p.type)
+                                    let isVar = p.isVar
+                                    let isOut = p.isOut
+                                end)
+                            end
+                            let result = mt(x.result)
+                            funType(vector.toArray(params) result)
                         end
-                        let result = mt(x.result)
-                        funType(vector.toArray(params) result)
-                    end
-                when typeVar with x then varType(mt(x.element))
-                when typeArray with x then arrayType(mt(x.element))
-                when typeOut with x then outType(mt(x.element))
-                when typeAll with x then
-                    begin
-                        let quantifiers = vector.new(:Quantifier)
-                        for i = 0 upto {extent x.quantifiers - 1} do
-                            let q = x.quantifiers[i]
-                            vector.append(quantifiers tuple
-                                let name = q.name
-                                let symbolId = q.symbolId
-                                let bound = mk(q.bound)
-                            end)
+                    when typeVar with x then varType(mt(x.element))
+                    when typeArray with x then arrayType(mt(x.element))
+                    when typeOut with x then outType(mt(x.element))
+                    when typeAll with x then
+                        begin
+                            let quantifiers = vector.new(:Quantifier)
+                            for i = 0 upto {extent x.quantifiers - 1} do
+                                let q = x.quantifiers[i]
+                                vector.append(quantifiers tuple
+                                    let name = q.name
+                                    let symbolId = q.symbolId
+                                    let bound = mk(q.bound)
+                                end)
+                            end
+                            let body = mt(x.body)
+                            allType(vector.toArray(quantifiers) body)
                         end
-                        let body = mt(x.body)
-                        allType(vector.toArray(quantifiers) body)
-                    end
-                when typeAuto with x then
-                    begin
-                        let kindBound = mk(x.kindBound)
-                        autoType(x.typeParam x.symbolId kindBound mFields(x.signature))
-                    end
-                when typeOperator with x then
-                    begin
-                        let params = vector.new(:TypeFormal)
-                        for i = 0 upto {extent x.params - 1} do
-                            let p = x.params[i]
-                            vector.append(params tuple
-                                let name = p.name
-                                let symbolId = p.symbolId
-                                let bound = mk(p.bound)
-                            end)
+                    when typeAuto with x then
+                        begin
+                            let kindBound = mk(x.kindBound)
+                            autoType(x.typeParam x.symbolId kindBound mFields(x.signature))
                         end
-                        let body = mt(x.body)
-                        typeOperator(vector.toArray(params) body)
-                    end
-                when typeApp with x then
-                    begin
-                        let constructor = mt(x.constructor)
-                        let arguments = vector.new(:Type)
-                        for i = 0 upto {extent x.arguments - 1} do vector.append(arguments mt(x.arguments[i])) end
-                        typeApp(constructor vector.toArray(arguments))
-                    end
-                when typeRec with x then
-                    begin
-                        let bound = mk(x.bound)
-                        recType(x.varName x.symbolId bound mt(x.body))
-                    end
-                when typeRecGroup with x then
-                    begin
-                        let bindings = vector.new(:RecBinding)
-                        for i = 0 upto {extent x.bindings - 1} do
-                            let b = x.bindings[i]
-                            let bound = mk(b.bound)
-                            vector.append(bindings tuple
-                                let name = b.name
-                                let symbolId = b.symbolId
-                                let bound = bound
-                                let body = mt(b.body)
-                            end)
+                    when typeOperator with x then
+                        begin
+                            let params = vector.new(:TypeFormal)
+                            for i = 0 upto {extent x.params - 1} do
+                                let p = x.params[i]
+                                vector.append(params tuple
+                                    let name = p.name
+                                    let symbolId = p.symbolId
+                                    let bound = mk(p.bound)
+                                end)
+                            end
+                            let body = mt(x.body)
+                            typeOperator(vector.toArray(params) body)
                         end
-                        recGroupType(vector.toArray(bindings) x.activeIndex)
-                    end
-                when typeVariable with x then typeVariable(x.name x.symbolId mOptK(x.bound))
-                when typeAbstract with x then abstractType(x.name x.symbolId mk(x.bound))
-                when typePath with x then pathType(x.rootName x.rootSymbolId x.fieldName mk(x.bound))
-                when typeAlias with x then aliasType(x.name x.symbolId mt(x.target))
-                else t
-            end
+                    when typeApp with x then
+                        begin
+                            let constructor = mt(x.constructor)
+                            let arguments = vector.new(:Type)
+                            for i = 0 upto {extent x.arguments - 1} do vector.append(arguments mt(x.arguments[i])) end
+                            typeApp(constructor vector.toArray(arguments))
+                        end
+                    when typeRec with x then
+                        begin
+                            let bound = mk(x.bound)
+                            recType(x.varName x.symbolId bound mt(x.body))
+                        end
+                    when typeRecGroup with x then
+                        begin
+                            let bindings = vector.new(:RecBinding)
+                            for i = 0 upto {extent x.bindings - 1} do
+                                let b = x.bindings[i]
+                                let bound = mk(b.bound)
+                                vector.append(bindings tuple
+                                    let name = b.name
+                                    let symbolId = b.symbolId
+                                    let bound = bound
+                                    let body = mt(b.body)
+                                end)
+                            end
+                            recGroupType(vector.toArray(bindings) x.activeIndex)
+                        end
+                    when typeVariable with x then typeVariable(x.name x.symbolId mOptK(x.bound))
+                    when typeAbstract with x then abstractType(x.name x.symbolId mk(x.bound))
+                    when typePath with x then pathType(x.rootName x.rootSymbolId x.fieldName mk(x.bound))
+                    when typeAlias with x then aliasType(x.name x.symbolId mt(x.target))
+                    else t
+                end
             if changed.any then rebuilt else t end
         end
 
@@ -1649,12 +1661,13 @@ export
                     if maybe.isSome(cached) then
                         maybe.unwrap(cached)
                     else
-                        let result = case x.form
-                            when typeAlias then maybe.unwrapOr(replace(x) x)
-                            when typeMeta then
-                                begin let p = prune(x) if same(p x) then x else mapType(p) end end
-                            else rebuild(x mapType mapKind)
-                        end
+                        let result =
+                            case x.form
+                                when typeAlias then maybe.unwrapOr(replace(x) x)
+                                when typeMeta then
+                                    begin let p = prune(x) if same(p x) then x else mapType(p) end end
+                                else rebuild(x mapType mapKind)
+                            end
                         hashMap.insert(memo x.id result)
                         result
                     end
@@ -1689,12 +1702,13 @@ export
                     if maybe.isSome(known) then
                         maybe.unwrap(known)
                     else
-                        let result = case x.form
-                            when typeAlias with a then strip(a.target)
-                            when typeMeta then
-                                begin let p = prune(x) if same(p x) then x else strip(p) end end
-                            else rebuild(x strip stripKind)
-                        end
+                        let result =
+                            case x.form
+                                when typeAlias with a then strip(a.target)
+                                when typeMeta then
+                                    begin let p = prune(x) if same(p x) then x else strip(p) end end
+                                else rebuild(x strip stripKind)
+                            end
                         hashMap.insert(memo x.id result)
                         if not(x.hasMeta) then
                             if hashMap.size(strippedTypes) > 200000 then
@@ -2044,11 +2058,12 @@ export
                     for i = 0 upto {extent x.signature - 1} do
                         vector.append(parts showField(x.signature[i]))
                     end
-                    let bound = if isPower(x.kindBound) then
-                        " <: " <> show(powerBound(x.kindBound))
-                    else
-                        " :: " <> showKind(x.kindBound)
-                    end
+                    let bound =
+                        if isPower(x.kindBound) then
+                            " <: " <> show(powerBound(x.kindBound))
+                        else
+                            " :: " <> showKind(x.kindBound)
+                        end
                     "Auto " <> x.typeParam <> bound <> " with " <> joinStrings(parts) <> " end"
                 end
             when typeOperator with x then
@@ -2107,23 +2122,25 @@ export
             when tupleTypeFormal with f then f.name <> "::" <> showKind(f.bound)
             when tupleTypeBinding with f then
                 begin
-                    let bound = if maybe.isSome(f.bound) then
-                        "::" <> showKind(maybe.unwrap(f.bound))
-                    else
-                        ""
-                    end
+                    let bound =
+                        if maybe.isSome(f.bound) then
+                            "::" <> showKind(maybe.unwrap(f.bound))
+                        else
+                            ""
+                        end
                     "Let " <> f.name <> bound <> " = " <> show(f.type)
                 end
         end
 
     let powerBoundOf(t: Type): maybe.T(Type) =
         begin
-            let bound = case t.form
-                when typeVariable with x then x.bound
-                when typeAbstract with x then maybe.some(x.bound)
-                when typePath with x then maybe.some(x.bound)
-                else maybe.none(:Kind)
-            end
+            let bound =
+                case t.form
+                    when typeVariable with x then x.bound
+                    when typeAbstract with x then maybe.some(x.bound)
+                    when typePath with x then maybe.some(x.bound)
+                    else maybe.none(:Kind)
+                end
             if maybe.isSome(bound) andif isPower(maybe.unwrap(bound)) then
                 maybe.some(powerBound(maybe.unwrap(bound)))
             else

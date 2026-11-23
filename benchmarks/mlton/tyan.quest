@@ -4,14 +4,16 @@
  * commented out there, is left out. *)
 
 import
-    support/bench : support/Bench
-    support/lists : support/Lists
-    util/maybe : util/Maybe
-    stringOp = string : StringOp
     ascii : Ascii
     conv : Conv
+    stringOp = string : StringOp
     word : Word
     writer : Writer
+
+    util/maybe : util/Maybe
+
+    support/bench : support/Bench
+    support/lists : support/Lists
 
 let print(s: String): Ok = writer.putString(writer.output s)
 let flushOut(): Ok = writer.flush(writer.output)
@@ -23,7 +25,8 @@ let rshift(i1: Int i2: Int): Int = word.toInt(word.shift(word.fromInt(i1) 0 - i2
 
 let tabulateE: Exception = exception tabulateE: Ok end
 let tabulate(A::TYPE)(i: Int f: All(i: Int) A): Array(A) =
-    if i <= 0 then raise tabulateE end
+    if i <= 0 then
+        raise tabulateE end
     else
         begin
             let a = array of(i f(0))
@@ -61,7 +64,8 @@ let illegal(A::TYPE)(msg: String): A = raise illegalE with msg end
 let insert(A::TYPE)(obj: A i: Int arr: Array(lists.T(A))): Array(lists.T(A)) =
     begin
         let len = extent arr
-        if i < len then begin arr[i] := lists.cons(:A)(obj arr[i]) arr end
+        if i < len then
+            begin arr[i] := lists.cons(:A)(obj arr[i]) arr end
         else
             begin
                 let arr1 = array of(if {i + 1} > {len + len} then i + 1 else len + len end lists.nil(:A))
@@ -80,13 +84,15 @@ let stripSort(A::TYPE)(compare: All(a: A b: A) Relation a: Array(A)): lists.T(A)
         let swap(i: Int j: Int): Ok = begin let ai = a[i] a[i] := a[j] a[j] := ai end
         (* sort all a[k], 0<=i<=k<j<=length a *)
         let rec s(i: Int j: Int acc: lists.T(A)): lists.T(A) =
-            if i is j then acc
+            if i is j then
+                acc
             else
                 begin
                     let pivot = a[{i + j} / 2]
                     Let LoHi = Tuple lo: Int hi: Int end
                     let rec partition(lo: Int k: Int hi: Int): LoHi =
-                        if k is hi then tuple let lo = lo let hi = hi end
+                        if k is hi then
+                            tuple let lo = lo let hi = hi end
                         else
                             case compare(pivot a[k])
                                 when less then begin swap(lo k) partition(lo + 1 k + 1 hi) end
@@ -113,7 +119,8 @@ let fNegate(n: Int): Int = if n is 0 then 0 else p - n end
 let fMultiply(n: Int m: Int): Int = {n * m} % p
 let divE: Exception = exception divE: Ok end
 let fReciprocal(n: Int): Int =
-    if n is 0 then raise divE end
+    if n is 0 then
+        raise divE end
     else
         begin
             (* consider euclid gcd alg on (a,b) starting with a=p, b=n. if
@@ -157,7 +164,8 @@ let rec mCompare(m: Ints m1: Ints): Relation =
         when cons with u then
             case m1
                 when nil then greater
-                when cons with v then if u.hd is v.hd then mCompare(u.tl v.tl) elsif u.hd < v.hd then less
+                when cons with v then if u.hd is v.hd then mCompare(u.tl v.tl)
+                    elsif u.hd < v.hd then less
                     else greater end
             end
     end
@@ -170,21 +178,24 @@ let mDisplay(l: Ints): String =
             begin
                 let v = rshift(vv 16)
                 let pw = andb(vv 65535)
-                if pw is 1 then lists.cons(:Char)(dv(v) acc)
+                if pw is 1 then
+                    lists.cons(:Char)(dv(v) acc)
                 else
                     begin
                         let s = conv.int(pw)
                         let var digits = acc
                         for i = stringOp.length(s) - 1 downto 0 do digits :=
-                            lists.cons(:Char)(stringOp.getChar(s i) digits) end
+                                lists.cons(:Char)(stringOp.getChar(s i) digits) end
                         lists.cons(:Char)(dv(v) digits)
                     end
                 end
             end
         let chars = lists.foldl(:Int :lists.T(Char))(d lists.nil(:Char) l)
         let s = stringOp.new(lists.length(:Char)(chars) ' ')
-        let rec fill(l: lists.T(Char) i: Int): Ok = case l when cons with c
-            then begin stringOp.setChar(s i c.hd) fill(c.tl i + 1) end else ok end
+        let rec fill(l: lists.T(Char) i: Int): Ok =
+            case l when cons with c then
+                begin stringOp.setChar(s i c.hd) fill(c.tl i + 1) end else ok
+            end
         fill(chars 0)
         s
     end
@@ -203,11 +214,14 @@ let rec mul(m: Ints m1: Ints): Ints =
                                 let w = u.hd + andb(v.hd 65535)
                                 if uu is andb(w ~65536) then cons(w mul(u.tl v.tl))
                                 else illegal(:Ints)(stringOp.conc(array of
-                                    "Mono.multiply overflow: " mDisplay(m) ", " mDisplay(m1) end))
+                                    "Mono.multiply overflow: " mDisplay(m) ", " mDisplay(m1)
+                                end))
                                 end
                             end
-                        elsif u.hd > v.hd then cons(u.hd mul(u.tl m1))
-                        else cons(v.hd mul(m v.tl))
+                        elsif u.hd > v.hd then
+                            cons(u.hd mul(u.tl m1))
+                        else
+                            cons(v.hd mul(m v.tl))
                         end
                     end
             end
@@ -223,8 +237,10 @@ let rec lcm(m: Ints m1: Ints): Ints =
                 when cons with v then
                     if u.hd >= v.hd then
                         if andb(u.hd ~65536) < v.hd then cons(u.hd lcm(u.tl v.tl)) else cons(u.hd lcm(u.tl m1)) end
-                    elsif andb(v.hd ~65536) < u.hd then cons(v.hd lcm(u.tl v.tl))
-                    else cons(v.hd lcm(m v.tl))
+                    elsif andb(v.hd ~65536) < u.hd then
+                        cons(v.hd lcm(u.tl v.tl))
+                    else
+                        cons(v.hd lcm(m v.tl))
                     end
             end
     end
@@ -232,8 +248,10 @@ let mLcm(m: Ints m1: Ints): Ints = lcm(m m1)
 
 let mTryDivide(m: Ints m1: Ints): maybe.T(Ints) =
     begin
-        let rec rev(l: Ints acc: Ints): Ints = case l when nil then acc when cons with c
-            then rev(c.tl cons(c.hd acc)) end
+        let rec rev(l: Ints acc: Ints): Ints =
+            case l when nil then acc when cons with c then
+                rev(c.tl cons(c.hd acc))
+            end
         let rec d(m: Ints m1: Ints q: Ints): maybe.T(Ints) =
             case m1
                 when nil then maybe.some(:Ints rev(q m))
@@ -244,7 +262,8 @@ let mTryDivide(m: Ints m1: Ints): maybe.T(Ints) =
                             if u.hd < v.hd then maybe.none(:Ints)
                             elsif andb(u.hd ~65536) is andb(v.hd ~65536) then
                                 if u.hd is v.hd then d(u.tl v.tl q)
-                                    else d(u.tl v.tl cons(u.hd - andb(v.hd 65535) q)) end
+                                else d(u.tl v.tl cons(u.hd - andb(v.hd 65535) q))
+                                end
                             else d(u.tl m1 cons(u.hd q))
                             end
                     end
@@ -270,8 +289,10 @@ let rev(l: Ints acc: Ints): Ints = lists.revAppend(:Int)(l acc)
 let emptyTrie(A::TYPE): Trie(A) = tuple let tag = maybe.none(:A) let children = lists.nil(:Child(A)) end
 let mkEmpty(A::TYPE): Ideal(A) = tuple let var d = 0 let var t = emptyTrie(:A) end
 let child(A::TYPE)(vp: Int t: Trie(A)): Child(A) = tuple let vp = vp let t = t end
-let trie(A::TYPE)(tag: maybe.T(A) children: lists.T(Child(A))): Trie(A) = tuple let tag = tag
-    let children = children end
+let trie(A::TYPE)(tag: maybe.T(A) children: lists.T(Child(A))): Trie(A) = tuple
+    let tag = tag
+    let children = children
+end
 
 let encode(v: Int p: Int): Int = lshift(v 16) + p
 let grabVar(vp: Int): Int = andb(vp ~65536)
@@ -290,7 +311,8 @@ let search(A::TYPE)(mi: Ideal(A) m1: Ints): maybe.T(Found(A)) =
                     result.v := maybe.some(:Found(A) tuple let m = m let a = maybe.unwrap(:A mt.tag) end)
                     raise foundE end
                 end
-            else s1(m1 m mt.children)
+            else
+                s1(m1 m mt.children)
             end
         and s1(m1: Ints m: Ints trie: lists.T(Child(A))): maybe.T(Found(A)) =
             case m1
@@ -329,7 +351,7 @@ let miInsert(A::TYPE)(mi: Ideal(A) m: Ints a: A): Ok =
                         case mt.children
                             when nil then
                                 trie(:A)(mt.tag
-                                    lists.cons(:Child(A))(child(:A)(vp i(x.tl emptyTrie(:A))) lists.nil(:Child(A))))
+                                        lists.cons(:Child(A))(child(:A)(vp i(x.tl emptyTrie(:A))) lists.nil(:Child(A))))
                             when cons with first then
                                 begin
                                     let vp1 = first.hd.vp
@@ -337,13 +359,14 @@ let miInsert(A::TYPE)(mi: Ideal(A) m: Ints a: A): Ok =
                                         case l
                                             when nil then
                                                 lists.cons(:Child(A))(child(:A)(vp i(x.tl emptyTrie(:A)))
-                                                    lists.nil(:Child(A)))
+                                                        lists.nil(:Child(A)))
                                             when cons with c then
                                                 if vp < c.hd.vp then
                                                     lists.cons(:Child(A))(child(:A)(vp i(x.tl emptyTrie(:A))) l)
-                                                elsif vp is c.hd.vp
-                                                    then lists.cons(:Child(A))(child(:A)(c.hd.vp i(x.tl c.hd.t)) c.tl)
-                                                else lists.cons(:Child(A))(c.hd j(c.tl))
+                                                elsif vp is c.hd.vp then
+                                                    lists.cons(:Child(A))(child(:A)(c.hd.vp i(x.tl c.hd.t)) c.tl)
+                                                else
+                                                    lists.cons(:Child(A))(c.hd j(c.tl))
                                                 end
                                         end
                                     if smallerVar(vp vp1) then
@@ -351,8 +374,10 @@ let miInsert(A::TYPE)(mi: Ideal(A) m: Ints a: A): Ok =
                                             child(:A)(grabVar(vp) trie(:A)(maybe.none(:A) mt.children))
                                             child(:A)(vp i(x.tl emptyTrie(:A)))
                                         end))
-                                    elsif smallerVar(vp1 vp) then i(cons(grabVar(vp1) m) mt)
-                                    else trie(:A)(mt.tag j(mt.children))
+                                    elsif smallerVar(vp1 vp) then
+                                        i(cons(grabVar(vp1) m) mt)
+                                    else
+                                        trie(:A)(mt.tag j(mt.children))
                                     end
                                 end
                         end
@@ -377,7 +402,8 @@ let mkIdeal(A::TYPE)(origMs: lists.T(Found(A))): Ideal(A) =
                 let n = extent buckets
                 let mi = mkEmpty(:A)
                 let rec sort(i: Int): Ideal(A) =
-                    if i >= n then mi
+                    if i >= n then
+                        mi
                     else
                         begin
                             let redundant(x: Found(A)): Bool = maybe.isSome(:Found(A) search(:A)(mi x.m))
@@ -386,7 +412,8 @@ let mkIdeal(A::TYPE)(origMs: lists.T(Found(A))): Ideal(A) =
                                     when nil then lists.app(:Found(A))(fun(x: Found(A)): Ok miInsert(:A)(mi x.m x.a) l)
                                     when cons with c then
                                         if redundant(c.hd) then filter(c.tl l)
-                                            else filter(c.tl lists.cons(:Found(A))(c.hd l)) end
+                                        else filter(c.tl lists.cons(:Found(A))(c.hd l))
+                                        end
                                 end
                             filter(buckets[i] lists.nil(:Found(A)))
                             buckets[i] := lists.nil(:Found(A))
@@ -402,7 +429,8 @@ let miFold(A::TYPE B::TYPE)(g: All(x: Found(A) acc: B) B mi: Ideal(A) init: B): 
         let rec f(acc: B m: Ints mt: Trie(A)): B =
             if maybe.isSome(:A mt.tag) then
                 f1(g(tuple let m = m let a = maybe.unwrap(:A mt.tag) end acc) m mt.children)
-            else f1(acc m mt.children)
+            else
+                f1(acc m mt.children)
             end
         and f1(acc: B m: Ints l: lists.T(Child(A))): B =
             case l
@@ -499,7 +527,8 @@ let pRest(p: Poly): Poly = case p when cons with c then c.tl else illegal(:Poly)
 Let LeadAndRest = Tuple lead: Term rest: Poly end
 let leadAndRest(p: Poly): LeadAndRest =
     case p when cons with c then tuple let lead = c.hd let rest = c.tl end
-        else illegal(:LeadAndRest)("POLY.leadAndRest") end
+        else illegal(:LeadAndRest)("POLY.leadAndRest")
+    end
 let pDeg(p: Poly): Int = case p when cons with c then mDeg(c.hd.m) else illegal(:Int)("POLY.deg on zero poly") end
 let numTerms(p: Poly): Int = pLength(p)
 
@@ -537,7 +566,8 @@ let hpLeadAndRest(ps: Array(Poly)): maybe.T(HLead) =
     begin
         let n = extent ps
         let rec lar(m: Ints indices: Ints i: Int): maybe.T(HLead) =
-            if i >= n then lar1(m indices)
+            if i >= n then
+                lar1(m indices)
             else
                 begin
                     let p = ps[i]
@@ -560,7 +590,8 @@ let hpLeadAndRest(ps: Array(Poly)): maybe.T(HLead) =
                         let extract(i: Int): Int = begin let lr = leadAndRest(ps[i]) ps[i] := lr.rest lr.lead.a end
                         let a = lists.foldr(:Int :Int)(fun(j: Int b: Int): Int fAdd(extract(j) b) extract(c.hd) c.tl)
                         if fIsZero(a) then lar(mOne ints 0)
-                            else maybe.some(:HLead tuple let a = a let m = m let hp = ps end) end
+                        else maybe.some(:HLead tuple let a = a let m = m let hp = ps end)
+                        end
                     end
             end
         lar(mOne ints 0)
@@ -583,19 +614,22 @@ let reset(): Ok = begin g.maybePairs := 0 g.primePairs := 0 g.usedPairs := 0 g.n
 Let PolyRef = Tuple var v: Poly end
 
 let reduce(f: Poly mi: Ideal(PolyRef)): Poly =
-    if pIsZero(f) then f
+    if pIsZero(f) then
+        f
     else
         begin
             (* use accumulator and reverse at end? *)
             let rec r(hp: Array(Poly)): Poly =
                 begin
                     let l = hpLeadAndRest(hp)
-                    if maybe.isNone(:HLead l) then pZero
+                    if maybe.isNone(:HLead l) then
+                        pZero
                     else
                         begin
                             let x = maybe.unwrap(:HLead l)
                             let found = search(:PolyRef)(mi x.m)
-                            if maybe.isNone(:Found(PolyRef) found) then pCons(term(x.a x.m) r(x.hp))
+                            if maybe.isNone(:Found(PolyRef) found) then
+                                pCons(term(x.a x.m) r(x.hp))
                             else
                                 begin
                                     let y = maybe.unwrap(:Found(PolyRef) found)
@@ -626,12 +660,12 @@ let addPairs(h: Poly mi: Ideal(PolyRef) pairs: Array(lists.T(Array(Poly)))): Arr
             begin
                 g.maybePairs := g.maybePairs + 1
                 lists.cons(:Found(MonoPoly))(
-                    tuple let m = mDivide(mLcm(m x.m) m) let a = tuple let m = x.m let g = x.a.v end end quots)
+                        tuple let m = mDivide(mLcm(m x.m) m) let a = tuple let m = x.m let g = x.a.v end end quots)
             end
         let insertPair(x: Found(MonoPoly) arr: Array(lists.T(Poly))): Array(lists.T(Poly)) =
             (* recall mm = m':m *)
             case mCompare(x.a.m x.m)
-                when equal then begin g.primePairs := g.primePairs + 1 arr end (* rel. prime *)
+                when equal then begin g.primePairs := g.primePairs + 1 arr end  (* rel. prime *)
                 else
                     begin
                         g.usedPairs := g.usedPairs + 1
@@ -639,10 +673,11 @@ let addPairs(h: Poly mi: Ideal(PolyRef) pairs: Array(lists.T(Array(Poly)))): Arr
                     end
             end
         let buckets = miFold(:MonoPoly :Array(lists.T(Poly)))(insertPair
-            mkIdeal(:MonoPoly)(miFold(:PolyRef :lists.T(Found(MonoPoly)))(tag mi lists.nil(:Found(MonoPoly))))
-            array of :lists.T(Poly) end)
+                mkIdeal(:MonoPoly)(miFold(:PolyRef :lists.T(Found(MonoPoly)))(tag mi lists.nil(:Found(MonoPoly))))
+                array of :lists.T(Poly) end)
         let rec ins(i: Int pairs: Array(lists.T(Array(Poly)))): Array(lists.T(Array(Poly))) =
-            if i is ~1 then pairs
+            if i is ~1 then
+                pairs
             else
                 case buckets[i]
                     when nil then ins(i - 1 pairs)
@@ -663,7 +698,8 @@ let grobner(fs0: lists.T(Poly)): Ideal(PolyRef) =
         let newDegGens = tuple let var v = lists.nil(:PolyRef) end
         (* add and maybe auto-reduce new monic generator h *)
         let addGen: All(h: Poly) Ok =
-            if not(g.autoReduce) then fun(h: Poly): Ok miInsert(:PolyRef)(mi leadMono(h) tuple let var v = pRest(h) end)
+            if not(g.autoReduce) then
+                fun(h: Poly): Ok miInsert(:PolyRef)(mi leadMono(h) tuple let var v = pRest(h) end)
             else
                 fun(h: Poly): Ok
                     begin
@@ -671,7 +707,8 @@ let grobner(fs0: lists.T(Poly)): Ideal(PolyRef) =
                         let m = lr.lead.m
                         let rh = lr.rest
                         let rec autoReduce(f: Poly): Poly =
-                            if pIsZero(f) then f
+                            if pIsZero(f) then
+                                f
                             else
                                 begin
                                     let fl = leadAndRest(f)
@@ -701,7 +738,8 @@ let grobner(fs0: lists.T(Poly)): Ideal(PolyRef) =
             begin
                 feedback()
                 let h1 = reduce(h0 mi)
-                if pIsZero(h1) then ok
+                if pIsZero(h1) then
+                    ok
                 else
                     begin
                         let h = mkMonic(h1)
@@ -719,7 +757,8 @@ let grobner(fs0: lists.T(Poly)): Ideal(PolyRef) =
                 let m = lr0.lead.m
                 let f = lr0.rest
                 let rec tryPair(i: Int): Ok =
-                    if i is 0 then ok
+                    if i is 0 then
+                        ok
                     else
                         begin
                             let lr = leadAndRest(fgs[i])
@@ -733,16 +772,20 @@ let grobner(fs0: lists.T(Poly)): Ideal(PolyRef) =
         let rec numPairs(ps: lists.T(Array(Poly)) n: Int): Int =
             case ps when nil then n when cons with c then numPairs(c.tl {n - 1} + extent c.hd) end
         let rec gb(d: Int): Ideal(PolyRef) =
-            if d >= extent pairs.v then mi
+            if d >= extent pairs.v then
+                mi
             else
                 (* note: i nullify entries to reclaim space *)
                 begin
                     pr(array of "DEGREE " conv.int(d) " with " conv.int(numPairs(pairs.v[d] 0)) " pairs "
                         if d >= extent fs then "0"
-                            else conv.int(lists.length(:Poly)(fs[d])) end " generators to do" end)
+                        else conv.int(lists.length(:Poly)(fs[d]))
+                        end " generators to do"
+                    end)
                     tasksleft.n := numPairs(pairs.v[d] 0)
                     if d < extent fs then tasksleft.n := tasksleft.n + lists.length(:Poly)(fs[d]) end
-                    if d > g.maxDeg then ok
+                    if d > g.maxDeg then
+                        ok
                     else
                         begin
                             reset()
@@ -751,7 +794,8 @@ let grobner(fs0: lists.T(Poly)): Ideal(PolyRef) =
                             pairs.v[d] := lists.nil(:Array(Poly))
                             if d < extent fs then begin lists.app(:Poly)(try1 fs[d]) fs[d] := lists.nil(:Poly) end end
                             pr(array of "maybe " conv.int(g.maybePairs) " prime " conv.int(g.primePairs) " using "
-                                conv.int(g.usedPairs) "; found " conv.int(g.newGens) end)
+                                conv.int(g.usedPairs) "; found " conv.int(g.newGens)
+                            end)
                         end
                     end
                     gb(d + 1)
@@ -777,8 +821,8 @@ let char(ch: Char): Ch =
         let och = ascii.val(ch)
         if {ascii.val('0') <= och} andif {och <= ascii.val('9')} then option dig of Ch with och - ascii.val('0') end
         elsif {ascii.val('a') <= och} andif {och <= ascii.val('z')} then option var1 of Ch with och - ascii.val('a') end
-        elsif {ascii.val('A') <= och} andif {och <= ascii.val('Z')}
-            then option var1 of Ch with {och - ascii.val('A')} + 26 end
+        elsif {ascii.val('A') <= och} andif {och <= ascii.val('Z')} then
+            option var1 of Ch with {och - ascii.val('A')} + 26 end
         elsif och is ascii.val('+') then option sign of Ch with 1 end
         elsif och is ascii.val('-') then option sign of Ch with ~1 end
         else illegal(:Ch)("bad ch in poly: " <> conv.char(ch))
@@ -788,8 +832,10 @@ let char(ch: Char): Ch =
 Let NatRest = Tuple n: Int l: Chs end
 let rec nat(n: Int l: Chs): NatRest =
     case l
-        when cons with c then case c.hd when dig with d then nat({n * 10} + d.n c.tl) else tuple let n = n
-            let l = l end end
+        when cons with c then case c.hd when dig with d then nat({n * 10} + d.n c.tl) else tuple
+            let n = n
+            let l = l
+        end end
         else tuple let n = n let l = l end
     end
 Let MonoRest = Tuple m: Ints l: Chs end
@@ -804,8 +850,10 @@ let rec mono(m: Ints l: Chs): MonoRest =
                                 when dig with d then
                                     begin
                                         let nl = nat(d.n c2.tl)
-                                        mono(mMultiply(mImplode(lists.cons(:VP)(tuple let v = v.n
-                                            let p = nl.n end lists.nil(:VP))) m) nl.l)
+                                        mono(mMultiply(mImplode(lists.cons(:VP)(tuple
+                                            let v = v.n
+                                            let p = nl.n
+                                        end lists.nil(:VP))) m) nl.l)
                                     end
                                 else mono(mMultiply(xI(v.n) m) c.tl)
                             end
@@ -818,10 +866,12 @@ let rec mono(m: Ints l: Chs): MonoRest =
 Let TermRest = Tuple t: Term l: Chs end
 let parseTerm(l0: Chs): TermRest =
     begin
-        let nl = case l0
-            when cons with c then case c.hd when dig with d then nat(d.n c.tl) else tuple let n = 1 let l = l0 end end
-            else tuple let n = 1 let l = l0 end
-        end
+        let nl =
+            case l0
+                when cons with c then
+                    case c.hd when dig with d then nat(d.n c.tl) else tuple let n = 1 let l = l0 end end
+                else tuple let n = 1 let l = l0 end
+            end
         let ml = mono(mOne nl.l)
         tuple let t = term(coerceInt(nl.n) ml.m) let l = ml.l end
     end
@@ -831,12 +881,14 @@ let rec poly(p: Poly l: Chs): Poly =
         else
             begin
                 Let SignRest = Tuple s: Int l: Chs end
-                let sl: SignRest = case l
-                    when cons with c then
-                        case c.hd when sign with s then tuple let s = coerceInt(s.n) let l = c.tl end
-                        else tuple let s = fOne let l = l end end
-                    else tuple let s = fOne let l = l end
-                end
+                let sl: SignRest =
+                    case l
+                        when cons with c then
+                            case c.hd when sign with s then tuple let s = coerceInt(s.n) let l = c.tl end
+                                else tuple let s = fOne let l = l end
+                            end
+                        else tuple let s = fOne let l = l end
+                    end
                 let tl = parseTerm(sl.l)
                 poly(pAdd(pCoerce(fMultiply(sl.s tl.t.a) tl.t.m) p) tl.l)
             end
@@ -862,7 +914,8 @@ let gb(fs: lists.T(Poly)): Ok =
         let gs = grab(mi)
         let info(f: Poly): Ok =
             lists.app(:String)(print lists.fromArray(:String)(array of
-                mDisplay(leadMono(f)) " + " conv.int(numTerms(f) - 1) " terms\n" end))
+                mDisplay(leadMono(f)) " + " conv.int(numTerms(f) - 1) " terms\n"
+            end))
         lists.app(:Poly)(info gs)
     end
 
@@ -870,7 +923,8 @@ let doit(n: Int): Ok =
     begin
         let u6 = lists.map(:String :Poly)(parsePoly lists.fromArray(:String)(array of
             "abcdef-g6" "a+b+c+d+e+f" "ab+bc+cd+de+ef+fa" "abc+bcd+cde+def+efa+fab"
-            "abcd+bcde+cdef+defa+efab+fabc" "abcde+bcdef+cdefa+defab+efabc+fabcd" end))
+            "abcd+bcde+cdef+defa+efab+fabc" "abcde+bcdef+cdefa+defab+efabc+fabcd"
+        end))
         for i = 1 upto n do gb(u6) end
     end
 

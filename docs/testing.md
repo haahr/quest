@@ -783,6 +783,10 @@ the check. It says which, and why; `--all` and `--self-hosted-only` choose for i
   JIT out; run `run_tests.py --self-hosted --backend jit,jit-files` when a change touches the JIT.
 - **The questlang tests** (`tests/source/questlang/`) need no run of their own: each suite runs them compiled, with its
   own compiler.
+- **Formatting:** in either row, `format` runs `./quest fmt --check` over `questlang/`, `lib/`, `tests/source/`, and
+  `benchmarks/` at once with the suites, and fails on a file the formatter would change or cannot parse
+  ([formatter.md](formatter.md) §5). `./quest fmt -w questlang lib tests/source benchmarks` formats them; a test's
+  goldens that record positions (tokenize, parse, errors) then need writing again.
 - **The collector's checks:** every compiled program the suites run, the compilers among them, runs with
   `QUEST_GC_CHECK=layouts,roots,poison,barriers` (`tools/check` sets it), so that a layout that lies about an object's
   words, a global holding a heap pointer that no root table covers, a use of a reclaimed object, or a pointer store

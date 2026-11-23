@@ -2,22 +2,24 @@
 
 module dynamicReader : DynamicReader
 import
-    tm = questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
-    questlang/values/model : questlang/values/Model
-    util/json : util/Json
+    conv : Conv
+    realOp = real : RealOp
+    stringOp = string : StringOp
+    word : Word
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
+    util/json : util/Json
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    realOp = real : RealOp
-    conv : Conv
-    word : Word
+
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
+    tm = questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/symbols : questlang/types/Symbols
     questlang/values/dynamicJson : questlang/values/DynamicJson
+    questlang/values/model : questlang/values/Model
 export
     Let Type = tm.Type
     Let Value = model.Value
@@ -180,7 +182,7 @@ export
             let o = members(node)
             if hasMember(o "abstract") then
                 if not(onlyMembers(o array of "abstract" "args" "rep" end)) orif not(hasMember(o "rep"))
-                    orif not(member(o "abstract")?jString) then
+                        orif not(member(o "abstract")?jString) then
                     fail(:Ok)
                 end
                 if hasMember(o "args") then
@@ -196,7 +198,8 @@ export
                 if memberCount(o) isnot 1 then fail(:Ok) end
                 let kind = json.names(o)[0]
                 let body = member(o kind)
-                if stringOp.equal(kind "record") orif stringOp.equal(kind "variant") orif stringOp.equal(kind "option") then
+                if stringOp.equal(kind "record") orif stringOp.equal(kind "variant")
+                        orif stringOp.equal(kind "option") then
                     let b = members(body)
                     let ns = json.names(b)
                     for i = 0 upto {extent ns - 1} do
@@ -223,29 +226,35 @@ export
                     if integer(body) < 0 then fail(:Ok) end
                 elsif stringOp.equal(kind "auto") then
                     let b = members(body)
-                    if {memberCount(b) isnot 2} orif not(hasMember(b "bound")) orif not(hasMember(b "components")) then fail(:Ok) end
+                    if {memberCount(b) isnot 2} orif not(hasMember(b "bound")) orif not(hasMember(b "components")) then
+                        fail(:Ok)
+                    end
                     if not(isNull(member(b "bound"))) then checkRef(rd member(b "bound")) end
                     checkPairs(rd member(b "components"))
                 elsif stringOp.equal(kind "fun") then
                     let b = members(body)
                     if {memberCount(b) isnot 2} orif not(hasMember(b "params")) orif not(hasMember(b "result"))
-                        orif not(member(b "params")?jArray) then
+                            orif not(member(b "params")?jArray) then
                         fail(:Ok)
                     end
                     let ps = items(member(b "params"))
                     for i = 0 upto {vector.length(ps) - 1} do
                         let p = vector.get(ps i)
-                        let good = case p
-                            when jArray with x then
-                                if vector.length(x.items) is 2 then
-                                    case vector.get(x.items 0)
-                                        when jString with m then
-                                            stringOp.equal(m.s "") orif stringOp.equal(m.s "var") orif stringOp.equal(m.s "out")
-                                        else false
+                        let good =
+                            case p
+                                when jArray with x then
+                                    if vector.length(x.items) is 2 then
+                                        case vector.get(x.items 0)
+                                            when jString with m then
+                                                stringOp.equal(m.s "") orif stringOp.equal(m.s "var")
+                                                    orif stringOp.equal(m.s "out")
+                                            else false
+                                        end
+                                    else
+                                        false
                                     end
-                                else false end
-                            else false
-                        end
+                                else false
+                            end
                         if not(good) then fail(:Ok) end
                         checkRef(rd vector.get(items(p) 1))
                     end
@@ -339,27 +348,29 @@ export
             let var closed = not(mentionsAny(rep rd.binderIdSet))
             for i = 0 upto {extent args - 1} do if mentionsAny(args[i] rd.binderIdSet) then closed := false end end
             let found = abstractTypes.abstractTypeByName(name)
-            let entry = if maybe.isNone(found) then
-                if not(closed) then fail(:Ok) end
-                let var0 = tm.typeVariable(name abstractTypes.abstractTypeSymbolId(name)
-                    maybe.some(operatorKind(extent args)))
-                abstractTypes.registerUnlinkedAbstractType(name var0)
-            else
-                maybe.unwrap(found)
-            end
+            let entry =
+                if maybe.isNone(found) then
+                    if not(closed) then fail(:Ok) end
+                    let var0 = tm.typeVariable(name abstractTypes.abstractTypeSymbolId(name)
+                            maybe.some(operatorKind(extent args)))
+                    abstractTypes.registerUnlinkedAbstractType(name var0)
+                else
+                    maybe.unwrap(found)
+                end
             let bound = dynamicJson.boundOf(entry.typeVar)
             if {arity(bound) isnot extent args} orif not(dynamicJson.isUnbounded(bound)) then fail(:Ok) end
-            let known = if not(entry.linked) then
-                try
+            let known =
+                if not(entry.linked) then
+                    try
+                        dynamicJson.representation(entry args)
+                    when model.runError with err then
+                        if not(closed) then raise model.runError with err end end
+                        vector.append(entry.instances tuple let args = args let rep = rep end)
+                        rep
+                    end
+                else
                     dynamicJson.representation(entry args)
-                when model.runError with err then
-                    if not(closed) then raise model.runError with err end end
-                    vector.append(entry.instances tuple let args = args let rep = rep end)
-                    rep
                 end
-            else
-                dynamicJson.representation(entry args)
-            end
             if not(subtyping.isTypeEqual(known rep maybe.none())) then fail(:Ok) end
             if extent args > 0 then tm.typeApp(entry.typeVar args) else entry.typeVar end
         end
@@ -388,11 +399,12 @@ export
                 hashMap.insert(rd.active r.index true)
                 let t0 = build(rd e)
                 hashMap.delete(rd.active r.index)
-                let t = if hashMap.contains(rd.recursive r.index) then
-                    tm.recType("T" <> intKey(r.index) binder tm.typeKind t0)
-                else
-                    t0
-                end
+                let t =
+                    if hashMap.contains(rd.recursive r.index) then
+                        tm.recType("T" <> intKey(r.index) binder tm.typeKind t0)
+                    else
+                        t0
+                    end
                 (* A type that mentions a recursive type's binder, or an
                  * enclosing auto type's parameter, is that type only where it
                  * was reached *)
@@ -414,7 +426,9 @@ export
             let fields = vector.new(:tm.RecordField)
             for i = 0 upto {extent ns - 1} do
                 vector.append(fields tuple
-                    let name = dynamicJson.fieldName(ns[i]) let type = typeOf(rd checkRef(rd member(b ns[i]))) let isVar = isVarLabel(ns[i])
+                    let name = dynamicJson.fieldName(ns[i])
+                    let type = typeOf(rd checkRef(rd member(b ns[i])))
+                    let isVar = isVarLabel(ns[i])
                 end)
             end
             tm.recordType(vector.toArray(fields) maybe.none())
@@ -426,8 +440,8 @@ export
                 let label = pairLabel(p)
                 let name = dynamicJson.fieldName(label)
                 vector.append(fields tm.tupleField(
-                    if stringOp.length(name) > 0 then maybe.some(name) else maybe.none(:String) end
-                    typeOf(rd pairRef(rd p)) isVarLabel(label)))
+                        if stringOp.length(name) > 0 then maybe.some(name) else maybe.none(:String) end
+                        typeOf(rd pairRef(rd p)) isVarLabel(label)))
             end
             tm.tupleType(vector.toArray(fields))
         elsif stringOp.equal(e.kind "variant") then
@@ -473,9 +487,10 @@ export
         elsif stringOp.equal(e.kind "auto") then
             let b = members(e.body)
             let boundJson = member(b "bound")
-            let kindBound = if isNull(boundJson) then tm.typeKind else tm.powerKind(typeOf(rd checkRef(rd boundJson))) end
+            let kindBound =
+                if isNull(boundJson) then tm.typeKind else tm.powerKind(typeOf(rd checkRef(rd boundJson))) end
             let param = tm.typeVariable("A" <> intKey(vector.length(rd.autoParams)) symbols.allocateSymbolId()
-                maybe.some(kindBound))
+                    maybe.some(kindBound))
             vector.append(rd.autoParams param)
             let ps = pairsOf(member(b "components"))
             let signature = vector.new(:tm.RecordField)
@@ -483,7 +498,9 @@ export
                 let p = vector.get(ps i)
                 let label = pairLabel(p)
                 vector.append(signature tuple
-                    let name = dynamicJson.fieldName(label) let type = typeOf(rd pairRef(rd p)) let isVar = isVarLabel(label)
+                    let name = dynamicJson.fieldName(label)
+                    let type = typeOf(rd pairRef(rd p))
+                    let isVar = isVarLabel(label)
                 end)
             end
             vector.pop(rd.autoParams)
@@ -499,8 +516,10 @@ export
                 let p = vector.get(ps i)
                 let mode = pairLabel(p)
                 vector.append(params tuple
-                    let name = "x" <> intKey(i + 1) let type = typeOf(rd pairRef(rd p))
-                    let isVar = stringOp.equal(mode "var") let isOut = stringOp.equal(mode "out")
+                    let name = "x" <> intKey(i + 1)
+                    let type = typeOf(rd pairRef(rd p))
+                    let isVar = stringOp.equal(mode "var")
+                    let isOut = stringOp.equal(mode "out")
                 end)
             end
             tm.funType(vector.toArray(params) typeOf(rd checkRef(rd member(b "result"))))
@@ -523,7 +542,7 @@ export
                     if maybe.isNone(found) then fail(:Ok) end
                     let obj = maybe.unwrap(found)
                     if not(sameRef(obj.readAt r))
-                        andif not(subtyping.isSubtype(typeOf(rd obj.readAt) typeOf(rd r) maybe.none())) then
+                            andif not(subtyping.isSubtype(typeOf(rd obj.readAt) typeOf(rd r) maybe.none())) then
                         fail(:Ok)
                     end
                     tuple let existing = maybe.some(obj.value) let objId = maybe.none() let contents = json.null end
@@ -536,10 +555,18 @@ export
                         for i = 0 upto {extent ns - 1} do
                             if not(stringOp.equal(ns[i] "@id")) then json.put(rest ns[i] member(x.o ns[i])) end
                         end
-                        tuple let existing = maybe.none() let objId = maybe.some(id) let contents = json.object(rest) end
+                        tuple
+                            let existing = maybe.none()
+                            let objId = maybe.some(id)
+                            let contents = json.object(rest)
+                        end
                     else
                         if {memberCount(x.o) isnot 2} orif not(hasMember(x.o "@items")) then fail(:Ok) end
-                        tuple let existing = maybe.none() let objId = maybe.some(id) let contents = member(x.o "@items") end
+                        tuple
+                            let existing = maybe.none()
+                            let objId = maybe.some(id)
+                            let contents = member(x.o "@items")
+                        end
                     end
                 else
                     tuple let existing = maybe.none() let objId = maybe.none() let contents = data end
@@ -581,11 +608,13 @@ export
                     option vWord of Value with let w = wordOf(data) end
                 elsif stringOp.equal(e.kind "auto") then
                     let o = members(data)
-                    if {memberCount(o) isnot 2} orif not(hasMember(o "@type")) orif not(hasMember(o "@value")) then fail(:Ok) end
+                    if {memberCount(o) isnot 2} orif not(hasMember(o "@type")) orif not(hasMember(o "@value")) then
+                        fail(:Ok)
+                    end
                     let witness = checkRef(rd member(o "@type"))
                     let b = members(e.body)
                     if not(isNull(member(b "bound"))) andif not(subtyping.isSubtype(typeOf(rd witness)
-                        typeOf(rd checkRef(rd member(b "bound"))) maybe.none())) then
+                            typeOf(rd checkRef(rd member(b "bound"))) maybe.none())) then
                         fail(:Ok)
                     end
                     let values = items(member(o "@value"))
@@ -624,7 +653,7 @@ export
                         let result = model.recordValue(map)
                         if maybe.isSome(s.objId) then
                             hashMap.insert(rd.objects maybe.unwrap(s.objId)
-                                tuple let value = result let readAt = r end)
+                                    tuple let value = result let readAt = r end)
                         end
                         for i = 0 upto {extent labels - 1} do
                             let name = dynamicJson.fieldName(labels[i])
@@ -642,10 +671,12 @@ export
                         let result = option vArray of Value with let a = elements end
                         if maybe.isSome(s.objId) then
                             hashMap.insert(rd.objects maybe.unwrap(s.objId)
-                                tuple let value = result let readAt = r end)
+                                    tuple let value = result let readAt = r end)
                         end
                         let elementRef = checkRef(rd e.body)
-                        for i = 0 upto {extent elements - 1} do elements[i] := value(rd vector.get(its i) elementRef) end
+                        for i = 0 upto {extent elements - 1} do
+                            elements[i] := value(rd vector.get(its i) elementRef)
+                        end
                         result
                     end
                 elsif stringOp.equal(e.kind "tuple") then
@@ -660,7 +691,7 @@ export
                         let result = model.tupleValue(elements labelsOf(ps))
                         if maybe.isSome(s.objId) then
                             hashMap.insert(rd.objects maybe.unwrap(s.objId)
-                                tuple let value = result let readAt = r end)
+                                    tuple let value = result let readAt = r end)
                         end
                         for i = 0 upto {extent elements - 1} do
                             elements[i] := value(rd vector.get(its i) pairRef(rd vector.get(ps i)))
@@ -677,7 +708,9 @@ export
                         begin
                             let var found = maybe.none(:json.Value)
                             for i = 0 upto {extent labels - 1} do
-                                if stringOp.equal(dynamicJson.fieldName(labels[i]) tag) then found := maybe.some(member(b labels[i])) end
+                                if stringOp.equal(dynamicJson.fieldName(labels[i]) tag) then
+                                    found := maybe.some(member(b labels[i]))
+                                end
                             end
                             found
                         end
@@ -685,7 +718,8 @@ export
                         isNull(c) orif case c when jString with x then stringOp.equal(x.s "Ok") else false end
                     let make(tag: String payload: Value): Value =
                         if isVariant then model.variantValue(tag maybe.some(payload))
-                        else model.optionValue(tag maybe.some(payload)) end
+                        else model.optionValue(tag maybe.some(payload))
+                        end
                     case data
                         when jString with x then
                             let c = caseRef(x.s)
@@ -748,7 +782,7 @@ export
                 if stringOp.equal(name "Ok") then model.okValue else fail() end
             when jObject with x then
                 if stringOp.equal(name "Dynamic") andif {memberCount(x.o) is 2} andif hasMember(x.o "@type")
-                    andif hasMember(x.o "@value") then
+                        andif hasMember(x.o "@value") then
                     dynamic(rd checkRef(rd member(x.o "@type")) member(x.o "@value"))
                 else
                     fail()
@@ -769,7 +803,7 @@ export
         begin
             let o = members(document)
             if {memberCount(o) isnot 4} orif not(hasMember(o "quest")) orif not(hasMember(o "types"))
-                orif not(hasMember(o "type")) orif not(hasMember(o "value")) then
+                    orif not(hasMember(o "type")) orif not(hasMember(o "value")) then
                 fail(:Ok)
             end
             if integer(member(o "quest")) isnot formatVersion then fail(:Ok) end

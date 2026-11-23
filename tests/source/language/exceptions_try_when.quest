@@ -1,19 +1,19 @@
 (* Language: User Exceptions, Handlers, Payloads, and Builtin Catches *)
 
-import writer: Writer;
-import conv: Conv;
-import int: IntOp;
-import real: RealOp;
+import conv : Conv
+import int : IntOp
+import real : RealOp
+import writer : Writer
 
-let wOut = writer.output;
+let wOut = writer.output
 let printInt(x: Int): Ok =
     begin
         writer.putString(wOut conv.int(x))
         writer.putString(wOut "\n")
-    end;
+    end
 
 (* 1. User exception without payload *)
-exception MyExc: Ok end;
+exception MyExc: Ok end
 let compute(x: Int): Int =
     try
         if x < 0 then
@@ -23,13 +23,13 @@ let compute(x: Int): Int =
         end
     when MyExc then
         ~1
-    end;
+    end
 
-printInt(compute(5));
-printInt(compute(~3));
+printInt(compute(5))
+printInt(compute(~3))
 
 (* 2. User exception with payload *)
-exception Fail: Int end;
+exception Fail: Int end
 let tryWork(code: Int): Int =
     try
         if code < 0 then
@@ -39,35 +39,38 @@ let tryWork(code: Int): Int =
         end
     when Fail with errCode then
         0 - errCode
-    end;
+    end
 
-printInt(tryWork(7));
-printInt(tryWork(~42));
+printInt(tryWork(7))
+printInt(tryWork(~42))
 
 (* 3. Catch integer division by zero *)
-let r3 = try
-    42 / 0
-when int.error then
-    777
-end;
-printInt(r3);
+let r3 =
+    try
+        42 / 0
+    when int.error then
+        777
+    end
+printInt(r3)
 
 (* 4. Each evaluation of `exception` makes a distinct exception, even with the
    same name: `when m2` must not catch m1. *)
-let mk(x: Int): Exception(Int) = exception Made: Int end;
-let m1 = mk(1);
-let m2 = mk(2);
-let r4 = try
-    try raise m1 with 6 as Int end when m2 with n then 0 - n end
-when m1 with n then
-    n
-end;
-printInt(r4);
+let mk(x: Int): Exception(Int) = exception Made: Int end
+let m1 = mk(1)
+let m2 = mk(2)
+let r4 =
+    try
+        try raise m1 with 6 as Int end when m2 with n then 0 - n end
+    when m1 with n then
+        n
+    end
+printInt(r4)
 
 (* 5. Catch real division by zero *)
-let r5 = try
-    begin 1.0 // 0.0 0 end
-when real.error then
-    555
-end;
-printInt(r5);
+let r5 =
+    try
+        begin 1.0 // 0.0 0 end
+    when real.error then
+        555
+    end
+printInt(r5)

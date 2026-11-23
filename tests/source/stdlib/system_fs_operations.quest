@@ -1,95 +1,95 @@
-import system: System;
-import writer: Writer;
-import conv: Conv;
+import conv : Conv
+import system : System
+import writer : Writer
 
 let printBool(b: Bool): Ok =
     begin
         writer.putString(writer.output conv.bool(b))
         writer.putString(writer.output "\n")
-    end;
+    end
 
 let printInt(n: Int): Ok =
     begin
         writer.putString(writer.output conv.int(n))
         writer.putString(writer.output "\n")
-    end;
+    end
 
 let printString(s: String): Ok =
     begin
         writer.putString(writer.output s)
         writer.putString(writer.output "\n")
-    end;
+    end
 
 (* The test runs in a fresh, empty directory of its own (docs/testing.md section 2.2), so it creates whatever it
    inspects. *)
 
 (* 1. Test isFile and isDirectory on a file, a directory, and a missing path *)
-let probe = writer.file("probe.txt");
-writer.close(probe);
-system.makeDirectory("probe_dir");
-printBool(system.isFile("probe.txt"));
-printBool(system.isDirectory("probe.txt"));
-printBool(system.isFile("probe_dir"));
-printBool(system.isDirectory("probe_dir"));
-printBool(system.isFile("does_not_exist_abc_123.txt"));
-printBool(system.isDirectory("does_not_exist_abc_123.txt"));
+let probe = writer.file("probe.txt")
+writer.close(probe)
+system.makeDirectory("probe_dir")
+printBool(system.isFile("probe.txt"))
+printBool(system.isDirectory("probe.txt"))
+printBool(system.isFile("probe_dir"))
+printBool(system.isDirectory("probe_dir"))
+printBool(system.isFile("does_not_exist_abc_123.txt"))
+printBool(system.isDirectory("does_not_exist_abc_123.txt"))
 
 (* 2. Test directory creation, navigation, file operations *)
-let testDir = "tmp_system_fs_test";
-system.makeDirectory(testDir);
-printBool(system.isDirectory(testDir));
+let testDir = "tmp_system_fs_test"
+system.makeDirectory(testDir)
+printBool(system.isDirectory(testDir))
 
-let subDir = "tmp_system_fs_test/nested/deep";
-system.makeDirectory(subDir);
-printBool(system.isDirectory(subDir));
+let subDir = "tmp_system_fs_test/nested/deep"
+system.makeDirectory(subDir)
+printBool(system.isDirectory(subDir))
 
 (* 3. Test creating a file, renaming it, and removing it *)
-let fileA = "tmp_system_fs_test/nested/fileA.txt";
-let w = writer.file(fileA);
-writer.putString(w "hello world\n");
-writer.close(w);
+let fileA = "tmp_system_fs_test/nested/fileA.txt"
+let w = writer.file(fileA)
+writer.putString(w "hello world\n")
+writer.close(w)
 
-printBool(system.isFile(fileA));
+printBool(system.isFile(fileA))
 
-let fileB = "tmp_system_fs_test/nested/fileB.txt";
-system.renameFile(fileA fileB);
-printBool(system.fileExists(fileA));
-printBool(system.isFile(fileB));
+let fileB = "tmp_system_fs_test/nested/fileB.txt"
+system.renameFile(fileA fileB)
+printBool(system.fileExists(fileA))
+printBool(system.isFile(fileB))
 
-system.removeFile(fileB);
-printBool(system.fileExists(fileB));
+system.removeFile(fileB)
+printBool(system.fileExists(fileB))
 
 (* 4. Test listDirectory *)
-let subFile1 = "tmp_system_fs_test/nested/deep/file1.txt";
-let w1 = writer.file(subFile1);
-writer.putString(w1 "1");
-writer.close(w1);
+let subFile1 = "tmp_system_fs_test/nested/deep/file1.txt"
+let w1 = writer.file(subFile1)
+writer.putString(w1 "1")
+writer.close(w1)
 
-let subFile2 = "tmp_system_fs_test/nested/deep/file2.txt";
-let w2 = writer.file(subFile2);
-writer.putString(w2 "2");
-writer.close(w2);
+let subFile2 = "tmp_system_fs_test/nested/deep/file2.txt"
+let w2 = writer.file(subFile2)
+writer.putString(w2 "2")
+writer.close(w2)
 
-let entries = system.listDirectory(subDir);
-printInt(arrayOp.size(entries));
-printString(arrayOp.get(:String entries 0));
-printString(arrayOp.get(:String entries 1));
+let entries = system.listDirectory(subDir)
+printInt(arrayOp.size(entries))
+printString(arrayOp.get(:String entries 0))
+printString(arrayOp.get(:String entries 1))
 
-system.removeFile(subFile1);
-system.removeFile(subFile2);
-system.removeDirectory(subDir);
-system.removeDirectory("tmp_system_fs_test/nested");
+system.removeFile(subFile1)
+system.removeFile(subFile2)
+system.removeDirectory(subDir)
+system.removeDirectory("tmp_system_fs_test/nested")
 
 (* 5. Test currentDirectory and changeDirectory *)
-let origCwd = system.currentDirectory();
-system.changeDirectory(testDir);
-let newCwd = system.currentDirectory();
-printBool(string.equal(origCwd newCwd));
-system.changeDirectory(origCwd);
-printBool(string.equal(origCwd system.currentDirectory()));
+let origCwd = system.currentDirectory()
+system.changeDirectory(testDir)
+let newCwd = system.currentDirectory()
+printBool(string.equal(origCwd newCwd))
+system.changeDirectory(origCwd)
+printBool(string.equal(origCwd system.currentDirectory()))
 
-system.removeDirectory(testDir);
-printBool(system.fileExists(testDir));
+system.removeDirectory(testDir)
+printBool(system.fileExists(testDir))
 
 (* 6. Test exception on removing non-existent file *)
 try
@@ -99,4 +99,4 @@ try
     end
 when system.error then
     printString("CAUGHT: system.error")
-end;
+end

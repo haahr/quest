@@ -2,13 +2,15 @@
 
 module printer : Printer
 import
-    questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/repr/syntax : questlang/repr/Syntax
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/vector : collections/Vector
     sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
-    conv : Conv
-    stringOp = string : StringOp
+
+    questlang/repr/syntax : questlang/repr/Syntax
+    questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let Function = nodes.Function
 
@@ -42,10 +44,11 @@ export
             let memory = nodes.memoryOf(s.params)
             let places = array of(extent memory "")
             for k = 0 upto {extent memory - 1} do
-                let bytes = case s.params[memory[k]]
-                    when passMemory with x then x.bytes
-                    when passWord, passReal, passPair, passPairRest, passByte, passInt32 then 0
-                end
+                let bytes =
+                    case s.params[memory[k]]
+                        when passMemory with x then x.bytes
+                        when passWord, passReal, passPair, passPairRest, passByte, passInt32 then 0
+                    end
                 places[k] := conv.int(memory[k]) <> ":" <> conv.int(bytes)
             end
             listed("pairs" nodes.pairsOf(s.params)) <> listed("narrow" nodes.narrowOf(s.params))
@@ -56,7 +59,8 @@ export
     (* How a signature's one result is passed, where not in a word: as a
      * byte (narrow) or an int32 *)
     let resultText(s: nodes.Signature): String =
-        if extent s.results isnot 1 then ""
+        if extent s.results isnot 1 then
+            ""
         else
             case s.results[0]
                 when passByte then " result narrow"
@@ -71,28 +75,38 @@ export
             for r = 0 upto {extent i.results - 1} do results[r] := typed(f i.results[r]) end
             let head = if extent i.results > 0 then strutil.joinArray(", " results) <> " = " else "" end
             let name = nodes.opcodeName(i.op)
-            let body = case i.op
-                when opConst then name <> " " <> conv.int(i.imm)
-                when opRealConst then name <> " " <> conv.int(i.imm)
-                when opSymbol then name <> " " <> i.symbol <> if i.imm is 0 then "" else " + " <> conv.int(i.imm) end
-                when opThreadLocal then name <> " " <> i.symbol
-                when opSlot then name <> " " <> conv.int(i.imm)
-                when opLoad then
-                    name <> conv.int(i.width) <> if {i.width < 8} andif i.signed then "s" else "" end <> " "
-                        <> values(i.args) <> " + " <> conv.int(i.imm) <> if i.invariant then " invariant" else "" end
-                when opStore then
-                    name <> conv.int(i.width) <> " " <> value(i.args[0]) <> " + " <> conv.int(i.imm) <> ", " <> value(i.args[1])
-                when opCall then
-                    name <> " " <> i.symbol <> "(" <> values(i.args) <> ")" <> paramsText(i.signature)
+            let body =
+                case i.op
+                    when opConst then name <> " " <> conv.int(i.imm)
+                    when opRealConst then name <> " " <> conv.int(i.imm)
+                    when opSymbol then
+                        name <> " " <> i.symbol <> if i.imm is 0 then "" else " + " <> conv.int(i.imm) end
+                    when opThreadLocal then name <> " " <> i.symbol
+                    when opSlot then name <> " " <> conv.int(i.imm)
+                    when opLoad then
+                        name <> conv.int(i.width) <> if {i.width < 8} andif i.signed then "s" else "" end <> " "
+                            <> values(i.args) <> " + " <> conv.int(i.imm)
+                            <> if i.invariant then
+                                " invariant"
+                            else
+                                ""
+                            end
+                    when opStore then
+                        name <> conv.int(i.width) <> " " <> value(i.args[0]) <> " + " <> conv.int(i.imm) <> ", "
+                            <> value(i.args[1])
+                    when opCall then
+                        name <> " " <> i.symbol <> "(" <> values(i.args) <> ")" <> paramsText(i.signature)
+                            <> resultText(i.signature)
+                    when opCallIndirect then name <> " " <> values(i.args) <> paramsText(i.signature)
                         <> resultText(i.signature)
-                when opCallIndirect then name <> " " <> values(i.args) <> paramsText(i.signature)
-                    <> resultText(i.signature)
-                when opNull, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr,
-                    opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq,
-                    opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8,
-                    opZext8, opCopy, opPtrAdd, opToVal, opFromVal, opSelect, opUnproxy then
-                    if extent i.args > 0 then name <> " " <> values(i.args) else name end
-            end
+                    when opNull, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr,
+                            opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv,
+                            opFeq,
+                            opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal,
+                            opSext8,
+                            opZext8, opCopy, opPtrAdd, opToVal, opFromVal, opSelect, opUnproxy then
+                        if extent i.args > 0 then name <> " " <> values(i.args) else name end
+                end
             head <> body
         end
 
@@ -100,11 +114,15 @@ export
         case t
             when termNone then "(no terminator)"
             when termJump with x then "jump " <> targetText(x.target)
-            when termBranch with x then "branch " <> value(x.cond) <> ", " <> targetText(x.ifTrue) <> ", " <> targetText(x.ifFalse)
+            when termBranch with x then
+                "branch " <> value(x.cond) <> ", " <> targetText(x.ifTrue) <> ", " <> targetText(x.ifFalse)
             when termSwitch with x then
                 let arms = array of(extent x.cases "")
-                for i = 0 upto {extent x.cases - 1} do arms[i] := conv.int(x.cases[i]) <> ": " <> targetText(x.targets[i]) end
-                "switch " <> value(x.value) <> " [" <> strutil.joinArray(", " arms) <> "] default " <> targetText(x.default)
+                for i = 0 upto {extent x.cases - 1} do
+                    arms[i] := conv.int(x.cases[i]) <> ": " <> targetText(x.targets[i])
+                end
+                "switch " <> value(x.value) <> " [" <> strutil.joinArray(", " arms) <> "] default "
+                    <> targetText(x.default)
             when termReturn with x then if extent x.values > 0 then "return " <> values(x.values) else "return" end
             when termTailCall with x then "tail " <> instText(f x.call)
             when termTry with x then
@@ -116,7 +134,8 @@ export
      * @line:col in the unit's first file, @file:line:col in another, and @-
      * for none *)
     let locText(l: nodes.Loc): String =
-        if not(nodes.hasLoc(l)) then "@-"
+        if not(nodes.hasLoc(l)) then
+            "@-"
         else
             "@" <> if l.file is 1 then "" else conv.int(l.file) <> ":" end <> conv.int(l.line) <> ":"
                 <> conv.int(l.col)

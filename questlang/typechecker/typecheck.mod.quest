@@ -78,28 +78,30 @@
 
 module typecheck : Typecheck
 import
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/syntax/ast : questlang/syntax/Ast
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/types/env : questlang/types/Env
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
-    questlang/typechecker/checker : questlang/typechecker/Checker
-    questlang/typechecker/checks : questlang/typechecker/Checks
-    questlang/typechecker/bindings : questlang/typechecker/Bindings
-    questlang/typechecker/application : questlang/typechecker/Application
-    questlang/typechecker/aggregates : questlang/typechecker/Aggregates
-    questlang/typechecker/tuples : questlang/typechecker/Tuples
-    questlang/typechecker/control : questlang/typechecker/Control
-    questlang/typechecker/exceptions : questlang/typechecker/Exceptions
-    questlang/typechecker/autoValues : questlang/typechecker/AutoValues
-    questlang/typechecker/scoping : questlang/typechecker/Scoping
-    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
-    questlang/modules/elaboration : questlang/modules/Elaboration
-    questlang/modules/loader : questlang/modules/Loader
+    stringOp = string : StringOp
+
     collections/vector : collections/Vector
     util/maybe : util/Maybe
-    stringOp = string : StringOp
+
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/modules/loader : questlang/modules/Loader
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/typechecker/aggregates : questlang/typechecker/Aggregates
+    questlang/typechecker/application : questlang/typechecker/Application
+    questlang/typechecker/autoValues : questlang/typechecker/AutoValues
+    questlang/typechecker/bindings : questlang/typechecker/Bindings
+    questlang/typechecker/checker : questlang/typechecker/Checker
+    questlang/typechecker/checks : questlang/typechecker/Checks
+    questlang/typechecker/control : questlang/typechecker/Control
+    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
+    questlang/typechecker/exceptions : questlang/typechecker/Exceptions
+    questlang/typechecker/scoping : questlang/typechecker/Scoping
+    questlang/typechecker/tuples : questlang/typechecker/Tuples
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let Type = model.Type
     Let Result = Tuple
@@ -138,14 +140,14 @@ export
                     begin
                         elaborateTypes.requireUnsoundModule(e x0.span.startOffset)
                         expr(x0.span.startOffset expected
-                            option exprExternal of typedAst.ExprForm with let symbol = x.symbol end)
+                                option exprExternal of typedAst.ExprForm with let symbol = x.symbol end)
                     end
                 (* An application: the type required by the context can
                  * determine implicit type arguments (Cardelli, The Quest
                  * Language and System section 4: cons(3 nil())) *)
                 when exprApp then
                     checks.requireSubtype(x0.span.startOffset application.elaborateApp(c x0 exp e loopDepth) expected e
-                        maybe.none())
+                            maybe.none())
                 (* Subsumption: the minimal type is synthesized and must be a
                  * subtype *)
                 else checker.checkSubsumption(c x0 expected e loopDepth maybe.none())
@@ -182,7 +184,8 @@ export
             let none = maybe.none(:Type)
             case x0.form
                 (* Literals *)
-                when exprInt with x then expr(offset model.intType option exprInt of typedAst.ExprForm with let value = x.value end)
+                when exprInt with x then
+                    expr(offset model.intType option exprInt of typedAst.ExprForm with let value = x.value end)
                 when exprReal with x then
                     expr(offset model.realType option exprReal of typedAst.ExprForm with let value = x.value end)
                 when exprBool with x then
@@ -199,16 +202,17 @@ export
                     end
                 when exprExternal with x then
                     diagnostics.fail("External binding '" <> x.symbol <> "' requires an explicit type annotation"
-                        offset)
+                            offset)
 
                 (* Variables *)
                 when exprId with x then
                     begin
                         let name = x.name
-                        if not(isCallee) andif {stringOp.equal(name "not") orif stringOp.equal(name "extent") orif
-                                stringOp.equal(name "ordinal")} then
-                            diagnostics.fail(:Ok "Monadic operator '" <> name <> "' cannot be used as a value without an operand"
-                                offset)
+                        if not(isCallee) andif {stringOp.equal(name "not") orif stringOp.equal(name "extent")
+                                orif stringOp.equal(name "ordinal")} then
+                            diagnostics.fail(:Ok "Monadic operator '" <> name
+                                <> "' cannot be used as a value without an operand"
+                                    offset)
                         end
                         let found = checker.lookupValue(c e name)
                         if maybe.isNone(found) then
@@ -220,14 +224,17 @@ export
                         checker.checkCapturable(c sym offset)
                         (* Out parameters are write-only *)
                         if sym.isOut then
-                            diagnostics.fail(:Ok "Cannot read from write-only 'out' parameter '" <> sym.name <> "'" offset)
+                            diagnostics.fail(:Ok "Cannot read from write-only 'out' parameter '" <> sym.name
+                                <> "'" offset)
                         end
                         let varForm = option exprVar of typedAst.ExprForm with let name = sym.name let symbol = sym end
                         (* A mutable variable in a value position is
                          * dereferenced *)
                         if sym.isVar then
                             let varNode = expr(offset model.varType(sym.type) varForm)
-                            expr(offset sym.type option exprDerefCell of typedAst.ExprForm with let target = varNode end)
+                            expr(offset sym.type option exprDerefCell of typedAst.ExprForm with
+                                let target = varNode
+                            end)
                         else
                             expr(offset sym.type varForm)
                         end
@@ -248,16 +255,21 @@ export
                                  * not capture a var parameter, nor a function
                                  * read a global var *)
                                 checker.checkCapturable(c sym targetOffset)
-                                let element = case sym.type.form when typeVar with v then maybe.some(v.element) else none end
+                                let element =
+                                    case sym.type.form when typeVar with v then maybe.some(v.element) else none end
                                 if not(sym.isVar) andif maybe.isNone(element) then
-                                    diagnostics.fail(:Ok "Cannot dereference non-variable symbol '" <> id.name <> "'" targetOffset)
+                                    diagnostics.fail(:Ok "Cannot dereference non-variable symbol '" <> id.name
+                                        <> "'" targetOffset)
                                 end
                                 let varType = if sym.isVar then model.varType(sym.type) else sym.type end
                                 let elemType = if sym.isVar then sym.type else maybe.unwrap(element) end
                                 let varNode = expr(targetOffset varType option exprVar of typedAst.ExprForm with
-                                    let name = sym.name let symbol = sym
+                                    let name = sym.name
+                                    let symbol = sym
                                 end)
-                                expr(offset elemType option exprDerefCell of typedAst.ExprForm with let target = varNode end)
+                                expr(offset elemType option exprDerefCell of typedAst.ExprForm with
+                                    let target = varNode
+                                end)
                             end
                         else
                             begin
@@ -268,8 +280,8 @@ export
                                             let target = targetTyped
                                         end)
                                     else
-                                        diagnostics.fail("Cannot dereference non-variable type '" <>
-                                            model.show(targetTyped.type) <> "'" offset)
+                                        diagnostics.fail("Cannot dereference non-variable type '"
+                                            <> model.show(targetTyped.type) <> "'" offset)
                                 end
                             end
                     end
@@ -294,7 +306,8 @@ export
                         let bodyTyped = checker.inLoop(c fun(): typedAst.Expr
                             synthExpr(c x.body e c.loopDepth false))
                         expr(offset model.okType option exprWhile of typedAst.ExprForm with
-                            let cond = condTyped let body = bodyTyped
+                            let cond = condTyped
+                            let body = bodyTyped
                         end)
                     end
                 when exprLoop with x then
@@ -409,14 +422,15 @@ export
                         if not(vector.empty(c.errors)) then
                             diagnostics.raiseError(:Ok vector.get(c.errors 0))
                         end
-                    let typed = try
-                        bindings.elaborateBinding(c b en loopDepth)
-                    when diagnostics.compilerError with err then
-                        begin
-                            firstRecorded()
-                            diagnostics.raiseError(:typedAst.Binding err)
+                    let typed =
+                        try
+                            bindings.elaborateBinding(c b en loopDepth)
+                        when diagnostics.compilerError with err then
+                            begin
+                                firstRecorded()
+                                diagnostics.raiseError(:typedAst.Binding err)
+                            end
                         end
-                    end
                     firstRecorded()
                     maybe.some(typed)
                 end
@@ -454,7 +468,8 @@ export
                 vector.append(c.errors err)
             end
             let typed: typedAst.Program = tuple
-                let offset = program.span.startOffset let phrases = vector.toArray(phrases)
+                let offset = program.span.startOffset
+                let phrases = vector.toArray(phrases)
             end
             if vector.empty(c.errors) andif scoping.scopeChecksEnabled() then
                 let problems = scoping.checkWellScoped(typed)
@@ -469,7 +484,8 @@ export
             let errors = vector.toArray(c.errors)
             let result = if extent errors is 0 then maybe.some(typed) else maybe.none(:typedAst.Program) end
             tuple
-                let program = result let errors = errors
+                let program = result
+                let errors = errors
                 let warnings = vector.toArray(c.warnings)
             end
         end

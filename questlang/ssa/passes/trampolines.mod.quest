@@ -2,13 +2,15 @@
 
 module trampolines : Trampolines
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/passes/tailJumps : questlang/ssa/passes/TailJumps
-    collections/vector : collections/Vector
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    stringOp = string : StringOp
+
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/passes/tailJumps : questlang/ssa/passes/TailJumps
 export
     Let Function = ssa.Function
 
@@ -26,10 +28,11 @@ export
             for b = 0 upto {vector.length(g.blocks) - 1} do
                 let blk = ssa.block(g b)
                 n := n + vector.length(blk.insts) + 1
-                let raises = case blk.term
-                    when termUnreachable then true
-                    when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termTry then false
-                end
+                let raises =
+                    case blk.term
+                        when termUnreachable then true
+                        when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termTry then false
+                    end
                 if not(raises) then
                     for k = 0 upto {vector.length(blk.insts) - 1} do
                         if ssa.isCall(vector.get(blk.insts k)) then calls := false end
@@ -65,7 +68,7 @@ export
     (* Copies into f the function its first block tail-calls, while it
      * can, appending the symbols of those copied to copied *)
     let copyCallees(f: Function functions: vector.T(Function) numbers: hashMap.T(String Int) copied: vector.T(String))
-        : Ok =
+            : Ok =
         begin
             let var left = rounds
             while left > 0 do
@@ -77,13 +80,17 @@ export
                         if ssa.isOp(x.call ssa.opCall) andif maybe.isSome(n) then
                             let g = vector.get(functions maybe.unwrap(n))
                             if not(stringOp.equal(g.symbol f.symbol)) andif small(g) andif tailJumps.copiable(g)
-                                andif tailJumps.sameResults(f g) andif not(entered(g)) andif takes(f g x.call.args)
-                            then
+                                    andif tailJumps.sameResults(f g) andif not(entered(g))
+                                    andif takes(f g x.call.args) then
                                 blk.term := ssa.termNone
                                 tailJumps.spliceInto(f 0 g x.call.args)
                                 vector.append(copied g.symbol)
-                            else left := 0 end
-                        else left := 0 end
+                            else
+                                left := 0
+                            end
+                        else
+                            left := 0
+                        end
                     when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable then left := 0
                 end
             end
@@ -93,7 +100,7 @@ export
      * eligible functions its entry block tail-calls into f and returns their
      * symbols *)
     let trampolineFunction(f: Function functions: vector.T(Function) numbers: hashMap.T(String Int))
-        : vector.T(String) =
+            : vector.T(String) =
         begin
             let copied = vector.new(:String)
             if f.exported andif {vector.length(f.blocks) is 1} then
@@ -117,8 +124,7 @@ export
                     for j = 0 upto {vector.length(blk.insts) - 1} do
                         let i = vector.get(blk.insts j)
                         if ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol "quest_register_funcs")
-                            andif {extent i.args > 1}
-                        then
+                                andif {extent i.args > 1} then
                             let v = ssa.newValue(f ssa.typeInt)
                             let c = ssa.inst(ssa.opConst array of :Int end array of v end)
                             c.imm := n
@@ -169,10 +175,12 @@ export
                             for c = 0 upto {vector.length(copied) - 1} do
                                 let n = hashMap.get(names vector.get(copied c))
                                 if maybe.isSome(n) then
-                                    if found then begin let ignored = vector.pop(words) end
+                                    if found then
+                                        begin let ignored = vector.pop(words) end
                                     else
                                         vector.append(words option wordSymbol of ssa.Word with
-                                            let symbol = vector.get(exports e) let addend = 0
+                                            let symbol = vector.get(exports e)
+                                            let addend = 0
                                         end)
                                     end
                                     vector.append(words maybe.unwrap(n))
@@ -181,7 +189,7 @@ export
                             end
                         end
                         vector.set(u.data table
-                            ssa.words(d.symbol d.exported d.writable vector.toArray(words)))
+                                ssa.words(d.symbol d.exported d.writable vector.toArray(words)))
                         count(u vector.length(words) / 2)
                     when contentsZero, contentsText then ok
                 end

@@ -3,14 +3,15 @@
 
 module representation : Representation
 import
-    questlang/types/model : questlang/types/Model
+    util/maybe : util/Maybe
+
     ir = questlang/ir/nodes : questlang/ir/Nodes
-    questlang/repr/shapes : questlang/repr/Shapes
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/repr/layout : questlang/repr/Layout
     questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
-    util/maybe : util/Maybe
+    questlang/repr/shapes : questlang/repr/Shapes
     vals = questlang/ssa/build/values : questlang/ssa/build/Values
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/types/model : questlang/types/Model
 export
     Let Type = model.Type
     Let Variable = ir.Variable
@@ -18,14 +19,19 @@ export
     (* The values of a slot at an address (its slot form: a record or variant
      * as its box's pointer) *)
     let readSlot(fn: vals.Fn address: Int t: Type): Array(Int) = vals.readParts(fn address vals.slotParts(t))
-    let writeSlot(fn: vals.Fn address: Int t: Type values: Array(Int)): Ok = vals.writeParts(fn address vals.slotParts(t) values)
+    let writeSlot(fn: vals.Fn address: Int t: Type values: Array(Int)): Ok =
+        vals.writeParts(fn address vals.slotParts(t) values)
     (* Convert between a slot's SSA values and a 64-bit QVal word
      * (shapeSlotToQval and shapeQvalToSlot); a boxed record or variant is its
      * box pointer's word *)
     let slotToWord(fn: vals.Fn vs: Array(Int) t: Type): Int =
         if layout.isBoxedInSlots(shapes.shape(t)) then vals.toVal(fn vs[0]) else vals.toWord(fn vs t) end
     let slotFromWord(fn: vals.Fn w: Int t: Type): Array(Int) =
-        if layout.isBoxedInSlots(shapes.shape(t)) then array of vals.fromVal(fn w vals.tPtr) end else vals.fromWord(fn w t) end
+        if layout.isBoxedInSlots(shapes.shape(t)) then
+            array of vals.fromVal(fn w vals.tPtr) end
+        else
+            vals.fromWord(fn w t)
+        end
     (* The index of a case of a variant or option shape (0 if it has none of
      * that name), as tags number them *)
     let tagIndex(s: shapes.Shape tag: String): Int =
@@ -56,7 +62,9 @@ export
             let results = array of(extent types 0)
             for i = 0 upto {extent types - 1} do results[i] := ssa.addParam(fn.f merged types[i]) end
             vals.terminate(fn option termBranch of ssa.Terminator with
-                let cond = cond let ifTrue = ssa.target(thenB vals.noValues) let ifFalse = ssa.target(elseB vals.noValues)
+                let cond = cond
+                let ifTrue = ssa.target(thenB vals.noValues)
+                let ifFalse = ssa.target(elseB vals.noValues)
             end)
             fn.cur := thenB
             vals.jump(fn merged yes())
@@ -83,9 +91,10 @@ export
                 when original then readSlot(fn vals.offsetPtr(fn unproxy(fn t) offset) comp.type)
                 when proxy then
                     choose(fn vals.isProxy(fn t) vals.typesOf(vals.slotParts(comp.type))
-                        fun(): Array(Int)
-                            slotFromWord(fn vals.call1(fn "quest_proxy_element" array of t vals.constant(fn i) end) comp.type)
-                        fun(): Array(Int) readSlot(fn vals.offsetPtr(fn t offset) comp.type))
+                            fun(): Array(Int)
+                                slotFromWord(fn vals.call1(fn "quest_proxy_element" array of t vals.constant(fn i) end)
+                                        comp.type)
+                            fun(): Array(Int) readSlot(fn vals.offsetPtr(fn t offset) comp.type))
             end
         end
     (* The tag of the option at o, read as access says *)
@@ -95,8 +104,10 @@ export
             (* A proxy's tag is the view's numbering of the original's *)
             when original, proxy then
                 choose(fn vals.isProxy(fn o) array of vals.tInt end
-                    fun(): Array(Int) array of vals.call1(fn "quest_proxy_tag" array of o end) end
-                    fun(): Array(Int) array of vals.invariantWord(fn o runtimeLayout.offset("QOptionHeader" "tag") vals.tInt) end)[0]
+                        fun(): Array(Int) array of vals.call1(fn "quest_proxy_tag" array of o end) end
+                        fun(): Array(Int)
+                            array of vals.invariantWord(fn o runtimeLayout.offset("QOptionHeader" "tag")
+                                    vals.tInt) end)[0]
         end
     (* The tag of a variant or option value vs of shape ts, in its numbering,
      * or through the view map of a bounded type parameter's value *)
@@ -109,8 +120,9 @@ export
                     let scaled = vals.binary(fn ssa.opMul vs[0] vals.constant(fn 8))
                     vals.invariantWord(fn vals.indexPtr(fn index scaled) 0 vals.tInt)
                 when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
-                    shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
-                    shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then
+                        shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
+                        shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
+                        shapePending then
                     vals.call1(fn "quest_view_option_tag" array of vs[0] vm end)
             end
         elsif shapes.kindIs(ts shapes.shapeVariant) then
@@ -130,11 +142,12 @@ export
                 when original then readSlot(fn vals.offsetPtr(fn unproxy(fn o) offset) comp.type)
                 when proxy then
                     choose(fn vals.isProxy(fn o) vals.typesOf(vals.slotParts(comp.type))
-                        fun(): Array(Int) slotFromWord(fn
-                            vals.call1(fn "quest_proxy_option_element" array of o vals.constant(fn {if i < 0 then 0 else i end})
-                                end)
-                            comp.type)
-                        fun(): Array(Int) readSlot(fn vals.offsetPtr(fn o offset) comp.type))
+                            fun(): Array(Int) slotFromWord(fn
+                                    vals.call1(fn "quest_proxy_option_element" array of o
+                                        vals.constant(fn {if i < 0 then 0 else i end})
+                                    end)
+                                    comp.type)
+                            fun(): Array(Int) readSlot(fn vals.offsetPtr(fn o offset) comp.type))
             end
         end
     (* Allocates a zeroed heap object of the given number of bytes using the

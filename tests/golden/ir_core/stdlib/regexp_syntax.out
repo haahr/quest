@@ -1,243 +1,243 @@
-import regexp = "util/regexp" : util/Regexp
-import writer = "writer" : Writer
 import conv = "conv" : Conv
+import writer = "writer" : Writer
+import regexp = "util/regexp" : util/Regexp
 main {
   funs {
     fun print(s: String): Ok {
-      let %1: writer.T = member writer.output @9:45
-      let %2: String = prim <>(s, "\n") @9:59
-      let %3: Ok = call writer.putString(%1, %2) @9:28
+      let %1: writer.T = member writer.output @10:45
+      let %2: String = prim <>(s, "\n") @10:59
+      let %3: Ok = call writer.putString(%1, %2) @10:28
       return %3
     }
   }
   funs {
     fun p(pattern: String): Ok {
       join k1(r: String) {
-        let %4: String = prim <>("  =>  ", r) @11:22
-        let %5: String = prim <>(pattern, %4) @11:11
-        let %6: Ok = call print(%5) @11:5
+        let %4: String = prim <>("  =>  ", r) @12:22
+        let %5: String = prim <>(pattern, %4) @12:11
+        let %6: Ok = call print(%5) @12:5
         return %6
       } in {
-        let %7: Exception(SyntaxError) = member regexp.syntax @12:14
+        let %7: Exception(SyntaxError) = member regexp.syntax @13:10
         try catching (%7) {
-          let %8: regexp.RE = call regexp.parse(pattern) @11:50
-          let %9: String = call regexp.show(%8) @11:38
-          jump k1(%9) @11:34
+          let %8: regexp.RE = call regexp.parse(pattern) @12:50
+          let %9: String = call regexp.show(%8) @12:38
+          jump k1(%9) @12:34
         } handle (e: Exception) {
-          let %10: Bool = prim is(e, %7) @11:34
-          if %10 { @11:34
-            let e.1: SyntaxError = exception_payload(e) @11:34
-            let %11: Int = tuple_field(e.1, 1) @12:71
-            let %12: String = call conv.int(%11) @12:62
-            let %13: String = tuple_field(e.1, 0) @12:92
-            let %14: String = prim <>(": ", %13) @12:84
-            let %15: String = prim <>(%12, %14) @12:62
-            let %16: String = prim <>("syntax error at ", %15) @12:40
-            jump k1(%16) @11:34
+          let %10: Bool = prim is(e, %7) @12:34
+          if %10 { @12:34
+            let e.1: SyntaxError = exception_payload(e) @12:34
+            let %11: Int = tuple_field(e.1, 1) @13:67
+            let %12: String = call conv.int(%11) @13:58
+            let %13: String = tuple_field(e.1, 0) @13:88
+            let %14: String = prim <>(": ", %13) @13:80
+            let %15: String = prim <>(%12, %14) @13:58
+            let %16: String = prim <>("syntax error at ", %15) @13:36
+            jump k1(%16) @12:34
           } else {
-            reraise e @11:34
+            reraise e @12:34
           }
         }
       }
     }
   }
-  do call p("abc") @15:1
-  do call p("a.b") @16:1
-  do call p("\\.\\*\\+\\?\\(\\)\\[\\]\\{\\}\\|\\^\\$\\\\") @17:1
-  do call p("\\t\\n\\r\\f\\v\\a") @18:1
-  do call p("\\x41\\x{42}\\x{000043}\\0\\012\\101") @19:1
-  do call p("a{") @20:1
-  do call p("a{x}") @21:1
-  do call p("a{2") @22:1
-  do call p("") @23:1
-  do call p("[abc]") @26:1
-  do call p("[a-z0-9_]") @27:1
-  do call p("[^a-z]") @28:1
-  do call p("[]a]") @29:1
-  do call p("[a-]") @30:1
-  do call p("[-a]") @31:1
-  do call p("[\\d\\s]") @32:1
-  do call p("[^\\D]") @33:1
-  do call p("[[:alpha:][:digit:]]") @34:1
-  do call p("[[:^space:]]") @35:1
-  do call p("[\\x00-\\x1f]") @36:1
-  do call p("[[:]") @37:1
-  do call p("\\d\\w\\s") @38:1
-  do call p("\\D") @39:1
-  do call p("[a]") @40:1
-  do call p("a*b+c?") @43:1
-  do call p("a*?b+?c??") @44:1
-  do call p("a{3}b{2,}c{1,4}d{0,0}e{1,1}") @45:1
-  do call p("a{2,5}?") @46:1
-  do call p("(?U)a*b*?") @47:1
-  do call p("(ab)*") @48:1
-  do call p("^*") @49:1
-  do call p("a|b|c") @52:1
-  do call p("a|") @53:1
-  do call p("|") @54:1
-  do call p("(a)(?:b)(?P<word>c)(?<other>d)") @55:1
-  do call p("((a)|b)+") @56:1
-  do call p("(?i)Ab[x-z]") @57:1
-  do call p("(?i)[^a]") @58:1
-  do call p("a(?i)b|c") @59:1
-  do call p("(?i:a)b") @60:1
-  do call p("(?i)a(?-i)b") @61:1
-  do call p("(?s).(?-s).") @62:1
-  do call p("^a$") @63:1
-  do call p("(?m)^a$") @64:1
-  do call p("\\A\\z\\b\\B") @65:1
-  do call p("(?ims-U:x)") @66:1
-  do call p("a**") @69:1
-  do call p("a*+") @70:1
-  do call p("*a") @71:1
-  do call p("+") @72:1
-  do call p("{2}") @73:1
-  do call p("(a") @74:1
-  do call p("a)") @75:1
-  do call p("((a)") @76:1
-  do call p("[a") @77:1
-  do call p("[z-a]") @78:1
-  do call p("[a-\\d]") @79:1
-  do call p("[[:nope:]]") @80:1
-  do call p("\\") @81:1
-  do call p("\\q") @82:1
-  do call p("\\1") @83:1
-  do call p("\\pL") @84:1
-  do call p("\\x4") @85:1
-  do call p("\\x{}") @86:1
-  do call p("\\x{100}") @87:1
-  do call p("[\\b]") @88:1
-  do call p("a{1001}") @89:1
-  do call p("a{3,2}") @90:1
-  do call p("(?=a)") @91:1
-  do call p("(?!a)") @92:1
-  do call p("(?<=a)") @93:1
-  do call p("(?<!a)") @94:1
-  do call p("(?P=name)") @95:1
-  do call p("(?P<>a)") @96:1
-  do call p("(?<1a>b)") @97:1
-  do call p("(?P<x>a)(?P<x>b)") @98:1
-  do call p("(?z)") @99:1
-  do call p("(?)") @100:1
-  do call p("(?i") @101:1
+  do call p("abc") @16:1
+  do call p("a.b") @17:1
+  do call p("\\.\\*\\+\\?\\(\\)\\[\\]\\{\\}\\|\\^\\$\\\\") @18:1
+  do call p("\\t\\n\\r\\f\\v\\a") @19:1
+  do call p("\\x41\\x{42}\\x{000043}\\0\\012\\101") @20:1
+  do call p("a{") @21:1
+  do call p("a{x}") @22:1
+  do call p("a{2") @23:1
+  do call p("") @24:1
+  do call p("[abc]") @27:1
+  do call p("[a-z0-9_]") @28:1
+  do call p("[^a-z]") @29:1
+  do call p("[]a]") @30:1
+  do call p("[a-]") @31:1
+  do call p("[-a]") @32:1
+  do call p("[\\d\\s]") @33:1
+  do call p("[^\\D]") @34:1
+  do call p("[[:alpha:][:digit:]]") @35:1
+  do call p("[[:^space:]]") @36:1
+  do call p("[\\x00-\\x1f]") @37:1
+  do call p("[[:]") @38:1
+  do call p("\\d\\w\\s") @39:1
+  do call p("\\D") @40:1
+  do call p("[a]") @41:1
+  do call p("a*b+c?") @44:1
+  do call p("a*?b+?c??") @45:1
+  do call p("a{3}b{2,}c{1,4}d{0,0}e{1,1}") @46:1
+  do call p("a{2,5}?") @47:1
+  do call p("(?U)a*b*?") @48:1
+  do call p("(ab)*") @49:1
+  do call p("^*") @50:1
+  do call p("a|b|c") @53:1
+  do call p("a|") @54:1
+  do call p("|") @55:1
+  do call p("(a)(?:b)(?P<word>c)(?<other>d)") @56:1
+  do call p("((a)|b)+") @57:1
+  do call p("(?i)Ab[x-z]") @58:1
+  do call p("(?i)[^a]") @59:1
+  do call p("a(?i)b|c") @60:1
+  do call p("(?i:a)b") @61:1
+  do call p("(?i)a(?-i)b") @62:1
+  do call p("(?s).(?-s).") @63:1
+  do call p("^a$") @64:1
+  do call p("(?m)^a$") @65:1
+  do call p("\\A\\z\\b\\B") @66:1
+  do call p("(?ims-U:x)") @67:1
+  do call p("a**") @70:1
+  do call p("a*+") @71:1
+  do call p("*a") @72:1
+  do call p("+") @73:1
+  do call p("{2}") @74:1
+  do call p("(a") @75:1
+  do call p("a)") @76:1
+  do call p("((a)") @77:1
+  do call p("[a") @78:1
+  do call p("[z-a]") @79:1
+  do call p("[a-\\d]") @80:1
+  do call p("[[:nope:]]") @81:1
+  do call p("\\") @82:1
+  do call p("\\q") @83:1
+  do call p("\\1") @84:1
+  do call p("\\pL") @85:1
+  do call p("\\x4") @86:1
+  do call p("\\x{}") @87:1
+  do call p("\\x{100}") @88:1
+  do call p("[\\b]") @89:1
+  do call p("a{1001}") @90:1
+  do call p("a{3,2}") @91:1
+  do call p("(?=a)") @92:1
+  do call p("(?!a)") @93:1
+  do call p("(?<=a)") @94:1
+  do call p("(?<!a)") @95:1
+  do call p("(?P=name)") @96:1
+  do call p("(?P<>a)") @97:1
+  do call p("(?<1a>b)") @98:1
+  do call p("(?P<x>a)(?P<x>b)") @99:1
+  do call p("(?z)") @100:1
+  do call p("(?)") @101:1
+  do call p("(?i") @102:1
   funs {
     fun show(re: regexp.RE): Ok {
-      let %17: String = call regexp.show(re) @104:37
-      let %18: Ok = call print(%17) @104:31
+      let %17: String = call regexp.show(re) @105:37
+      let %18: Ok = call print(%17) @105:31
       return %18
     }
   }
-  let %19: regexp.RE = call regexp.literal("ab") @105:6
-  do call show(%19) @105:1
-  let %20: regexp.RE = call regexp.literal("") @106:6
-  do call show(%20) @106:1
-  let %21: regexp.RE = call regexp.set("ca") @107:6
-  do call show(%21) @107:1
-  let %22: regexp.RE = call regexp.range('a', 'f') @108:6
-  do call show(%22) @108:1
-  let %23: regexp.RE = call regexp.literal("x") @109:26
-  let %24: regexp.RE = call regexp.literal("y") @109:46
-  let %25: regexp.RE = member regexp.digit @109:66
-  let %26: Array(regexp.RE) = array(%23, %24, %25) @109:17
-  let %27: regexp.RE = call regexp.seq(%26) @109:6
-  do call show(%27) @109:1
-  let %28: regexp.RE = call regexp.literal("x") @110:26
-  let %29: regexp.RE = call regexp.literal("y") @110:66
-  let %30: regexp.RE = call regexp.literal("z") @110:86
-  let %31: Array(regexp.RE) = array(%29, %30) @110:57
-  let %32: regexp.RE = call regexp.alt(%31) @110:46
-  let %33: Array(regexp.RE) = array(%28, %32) @110:17
-  let %34: regexp.RE = call regexp.alt(%33) @110:6
-  do call show(%34) @110:1
-  let %35: Array(regexp.RE) = array() @111:17
-  let %36: regexp.RE = call regexp.alt(%35) @111:6
-  do call show(%36) @111:1
-  let %37: regexp.RE = call regexp.literal("a") @112:41
-  let %38: regexp.RE = call regexp.opt(%37) @112:30
-  let %39: regexp.RE = call regexp.plus(%38) @112:18
-  let %40: regexp.RE = call regexp.star(%39) @112:6
-  do call show(%40) @112:1
-  let %41: regexp.RE = call regexp.literal("a") @113:20
-  let %42: regexp.RE = call regexp.repeat(%41, 2, -1, false) @113:6
-  do call show(%42) @113:1
-  let %43: regexp.RE = member regexp.wordByte @114:45
-  let %44: regexp.RE = call regexp.namedCapture("n", %43) @114:21
-  let %45: regexp.RE = call regexp.capture(%44) @114:6
-  do call show(%45) @114:1
-  let %46: regexp.RE = call regexp.literal("Hi") @115:42
-  let %47: regexp.RE = call regexp.range('x', 'z') @115:63
-  let %48: Array(regexp.RE) = array(%46, %47) @115:33
-  let %49: regexp.RE = call regexp.seq(%48) @115:22
-  let %50: regexp.RE = call regexp.caseless(%49) @115:6
-  do call show(%50) @115:1
-  let %51: regexp.RE = call regexp.range('a', 'c') @116:44
-  let %52: regexp.RE = call regexp.literal("z") @116:66
-  let %53: regexp.RE = member regexp.digit @116:86
-  let %54: Array(regexp.RE) = array(%51, %52, %53) @116:35
-  let %55: regexp.RE = call regexp.alt(%54) @116:24
-  let %56: regexp.RE = call regexp.complement(%55) @116:6
-  do call show(%56) @116:1
-  let %57: regexp.RE = call regexp.parse("[^\\n]") @117:24
-  let %58: regexp.RE = call regexp.complement(%57) @117:6
-  do call show(%58) @117:1
-  let %59: regexp.RE = member regexp.lineStart @118:26
-  let %60: regexp.RE = member regexp.lineEnd @118:43
-  let %61: regexp.RE = member regexp.textStart @118:58
-  let %62: regexp.RE = member regexp.textEnd @118:75
-  let %63: regexp.RE = member regexp.wordBoundary @119:26
-  let %64: regexp.RE = member regexp.notWordBoundary @119:46
-  let %65: Array(regexp.RE) = array(%59, %60, %61, %62, %63, %64) @118:17
-  let %66: regexp.RE = call regexp.seq(%65) @118:6
-  do call show(%66) @118:1
-  let %67: regexp.RE = member regexp.anyByte @120:26
-  let %68: regexp.RE = member regexp.notNewline @120:41
-  let %69: regexp.RE = member regexp.space @120:59
-  let %70: Array(regexp.RE) = array(%67, %68, %69) @120:17
-  let %71: regexp.RE = call regexp.seq(%70) @120:6
-  do call show(%71) @120:1
+  let %19: regexp.RE = call regexp.literal("ab") @106:6
+  do call show(%19) @106:1
+  let %20: regexp.RE = call regexp.literal("") @107:6
+  do call show(%20) @107:1
+  let %21: regexp.RE = call regexp.set("ca") @108:6
+  do call show(%21) @108:1
+  let %22: regexp.RE = call regexp.range('a', 'f') @109:6
+  do call show(%22) @109:1
+  let %23: regexp.RE = call regexp.literal("x") @110:26
+  let %24: regexp.RE = call regexp.literal("y") @110:46
+  let %25: regexp.RE = member regexp.digit @110:66
+  let %26: Array(regexp.RE) = array(%23, %24, %25) @110:17
+  let %27: regexp.RE = call regexp.seq(%26) @110:6
+  do call show(%27) @110:1
+  let %28: regexp.RE = call regexp.literal("x") @111:26
+  let %29: regexp.RE = call regexp.literal("y") @111:66
+  let %30: regexp.RE = call regexp.literal("z") @111:86
+  let %31: Array(regexp.RE) = array(%29, %30) @111:57
+  let %32: regexp.RE = call regexp.alt(%31) @111:46
+  let %33: Array(regexp.RE) = array(%28, %32) @111:17
+  let %34: regexp.RE = call regexp.alt(%33) @111:6
+  do call show(%34) @111:1
+  let %35: Array(regexp.RE) = array() @112:17
+  let %36: regexp.RE = call regexp.alt(%35) @112:6
+  do call show(%36) @112:1
+  let %37: regexp.RE = call regexp.literal("a") @113:41
+  let %38: regexp.RE = call regexp.opt(%37) @113:30
+  let %39: regexp.RE = call regexp.plus(%38) @113:18
+  let %40: regexp.RE = call regexp.star(%39) @113:6
+  do call show(%40) @113:1
+  let %41: regexp.RE = call regexp.literal("a") @114:20
+  let %42: regexp.RE = call regexp.repeat(%41, 2, -1, false) @114:6
+  do call show(%42) @114:1
+  let %43: regexp.RE = member regexp.wordByte @115:45
+  let %44: regexp.RE = call regexp.namedCapture("n", %43) @115:21
+  let %45: regexp.RE = call regexp.capture(%44) @115:6
+  do call show(%45) @115:1
+  let %46: regexp.RE = call regexp.literal("Hi") @116:42
+  let %47: regexp.RE = call regexp.range('x', 'z') @116:63
+  let %48: Array(regexp.RE) = array(%46, %47) @116:33
+  let %49: regexp.RE = call regexp.seq(%48) @116:22
+  let %50: regexp.RE = call regexp.caseless(%49) @116:6
+  do call show(%50) @116:1
+  let %51: regexp.RE = call regexp.range('a', 'c') @117:44
+  let %52: regexp.RE = call regexp.literal("z") @117:66
+  let %53: regexp.RE = member regexp.digit @117:86
+  let %54: Array(regexp.RE) = array(%51, %52, %53) @117:35
+  let %55: regexp.RE = call regexp.alt(%54) @117:24
+  let %56: regexp.RE = call regexp.complement(%55) @117:6
+  do call show(%56) @117:1
+  let %57: regexp.RE = call regexp.parse("[^\\n]") @118:24
+  let %58: regexp.RE = call regexp.complement(%57) @118:6
+  do call show(%58) @118:1
+  let %59: regexp.RE = member regexp.lineStart @119:26
+  let %60: regexp.RE = member regexp.lineEnd @119:43
+  let %61: regexp.RE = member regexp.textStart @119:58
+  let %62: regexp.RE = member regexp.textEnd @119:75
+  let %63: regexp.RE = member regexp.wordBoundary @120:5
+  let %64: regexp.RE = member regexp.notWordBoundary @120:25
+  let %65: Array(regexp.RE) = array(%59, %60, %61, %62, %63, %64) @119:17
+  let %66: regexp.RE = call regexp.seq(%65) @119:6
+  do call show(%66) @119:1
+  let %67: regexp.RE = member regexp.anyByte @122:26
+  let %68: regexp.RE = member regexp.notNewline @122:41
+  let %69: regexp.RE = member regexp.space @122:59
+  let %70: Array(regexp.RE) = array(%67, %68, %69) @122:17
+  let %71: regexp.RE = call regexp.seq(%70) @122:6
+  do call show(%71) @122:1
   funs {
     fun digits(n: Int): regexp.RE {
-      let %72: regexp.RE = member regexp.digit @121:47
-      let %73: regexp.RE = call regexp.repeat(%72, n, n, true) @121:33
+      let %72: regexp.RE = member regexp.digit @123:47
+      let %73: regexp.RE = call regexp.repeat(%72, n, n, true) @123:33
       return %73
     }
   }
-  let %74: regexp.RE = call digits(4) @122:50
-  let %75: regexp.RE = call regexp.namedCapture("y", %74) @122:26
-  let %76: regexp.RE = call regexp.literal("-") @122:61
-  let %77: regexp.RE = call digits(2) @122:105
-  let %78: regexp.RE = call regexp.namedCapture("m", %77) @122:81
-  let %79: Array(regexp.RE) = array(%75, %76, %78) @122:17
-  let %80: regexp.RE = call regexp.seq(%79) @122:6
-  do call show(%80) @122:1
-  let %81: regexp.RE = call regexp.parse("(?P<y>\\d{4})-(?P<m>\\d{2})") @123:6
-  do call show(%81) @123:1
-  let %82: regexp.RE = call regexp.literal("a") @126:22
-  let %83: regexp.RE = call regexp.literal("b") @126:42
-  let parts: Array(regexp.RE) = array(%82, %83) @126:13
-  let ab: regexp.RE = call regexp.seq(parts) @127:10
-  let %84: regexp.RE = call regexp.literal("c") @128:13
-  store parts[1] := %84 @128:1
-  do call show(ab) @129:1
+  let %74: regexp.RE = call digits(4) @124:50
+  let %75: regexp.RE = call regexp.namedCapture("y", %74) @124:26
+  let %76: regexp.RE = call regexp.literal("-") @124:61
+  let %77: regexp.RE = call digits(2) @124:105
+  let %78: regexp.RE = call regexp.namedCapture("m", %77) @124:81
+  let %79: Array(regexp.RE) = array(%75, %76, %78) @124:17
+  let %80: regexp.RE = call regexp.seq(%79) @124:6
+  do call show(%80) @124:1
+  let %81: regexp.RE = call regexp.parse("(?P<y>\\d{4})-(?P<m>\\d{2})") @125:6
+  do call show(%81) @125:1
+  let %82: regexp.RE = call regexp.literal("a") @128:22
+  let %83: regexp.RE = call regexp.literal("b") @128:42
+  let parts: Array(regexp.RE) = array(%82, %83) @128:13
+  let ab: regexp.RE = call regexp.seq(parts) @129:10
+  let %84: regexp.RE = call regexp.literal("c") @130:13
+  store parts[1] := %84 @130:1
+  do call show(ab) @131:1
   funs {
     fun check(what: String, make: Fun(): regexp.RE): Ok {
       join k2(r.1: String) {
-        let %85: String = prim <>(": ", r.1) @133:19
-        let %86: String = prim <>(what, %85) @133:11
-        let %87: Ok = call print(%86) @133:5
+        let %85: String = prim <>(": ", r.1) @135:19
+        let %86: String = prim <>(what, %85) @135:11
+        let %87: Ok = call print(%86) @135:5
         return %87
       } in {
-        let %88: Exception = member regexp.error @133:56
+        let %88: Exception = member regexp.error @135:56
         try catching (%88) {
-          let %89: regexp.RE = call make() @133:43
-          let %90: String = call regexp.show(%89) @133:31
-          jump k2(%90) @133:27
+          let %89: regexp.RE = call make() @135:43
+          let %90: String = call regexp.show(%89) @135:31
+          jump k2(%90) @135:27
         } handle (e.2: Exception) {
-          let %91: Bool = prim is(e.2, %88) @133:27
-          if %91 { @133:27
-            jump k2("regexp.error") @133:27
+          let %91: Bool = prim is(e.2, %88) @135:27
+          if %91 { @135:27
+            jump k2("regexp.error") @135:27
           } else {
-            reraise e.2 @133:27
+            reraise e.2 @135:27
           }
         }
       }
@@ -245,91 +245,91 @@ main {
   }
   funs {
     fun f(): regexp.RE {
-      let %92: regexp.RE = call regexp.range('z', 'a') @134:42
+      let %92: regexp.RE = call regexp.range('z', 'a') @136:42
       return %92
     }
   }
-  do call check("range backwards", f) @134:1
+  do call check("range backwards", f) @136:1
   funs {
     fun f.1(): regexp.RE {
-      let %93: regexp.RE = member regexp.digit @135:54
-      let %94: regexp.RE = call regexp.repeat(%93, -1, 2, true) @135:40
+      let %93: regexp.RE = member regexp.digit @137:54
+      let %94: regexp.RE = call regexp.repeat(%93, -1, 2, true) @137:40
       return %94
     }
   }
-  do call check("repeat min ~1", f.1) @135:1
+  do call check("repeat min ~1", f.1) @137:1
   funs {
     fun f.2(): regexp.RE {
-      let %95: regexp.RE = member regexp.digit @136:57
-      let %96: regexp.RE = call regexp.repeat(%95, 3, 2, true) @136:43
+      let %95: regexp.RE = member regexp.digit @138:57
+      let %96: regexp.RE = call regexp.repeat(%95, 3, 2, true) @138:43
       return %96
     }
   }
-  do call check("repeat max < min", f.2) @136:1
+  do call check("repeat max < min", f.2) @138:1
   funs {
     fun f.3(): regexp.RE {
-      let %97: regexp.RE = member regexp.digit @137:54
-      let %98: regexp.RE = call regexp.repeat(%97, 0, -2, true) @137:40
+      let %97: regexp.RE = member regexp.digit @139:54
+      let %98: regexp.RE = call regexp.repeat(%97, 0, -2, true) @139:40
       return %98
     }
   }
-  do call check("repeat max ~2", f.3) @137:1
+  do call check("repeat max ~2", f.3) @139:1
   funs {
     fun f.4(): regexp.RE {
-      let %99: regexp.RE = member regexp.digit @138:52
-      let %100: regexp.RE = call regexp.repeat(%99, 1001, -1, true) @138:38
+      let %99: regexp.RE = member regexp.digit @140:52
+      let %100: regexp.RE = call regexp.repeat(%99, 1001, -1, true) @140:38
       return %100
     }
   }
-  do call check("repeat 1001", f.4) @138:1
+  do call check("repeat 1001", f.4) @140:1
   funs {
     fun f.5(): regexp.RE {
-      let %101: regexp.RE = member regexp.digit @139:60
-      let %102: regexp.RE = call regexp.namedCapture("", %101) @139:37
+      let %101: regexp.RE = member regexp.digit @141:60
+      let %102: regexp.RE = call regexp.namedCapture("", %101) @141:37
       return %102
     }
   }
-  do call check("name empty", f.5) @139:1
+  do call check("name empty", f.5) @141:1
   funs {
     fun f.6(): regexp.RE {
-      let %103: regexp.RE = member regexp.digit @140:59
-      let %104: regexp.RE = call regexp.namedCapture("1x", %103) @140:34
+      let %103: regexp.RE = member regexp.digit @142:59
+      let %104: regexp.RE = call regexp.namedCapture("1x", %103) @142:34
       return %104
     }
   }
-  do call check("name 1x", f.6) @140:1
+  do call check("name 1x", f.6) @142:1
   funs {
     fun f.7(): regexp.RE {
-      let %105: regexp.RE = member regexp.digit @141:61
-      let %106: regexp.RE = call regexp.namedCapture("a-b", %105) @141:35
+      let %105: regexp.RE = member regexp.digit @143:61
+      let %106: regexp.RE = call regexp.namedCapture("a-b", %105) @143:35
       return %106
     }
   }
-  do call check("name a-b", f.7) @141:1
+  do call check("name a-b", f.7) @143:1
   funs {
     fun f.8(): regexp.RE {
-      let %107: regexp.RE = member regexp.digit @142:59
-      let %108: regexp.RE = call regexp.namedCapture("_1", %107) @142:34
+      let %107: regexp.RE = member regexp.digit @144:59
+      let %108: regexp.RE = call regexp.namedCapture("_1", %107) @144:34
       return %108
     }
   }
-  do call check("name _1", f.8) @142:1
+  do call check("name _1", f.8) @144:1
   funs {
     fun f.9(): regexp.RE {
-      let %109: regexp.RE = call regexp.literal("ab") @143:61
-      let %110: regexp.RE = call regexp.complement(%109) @143:43
+      let %109: regexp.RE = call regexp.literal("ab") @145:61
+      let %110: regexp.RE = call regexp.complement(%109) @145:43
       return %110
     }
   }
-  do call check("complement of ab", f.9) @143:1
+  do call check("complement of ab", f.9) @145:1
   funs {
     fun f.10(): regexp.RE {
-      let %111: regexp.RE = call regexp.literal("a") @144:73
-      let %112: regexp.RE = call regexp.star(%111) @144:61
-      let %113: regexp.RE = call regexp.complement(%112) @144:43
+      let %111: regexp.RE = call regexp.literal("a") @146:73
+      let %112: regexp.RE = call regexp.star(%111) @146:61
+      let %113: regexp.RE = call regexp.complement(%112) @146:43
       return %113
     }
   }
-  do call check("complement of a*", f.10) @144:1
+  do call check("complement of a*", f.10) @146:1
 }
 

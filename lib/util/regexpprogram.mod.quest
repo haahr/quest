@@ -3,15 +3,16 @@
 
 module regexpProgram : RegexpProgram
 import
-    syn = util/regexpSyntax : util/RegexpSyntax
-    collections/bitset : collections/Bitset
-    collections/vector : collections/Vector
-    collections/hashMap : collections/HashMap
-    sb = util/stringBuilder : util/StringBuilder
-    util/maybe : util/Maybe
+    ascii : Ascii
+    conv : Conv
     stringOp = string : StringOp
-    ascii: Ascii
-    conv: Conv
+
+    collections/bitset : collections/Bitset
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    syn = util/regexpSyntax : util/RegexpSyntax
+    sb = util/stringBuilder : util/StringBuilder
 export
     let opByte = 0
     let opClass = 1
@@ -83,7 +84,8 @@ export
             for k = 0 upto {vector.length(:bitset.T c.sets) - 1} do
                 if {found < 0} andif bitset.equal(vector.get(:bitset.T c.sets k) s) then found := k end
             end
-            if found >= 0 then found
+            if found >= 0 then
+                found
             else
                 vector.append(:bitset.T c.sets s)
                 vector.length(:bitset.T c.sets) - 1
@@ -263,7 +265,7 @@ export
      * byte, through the assertions as though they held: a match that would
      * begin with a byte must begin with one the paths reach *)
     let starts(op: Array(Int) x: Array(Int) y: Array(Int) classes: Array(Bool))
-        : Tuple set: Array(Bool) anchored: Bool end =
+            : Tuple set: Array(Bool) anchored: Bool end =
         begin
             let size = extent op
             let set = array of(256 false)
@@ -353,10 +355,11 @@ export
                 let names = vector.toArray(:String c.names)
                 let startSet = start.set
                 let anchored = start.anchored
-                let literal = case tree
-                    when bytes with b then maybe.some(:String b.s)
-                    else maybe.none(:String)
-                end
+                let literal =
+                    case tree
+                        when bytes with b then maybe.some(:String b.s)
+                        else maybe.none(:String)
+                    end
                 let prefix = prefixOf(tree)
             end
         end
@@ -370,7 +373,7 @@ export
                 sb.str(buf " ")
                 sb.str(buf names[p.op[i]])
                 if {p.op[i] is opByte} \/ {p.op[i] is opClass} \/ {p.op[i] is opJump} \/ {p.op[i] is opSave}
-                    \/ {p.op[i] is opAssert} then
+                        \/ {p.op[i] is opAssert} then
                     sb.str(buf " ")
                     sb.str(buf conv.int(p.x[i]))
                 elsif p.op[i] is opSplit then

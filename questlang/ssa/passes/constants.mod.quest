@@ -2,16 +2,18 @@
 
 module constants : Constants
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/cfg : questlang/ssa/Cfg
-    questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    conv : Conv
-    stringOp = string : StringOp
+
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
 export
     Let Function = ssa.Function
     Let Defs = Array(maybe.T(ssa.Inst))
@@ -37,7 +39,8 @@ export
      * or none if v is not defined by opSymbol *)
     let symbolOf(defs: Defs v: Int): maybe.T(ssa.Inst) =
         if maybe.isSome(defs[v]) andif ssa.isOp(maybe.unwrap(defs[v]) ssa.opSymbol) then defs[v]
-        else maybe.none() end
+        else maybe.none()
+        end
 
     (* Runtime functions that write memory without running Quest code: module
      * startup registration helpers (for types, functions, record dictionaries,
@@ -81,7 +84,8 @@ export
         if ssa.isOp(i ssa.opLoad) then
             let a = symbolOf(q.allDefs[fi] i.args[0])
             maybe.isSome(a) andif stringOp.equal(maybe.unwrap(a).symbol q.symbol)
-        elsif ssa.isOp(i ssa.opCallIndirect) then true
+        elsif ssa.isOp(i ssa.opCallIndirect) then
+            true
         elsif ssa.isCall(i) then
             let callee = hashMap.get(q.byName i.symbol)
             let storing = vector.get(q.u.functions q.storing).symbol
@@ -95,13 +99,16 @@ export
                 end
                 not(registration) andif runtimeFunctions.callWrites(i)
             end
-        else false end
+        else
+            false
+        end
 
     (* True if executing function fi could read the candidate global. Already
      * visited functions return false so cycles terminate; their result is
      * already included in the enclosing traversal. *)
     and functionReads(q: Query fi: Int): Bool =
-        if q.seen[fi] then false
+        if q.seen[fi] then
+            false
         else
             q.seen[fi] := true
             let f = vector.get(q.u.functions fi)
@@ -160,26 +167,30 @@ export
     (* The value a store of v stores, as a word of static data, if an
      * opConst or an opSymbol defines v *)
     let wordOf(defs: Defs v: Int): maybe.T(ssa.Word) =
-        if maybe.isNone(defs[v]) then maybe.none()
+        if maybe.isNone(defs[v]) then
+            maybe.none()
         else
             let i = maybe.unwrap(defs[v])
             if ssa.isOp(i ssa.opConst) then maybe.some(option wordInt of ssa.Word with let n = i.imm end)
             elsif ssa.isOp(i ssa.opSymbol) then
                 maybe.some(option wordSymbol of ssa.Word with let symbol = i.symbol let addend = i.imm end)
-            else maybe.none() end
+            else maybe.none()
+            end
         end
 
     (* The instruction a load of a constant global becomes: the value w as
      * result, at the load's position *)
     let valueInst(w: ssa.Word result: Int loc: ssa.Loc): ssa.Inst =
         begin
-            let i = case w
-                when wordInt with x then
-                    ssa.instruction(ssa.opConst array of :Int end array of result end x.n "" 0 false ssa.emptySignature)
-                when wordSymbol with x then
-                    ssa.instruction(ssa.opSymbol array of :Int end array of result end x.addend x.symbol 0 false
-                        ssa.emptySignature)
-            end
+            let i =
+                case w
+                    when wordInt with x then
+                        ssa.instruction(ssa.opConst array of :Int end array of result end x.n "" 0
+                                false ssa.emptySignature)
+                    when wordSymbol with x then
+                        ssa.instruction(ssa.opSymbol array of :Int end array of result end x.addend x.symbol 0 false
+                                ssa.emptySignature)
+                end
             i.loc := loc
             i
         end
@@ -196,7 +207,7 @@ export
      * preceded by nothing that could read it (checked by first). Control-flow
      * graphs in graphs are built lazily on first use. *)
     let constant(u: ssa.Unit allDefs: Array(Defs) byName: hashMap.T(String Int) graphs: Array(maybe.T(cfg.Graph))
-        symbol: String c: Candidate): Bool =
+            symbol: String c: Candidate): Bool =
         begin
             let var fits = not(c.ruledOut) andif {c.stores is 1}
             for k = 0 upto {vector.length(c.loads) - 1} do
@@ -210,11 +221,17 @@ export
                 let f = vector.get(u.functions fi)
                 if maybe.isNone(graphs[fi]) then graphs[fi] := maybe.some(cfg.graph(f)) end
                 let q = tuple
-                    let u = u let allDefs = allDefs let byName = byName let symbol = symbol let storing = fi
+                    let u = u
+                    let allDefs = allDefs
+                    let byName = byName
+                    let symbol = symbol
+                    let storing = fi
                     let seen = array of(vector.length(u.functions) false)
                 end
                 first(q f maybe.unwrap(graphs[fi]) c.store)
-            else false end
+            else
+                false
+            end
         end
 
     let constantUnit(u: ssa.Unit): Ok =
@@ -225,7 +242,9 @@ export
                 let zeroWord = case d.contents when contentsZero with x then x.bytes is 8 else false end
                 if not(d.exported) andif d.writable andif zeroWord then
                     let c = tuple
-                        let datum = k let var ruledOut = false let var stores = 0
+                        let datum = k
+                        let var ruledOut = false
+                        let var stores = 0
                         let var store = tuple let function = ~1 let block = ~1 let index = ~1 end
                         let var value = option wordInt of ssa.Word with let n = 0 end
                         let loads = vector.new(:Site)
@@ -251,7 +270,9 @@ export
                                 maybe.unwrap(c).ruledOut := true
                             end
                             c
-                        else maybe.none() end
+                        else
+                            maybe.none()
+                        end
                     end
                 for b = 0 upto {vector.length(f.blocks) - 1} do
                     let blk = ssa.block(f b)
@@ -269,8 +290,10 @@ export
                                     c.store := site
                                     let w = wordOf(defs i.args[1])
                                     if maybe.isSome(w) then c.value := maybe.unwrap(w)
-                                    else c.ruledOut := true end
-                                else c.ruledOut := true end
+                                    else c.ruledOut := true
+                                    end
+                                else c.ruledOut := true
+                                end
                             end
                         end
                     end

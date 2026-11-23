@@ -2,22 +2,24 @@
 
 module compilerRunner : CompilerRunner
 import
-    questlang/common/pyRepr : questlang/common/PyRepr
-    questlang/modules/paths : questlang/modules/Paths
-    questlang/common/files : questlang/common/Files
-    questlang/common/sha256 : questlang/common/Sha256
-    collections/vector : collections/Vector
-    collections/hashMap : collections/HashMap
-    util/maybe : util/Maybe
-    util/hash : util/Hash
-    util/sort : util/Sort
-    util/strutil : util/Strutil
-    stringOp = string : StringOp
     ascii : Ascii
     conv : Conv
-    writer : Writer
-    system : System
     raised : Raised
+    stringOp = string : StringOp
+    system : System
+    writer : Writer
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/strutil : util/Strutil
+
+    questlang/common/files : questlang/common/Files
+    questlang/common/pyRepr : questlang/common/PyRepr
+    questlang/common/sha256 : questlang/common/Sha256
+    questlang/modules/paths : questlang/modules/Paths
 export
     let failure: Exception(String) = exception failure: String end
 
@@ -87,19 +89,21 @@ export
     (* -fwrapv: Int arithmetic wraps (docs/type-system.md section 6.3.1) *)
     let baseCFlags(compiler: String): Array(String) =
         strings(vector.concat(vector.fromArray(array of "-std=c99" "-pedantic-errors" "-Wno-overlength-strings" "-Wall"
-                "-Wextra" "-O2" "-fwrapv" end)
-            tracebackFlags(compiler)))
+            "-Wextra" "-O2" "-fwrapv"
+        end)
+                tracebackFlags(compiler)))
 
-    let gcFlags(nogc: Bool): Array(String) =
-        if nogc then array of "-DQUEST_NOGC" end else array of :String end end
+    let gcFlags(nogc: Bool): Array(String) = if nogc then array of "-DQUEST_NOGC" end else array of :String end end
 
     (* Whether the system's headers (on macOS, the SDK's) include header *)
     let sdkHas(header: String): Bool =
         begin
             let roots = vector.new(:String)
             vector.append(roots "/usr/include")
-            let sdk = try strutil.strip(system.run(array of "xcrun" "--show-sdk-path" end).stdout) when system.error
-                then "" end
+            let sdk =
+                try strutil.strip(system.run(array of "xcrun" "--show-sdk-path" end).stdout) when system.error then
+                    ""
+                end
             if stringOp.length(sdk) > 0 then vector.append(roots files.join(sdk "usr/include")) end
             let var found = false
             for i = 0 upto {vector.length(roots) - 1} do
@@ -112,7 +116,7 @@ export
         begin
             let choice = system.getEnv("QUEST_READLINE")
             if not(eq(choice "")) andif not(eq(choice "gnu")) andif not(eq(choice "edit"))
-                andif not(eq(choice "none")) then
+                    andif not(eq(choice "none")) then
                 raise failure with "QUEST_READLINE must be gnu, edit, or none, not '" <> choice <> "'" end
             end
             let var found = maybe.none(:Array(String))
@@ -129,7 +133,8 @@ export
                             orif system.fileExists(files.join(lib "libreadline.so"))
                             orif system.fileExists(files.join(lib "libreadline.a"))
                         if system.fileExists(files.join(inc "readline/rlconf.h")) andif hasLib then
-                            found := maybe.some(array of "-I" <> inc "-DQUEST_GNU_READLINE" "-L" <> lib "-lreadline" end)
+                            found :=
+                                    maybe.some(array of "-I" <> inc "-DQUEST_GNU_READLINE" "-L" <> lib "-lreadline" end)
                         end
                     end
                 end
@@ -148,7 +153,7 @@ export
         end
 
     let compileCToObject(c: String o: String includePaths: Array(String) nogc: Bool compiler: maybe.T(String)
-        extraFlags: Array(String)): Ok =
+            extraFlags: Array(String)): Ok =
         begin
             let cc = if maybe.isSome(compiler) then maybe.unwrap(compiler) else findCCompiler() end
             let command = vector.new(:String)
@@ -168,7 +173,7 @@ export
             if not(r.code is 0) then
                 raise failure with
                     "C object compilation failed with exit code " <> pyInt(r.code) <> ":\n"
-                    <> "Command: " <> strutil.join(" " command) <> "\n" <> r.stderr
+                        <> "Command: " <> strutil.join(" " command) <> "\n" <> r.stderr
                 end
             end
             ok
@@ -177,7 +182,8 @@ export
     (* The runtime's C files, which every program is linked with *)
     let runtimeSources = array of "quest_runtime.c" "quest_exceptions.c" "quest_print.c" "quest_types.c" "quest_views.c"
         "quest_os.c" "quest_stdlib.c" "quest_serialization.c" "quest_readline.c" "quest_inline.c" "quest_code.c"
-        "quest_gc.c" end
+        "quest_gc.c"
+    end
 
     let isLinkerFlag(flag: String): Bool = strutil.startsWith(flag "-L") orif strutil.startsWith(flag "-l")
 
@@ -187,21 +193,29 @@ export
         begin
             let kept = vector.new(:String)
             for i = 0 upto {extent flags - 1} do if not(isLinkerFlag(flags[i])) then
-                vector.append(kept flags[i]) end end
+                vector.append(kept flags[i])
+            end end
             kept
         end
 
     let appendAll(v: vector.T(String) xs: Array(String)): Ok =
         for i = 0 upto {extent xs - 1} do vector.append(v xs[i]) end
 
-    let nonEmpty(s: String): maybe.T(String) = if stringOp.length(s) > 0 then
-        maybe.some(s) else maybe.none() end
+    let nonEmpty(s: String): maybe.T(String) =
+        if stringOp.length(s) > 0 then
+            maybe.some(s)
+        else
+            maybe.none()
+        end
 
     let runtimeCacheDir(): String =
         begin
             let configured = system.getEnv("QUEST_RUNTIME_CACHE")
             if stringOp.length(configured) > 0 then
-                configured else files.join(files.parent(runtimeDir()) ".build/runtime") end
+                configured
+            else
+                files.join(files.parent(runtimeDir()) ".build/runtime")
+            end
         end
 
     (* A new empty file (or with directory, a directory), by mktemp *)
@@ -235,7 +249,8 @@ export
             vector.append(key compiler <> nul)
             vector.append(key compilerVersion(compiler) <> nul)
             for i = 0 upto {vector.length(flags) - 1} do
-                vector.append(key vector.get(flags i) <> nul) end
+                vector.append(key vector.get(flags i) <> nul)
+            end
             let entries = system.listDirectory(dir)
             let sources = vector.new(:String)
             for i = 0 upto {extent entries - 1} do
@@ -247,7 +262,7 @@ export
             for i = 0 upto {vector.length(sources) - 1} do
                 let name = vector.get(sources i)
                 vector.append(key
-                    name <> nul <> maybe.unwrapOr(files.readText(files.join(dir name)) "") <> nul)
+                        name <> nul <> maybe.unwrapOr(files.readText(files.join(dir name)) "") <> nul)
             end
             let cache = files.join(runtimeCacheDir() stringOp.getSub(sha256.hexDigest(strutil.join("" key)) 0 24))
             let objects = array of(extent runtimeSources "")
@@ -271,7 +286,7 @@ export
                         removeQuietly(temp)
                         raise failure with
                             "C runtime compilation failed with exit code " <> pyInt(r.code) <> ":\n"
-                            <> "Command: " <> strutil.join(" " command) <> "\n" <> r.stderr
+                                <> "Command: " <> strutil.join(" " command) <> "\n" <> r.stderr
                         end
                     end
                     system.renameFile(temp o)
@@ -282,7 +297,7 @@ export
         end
 
     let compileCSource(source: String output: String nogc: Bool compiler: maybe.T(String)
-        extraObjects: Array(String) extraFlags: Array(String) assembly: Bool): Ok =
+            extraObjects: Array(String) extraFlags: Array(String) assembly: Bool): Ok =
         begin
             let cc = if maybe.isSome(compiler) then maybe.unwrap(compiler) else findCCompiler() end
             let dir = runtimeDir()
@@ -291,7 +306,7 @@ export
             let runtime = runtimeObjects(cc nogc extraFlags)
             (* The source, in a temporary file of its own *)
             let tempDir = temporary(true files.join(maybe.unwrapOr(nonEmpty(system.getEnv("TMPDIR")) "/tmp")
-                "questXXXXXXXX"))
+                    "questXXXXXXXX"))
             let cFile = files.join(tempDir if assembly then "program.s" else "program.c" end)
             let removeTemporary(): Ok = begin removeQuietly(cFile) system.removeDirectory(tempDir) end
             let command = vector.new(:String)
@@ -308,28 +323,29 @@ export
             (* Append extraFlags last, matching the bootstrap, so any library
              * they name comes after the object files that reference it *)
             appendAll(command extraFlags)
-            let r = try
-                begin
-                    let w = writer.file(cFile)
-                    writer.putString(w source)
-                    writer.close(w)
-                    system.run(vector.toArray(command))
+            let r =
+                try
+                    begin
+                        let w = writer.file(cFile)
+                        writer.putString(w source)
+                        writer.close(w)
+                        system.run(vector.toArray(command))
+                    end
+                else with x then
+                    begin removeTemporary() raised.reraise(:Tuple code: Int stdout: String stderr: String end x) end
                 end
-            else with x then
-                begin removeTemporary() raised.reraise(:Tuple code: Int stdout: String stderr: String end x) end
-            end
             removeTemporary()
             if not(r.code is 0) then
                 raise failure with
                     "C compilation failed with exit code " <> pyInt(r.code) <> ":\n"
-                    <> "Command: " <> strutil.join(" " command) <> "\n" <> r.stderr
+                        <> "Command: " <> strutil.join(" " command) <> "\n" <> r.stderr
                 end
             end
             ok
         end
 
     let linkObjects(objects: Array(String) output: String nogc: Bool compiler: maybe.T(String)
-        extraFlags: Array(String)): Ok =
+            extraFlags: Array(String)): Ok =
         begin
             system.makeDirectory(files.parent(files.absolute(output)))
             let cc = if maybe.isSome(compiler) then maybe.unwrap(compiler) else findCCompiler() end
@@ -348,7 +364,7 @@ export
             if not(r.code is 0) then
                 raise failure with
                     "Linker failed with exit code " <> pyInt(r.code) <> ":\n"
-                    <> "Command: " <> strutil.join(" " command) <> "\n" <> r.stderr
+                        <> "Command: " <> strutil.join(" " command) <> "\n" <> r.stderr
                 end
             end
             ok

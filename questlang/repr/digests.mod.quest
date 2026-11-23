@@ -9,17 +9,19 @@
 
 module digests : Digests
 import
-    questlang/types/model : questlang/types/Model
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/common/sha256 : questlang/common/Sha256
+    ascii : Ascii
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
-    stringOp = string : StringOp
-    ascii : Ascii
+
+    questlang/common/sha256 : questlang/common/Sha256
     questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/types/model : questlang/types/Model
 export
     Let Type = model.Type
     let intEqual(a: Int b: Int): Bool = a is b
@@ -75,7 +77,8 @@ export
                 case t.form
                     when typeException with y then
                         if model.same(y.payload model.okType) then pieces(array of text("Exception") end)
-                        else pieces(array of text("Exception(") ofType(y.payload) text(")") end) end
+                        else pieces(array of text("Exception(") ofType(y.payload) text(")") end)
+                        end
                     when typeTuple with y then
                         let items = array of(extent y.fields text(""))
                         for i = 0 upto {extent y.fields - 1} do
@@ -128,13 +131,19 @@ export
                         vector.append(result ofType(y.body))
                         result
                     when typeAuto with y then
-                        let result = if model.isPower(y.kindBound) then
-                            pieces(array of
-                                text("Auto " <> y.typeParam <> " <: ") ofType(model.powerBound(y.kindBound)) text(" with ")
-                            end)
-                        else
-                            pieces(array of text("Auto " <> y.typeParam <> " :: ") ofKind(y.kindBound) text(" with ") end)
-                        end
+                        let result =
+                            if model.isPower(y.kindBound) then
+                                pieces(array of
+                                    text("Auto " <> y.typeParam <> " <: ")
+                                    ofType(model.powerBound(y.kindBound))
+                                    text(" with ")
+                                end)
+                            else
+                                pieces(array of text("Auto " <> y.typeParam <> " :: ")
+                                    ofKind(y.kindBound)
+                                    text(" with ")
+                                end)
+                            end
                         let items = array of(extent y.signature text(""))
                         for i = 0 upto {extent y.signature - 1} do
                             items[i] := part(option pRecordField of Printable with let f = y.signature[i] end)
@@ -160,7 +169,11 @@ export
                         vector.append(result text(")"))
                         result
                     when typeRec with y then
-                        pieces(array of text("Rec(" <> y.varName <> " :: ") ofKind(y.bound) text(") ") ofType(y.body) end)
+                        pieces(array of text("Rec(" <> y.varName <> " :: ")
+                            ofKind(y.bound)
+                            text(") ")
+                            ofType(y.body)
+                        end)
                     else pieces(array of text(model.show(t)) end)
                 end
             when pKind with x then
@@ -176,11 +189,12 @@ export
                 case x.c
                     when tupleField with f then
                         let prefix = if f.isVar then "var " else "" end
-                        let head = if maybe.isSome(f.name) andif not(stringOp.isEmpty(maybe.unwrap(f.name))) then
-                            prefix <> maybe.unwrap(f.name) <> ": "
-                        else
-                            prefix <> ":"
-                        end
+                        let head =
+                            if maybe.isSome(f.name) andif not(stringOp.isEmpty(maybe.unwrap(f.name))) then
+                                prefix <> maybe.unwrap(f.name) <> ": "
+                            else
+                                prefix <> ":"
+                            end
                         pieces(array of text(head) ofType(f.type) end)
                     when tupleTypeFormal with f then pieces(array of text(f.name <> "::") ofKind(f.bound) end)
                     when tupleTypeBinding with f then
@@ -257,11 +271,12 @@ export
                         sb.str(joined p.digest)
                 end
             end
-            let digest = if length <= printedTextLimit then
-                sha256.hexDigest(textOf(node))
-            else
-                sha256.hexDigest(stringOp.new(1 ascii.char(1)) <> sb.toString(joined))
-            end
+            let digest =
+                if length <= printedTextLimit then
+                    sha256.hexDigest(textOf(node))
+                else
+                    sha256.hexDigest(stringOp.new(1 ascii.char(1)) <> sb.toString(joined))
+                end
             tuple let length = length let digest = digest end
         end
     (* Return the length and digest of a node's printed text, cached by node
@@ -270,12 +285,17 @@ export
      * text may change. *)
     and printed(node0: Printable): Printed =
         begin
-            let node = case node0 when pType with x then option pType of Printable with let t = model.prune(x.t) end else node0 end
-            let key = case node
-                when pType with x then if x.t.hasMeta then maybe.none(:Int) else maybe.some(x.t.id) end
-                when pKind with x then if x.k.hasMeta then maybe.none(:Int) else maybe.some(x.k.id) end
-                else maybe.none(:Int)
-            end
+            let node =
+                case node0
+                    when pType with x then option pType of Printable with let t = model.prune(x.t) end
+                    else node0
+                end
+            let key =
+                case node
+                    when pType with x then if x.t.hasMeta then maybe.none(:Int) else maybe.some(x.t.id) end
+                    when pKind with x then if x.k.hasMeta then maybe.none(:Int) else maybe.some(x.k.id) end
+                    else maybe.none(:Int)
+                end
             if maybe.isNone(key) then
                 printedUncached(node)
             else

@@ -2,18 +2,20 @@
 
 module shapes : Shapes
 import
-    questlang/types/model : questlang/types/Model
-    questlang/types/canonical : questlang/types/Canonical
-    questlang/types/reduce : questlang/types/Reduce
-    questlang/types/dump : questlang/types/Dump
-    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
-    stringOp = string : StringOp
+
     questlang/common/strings : questlang/common/Strings
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
+    questlang/types/canonical : questlang/types/Canonical
+    questlang/types/dump : questlang/types/Dump
+    questlang/types/model : questlang/types/Model
+    questlang/types/reduce : questlang/types/Reduce
 export
     Let Type = model.Type
 
@@ -139,7 +141,6 @@ export
 
     let same(a: Shape b: Shape): Bool = a.id is b.id
 
-
     let sameKind(a: ShapeKind b: ShapeKind): Bool = ordinal(a) is ordinal(b)
     let kindIs(s: Shape k: ShapeKind): Bool = sameKind(s.kind k)
 
@@ -147,8 +148,8 @@ export
         case s.kind
             when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom then true
             when shapeTuple, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut, shapeException,
-                shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending
-                then
+                    shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
+                    shapePending then
                 false
         end
 
@@ -159,7 +160,7 @@ export
             let var found = maybe.none(:Component)
             for i = 0 upto {extent items - 1} do
                 if maybe.isNone(found) andif maybe.isSome(items[i].name)
-                    andif stringOp.equal(maybe.unwrap(items[i].name) name) then
+                        andif stringOp.equal(maybe.unwrap(items[i].name) name) then
                     found := maybe.some(items[i])
                 end
             end
@@ -243,7 +244,9 @@ export
                         let found = vector.new(:Int)
                         for j = 0 upto {extent x.bindings - 1} do
                             let var mentions = false
-                            for k = 0 upto {extent fv - 1} do if fv[k] is x.bindings[j].symbolId then mentions := true end end
+                            for k = 0 upto {extent fv - 1} do
+                                if fv[k] is x.bindings[j].symbolId then mentions := true end
+                            end
                             if mentions then vector.append(found j) end
                         end
                         found
@@ -269,7 +272,7 @@ export
         case t.form
             when typeVariant with x then
                 let variants = sort.sorted(x.variants
-                    fun(a: model.VariantField b: model.VariantField): Int sort.stringCompare(a.name b.name))
+                        fun(a: model.VariantField b: model.VariantField): Int sort.stringCompare(a.name b.name))
                 let var ordered = true
                 for i = 0 upto {extent variants - 1} do
                     if not(stringOp.equal(variants[i].name x.variants[i].name)) then ordered := false end
@@ -277,7 +280,7 @@ export
                 if ordered then t else model.variantType(variants) end
             when typeOption with x then
                 let options = sort.sorted(x.options
-                    fun(a: model.OptionField b: model.OptionField): Int sort.stringCompare(a.name b.name))
+                        fun(a: model.OptionField b: model.OptionField): Int sort.stringCompare(a.name b.name))
                 let var ordered = true
                 for i = 0 upto {extent options - 1} do
                     if not(stringOp.equal(options[i].name x.options[i].name)) then ordered := false end
@@ -393,26 +396,27 @@ export
                 fillFrom(s shapeOf(model.unfoldLazily(t)))
                 s
             else
-                let s = case t.form
-                    when typeAlias with x then shapeOf(x.target)
-                    (* A recursive type that does not use its variables is the
-                     * type it unfolds to, and has its shape, so that its values
-                     * are its unfolding's however its type is written *)
-                    when typeRec then shapeOf(model.unfoldLazily(t))
-                    when typeRecGroup then shapeOf(model.unfoldLazily(t))
-                    when typeApp then
-                        let reduced = reduce.normalizeType(t)
-                        if model.same(reduced t) then build(t) else shapeOf(reduced) end
-                    (* Equal types whose cases are listed in different orders
-                     * have one shape, its cases ordered by name *)
-                    when typeVariant then
-                        let ordered = casesByName(t)
-                        if model.same(ordered t) then build(t) else shapeOf(ordered) end
-                    when typeOption then
-                        let ordered = casesByName(t)
-                        if model.same(ordered t) then build(t) else shapeOf(ordered) end
-                    else build(t)
-                end
+                let s =
+                    case t.form
+                        when typeAlias with x then shapeOf(x.target)
+                        (* A recursive type that does not use its variables is the
+                         * type it unfolds to, and has its shape, so that its values
+                         * are its unfolding's however its type is written *)
+                        when typeRec then shapeOf(model.unfoldLazily(t))
+                        when typeRecGroup then shapeOf(model.unfoldLazily(t))
+                        when typeApp then
+                            let reduced = reduce.normalizeType(t)
+                            if model.same(reduced t) then build(t) else shapeOf(reduced) end
+                        (* Equal types whose cases are listed in different orders
+                         * have one shape, its cases ordered by name *)
+                        when typeVariant then
+                            let ordered = casesByName(t)
+                            if model.same(ordered t) then build(t) else shapeOf(ordered) end
+                        when typeOption then
+                            let ordered = casesByName(t)
+                            if model.same(ordered t) then build(t) else shapeOf(ordered) end
+                        else build(t)
+                    end
                 hashMap.insert(built t.id s)
                 s
             end
@@ -425,7 +429,12 @@ export
 
     and fieldComponents(fields: Array(model.RecordField)): Array(Component) =
         begin
-            let result = array of(extent fields tuple let name = maybe.none(:String) let shape = maybe.none(:Shape) let isVar = false end)
+            let result =
+                array of(extent fields tuple
+                    let name = maybe.none(:String)
+                    let shape = maybe.none(:Shape)
+                    let isVar = false
+                end)
             for i = 0 upto {extent fields - 1} do
                 result[i] := tuple
                     let name = maybe.some(fields[i].name)
@@ -453,7 +462,11 @@ export
                         let s = newShape(shapeTuple t)
                         let values = model.tupleValueFields(x.fields)
                         let components = array of(extent values
-                            tuple let name = maybe.none(:String) let shape = maybe.none(:Shape) let isVar = false end)
+                                tuple
+                                    let name = maybe.none(:String)
+                                    let shape = maybe.none(:Shape)
+                                    let isVar = false
+                                end)
                         for i = 0 upto {extent values - 1} do
                             components[i] := tuple
                                 let name = values[i].name
@@ -470,16 +483,21 @@ export
                     when typeVariant with x then
                         let s = newShape(shapeVariant t)
                         let cases = array of(extent x.variants
-                            tuple let name = maybe.none(:String) let shape = maybe.none(:Shape) let isVar = false end)
+                                tuple
+                                    let name = maybe.none(:String)
+                                    let shape = maybe.none(:Shape)
+                                    let isVar = false
+                                end)
                         for i = 0 upto {extent x.variants - 1} do
                             let v = x.variants[i]
                             cases[i] := tuple
                                 let name = maybe.some(v.name)
-                                let shape = if maybe.isSome(v.type) then
-                                    maybe.some(shapeOf(maybe.unwrap(v.type)))
-                                else
-                                    maybe.none()
-                                end
+                                let shape =
+                                    if maybe.isSome(v.type) then
+                                        maybe.some(shapeOf(maybe.unwrap(v.type)))
+                                    else
+                                        maybe.none()
+                                    end
                                 let isVar = v.isVar
                             end
                         end
@@ -488,16 +506,21 @@ export
                     when typeOption with x then
                         let s = newShape(shapeOption t)
                         let cases = array of(extent x.options
-                            tuple let name = maybe.none(:String) let shape = maybe.none(:Shape) let isVar = false end)
+                                tuple
+                                    let name = maybe.none(:String)
+                                    let shape = maybe.none(:Shape)
+                                    let isVar = false
+                                end)
                         for i = 0 upto {extent x.options - 1} do
                             let o = x.options[i]
                             cases[i] := tuple
                                 let name = maybe.some(o.name)
-                                let shape = if maybe.isSome(o.payload) then
-                                    maybe.some(shapeOf(maybe.unwrap(o.payload)))
-                                else
-                                    maybe.none()
-                                end
+                                let shape =
+                                    if maybe.isSome(o.payload) then
+                                        maybe.some(shapeOf(maybe.unwrap(o.payload)))
+                                    else
+                                        maybe.none()
+                                    end
                                 let isVar = false
                             end
                         end
@@ -536,7 +559,12 @@ export
                     when typeAll with x then
                         let s = newShape(shapeAll t)
                         let typeParams = array of(extent x.quantifiers
-                            tuple let name = "" let symbolId = 0 let kind = model.typeKind let bound = maybe.none(:Shape) end)
+                                tuple
+                                    let name = ""
+                                    let symbolId = 0
+                                    let kind = model.typeKind
+                                    let bound = maybe.none(:Shape)
+                                end)
                         for i = 0 upto {extent x.quantifiers - 1} do
                             let q = x.quantifiers[i]
                             typeParams[i] := tuple
@@ -631,8 +659,8 @@ export
         case kind
             when shapeRecord, shapeVariant, shapeOption then true
             when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom, shapeTuple,
-                shapeArray, shapeCell, shapeOut, shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar,
-                shapeAbstract, shapeExternal, shapeOperator, shapePending then false
+                    shapeArray, shapeCell, shapeOut, shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar,
+                    shapeAbstract, shapeExternal, shapeOperator, shapePending then false
         end
 
     (* Whether values of type t are functions, polymorphic or not *)

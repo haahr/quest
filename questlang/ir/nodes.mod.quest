@@ -2,17 +2,19 @@
 
 module nodes : Nodes
 import
-    questlang/common/location : questlang/common/Location
-    questlang/types/model : questlang/types/Model
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/types/reduce : questlang/types/Reduce
-    questlang/types/subtyping : questlang/types/Subtyping
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/common/location : questlang/common/Location
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/types/model : questlang/types/Model
+    questlang/types/reduce : questlang/types/Reduce
+    questlang/types/subtyping : questlang/types/Subtyping
 export
     Let Type = model.Type
     Let Shape = shapes.Shape
@@ -429,7 +431,8 @@ export
         var witness: maybe.T(DescriptorParam)
     end
     and StmtLoop = Tuple label: String var body: Body end
-    and StmtTry = Tuple var body: Body var exc: Variable var handler: Body catching: Catching var catches: Array(Atom) end
+    and StmtTry =
+        Tuple var body: Body var exc: Variable var handler: Body catching: Catching var catches: Array(Atom) end
     and StmtJoin = Tuple label: String var params: Array(Variable) var continuation: Body var body: Body end
     and StmtEcho = Tuple var pos: Int var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
     and StmtEchoText = Tuple text: String end
@@ -525,14 +528,21 @@ export
      * ====================================================================== *)
 
     let newVar(hint: String t: Type isMutable: Bool): Variable =
-        tuple let id = nextId() let hint = hint let type = t let isMutable = isMutable let var boxed = false
-            let var unboxed = false end
+        tuple
+            let id = nextId()
+            let hint = hint
+            let type = t
+            let isMutable = isMutable
+            let var boxed = false
+            let var unboxed = false
+        end
 
     let newBody(): Body = tuple let id = nextId() let var statements = vector.new() end
     let bodyOf(statements: Array(Stmt)): Body =
         tuple let id = nextId() let var statements = vector.fromArray(statements) end
 
-    let newStaticDescriptor(t: Type echo: Bool): StaticDescriptor = tuple let id = nextId() let type = t let echo = echo end
+    let newStaticDescriptor(t: Type echo: Bool): StaticDescriptor =
+        tuple let id = nextId() let type = t let echo = echo end
 
     let planBox: PlanKind = option planBox of PlanKind end
     let planUnbox: PlanKind = option planUnbox of PlanKind end
@@ -649,7 +659,8 @@ export
             let libPath = libPath
         end
 
-    let newUnit(main: Body modules: vector.T(Module) imports: Array(Import) sourceMap: maybe.T(location.SourceMap)): Unit =
+    let newUnit(main: Body modules: vector.T(Module) imports: Array(Import)
+            sourceMap: maybe.T(location.SourceMap)): Unit =
         tuple
             let var isProgram = true
             let var main = main
@@ -673,20 +684,23 @@ export
         if file is 0 then u.sourceMap
         elsif {file > 0} andif {file <= vector.length(u.mergedSources)} then
             vector.get(u.mergedSources {file - 1})
-        else maybe.none() end
+        else maybe.none()
+        end
 
     let sourceFile(u: Unit file: Int): maybe.T(String) =
         begin
             let sm = fileMap(u file)
             if maybe.isNone(sm) then maybe.none()
-            else maybe.some(location.file(maybe.unwrap(sm))) end
+            else maybe.some(location.file(maybe.unwrap(sm)))
+            end
         end
 
     let sourcePos(u: Unit offset: Int): maybe.T(SourcePos) =
         begin
             let file = if offset < 0 then ~1 else offset / fileSpan end
             let sm = fileMap(u file)
-            if maybe.isNone(sm) then maybe.none()
+            if maybe.isNone(sm) then
+                maybe.none()
             else
                 let pos = location.locate(maybe.unwrap(sm) offset - {file * fileSpan})
                 maybe.some(tuple let file = file let line = pos.line let col = pos.col end)
@@ -696,7 +710,8 @@ export
     let site(u: Unit offset: Int): maybe.T(String) =
         begin
             let pos = sourcePos(u offset)
-            if maybe.isNone(pos) then maybe.none()
+            if maybe.isNone(pos) then
+                maybe.none()
             else
                 let p = maybe.unwrap(pos)
                 maybe.some(maybe.unwrap(sourceFile(u p.file)) <> ":" <> conv.int(p.line) <> ":"
@@ -709,7 +724,9 @@ export
     let opOfAtom(a: Atom): Op = option opAtom of Op with let var atom = a end
     let opOfVar(v: Variable): Op = opOfAtom(atomOfVar(v))
     let letStmt(v: Variable value: Op): Stmt = option sLet of Stmt with
-        let var pos = ~1 let var v = v let var value = value
+        let var pos = ~1
+        let var v = v
+        let var value = value
     end
 
     let primName(p: Prim): String =
@@ -790,8 +807,8 @@ export
         case p
             when primIs, primIsnot then true
             when primAdd, primSub, primMul, primDiv, primRem, primMod, primLt, primLe, primGt, primGe, primRealAdd,
-                primRealSub, primRealMul, primRealDiv, primRealPow, primRealLt, primRealLe, primRealGt, primRealGe,
-                primConcat, primAnd, primOr, primNot, primExtent then
+                    primRealSub, primRealMul, primRealDiv, primRealPow, primRealLt, primRealLe, primRealGt, primRealGe,
+                    primConcat, primAnd, primOr, primNot, primExtent then
                 false
         end
 
@@ -1006,8 +1023,7 @@ export
             else false
         end
 
-    let terminated(b: Body): Bool =
-        not(vector.empty(b.statements)) andif isTerminator(vector.last(b.statements))
+    let terminated(b: Body): Bool = not(vector.empty(b.statements)) andif isTerminator(vector.last(b.statements))
 
     let atomVarOf(a: Atom): maybe.T(Variable) =
         case a

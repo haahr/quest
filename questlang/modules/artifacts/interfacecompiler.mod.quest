@@ -2,37 +2,39 @@
 
 module interfaceCompiler : InterfaceCompiler
 import
-    questlang/common/location : questlang/common/Location
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/common/diagbag : questlang/common/DiagBag
-    questlang/syntax/ast : questlang/syntax/Ast
-    questlang/syntax/tokens : questlang/syntax/Tokens
-    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
-    questlang/syntax/parser : questlang/syntax/Parser
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/types/env : questlang/types/Env
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
-    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
-    questlang/modules/paths : questlang/modules/Paths
-    questlang/common/files : questlang/common/Files
-    questlang/common/memoryFiles : questlang/common/MemoryFiles
-    questlang/modules/graph : questlang/modules/Graph
-    questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
-    questlang/modules/units : questlang/modules/Units
-    questlang/modules/elaboration : questlang/modules/Elaboration
-    values = questlang/values/model : questlang/values/Model
-    questlang/values/dynamicReader : questlang/values/DynamicReader
-    questlang/values/dynamicWriter : questlang/values/DynamicWriter
-    questlang/config/abi : questlang/config/Abi
-    collections/hashMap : collections/HashMap
-    collections/vector : collections/Vector
-    util/hash : util/Hash
-    util/maybe : util/Maybe
-    os/fileStats : os/FileStats
-    util/strutil : util/Strutil
     stringOp = string : StringOp
     system : System
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    os/fileStats : os/FileStats
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/files : questlang/common/Files
+    questlang/common/location : questlang/common/Location
+    questlang/common/memoryFiles : questlang/common/MemoryFiles
+    questlang/config/abi : questlang/config/Abi
+    questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/units : questlang/modules/Units
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/parser : questlang/syntax/Parser
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/values/dynamicReader : questlang/values/DynamicReader
+    questlang/values/dynamicWriter : questlang/values/DynamicWriter
+    values = questlang/values/model : questlang/values/Model
 export
     Let Type = model.Type
     Let Kind = model.Kind
@@ -45,16 +47,16 @@ export
 
     let qiSchemaType =
         "Record "
-        <> "abi: Int "
-        <> "deps: Array(Record dir: String path: String source: String end) "
-        <> "imports: Array(String) "
-        <> "isUnsound: Bool "
-        <> "name: String "
-        <> "producer: String "
-        <> "source: String "
-        <> "types: Array(Record group: Int isManifest: Bool kind: String manifestType: String name: String end) "
-        <> "values: Array(Record isPoly: Bool name: String typeSig: String end) "
-        <> "end"
+            <> "abi: Int "
+            <> "deps: Array(Record dir: String path: String source: String end) "
+            <> "imports: Array(String) "
+            <> "isUnsound: Bool "
+            <> "name: String "
+            <> "producer: String "
+            <> "source: String "
+            <> "types: Array(Record group: Int isManifest: Bool kind: String manifestType: String name: String end) "
+            <> "values: Array(Record isPoly: Bool name: String typeSig: String end) "
+            <> "end"
 
     (* =========================================================================
      * Types and kinds as .qi text
@@ -104,11 +106,12 @@ export
                             when tupleTypeFormal with f then
                                 vector.append(parts f.name <> "::" <> formatKindForQi(f.bound))
                             when tupleTypeBinding with f then
-                                let b = if maybe.isSome(f.bound) then
-                                    "::" <> formatKindForQi(maybe.unwrap(f.bound)) <> " "
-                                else
-                                    ""
-                                end
+                                let b =
+                                    if maybe.isSome(f.bound) then
+                                        "::" <> formatKindForQi(maybe.unwrap(f.bound)) <> " "
+                                    else
+                                        ""
+                                    end
                                 vector.append(parts "Let " <> f.name <> b <> "= " <> fmt(f.type))
                         end
                     end
@@ -200,10 +203,11 @@ export
                         let args = vector.new(:String)
                         for i = 0 upto {extent x.arguments - 1} do vector.append(args fmt(x.arguments[i])) end
                         let ctor = fmt(x.constructor)
-                        let braced = case x.constructor.form
-                            when typeOperator, typeAll, typeRec, typeRecGroup then true
-                            else false
-                        end
+                        let braced =
+                            case x.constructor.form
+                                when typeOperator, typeAll, typeRec, typeRecGroup then true
+                                else false
+                            end
                         let head = if braced then "{" <> ctor <> "}" else ctor end
                         head <> "(" <> joinedBy(" " args) <> ")"
                     when typeVar with x then "Var(" <> fmt(x.element) <> ")"
@@ -249,7 +253,7 @@ export
                         for i = 0 upto {extent g.bindings - 1} do
                             let b = g.bindings[i]
                             hashMap.insert(subst b.symbolId
-                                model.typeApp(model.typeVariable(b.name b.symbolId maybe.some(b.bound)) args))
+                                    model.typeApp(model.typeVariable(b.name b.symbolId maybe.some(b.bound)) args))
                         end
                         let body = model.substitute(g.bindings[g.activeIndex].body subst)
                         let ps = vector.new(:String)
@@ -260,10 +264,11 @@ export
                         for i = 0 upto {extent op.params - 1} do
                             resultKind := case resultKind.form when kindAll with a then a.resultKind else resultKind end
                         end
-                        let result = case resultKind.form
-                            when kindType then ""
-                            else " :: " <> formatKindForQi(resultKind)
-                        end
+                        let result =
+                            case resultKind.form
+                                when kindType then ""
+                                else " :: " <> formatKindForQi(resultKind)
+                            end
                         "Fun(" <> joinedBy(" " ps) <> ")" <> result <> " " <> formatTypeForQi(body)
                     else formatTypeForQi(definition)
                 end
@@ -275,7 +280,7 @@ export
      * ====================================================================== *)
 
     let syntax(A::TYPE text: String parse: All(toks: vector.T(tokens.Token) sm: location.SourceMap
-        bag: diagbag.T) A): A =
+            bag: diagbag.T) A): A =
         begin
             let sm = location.newSourceMap("<type>" text)
             let bag = diagbag.new()
@@ -335,7 +340,7 @@ export
                                 let val = vector.get(g.val j)
                             end
                             vector.append(result
-                                tuple let sig = member let group = if isRec then groups else 0 end end)
+                                    tuple let sig = member let group = if isRec then groups else 0 end end)
                         end
                     else vector.append(result tuple let sig = sig let group = 0 end)
                 end
@@ -355,7 +360,7 @@ export
     let arrayOf(xs: vector.T(Value)): Value = option vArray of Value with let a = vector.toArray(xs) end
 
     let compileInterfaceToQi(decl: ast.InterfaceDecl scope: Scope source: maybe.T(String)
-        deps: Array(paths.InterfaceDependency)): String =
+            deps: Array(paths.InterfaceDependency)): String =
         begin
             (* Encode each import item as text: :I for a bare interface import,
              * n1,n2=p1,p2:I when local names map to explicit module paths, and
@@ -369,12 +374,12 @@ export
                 let hasModulePaths = maybe.isSome(imp.modulePaths)
                     andif not(vector.empty(maybe.unwrap(imp.modulePaths)))
                 vector.append(imports str(
-                    if vector.empty(imp.names) then ":" <> ast.effectiveInterfacePath(imp)
-                    elsif hasModulePaths then
-                        names <> "=" <> strutil.join("," maybe.unwrap(imp.modulePaths)) <> ":"
-                            <> ast.effectiveInterfacePath(imp)
-                    else names <> ":" <> ast.effectiveInterfacePath(imp)
-                    end))
+                        if vector.empty(imp.names) then ":" <> ast.effectiveInterfacePath(imp)
+                        elsif hasModulePaths then
+                            names <> "=" <> strutil.join("," maybe.unwrap(imp.modulePaths)) <> ":"
+                                <> ast.effectiveInterfacePath(imp)
+                        else names <> ":" <> ast.effectiveInterfacePath(imp)
+                        end))
             end
 
             (* A member of a recursive group records its body, with the other
@@ -390,22 +395,24 @@ export
                         (* The elaborated kind, whose bound (for POWER) is
                          * printed as a type, not as syntax *)
                         let formal = symbols.lookupTypeLocal(scope s.val.name)
-                        let kindText = if maybe.isSome(formal) then
-                            formatKindForQi(maybe.unwrap(formal).kind)
-                        else
-                            "TYPE"
-                        end
+                        let kindText =
+                            if maybe.isSome(formal) then
+                                formatKindForQi(maybe.unwrap(formal).kind)
+                            else
+                                "TYPE"
+                            end
                         vector.append(types recordOf(array of
                             field("group" values.intValue(0)) field("name" str(s.val.name)) field("kind" str(kindText))
                             field("isManifest" values.boolValue(false)) field("manifestType" str(""))
                         end))
                     when sigTypeBinding with s then
                         let typeSym = symbols.lookupTypeLocal(scope s.val.name)
-                        let var concrete = if maybe.isSome(typeSym) then
-                            maybe.unwrap(typeSym).definition
-                        else
-                            maybe.none(:Type)
-                        end
+                        let var concrete =
+                            if maybe.isSome(typeSym) then
+                                maybe.unwrap(typeSym).definition
+                            else
+                                maybe.none(:Type)
+                            end
                         if {group > 0} andif maybe.isSome(concrete) then
                             case maybe.unwrap(concrete).form
                                 when typeRecGroup with g then
@@ -416,43 +423,51 @@ export
                         let isOperatorGroup = {group > 0} andif maybe.isSome(concrete)
                             andif case maybe.unwrap(concrete).form
                                 when typeOperator with op then case op.body.form when typeRecGroup then
-                                    true else false end
+                                    true else false
+                                end
                                 else false
                             end
-                        let typeText = if isOperatorGroup then
-                            formatRecOperatorMember(maybe.unwrap(concrete)
-                                maybe.unwrap(typeSym).kind)
-                        elsif maybe.isSome(concrete) then
-                            formatTypeForQi(maybe.unwrap(concrete))
-                        else
-                            ""
-                        end
-                        let kindText = if maybe.isSome(typeSym) then
-                            formatKindForQi(maybe.unwrap(typeSym).kind)
-                        else
-                            "TYPE"
-                        end
+                        let typeText =
+                            if isOperatorGroup then
+                                formatRecOperatorMember(maybe.unwrap(concrete)
+                                        maybe.unwrap(typeSym).kind)
+                            elsif maybe.isSome(concrete) then
+                                formatTypeForQi(maybe.unwrap(concrete))
+                            else
+                                ""
+                            end
+                        let kindText =
+                            if maybe.isSome(typeSym) then
+                                formatKindForQi(maybe.unwrap(typeSym).kind)
+                            else
+                                "TYPE"
+                            end
                         vector.append(types recordOf(array of
                             field("group" values.intValue(group)) field("name" str(s.val.name))
-                                field("kind" str(kindText))
+                            field("kind" str(kindText))
                             field("isManifest" values.boolValue(true)) field("manifestType" str(typeText))
                         end))
                     when sigValue with s then
                         if maybe.isSome(s.val.name) then
                             let name = maybe.unwrap(s.val.name)
                             let valSym = symbols.lookupValueLocal(scope name)
-                            let valType = if maybe.isSome(valSym) then
-                                maybe.some(maybe.unwrap(valSym).type)
-                            else
-                                maybe.none(:Type)
-                            end
-                            let sigText = if maybe.isSome(valType) then
-                                formatTypeForQi(maybe.unwrap(valType)) else "" end
+                            let valType =
+                                if maybe.isSome(valSym) then
+                                    maybe.some(maybe.unwrap(valSym).type)
+                                else
+                                    maybe.none(:Type)
+                                end
+                            let sigText =
+                                if maybe.isSome(valType) then
+                                    formatTypeForQi(maybe.unwrap(valType))
+                                else
+                                    ""
+                                end
                             let isPoly = maybe.isSome(valType)
                                 andif case maybe.unwrap(valType).form when typeAll then true else false end
                             vector.append(vals recordOf(array of
                                 field("name" str(name)) field("typeSig" str(sigText))
-                                    field("isPoly" values.boolValue(isPoly))
+                                field("isPoly" values.boolValue(isPoly))
                             end))
                         end
                     else ok
@@ -470,7 +485,7 @@ export
                 field("deps" arrayOf(depValues))
                 field("producer" str(abi.producer))
                 field("source"
-                    str(if maybe.isSome(source) then files.absolute(maybe.unwrap(source)) else "" end))
+                        str(if maybe.isSome(source) then files.absolute(maybe.unwrap(source)) else "" end))
                 field("name" str(decl.name))
                 field("imports" arrayOf(imports))
                 field("isUnsound" values.boolValue(decl.isUnsound))
@@ -478,8 +493,7 @@ export
                 field("values" arrayOf(vals))
             end)
             let label = maybe.some("a")
-            let payload =
-                values.tupleValue(array of description end maybe.some(array of label end))
+            let payload = values.tupleValue(array of description end maybe.some(array of label end))
             dynamicWriter.encode(option vAuto of Value with
                 let a = tuple let value = payload let type = parseTypeString(qiSchemaType) end
             end)
@@ -526,12 +540,11 @@ export
      * header does not elaborate one again *)
     let compiledByQi = hashMap.new(:String :CompiledInterface eq hash.string)
 
-    let compiledInterface(qiFile: String): maybe.T(CompiledInterface) =
-        hashMap.get(compiledByQi files.absolute(qiFile))
+    let compiledInterface(qiFile: String): maybe.T(CompiledInterface) = hashMap.get(compiledByQi files.absolute(qiFile))
 
     let rec compileInterfaceFile(file: String outputDir: maybe.T(String) includePaths: Array(String)
-        buildDir: maybe.T(String) programDir: maybe.T(String) writeQi: Bool onCompiled: maybe.T(OnCompiled)
-        res: graph.Resolver): CompiledInterface =
+            buildDir: maybe.T(String) programDir: maybe.T(String) writeQi: Bool onCompiled: maybe.T(OnCompiled)
+            res: graph.Resolver): CompiledInterface =
         begin
             let key = files.absolute(file)
             let canon = graph.canonicalName(graph.resolveFile(res key graph.rootsOf(includePaths programDir)))
@@ -547,12 +560,13 @@ export
                 end
             end
             vector.append(compiling tuple let file = key let name = canon end)
-            let compiled = try
-                compileFile(file outputDir includePaths buildDir programDir writeQi onCompiled res)
-            when diagnostics.compilerError with err then
-                vector.pop(compiling)
-                diagnostics.raiseError(:CompiledInterface err)
-            end
+            let compiled =
+                try
+                    compileFile(file outputDir includePaths buildDir programDir writeQi onCompiled res)
+                when diagnostics.compilerError with err then
+                    vector.pop(compiling)
+                    diagnostics.raiseError(:CompiledInterface err)
+                end
             vector.pop(compiling)
             if writeQi then
                 hashMap.insert(compiledByQi files.absolute(compiled.qiFile) compiled)
@@ -562,8 +576,8 @@ export
         end
 
     and compileFile(file: String outputDir: maybe.T(String) includePaths: Array(String) buildDir: maybe.T(String)
-        programDir: maybe.T(String) writeQi: Bool onCompiled: maybe.T(OnCompiled) res: graph.Resolver)
-        : CompiledInterface =
+            programDir: maybe.T(String) writeQi: Bool onCompiled: maybe.T(OnCompiled) res: graph.Resolver)
+            : CompiledInterface =
         begin
             let text = files.readText(file)
             if maybe.isNone(text) then
@@ -579,10 +593,12 @@ export
             e.compilingC := true
             e.units := graph.newGraphWith(res)
             for i = 0 upto {extent includePaths - 1} do vector.append(e.includePaths includePaths[i]) end
-            let build = if maybe.isSome(buildDir) then
-                maybe.some(files.absolute(maybe.unwrap(buildDir)))
-                else maybe.none(:String)
-            end
+            let build =
+                if maybe.isSome(buildDir) then
+                    maybe.some(files.absolute(maybe.unwrap(buildDir)))
+                else
+                    maybe.none(:String)
+                end
             if maybe.isSome(build) then
                 (* First: imported interfaces are loaded from their (fresh
                  * or rebuilt) artifacts in the build directory *)
@@ -596,11 +612,12 @@ export
             let elaborated = env.withUnitSource(e location.file(sm) fun(): Elaborated
                 begin
                     let prog = units.parseUnit(sm)
-                    let found = case units.unitDeclaration(prog file)
-                        when interfaceDecl with d then d
-                        else diagnostics.fail(:Tuple decl: ast.InterfaceDecl offset: Int end
-                            "internal: not an interface" 0)
-                    end
+                    let found =
+                        case units.unitDeclaration(prog file)
+                            when interfaceDecl with d then d
+                            else diagnostics.fail(:Tuple decl: ast.InterfaceDecl offset: Int end
+                                    "internal: not an interface" 0)
+                        end
                     if maybe.isSome(build) then
                         (* Every interface it imports is brought up to date in
                          * the build directory, including builtin interfaces
@@ -612,47 +629,53 @@ export
                             env.atImport(e imp.offset 1 fun(): Ok
                                 begin
                                     ensureResolvedInterfaceArtifacts(graph.resolveInterface(res
-                                        ast.effectiveInterfacePath(imp)
-                                        maybe.some(files.parent(file)) roots) maybe.unwrap(build)
+                                            ast.effectiveInterfacePath(imp)
+                                            maybe.some(files.parent(file)) roots) maybe.unwrap(build)
                                             onCompiled res)
                                     ok
                                 end)
                         end
                     end
                     let typed = elaboration.elaborateInterface(found.decl found.offset e)
-                    let scope = case typed.form
-                        when bindInterface with x then x.scope
-                        else diagnostics.fail(:Scope "internal: not an interface" 0)
-                    end
+                    let scope =
+                        case typed.form
+                            when bindInterface with x then x.scope
+                            else diagnostics.fail(:Scope "internal: not an interface" 0)
+                        end
                     tuple let decl = found.decl let scope = scope end
                 end)
-            let targetDir = if maybe.isSome(build) andif maybe.isNone(outputDir) then
-                let canon =
-                    graph.canonicalName(graph.resolveFile(res files.absolute(file)
-                    graph.rootsOf(searchPaths programDir)))
-                graph.unitArtifactDir(maybe.unwrap(build) canon)
-            elsif maybe.isSome(outputDir) then
-                maybe.unwrap(outputDir)
-            else
-                files.parent(file)
-            end
+            let targetDir =
+                if maybe.isSome(build) andif maybe.isNone(outputDir) then
+                    let canon =
+                        graph.canonicalName(graph.resolveFile(res files.absolute(file)
+                                graph.rootsOf(searchPaths programDir)))
+                    graph.unitArtifactDir(maybe.unwrap(build) canon)
+                elsif maybe.isSome(outputDir) then
+                    maybe.unwrap(outputDir)
+                else
+                    files.parent(file)
+                end
             let base = files.baseName(file)
             let stem = if strutil.endsWith(base ".int.quest") then stringOp.getSub(base 0 {stringOp.length(base) - 10})
                 else paths.stripUnitSuffix(base)
-            end
+                end
             let qiFile = files.join(targetDir paths.lower(stem) <> ".qi")
             if writeQi then
                 let deps = graph.interfaceDependencies(res file searchPaths)
                 writeFile(qiFile compileInterfaceToQi(elaborated.decl elaborated.scope maybe.some(file) deps))
             end
             tuple
-                let decl = elaborated.decl let scope = elaborated.scope let source = file let sourceMap = sm
-                let qiFile = qiFile let includePaths = searchPaths
+                let decl = elaborated.decl
+                let scope = elaborated.scope
+                let source = file
+                let sourceMap = sm
+                let qiFile = qiFile
+                let includePaths = searchPaths
             end
         end
 
     and ensureResolvedInterfaceArtifacts(resolved: graph.Resolved buildDir: String onCompiled: maybe.T(OnCompiled)
-        res: graph.Resolver): InterfaceArtifacts =
+            res: graph.Resolver): InterfaceArtifacts =
         begin
             let includePaths = resolved.roots.searchPaths
             let programDir = resolved.roots.programDir
@@ -663,13 +686,15 @@ export
             let var qiFile = graph.interfaceQiFile(buildDir canon)
             let searchPaths = if contains(includePaths buildDir) then includePaths
                 else vector.toArray(vector.concat(vector.fromArray(array of buildDir end)
-                    vector.fromArray(includePaths)))
-            end
+                        vector.fromArray(includePaths)))
+                end
             let artifacts(qi: String): InterfaceArtifacts =
                 tuple
-                    let qiFile = qi let canonicalName = canon
+                    let qiFile = qi
+                    let canonicalName = canon
                     let source = if hasSource then src else maybe.none() end
-                    let targetDir = targetDir let searchPaths = searchPaths
+                    let targetDir = targetDir
+                    let searchPaths = searchPaths
                 end
             (* Rules 1 and 2 plus the ABI version: the .qi exists, is fresh,
              * matches this compiler, was built from this source, and none of
@@ -685,13 +710,12 @@ export
                     let qiTime = files.modifiedNs(qi)
                     let deps = paths.recordedDependencies(qi)
                     let resolveSource = fun(path: String fromDir: maybe.T(String) searchPaths: Array(String)):
-                        maybe.T(String)
+                            maybe.T(String)
                         graph.interfaceSource(res path fromDir searchPaths)
                     {files.modifiedNs(source) <= qiTime} andif abi.builtFrom(qi source)
                         andif maybe.isSome(deps)
-                        andif
-                            maybe.isNone(paths.dependencyChange(maybe.unwrap(deps)
-                            includePaths qiTime resolveSource))
+                        andif maybe.isNone(paths.dependencyChange(maybe.unwrap(deps)
+                                includePaths qiTime resolveSource))
                 end
             (* A fresh .qi found elsewhere on the search path (next to the
              * source, from a standalone compilation) is used like one in the
@@ -715,21 +739,22 @@ export
                 if not(current(qiFile)) then
                     if not(memoryFiles.isMemory(targetDir)) then system.makeDirectory(targetDir) end
                     qiFile := compileInterfaceFile(maybe.unwrap(src) maybe.some(targetDir) searchPaths
-                        maybe.some(buildDir) programDir true onCompiled res).qiFile
+                            maybe.some(buildDir) programDir true onCompiled res).qiFile
                 end
                 artifacts(qiFile)
             end
         end
 
     let indirectInterfaceRefs(direct: Array(manifest.ImportedInterfaceRef) includePaths: Array(String)
-        programDir: maybe.T(String) res: graph.Resolver): Array(manifest.ImportedInterfaceRef) =
+            programDir: maybe.T(String) res: graph.Resolver): Array(manifest.ImportedInterfaceRef) =
         begin
             let roots = graph.rootsOf(includePaths programDir)
             let refs = vector.new(:manifest.ImportedInterfaceRef)
             let seen = hashMap.new(:String :Bool eq hash.string)
             for i = 0 upto {extent direct - 1} do
                 if stringOp.length(direct[i].source) > 0 then
-                    hashMap.insert(seen direct[i].source true) end
+                    hashMap.insert(seen direct[i].source true)
+                end
             end
             for i = 0 upto {extent direct - 1} do
                 if stringOp.length(direct[i].source) > 0 then
@@ -740,21 +765,27 @@ export
                             andif hashMap.contains(seen dep.source)
                         if not(known) then
                             if stringOp.length(dep.source) > 0 then
-                                hashMap.insert(seen dep.source true) end
+                                hashMap.insert(seen dep.source true)
+                            end
                             let name =
                                 graph.interfaceName(graph.resolveInterface(res dep.path maybe.some(dep.dir)
-                                roots))
+                                        roots))
                             let stats = if stringOp.length(dep.source) > 0 then fileStats.find(dep.source)
                                 else maybe.none(:fileStats.T) end
-                            let mtime = if maybe.isSome(stats)
-                                andif {maybe.unwrap(stats).kind?file} then
-                                maybe.unwrap(stats).modifiedTime
-                            else
-                                0.0
-                            end
+                            let mtime =
+                                if maybe.isSome(stats)
+                                        andif {maybe.unwrap(stats).kind?file} then
+                                    maybe.unwrap(stats).modifiedTime
+                                else
+                                    0.0
+                                end
                             vector.append(refs tuple
-                                let name = name let source = dep.source let mtime = mtime let path = dep.path let dir
-                                    = dep.dir
+                                let name = name
+                                let source = dep.source
+                                let mtime = mtime
+                                let path = dep.path
+                                let dir
+                                        = dep.dir
                             end)
                         end
                     end
@@ -783,18 +814,19 @@ export
         end
         end
 
-
     let qiRecord(text: String file: String): Value =
         begin
-            let malformed = "Malformed .qi metadata" <> if stringOp.length(file) > 0 then " in '" <> file <> "'" else "" end
-            let r = case dynamicReader.decode(text)
-                when vAuto with x then
-                    case x.a.value
-                        when vTuple with t then t.t.elements[0]
-                        else diagnostics.fail(:Value malformed 0)
-                    end
-                else diagnostics.fail(:Value malformed 0)
-            end
+            let malformed =
+                "Malformed .qi metadata" <> if stringOp.length(file) > 0 then " in '" <> file <> "'" else "" end
+            let r =
+                case dynamicReader.decode(text)
+                    when vAuto with x then
+                        case x.a.value
+                            when vTuple with t then t.t.elements[0]
+                            else diagnostics.fail(:Value malformed 0)
+                        end
+                    else diagnostics.fail(:Value malformed 0)
+                end
             case r when vRecord then r else diagnostics.fail(malformed 0) end
         end
 
@@ -805,8 +837,12 @@ export
             if maybe.isNone(text) then diagnostics.fail(:Ok "Error reading .qi file '" <> file <> "'" 0) end
             let rec0 = qiRecord(maybe.unwrap(text) file)
             let nameField = fieldOf(rec0 "name")
-            let name = if maybe.isSome(nameField) then
-                stringOf(nameField) else paths.stripUnitSuffix(files.baseName(file)) end
+            let name =
+                if maybe.isSome(nameField) then
+                    stringOf(nameField)
+                else
+                    paths.stripUnitSuffix(files.baseName(file))
+                end
             let frame = symbols.newScope(maybe.some(e.currentScope) "imports_" <> name)
 
             (* 1. The interfaces it imports *)
@@ -815,12 +851,17 @@ export
                 begin
                     let found = env.lookupInterface(e impName)
                     if maybe.isSome(found) then
-                        maybe.unwrap(found) else elaboration.loadInterface(impName e) end
+                        maybe.unwrap(found)
+                    else
+                        elaboration.loadInterface(impName e)
+                    end
                 end
             for i = 0 upto {extent importsOf - 1} do
                 let impText = case importsOf[i] when vString with x then x.s else "" end
                 if strutil.startsWith(impText ":") then
-                    elaboration.declareTypesAndKinds(interfaceOf(stringOp.getSub(impText 1 {stringOp.length(impText) - 1})) frame)
+                    elaboration.declareTypesAndKinds(interfaceOf(stringOp.getSub(impText 1
+                            {stringOp.length(impText) - 1}))
+                            frame)
                 else
                     let var names = vector.new(:String)
                     let var modulePaths = vector.new(:String)
@@ -884,18 +925,22 @@ export
                     for i = 0 upto {extent typeItems - 1} do
                         let item = typeItems[i]
                         let kindText = stringOf(fieldOf(item "kind"))
-                        let kind = if {stringOp.length(kindText) > 0} andif not(eq(kindText "TYPE")) then
-                            elaborateKindText(kindText e)
-                        else
-                            model.typeKind
-                        end
+                        let kind =
+                            if {stringOp.length(kindText) > 0} andif not(eq(kindText "TYPE")) then
+                                elaborateKindText(kindText e)
+                            else
+                                model.typeKind
+                            end
                         let sym =
                             symbols.newTypeSymbol(stringOf(fieldOf(item "name")) env.freshSymbolId(e) kind
-                            maybe.none())
+                                    maybe.none())
                         symbols.declareType(ifaceScope sym)
                         vector.append(records tuple
-                            let name = sym.name let isManifest = boolOf(fieldOf(item "isManifest")) let kind = kindText
-                            let manifest = stringOf(fieldOf(item "manifestType")) let sym = sym
+                            let name = sym.name
+                            let isManifest = boolOf(fieldOf(item "isManifest"))
+                            let kind = kindText
+                            let manifest = stringOf(fieldOf(item "manifestType"))
+                            let sym = sym
                             let group = intOf(fieldOf(item "group"))
                         end)
                     end
@@ -918,14 +963,19 @@ export
                             if isOperator then
                                 vector.append(operatorSyms r.sym)
                                 vector.append(operatorBindings tuple
-                                    let offset = 0 let name = r.name let typeVal = parseType(r.manifest)
-                                    let params = vector.new(:ast.TypeFormalOf(ast.TypeExpr)) let bound =
-                                        maybe.none(:ast.TypeExpr)
-                                    let isRec = true let isDef = false
+                                    let offset = 0
+                                    let name = r.name
+                                    let typeVal = parseType(r.manifest)
+                                    let params = vector.new(:ast.TypeFormalOf(ast.TypeExpr))
+                                    let bound = maybe.none(:ast.TypeExpr)
+                                    let isRec = true
+                                    let isDef = false
                                 end)
                             else
                                 vector.append(members tuple
-                                    let name = r.name let sym = r.sym let body = elaborateTypeText(r.manifest e)
+                                    let name = r.name
+                                    let sym = r.sym
+                                    let body = elaborateTypeText(r.manifest e)
                                 end)
                             end
                             let last = {{i + 1} is n} orif not(vector.get(records {i + 1}).group is r.group)
@@ -935,23 +985,30 @@ export
                                     for j = 0 upto {vector.length(operatorSyms) - 1} do
                                         if maybe.isSome(elaborated[j].definition) then
                                             symbols.defineType(vector.get(operatorSyms j)
-                                                maybe.unwrap(elaborated[j].definition))
+                                                    maybe.unwrap(elaborated[j].definition))
                                         end
                                     end
                                 else
                                     let bindings = array of(vector.length(members)
-                                        tuple let name = "" let symbolId = 0 let bound = model.typeKind let body =
-                                            model.okType end)
+                                            tuple
+                                                let name = ""
+                                                let symbolId = 0
+                                                let bound = model.typeKind
+                                                let body = model.okType
+                                            end)
                                     for j = 0 upto {vector.length(members) - 1} do
                                         let m = vector.get(members j)
                                         bindings[j] := tuple
-                                            let name = m.name let symbolId = m.sym.symbolId let bound = m.sym.kind let
-                                                body = m.body
+                                            let name = m.name
+                                            let symbolId = m.sym.symbolId
+                                            let bound = m.sym.kind
+                                            let
+                                                    body = m.body
                                         end
                                     end
                                     for j = 0 upto {vector.length(members) - 1} do
                                         symbols.defineType(vector.get(members j).sym
-                                            model.recGroupType(bindings j))
+                                                model.recGroupType(bindings j))
                                     end
                                 end
                                 vector.clear(members)

@@ -2,28 +2,30 @@
 
 module application : Application
 import
+    conv : Conv
+    stringOp = string : StringOp
+    writer : Writer
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+
     questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/common/location : questlang/common/Location
     questlang/common/files : questlang/common/Files
+    questlang/common/location : questlang/common/Location
     questlang/syntax/ast : questlang/syntax/Ast
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/types/env : questlang/types/Env
-    questlang/types/kinds : questlang/types/Kinds
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/typechecker/autoValues : questlang/typechecker/AutoValues
     questlang/typechecker/checker : questlang/typechecker/Checker
     questlang/typechecker/checks : questlang/typechecker/Checks
     questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
-    questlang/typechecker/autoValues : questlang/typechecker/AutoValues
-    collections/hashMap : collections/HashMap
-    collections/vector : collections/Vector
-    util/maybe : util/Maybe
-    util/strutil : util/Strutil
-    stringOp = string : StringOp
-    util/hash : util/Hash
-    conv : Conv
-    writer : Writer
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/kinds : questlang/types/Kinds
+    questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let Type = model.Type
 
@@ -40,25 +42,28 @@ export
      * an out parameter, the callee only writes, so any supertype of paramType
      * is accepted (docs/type-system.md §6.2.1, §6.5). *)
     let checkLvalueModeType(
-        paramType: model.Type destRawType: model.Type isOut: Bool targetDesc: String offset: Int e: env.T
-    ): model.Type =
+            paramType: model.Type destRawType: model.Type isOut: Bool targetDesc: String offset: Int e: env.T
+            ): model.Type =
         begin
-            let destType = case destRawType.form
-                when typeVar with x then x.element
-                when typeOut with x then x.element
-                else destRawType
-            end
+            let destType =
+                case destRawType.form
+                    when typeVar with x then x.element
+                    when typeOut with x then x.element
+                    else destRawType
+                end
             let lookup = env.lookupOf(e)
             if isOut then
                 if not(subtyping.isSubtype(paramType destType lookup)) then
-                    diagnostics.fail(:Ok "Type mismatch on out parameter: parameter type '" <> model.show(paramType) <>
-                        "' is not a subtype of destination " <> targetDesc <> " type '" <> model.show(destType) <> "'"
-                        offset)
+                    diagnostics.fail(:Ok "Type mismatch on out parameter: parameter type '" <> model.show(paramType)
+                        <> "' is not a subtype of destination " <> targetDesc <> " type '" <> model.show(destType)
+                        <> "'"
+                            offset)
                 end
-            elsif not(subtyping.isSubtype(paramType destType lookup) andif subtyping.isSubtype(destType paramType lookup)) then
-                diagnostics.fail(:Ok "Type mismatch on var parameter: expected exactly '" <> model.show(paramType) <>
-                    "', but got " <> targetDesc <> " of type '" <> model.show(destType) <>
-                    "' (var parameters are invariant)" offset)
+            elsif not(subtyping.isSubtype(paramType destType lookup)
+                    andif subtyping.isSubtype(destType paramType lookup)) then
+                diagnostics.fail(:Ok "Type mismatch on var parameter: expected exactly '" <> model.show(paramType)
+                    <> "', but got " <> targetDesc <> " of type '" <> model.show(destType)
+                    <> "' (var parameters are invariant)" offset)
             end
             destType
         end
@@ -81,22 +86,22 @@ export
     (* Validates arity and elaborates call arguments against formal parameter
      * modes *)
     let rec checkCallArgs(
-        c: checker.T args: Array(ast.Expr) params: Array(model.Param) e: env.T loopDepth: Int offset: Int
-    ): Array(typedAst.Expr) =
+            c: checker.T args: Array(ast.Expr) params: Array(model.Param) e: env.T loopDepth: Int offset: Int
+            ): Array(typedAst.Expr) =
         begin
             if extent args isnot extent params then
-                diagnostics.fail(:Ok "Function expects " <> conv.int(extent params) <> " arguments, but got " <>
-                    conv.int(extent args) offset)
+                diagnostics.fail(:Ok "Function expects " <> conv.int(extent params) <> " arguments, but got "
+                    <> conv.int(extent args) offset)
             end
             let typed = vector.new(:typedAst.Expr)
             for i = 0 upto {extent args - 1} do
                 let param = params[i]
                 vector.append(typed
-                    if param.isVar orif param.isOut then
-                        checkLvalueArg(c args[i] param.type e loopDepth param.isOut)
-                    else
-                        checker.checkExpr(c args[i] param.type e loopDepth)
-                    end)
+                        if param.isVar orif param.isOut then
+                            checkLvalueArg(c args[i] param.type e loopDepth param.isOut)
+                        else
+                            checker.checkExpr(c args[i] param.type e loopDepth)
+                        end)
             end
             vector.toArray(typed)
         end
@@ -105,14 +110,15 @@ export
      * @target, or var(initial value) *)
     and checkLvalueArg(c: checker.T arg: ast.Expr paramType: Type e: env.T loopDepth: Int isOut: Bool): typedAst.Expr =
         case arg.form
-            when exprDerefCell with x then checkLvalueTarget(c x.target paramType e loopDepth isOut arg.span.startOffset)
+            when exprDerefCell with x then
+                checkLvalueTarget(c x.target paramType e loopDepth isOut arg.span.startOffset)
             when exprVarCell with x then
                 expr(arg.span.startOffset varType(paramType) option exprVarCell of typedAst.ExprForm with
                     let value = checker.checkExpr(c x.value paramType e loopDepth)
                 end)
             else
-                diagnostics.fail("Argument to '" <> {if isOut then "out" else "var" end} <>
-                    "' parameter must be passed with '@' or 'var(...)'" arg.span.startOffset)
+                diagnostics.fail("Argument to '" <> {if isOut then "out" else "var" end}
+                    <> "' parameter must be passed with '@' or 'var(...)'" arg.span.startOffset)
         end
 
     (* Elaborates the target of an argument @target passed to a var or out
@@ -142,8 +148,8 @@ export
      * and from any function if y is a global var variable
      * (checker.checkCapturable). *)
     and checkLvalueTarget(
-        c: checker.T target: ast.Expr paramType: Type e: env.T loopDepth: Int isOut: Bool offset: Int
-    ): typedAst.Expr =
+            c: checker.T target: ast.Expr paramType: Type e: env.T loopDepth: Int isOut: Bool offset: Int
+            ): typedAst.Expr =
         begin
             let modeName = if isOut then "out" else "var" end
             case target.form
@@ -157,16 +163,18 @@ export
                         checker.checkCapturable(c sym offset)
                         if isOut then
                             if not(sym.isVar) andif not(sym.isOut) andif not(isRefType(sym.type)) then
-                                diagnostics.fail(:Ok "Argument to 'out' parameter '" <> x.name <>
-                                    "' must be a mutable variable or out parameter" offset)
+                                diagnostics.fail(:Ok "Argument to 'out' parameter '" <> x.name
+                                    <> "' must be a mutable variable or out parameter" offset)
                             end
                         elsif not(sym.isVar) andif not(isVarType(sym.type)) then
-                            diagnostics.fail(:Ok "Argument to 'var' parameter '" <> x.name <> "' must be a mutable variable"
-                                offset)
+                            diagnostics.fail(:Ok "Argument to 'var' parameter '" <> x.name
+                                <> "' must be a mutable variable"
+                                    offset)
                         end
                         let destType = checkLvalueModeType(paramType sym.type isOut "variable" offset e)
                         expr(offset varType(destType) option exprVar of typedAst.ExprForm with
-                            let name = sym.name let symbol = sym
+                            let name = sym.name
+                            let symbol = sym
                         end)
                     end
                 when exprSelect with x then
@@ -188,41 +196,48 @@ export
                                     let var index = ~1
                                     for i = {extent fields - 1} downto 0 do
                                         let f = fields[i]
-                                        let named = maybe.isSome(f.name) andif
-                                            stringOp.equal(maybe.unwrap(f.name) x.field)
+                                        let named = maybe.isSome(f.name)
+                                            andif stringOp.equal(maybe.unwrap(f.name) x.field)
                                         if named orif stringOp.equal(conv.int(i) x.field) then index := i end
                                     end
                                     if index < 0 then
-                                        diagnostics.fail(:Ok "Tuple type '" <> model.show(recType) <>
-                                            "' has no component matching '" <> x.field <> "'" offset)
+                                        diagnostics.fail(:Ok "Tuple type '" <> model.show(recType)
+                                            <> "' has no component matching '" <> x.field <> "'" offset)
                                     end
                                     let f = fields[index]
                                     if not(f.isVar orif isRefType(f.type)) then
-                                        diagnostics.fail(:Ok "Tuple component '" <> x.field <> "' is not mutable" offset)
+                                        diagnostics.fail(:Ok "Tuple component '" <> x.field
+                                            <> "' is not mutable" offset)
                                     end
                                     let destType = checkLvalueModeType(paramType f.type isOut "tuple component"
-                                        offset e)
-                                    let fieldName = if digits(x.field) then maybe.none(:String) else maybe.some(x.field) end
+                                            offset e)
+                                    let fieldName =
+                                        if digits(x.field) then maybe.none(:String) else maybe.some(x.field) end
                                     expr(offset varType(destType) option exprTupleSelectRef of typedAst.ExprForm with
-                                        let target = recTyped let index = index let field = fieldName
+                                        let target = recTyped
+                                        let index = index
+                                        let field = fieldName
                                     end)
                                 end
                             else
                                 begin
                                     let recBound = kinds.resolveRecordBound(recType some(e))
                                     if maybe.isNone(recBound) then
-                                        diagnostics.fail(:Ok "Target of field selection in '" <> modeName <>
-                                            "' argument must be a Record or Tuple, got '" <> model.show(recType) <> "'"
-                                            offset)
+                                        diagnostics.fail(:Ok "Target of field selection in '" <> modeName
+                                            <> "' argument must be a Record or Tuple, got '" <> model.show(recType)
+                                            <> "'"
+                                                offset)
                                     end
-                                    let fields = case maybe.unwrap(recBound).form
-                                        when typeRecord with r then r.fields
-                                        else array of :model.RecordField end
-                                    end
+                                    let fields =
+                                        case maybe.unwrap(recBound).form
+                                            when typeRecord with r then r.fields
+                                            else array of :model.RecordField end
+                                        end
                                     let field = model.recordGetField(fields x.field)
                                     if maybe.isNone(field) then
-                                        diagnostics.fail(:Ok "Record type '" <> model.show(recType) <> "' has no field '" <>
-                                            x.field <> "'" offset)
+                                        diagnostics.fail(:Ok "Record type '" <> model.show(recType)
+                                            <> "' has no field '"
+                                            <> x.field <> "'" offset)
                                     end
                                     let f = maybe.unwrap(field)
                                     if not(f.isVar) andif not(isRefType(f.type)) then
@@ -230,7 +245,8 @@ export
                                     end
                                     let fieldType = checkLvalueModeType(paramType f.type isOut "field" offset e)
                                     expr(offset varType(fieldType) option exprSelectRef of typedAst.ExprForm with
-                                        let target = recTyped let field = x.field
+                                        let target = recTyped
+                                        let field = x.field
                                     end)
                                 end
                         end
@@ -239,31 +255,34 @@ export
                     begin
                         let arrTyped = checker.synthExpr(c x.target e loopDepth)
                         let arrType = evaluate(arrTyped.type)
-                        let element = case arrType.form
-                            when typeArray with a then a.element
-                            else
-                                diagnostics.fail(:Type "Target of array indexing in '" <> modeName <>
-                                    "' argument must be an Array, got '" <> model.show(arrType) <> "'" offset)
-                        end
+                        let element =
+                            case arrType.form
+                                when typeArray with a then a.element
+                                else
+                                    diagnostics.fail(:Type "Target of array indexing in '" <> modeName
+                                        <> "' argument must be an Array, got '" <> model.show(arrType) <> "'" offset)
+                            end
                         let idxTyped = checker.checkExpr(c x.index model.intType e loopDepth)
                         let destType = checkLvalueModeType(paramType element isOut "array element" offset e)
                         expr(offset varType(destType) option exprIndexRef of typedAst.ExprForm with
-                            let target = arrTyped let index = idxTyped
+                            let target = arrTyped
+                            let index = idxTyped
                         end)
                     end
                 else
-                    diagnostics.fail("Argument to '" <> modeName <>
-                        "' parameter must be a mutable variable, field, or array element" offset)
+                    diagnostics.fail("Argument to '" <> modeName
+                        <> "' parameter must be a mutable variable, field, or array element" offset)
             end
         end
 
     let synthMonomorphicApp(
-        c: checker.T offset: Int funcTyped: typedAst.Expr args: Array(ast.Expr) fnType: Type e: env.T loopDepth: Int
-    ): typedAst.Expr =
+            c: checker.T offset: Int funcTyped: typedAst.Expr args: Array(ast.Expr) fnType: Type e: env.T loopDepth: Int
+            ): typedAst.Expr =
         case fnType.form
             when typeFun with f then
                 expr(offset f.result option exprApp of typedAst.ExprForm with
-                    let func = funcTyped let args = checkCallArgs(c args f.params e loopDepth offset)
+                    let func = funcTyped
+                    let args = checkCallArgs(c args f.params e loopDepth offset)
                 end)
             else diagnostics.fail("internal: not a function type" offset)
         end
@@ -282,22 +301,26 @@ export
                 (* A call in another file than sm's (a module loaded while this
                  * unit was checked) is located in that file's text *)
                 let inOther = {stringOp.length(call.file) > 0} andif not(stringOp.equal(call.file location.file(sm)))
-                let map = if not(inOther) then
-                    sm
-                else
-                    let known = hashMap.get(maps call.file)
-                    if maybe.isSome(known) then
-                        maybe.unwrap(known)
+                let map =
+                    if not(inOther) then
+                        sm
                     else
-                        let made = location.newSourceMap(call.file maybe.unwrapOr(files.readText(call.file) ""))
-                        hashMap.insert(maps call.file made)
-                        made
+                        let known = hashMap.get(maps call.file)
+                        if maybe.isSome(known) then
+                            maybe.unwrap(known)
+                        else
+                            let made = location.newSourceMap(call.file maybe.unwrapOr(files.readText(call.file) ""))
+                            hashMap.insert(maps call.file made)
+                            made
+                        end
                     end
-                end
                 let p = location.locate(map call.offset)
-                writer.putString(writer.err location.file(map) <> ":" <> conv.int(p.line) <> ":" <> conv.int(p.col) <>
-                    ": type arguments can be inferred " <> {if call.fromArguments then "from the arguments" else
-                    "with the expected type" end} <> " [" <> conv.int(call.from) <> " " <> conv.int(call.to) <> "]\n")
+                writer.putString(writer.err location.file(map) <> ":" <> conv.int(p.line) <> ":" <> conv.int(p.col)
+                    <> ": type arguments can be inferred " <> {if call.fromArguments then
+                        "from the arguments"
+                    else
+                        "with the expected type"
+                    end} <> " [" <> conv.int(call.from) <> " " <> conv.int(call.to) <> "]\n")
             end
             vector.clear(e.inferableCalls)
             ok
@@ -343,9 +366,10 @@ export
      * An empty application of a polymorphic constant (list.nil(), for
      * nil: All(A::TYPE) T(A)) instantiates it. *)
     let rec synthPolymorphicApp(
-        c: checker.T offset: Int args: Array(ast.Expr) funcTyped: typedAst.Expr allType: Type e: env.T loopDepth: Int
-        expected: maybe.T(Type)
-    ): typedAst.Expr =
+            c: checker.T offset: Int args: Array(ast.Expr) funcTyped: typedAst.Expr allType: Type e: env.T
+            loopDepth: Int
+            expected: maybe.T(Type)
+            ): typedAst.Expr =
         case allType.form
             when typeAll with all then
                 begin
@@ -355,7 +379,7 @@ export
                     while {numTargs < extent args} andif isTypeOrKindArg(args[numTargs]) do numTargs := numTargs + 1 end
                     if numTargs > 0 then
                         explicitTypeApp(c offset args numTargs funcTyped allType all.quantifiers all.body e loopDepth
-                            expected)
+                                expected)
                     else
                         inferredTypeApp(c offset args funcTyped allType all.quantifiers all.body e loopDepth expected)
                     end
@@ -364,13 +388,13 @@ export
         end
 
     and explicitTypeApp(
-        c: checker.T offset: Int args: Array(ast.Expr) numTargs: Int funcTyped: typedAst.Expr allType: Type
-        quantifiers: Array(model.Quantifier) body: Type e: env.T loopDepth: Int expected: maybe.T(Type)
-    ): typedAst.Expr =
+            c: checker.T offset: Int args: Array(ast.Expr) numTargs: Int funcTyped: typedAst.Expr allType: Type
+            quantifiers: Array(model.Quantifier) body: Type e: env.T loopDepth: Int expected: maybe.T(Type)
+            ): typedAst.Expr =
         begin
             if numTargs > extent quantifiers then
-                diagnostics.fail(:Ok "Too many type arguments: expected at most " <> conv.int(extent quantifiers) <>
-                    ", got " <> conv.int(numTargs) offset)
+                diagnostics.fail(:Ok "Too many type arguments: expected at most " <> conv.int(extent quantifiers)
+                    <> ", got " <> conv.int(numTargs) offset)
             end
             let subst = model.newSubst()
             let resolved = vector.new(:Type)
@@ -382,27 +406,30 @@ export
                         begin
                             let targVal = elaborateTypes.elaborateType(x.typeVal e)
                             checks.checkTypeArgKind("Type argument" targVal model.substituteInKind(q.bound subst) e
-                                targ.span.startOffset)
+                                    targ.span.startOffset)
                             hashMap.insert(subst q.symbolId targVal)
                             vector.append(resolved targVal)
                         end
                     else
                         diagnostics.fail(:Ok "Explicit kind arguments are not supported in runtime calls"
-                            targ.span.startOffset)
+                                targ.span.startOffset)
                 end
             end
-            let instantiated = if numTargs < extent quantifiers then
-                let remaining = vector.new(:model.Quantifier)
-                for i = numTargs upto {extent quantifiers - 1} do
-                    let q = quantifiers[i]
-                    vector.append(remaining tuple
-                        let name = q.name let symbolId = q.symbolId let bound = model.substituteInKind(q.bound subst)
-                    end)
+            let instantiated =
+                if numTargs < extent quantifiers then
+                    let remaining = vector.new(:model.Quantifier)
+                    for i = numTargs upto {extent quantifiers - 1} do
+                        let q = quantifiers[i]
+                        vector.append(remaining tuple
+                            let name = q.name
+                            let symbolId = q.symbolId
+                            let bound = model.substituteInKind(q.bound subst)
+                        end)
+                    end
+                    model.allType(vector.toArray(remaining) model.substitute(body subst))
+                else
+                    model.substitute(body subst)
                 end
-                model.allType(vector.toArray(remaining) model.substitute(body subst))
-            else
-                model.substitute(body subst)
-            end
             let resolvedTargs = vector.toArray(resolved)
             autoValues.checkDynamicTypeArgs(allType resolvedTargs offset autoValues.checkClosedType)
             if {stringOp.length(e.reportInferable) > 0} andif {numTargs is extent quantifiers} then
@@ -413,19 +440,28 @@ export
                  * fails, also include the expected type *)
                 let exact = stringOp.equal(e.reportInferable "exact")
                 let fromArguments = probeInference(c offset rest funcTyped allType quantifiers body e loopDepth
-                    maybe.none() resolvedTargs exact)
-                if fromArguments orif probeInference(c offset rest funcTyped allType quantifiers body e loopDepth expected
-                    resolvedTargs exact) then
-                    let to = if numTargs < extent args then
-                        args[numTargs].span.startOffset else args[numTargs - 1].span.endOffset end
+                        maybe.none() resolvedTargs exact)
+                if fromArguments
+                        orif probeInference(c offset rest funcTyped allType quantifiers body e loopDepth expected
+                                resolvedTargs exact) then
+                    let to =
+                        if numTargs < extent args then
+                            args[numTargs].span.startOffset
+                        else
+                            args[numTargs - 1].span.endOffset
+                        end
                     vector.append(e.inferableCalls tuple
-                        let file = e.sourceFile let offset = offset let from = args[0].span.startOffset let to = to
+                        let file = e.sourceFile
+                        let offset = offset
+                        let from = args[0].span.startOffset
+                        let to = to
                         let fromArguments = fromArguments
                     end)
                 end
             end
             let typedTypeApp = expr(offset instantiated option exprTypeApp of typedAst.ExprForm with
-                let func = funcTyped let typeArgs = resolvedTargs
+                let func = funcTyped
+                let typeArgs = resolvedTargs
             end)
             if numTargs is extent args then
                 typedTypeApp
@@ -439,7 +475,7 @@ export
                     when typeFun then synthMonomorphicApp(c offset typedTypeApp rest instLazy e loopDepth)
                     else
                         diagnostics.fail("Cannot invoke non-function type '" <> model.show(instLazy) <> "'"
-                            offset)
+                                offset)
                 end
             end
         end
@@ -455,12 +491,12 @@ export
      * inferred type arguments, is not tried, because the trial could solve or
      * defer to the enclosing call's metavariables. *)
     and probeInference(
-        c: checker.T offset: Int args: Array(ast.Expr) funcTyped: typedAst.Expr allType: Type
-        quantifiers: Array(model.Quantifier) body: Type e: env.T loopDepth: Int expected: maybe.T(Type)
-        written: Array(Type) exact: Bool
-    ): Bool =
-        if maybe.isSome(c.pendingTypeArgs) orif
-            {maybe.isSome(expected) andif {extent model.unsolvedMetas(maybe.unwrap(:Type expected)) > 0}} then
+            c: checker.T offset: Int args: Array(ast.Expr) funcTyped: typedAst.Expr allType: Type
+            quantifiers: Array(model.Quantifier) body: Type e: env.T loopDepth: Int expected: maybe.T(Type)
+            written: Array(Type) exact: Bool
+            ): Bool =
+        if maybe.isSome(c.pendingTypeArgs)
+                orif {maybe.isSome(expected) andif {extent model.unsolvedMetas(maybe.unwrap(:Type expected)) > 0}} then
             false
         else
             let errorCount = vector.length(c.errors)
@@ -469,12 +505,12 @@ export
                 try
                     begin
                         let found = typeArgsOf(inferredTypeApp(c offset args funcTyped allType quantifiers body e
-                            loopDepth expected))
+                                loopDepth expected))
                         let var equal = extent found is extent written
                         if equal then
                             for i = 0 upto {extent found - 1} do
-                                let alike = model.same(found[i] written[i]) orif
-                                    {not(exact) andif subtyping.isTypeEqual(found[i] written[i] env.lookupOf(e))}
+                                let alike = model.same(found[i] written[i])
+                                    orif {not(exact) andif subtyping.isTypeEqual(found[i] written[i] env.lookupOf(e))}
                                 if not(alike) then equal := false end
                             end
                         end
@@ -495,9 +531,9 @@ export
      * are replaced by their solutions before the outermost call's node is
      * returned, and an internal error is reported if any remain. *)
     and inferredTypeApp(
-        c: checker.T offset: Int args: Array(ast.Expr) funcTyped: typedAst.Expr allType: Type
-        quantifiers: Array(model.Quantifier) body: Type e: env.T loopDepth: Int expected: maybe.T(Type)
-    ): typedAst.Expr =
+            c: checker.T offset: Int args: Array(ast.Expr) funcTyped: typedAst.Expr allType: Type
+            quantifiers: Array(model.Quantifier) body: Type e: env.T loopDepth: Int expected: maybe.T(Type)
+            ): typedAst.Expr =
         begin
             let fnBody = evaluate(body)
             (* An empty application of a polymorphic constant instantiates it
@@ -512,17 +548,20 @@ export
                 hashMap.insert(metaMap q.symbolId model.newMeta(model.typeKind maybe.some("?" <> q.name)))
             end
             let instantiatedFn = model.substitute(fnBody metaMap)
-            let resultType = case instantiatedFn.form
-                when typeFun with f then if isInstantiation then instantiatedFn else f.result end
-                else instantiatedFn
-            end
+            let resultType =
+                case instantiatedFn.form
+                    when typeFun with f then if isInstantiation then instantiatedFn else f.result end
+                    else instantiatedFn
+                end
             (* This call's type arguments, plus any that calls nested in its
              * arguments defer to it *)
             let typeArgs = vector.new(:checker.PendingTypeArg)
             for i = 0 upto {extent quantifiers - 1} do
                 let q = quantifiers[i]
                 vector.append(typeArgs tuple
-                    let meta = hashMap.find(metaMap q.symbolId) let quantifier = q let offset = offset
+                    let meta = hashMap.find(metaMap q.symbolId)
+                    let quantifier = q
+                    let offset = offset
                 end)
             end
             let enclosing = c.pendingTypeArgs
@@ -560,10 +599,10 @@ export
             end
 
             let unsolved = vector.filter(typeArgs
-                fun(p: checker.PendingTypeArg): Bool not(isSolved(p.meta)))
+                    fun(p: checker.PendingTypeArg): Bool not(isSolved(p.meta)))
             if not(vector.empty(unsolved)) then
-                let defers = maybe.isSome(enclosing) andif
-                    maybe.isSome(expected) andif {extent model.unsolvedMetas(maybe.unwrap(:Type expected)) > 0}
+                let defers = maybe.isSome(enclosing)
+                    andif maybe.isSome(expected) andif {extent model.unsolvedMetas(maybe.unwrap(:Type expected)) > 0}
                 if defers then
                     let outer = maybe.unwrap(enclosing)
                     for i = 0 upto {vector.length(unsolved) - 1} do
@@ -577,9 +616,10 @@ export
                         names := if i is 0 then name else names <> ", " <> name end
                     end
                     let plural = n > 1
-                    diagnostics.fail(:Ok "Cannot infer type argument" <> {if plural then "s" else "" end} <> " " <> names <>
-                        " from the arguments or the expected type; supply " <> {if plural then "them" else "it" end} <>
-                        " explicitly" vector.get(unsolved 0).offset)
+                    diagnostics.fail(:Ok "Cannot infer type argument" <> {if plural then "s" else "" end} <> " "
+                        <> names
+                        <> " from the arguments or the expected type; supply " <> {if plural then "them" else "it" end}
+                        <> " explicitly" vector.get(unsolved 0).offset)
                 end
             end
 
@@ -588,7 +628,8 @@ export
                 let solved = model.prune(p.meta)
                 if not(model.same(solved p.meta)) then
                     (* Substituting prunes the solved metavariables *)
-                    let bound = model.substituteInKind(model.substituteInKind(p.quantifier.bound metaMap) model.newSubst())
+                    let bound =
+                        model.substituteInKind(model.substituteInKind(p.quantifier.bound metaMap) model.newSubst())
                     checks.checkTypeArgKind("Inferred type argument" model.resolveMetas(solved) bound e p.offset)
                 end
             end
@@ -612,12 +653,15 @@ export
                 for i = 0 upto {extent resolvedTargs - 1} do
                     if extent model.unsolvedMetas(resolvedTargs[i]) > 0 then leaked := true end
                 end
-                if leaked then diagnostics.fail(:Ok "internal: metavariables escaped polymorphic call inference" offset) end
+                if leaked then
+                    diagnostics.fail(:Ok "internal: metavariables escaped polymorphic call inference" offset)
+                end
             end
 
             autoValues.checkDynamicTypeArgs(allType resolvedTargs offset autoValues.checkClosedType)
             let typedTypeApp = expr(offset finalFn option exprTypeApp of typedAst.ExprForm with
-                let func = funcTyped let typeArgs = resolvedTargs
+                let func = funcTyped
+                let typeArgs = resolvedTargs
             end)
             if isInstantiation then
                 typedTypeApp
@@ -625,7 +669,8 @@ export
                 case finalFn.form
                     when typeFun with f then
                         expr(offset f.result option exprApp of typedAst.ExprForm with
-                            let func = typedTypeApp let args = typedArgs
+                            let func = typedTypeApp
+                            let args = typedArgs
                         end)
                     else diagnostics.fail("internal: not a function type" offset)
                 end
@@ -638,7 +683,8 @@ export
                 begin
                     let offset = x0.span.startOffset
                     let args = vector.toArray(x.args)
-                    let isOrdinal = case x.func.form when exprId with f then stringOp.equal(f.name "ordinal") else false end
+                    let isOrdinal =
+                        case x.func.form when exprId with f then stringOp.equal(f.name "ordinal") else false end
                     if isOrdinal then
                         (* The built-in monadic operator ordinal (Cardelli
                          * section 4.5) *)
@@ -647,12 +693,14 @@ export
                         let argLazy = evaluate(argTyped.type)
                         let isOption = case argLazy.form when typeOption then true else false end
                         if not(isOption) andif maybe.isNone(kinds.resolveOptionBound(argLazy maybe.none(:env.T))) then
-                            diagnostics.fail(:Ok "ordinal requires an Option type, got '" <> model.show(argTyped.type) <> "'"
-                                args[0].span.startOffset)
+                            diagnostics.fail(:Ok "ordinal requires an Option type, got '" <> model.show(argTyped.type)
+                                <> "'"
+                                    args[0].span.startOffset)
                         end
                         let funcTyped = checker.synthCallee(c x.func e loopDepth)
                         expr(offset model.intType option exprApp of typedAst.ExprForm with
-                            let func = funcTyped let args = array of argTyped end
+                            let func = funcTyped
+                            let args = array of argTyped end
                         end)
                     else
                         let funcTyped = checker.synthCallee(c x.func e loopDepth)
@@ -661,8 +709,8 @@ export
                             when typeAll then synthPolymorphicApp(c offset args funcTyped fnType e loopDepth expected)
                             when typeFun then synthMonomorphicApp(c offset funcTyped args fnType e loopDepth)
                             else
-                                diagnostics.fail("Cannot invoke non-function type '" <> model.show(fnType) <>
-                                    "'" x.func.span.startOffset)
+                                diagnostics.fail("Cannot invoke non-function type '" <> model.show(fnType)
+                                    <> "'" x.func.span.startOffset)
                         end
                     end
                 end

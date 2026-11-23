@@ -4,12 +4,13 @@
  * them. tests/python/test_regexp.py compares them with Go's on random
  * patterns. *)
 
-import regexp = util/regexp : util/Regexp;
-import collections/vector : collections/Vector;
-import writer: Writer;
-import conv: Conv;
+import conv : Conv
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+import collections/vector : collections/Vector
+import regexp = util/regexp : util/Regexp
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
 
 let all(pattern: String s: String): Ok =
     begin
@@ -21,14 +22,14 @@ let all(pattern: String s: String): Ok =
             text := text <> " " <> conv.int(regexp.start(m 0)) <> "-" <> conv.int(regexp.start(m 0) + regexp.size(m 0))
         end
         print(text)
-    end;
+    end
 
 let replace(pattern: String s: String template: String): Ok =
     begin
         let r = regexp.compile(pattern)
         print(pattern <> " in \"" <> s <> "\" by \"" <> template <> "\": first \"" <> regexp.replaceFirst(r s template)
             <> "\" all \"" <> regexp.replaceAll(r s template) <> "\"")
-    end;
+    end
 
 let split(pattern: String s: String): Ok =
     begin
@@ -38,45 +39,45 @@ let split(pattern: String s: String): Ok =
             text := text <> " [" <> vector.get(:String pieces i) <> "]"
         end
         print(text)
-    end;
+    end
 
 (* 1. Every match, and empty matches *)
-all("a" "banana");
-all("an" "banana");
-all("x*" "abc");
-all("a*" "baaac");
-all("a*?" "aa");
-all("\\b" "hi there");
-all("" "");
-all("(a)|b" "abab");
-all("q" "abc");
+all("a" "banana")
+all("an" "banana")
+all("x*" "abc")
+all("a*" "baaac")
+all("a*?" "aa")
+all("\\b" "hi there")
+all("" "")
+all("(a)|b" "abab")
+all("q" "abc")
 
 (* 2. Replacing, and the templates *)
-replace("a" "banana" "o");
-replace("(\\w+)@(\\w+)" "me@here, you@there" "$2 at $1");
-replace("(?P<k>\\w+)=(?P<v>\\w+)" "a=1 b=2" "${v}:${k}");
-replace("(\\w)" "ab" "$1x|${1}x");
-replace("(a)" "a" "[$$][$][$}][${][${a-}][$9][$01][$0]");
-replace("(a)|(b)" "ab" "<$1$2>");
-replace("x*" "abc" "-");
-replace("a*" "baaac" "-");
-replace("q" "abc" "-");
-let upper = regexp.compile("[a-z]+");
+replace("a" "banana" "o")
+replace("(\\w+)@(\\w+)" "me@here, you@there" "$2 at $1")
+replace("(?P<k>\\w+)=(?P<v>\\w+)" "a=1 b=2" "${v}:${k}")
+replace("(\\w)" "ab" "$1x|${1}x")
+replace("(a)" "a" "[$$][$][$}][${][${a-}][$9][$01][$0]")
+replace("(a)|(b)" "ab" "<$1$2>")
+replace("x*" "abc" "-")
+replace("a*" "baaac" "-")
+replace("q" "abc" "-")
+let upper = regexp.compile("[a-z]+")
 print(regexp.replaceWith(upper "two words" fun(m: regexp.Match): String
-    "<" <> conv.int(regexp.size(m 0)) <> ":" <> regexp.group(m 0) <> ">"));
+    "<" <> conv.int(regexp.size(m 0)) <> ":" <> regexp.group(m 0) <> ">"))
 
 (* 3. Splitting *)
-split("," "a,b,,c,");
-split("," ",a");
-split("," "");
-split("x*" "abc");
-split("" "abc");
-split("" "");
-split("\\s+" "  two   words ");
-split("q" "abc");
+split("," "a,b,,c,")
+split("," ",a")
+split("," "")
+split("x*" "abc")
+split("" "abc")
+split("" "")
+split("\\s+" "  two   words ")
+split("q" "abc")
 
 (* 4. Quoting *)
-let quoted = regexp.quote("1.5*[x]+(y)? {a|b} ^$ \\ end");
-print(quoted);
-print(conv.bool(regexp.matches(regexp.compile(quoted) "1.5*[x]+(y)? {a|b} ^$ \\ end")));
+let quoted = regexp.quote("1.5*[x]+(y)? {a|b} ^$ \\ end")
+print(quoted)
+print(conv.bool(regexp.matches(regexp.compile(quoted) "1.5*[x]+(y)? {a|b} ^$ \\ end")))
 print(conv.bool(regexp.matches(regexp.compile(quoted) "1x5*[x]+(y)? {a|b} ^$ \\ end")))

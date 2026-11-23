@@ -5,115 +5,116 @@
  * map's keys do, a record component's included: a record is the same through
  * each of its views. *)
 
-import writer: Writer;
-import conv: Conv;
-import maybe = util/maybe: util/Maybe;
-import hashMap = collections/hashMap: collections/HashMap;
-import hash = util/hash: util/Hash;
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
-let yes(b: Bool): String = if b then "true" else "false" end;
+import conv : Conv
+import writer : Writer
+
+import hashMap = collections/hashMap : collections/HashMap
+import hash = util/hash : util/Hash
+import maybe = util/maybe : util/Maybe
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+let yes(b: Bool): String = if b then "true" else "false" end
 
 (* 1. Cases without components, made apart *)
-Let Color = Option red green blue end;
-let red1 = option red of Color end;
-let red2 = option red of Color end;
-print("red is red: " <> yes(red1 is red2));
-print("red isnot red: " <> yes(red1 isnot red2));
-print("red is blue: " <> yes(red1 is option blue of Color end));
-print("ordinal(0) is red: " <> yes({option ordinal(0) of Color end} is red1));
+Let Color = Option red green blue end
+let red1 = option red of Color end
+let red2 = option red of Color end
+print("red is red: " <> yes(red1 is red2))
+print("red isnot red: " <> yes(red1 isnot red2))
+print("red is blue: " <> yes(red1 is option blue of Color end))
+print("ordinal(0) is red: " <> yes({option ordinal(0) of Color end} is red1))
 
 (* 2. Through an upcast that numbers the cases otherwise: thu is the second of
  * WeekDay's cases by name and the fourth of Day's *)
-Let Day = Option mon tue wed thu fri sat sun end;
-Let WeekDay = Option mon tue wed thu fri end;
-let wThu: WeekDay = option thu of WeekDay end;
-let dThu: Day = wThu;
-print("thu as a Day is thu: " <> yes(dThu is option thu of Day end));
-print("thu as a Day is fri: " <> yes(dThu is option fri of Day end));
+Let Day = Option mon tue wed thu fri sat sun end
+Let WeekDay = Option mon tue wed thu fri end
+let wThu: WeekDay = option thu of WeekDay end
+let dThu: Day = wThu
+print("thu as a Day is thu: " <> yes(dThu is option thu of Day end))
+print("thu as a Day is fri: " <> yes(dThu is option fri of Day end))
 
 (* 3. Through a polymorphic function, at its type argument *)
-let same(A::TYPE)(a: A b: A): Bool = a is b;
-print("same(red red): " <> yes(same(:Color)(red1 red2)));
-print("same(red green): " <> yes(same(:Color)(red1 option green of Color end)));
+let same(A::TYPE)(a: A b: A): Bool = a is b
+print("same(red red): " <> yes(same(:Color)(red1 red2)))
+print("same(red green): " <> yes(same(:Color)(red1 option green of Color end)))
 
 (* 4. Another case with components keeps the same-object rule; the cases
  * without components of its type still compare by case *)
-Let Shape = Option dot circle with r: Int end square with s: Int end end;
-let c1 = option circle of Shape with 1 end;
-let c2 = option circle of Shape with 1 end;
-print("circle is circle, apart: " <> yes(c1 is c2));
-print("circle is itself: " <> yes(c1 is c1));
-print("dot is dot: " <> yes({option dot of Shape end} is option dot of Shape end));
+Let Shape = Option dot circle with r: Int end square with s: Int end end
+let c1 = option circle of Shape with 1 end
+let c2 = option circle of Shape with 1 end
+print("circle is circle, apart: " <> yes(c1 is c2))
+print("circle is itself: " <> yes(c1 is c1))
+print("dot is dot: " <> yes({option dot of Shape end} is option dot of Shape end))
 
 (* 5. A type with one case with one component keeps the same-object rule *)
-let s = "word";
-let ss = maybe.some(:String)(s);
-print("some(s) is some(s), made apart: " <> yes(maybe.some(:String)(s) is maybe.some(:String)(s)));
-print("some(s) is itself: " <> yes(ss is ss));
-print("some(3) is some(3), made apart: " <> yes(maybe.some(:Int)(3) is maybe.some(:Int)(3)));
-print("none is none: " <> yes(maybe.none(:String) is maybe.none(:String)));
-print("same(some(s) some(s)), apart: " <> yes(same(:maybe.T(String))(maybe.some(:String)(s) maybe.some(:String)(s))));
-print("same(some(s) itself): " <> yes(same(:maybe.T(String))(ss ss)));
+let s = "word"
+let ss = maybe.some(:String)(s)
+print("some(s) is some(s), made apart: " <> yes(maybe.some(:String)(s) is maybe.some(:String)(s)))
+print("some(s) is itself: " <> yes(ss is ss))
+print("some(3) is some(3), made apart: " <> yes(maybe.some(:Int)(3) is maybe.some(:Int)(3)))
+print("none is none: " <> yes(maybe.none(:String) is maybe.none(:String)))
+print("same(some(s) some(s)), apart: " <> yes(same(:maybe.T(String))(maybe.some(:String)(s) maybe.some(:String)(s))))
+print("same(some(s) itself): " <> yes(same(:maybe.T(String))(ss ss)))
 
 (* 6. The same through an upcast *)
-Let Opt = Option none some with val: String end end;
-Let Wider = Option none other with x: Int end some with val: String end end;
-let o1: Wider = option some of Opt with s end;
-let o2: Wider = option some of Opt with s end;
-print("some(s) is some(s) as a Wider: " <> yes(o1 is o2));
-let o3: Opt = option some of Opt with s end;
-let o4: Opt = option some of Opt with s end;
-print("some(s) is some(s) as an Opt: " <> yes(o3 is o4));
+Let Opt = Option none some with val: String end end
+Let Wider = Option none other with x: Int end some with val: String end end
+let o1: Wider = option some of Opt with s end
+let o2: Wider = option some of Opt with s end
+print("some(s) is some(s) as a Wider: " <> yes(o1 is o2))
+let o3: Opt = option some of Opt with s end
+let o4: Opt = option some of Opt with s end
+print("some(s) is some(s) as an Opt: " <> yes(o3 is o4))
 
 (* 7. A var component is a location: the same-object rule *)
-Let Cell = Option empty full with var n: Int end end;
-let f1 = option full of Cell with let var n = 1 end;
-let f2 = option full of Cell with let var n = 1 end;
-print("full is full, var: " <> yes(f1 is f2));
+Let Cell = Option empty full with var n: Int end end
+let f1 = option full of Cell with let var n = 1 end
+let f2 = option full of Cell with let var n = 1 end
+print("full is full, var: " <> yes(f1 is f2))
 
 (* 8. Identity maps and identity hashes agree *)
-let m = hashMap.newIdentityMap(:Color :Int);
-hashMap.insert(:Color :Int m red1 1);
-print("red found: " <> yes(maybe.isSome(:Int hashMap.get(:Color :Int m red2))));
-print("blue found: " <> yes(maybe.isSome(:Int hashMap.get(:Color :Int m option blue of Color end))));
-print("red hashes alike: " <> yes(hash.identityHash(:Color red1) is hash.identityHash(:Color red2)));
-let ms = hashMap.newIdentityMap(:maybe.T(String) :Int);
-hashMap.insert(:maybe.T(String) :Int ms ss 2);
-print("some(s) found: " <> yes(maybe.isSome(:Int hashMap.get(:maybe.T(String) :Int ms ss))));
-print("some(s) made apart found: " <> yes(maybe.isSome(:Int hashMap.get(:maybe.T(String) :Int ms maybe.some(:String)(s)))));;
+let m = hashMap.newIdentityMap(:Color :Int)
+hashMap.insert(:Color :Int m red1 1)
+print("red found: " <> yes(maybe.isSome(:Int hashMap.get(:Color :Int m red2))))
+print("blue found: " <> yes(maybe.isSome(:Int hashMap.get(:Color :Int m option blue of Color end))))
+print("red hashes alike: " <> yes(hash.identityHash(:Color red1) is hash.identityHash(:Color red2)))
+let ms = hashMap.newIdentityMap(:maybe.T(String) :Int)
+hashMap.insert(:maybe.T(String) :Int ms ss 2)
+print("some(s) found: " <> yes(maybe.isSome(:Int hashMap.get(:maybe.T(String) :Int ms ss))))
+print("some(s) made apart found: "
+    <> yes(maybe.isSome(:Int hashMap.get(:maybe.T(String) :Int ms maybe.some(:String)(s)))))
 
 (* 9. A record component is its record through each view: an option viewed
  * twice at a narrower type, and a record and its view *)
-Let Big = Record a: Int b: Int end;
-Let Small = Record a: Int end;
-Let OB = Option none some with r: Big end end;
-Let OS = Option none some with r: Small end end;
-let ob: OB = option some of OB with {record a = 1 b = 2 end} end;
-let v1: OS = ob;
-let v2: OS = ob;
-print("view is view: " <> yes(v1 is v2));
-print("views hash alike: " <> yes(hash.identityHash(:OS v1) is hash.identityHash(:OS v2)));
-let mv = hashMap.newIdentityMap(:OS :Int);
-hashMap.insert(:OS :Int mv v1 3);
-print("view found through another: " <> yes(maybe.isSome(:Int hashMap.get(:OS :Int mv v2))));
-let big: Big = record a = 1 b = 2 end;
-let small: Small = big;
-print("record hashes as its view: " <> yes(hash.identityHash(:Small small) is hash.identityHash(:Small big)));
-let mr = hashMap.newIdentityMap(:Small :Int);
-hashMap.insert(:Small :Int mr small 4);
+Let Big = Record a: Int b: Int end
+Let Small = Record a: Int end
+Let OB = Option none some with r: Big end end
+Let OS = Option none some with r: Small end end
+let ob: OB = option some of OB with {record a = 1 b = 2 end} end
+let v1: OS = ob
+let v2: OS = ob
+print("view is view: " <> yes(v1 is v2))
+print("views hash alike: " <> yes(hash.identityHash(:OS v1) is hash.identityHash(:OS v2)))
+let mv = hashMap.newIdentityMap(:OS :Int)
+hashMap.insert(:OS :Int mv v1 3)
+print("view found through another: " <> yes(maybe.isSome(:Int hashMap.get(:OS :Int mv v2))))
+let big: Big = record a = 1 b = 2 end
+let small: Small = big
+print("record hashes as its view: " <> yes(hash.identityHash(:Small small) is hash.identityHash(:Small big)))
+let mr = hashMap.newIdentityMap(:Small :Int)
+hashMap.insert(:Small :Int mr small 4)
 print("record found through its view: " <> yes(maybe.isSome(:Int hashMap.get(:Small :Int mr big))))
-;
 
 (* 10. A key whose var component changes is found again: an option with
  * components hashes by its object, not by its components, and so does a
  * variant holding one *)
-let mf = hashMap.newIdentityMap(:Cell :Int);
-hashMap.insert(:Cell :Int mf f1 5);
-case f1 when full with c then c.n := 2 when empty then ok end;
-print("full found after its var changed: " <> yes(maybe.isSome(:Int hashMap.get(:Cell :Int mf f1))));
-Let VC = Variant c: Cell end;
-let vc = variant c of VC with f2 end;
-let mv = hashMap.newIdentityMap(:VC :Int);
-hashMap.insert(:VC :Int mv vc 6);
-case f2 when full with c then c.n := 3 when empty then ok end;
+let mf = hashMap.newIdentityMap(:Cell :Int)
+hashMap.insert(:Cell :Int mf f1 5)
+case f1 when full with c then c.n := 2 when empty then ok end
+print("full found after its var changed: " <> yes(maybe.isSome(:Int hashMap.get(:Cell :Int mf f1))))
+Let VC = Variant c: Cell end
+let vc = variant c of VC with f2 end
+let mv = hashMap.newIdentityMap(:VC :Int)
+hashMap.insert(:VC :Int mv vc 6)
+case f2 when full with c then c.n := 3 when empty then ok end
 print("variant of full found after its var changed: " <> yes(maybe.isSome(:Int hashMap.get(:VC :Int mv vc))))

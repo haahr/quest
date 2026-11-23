@@ -2,23 +2,24 @@
 
 module adapters : Adapters
 import
-    questlang/types/model : questlang/types/Model
-    ir = questlang/ir/nodes : questlang/ir/Nodes
-    questlang/repr/shapes : questlang/repr/Shapes
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ir/slots : questlang/ir/Slots
-    questlang/repr/symbols : questlang/repr/Symbols
-    questlang/repr/staticdata : questlang/repr/StaticData
-    questlang/repr/objectLayout : questlang/repr/ObjectLayout
-    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/maybe : util/Maybe
-    vals = questlang/ssa/build/values : questlang/ssa/build/Values
-    questlang/ssa/build/representation : questlang/ssa/build/Representation
-    descriptors = questlang/ssa/build/descriptors : questlang/ssa/build/Descriptors
+
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/slots : questlang/ir/Slots
+    questlang/repr/objectLayout : questlang/repr/ObjectLayout
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/repr/staticdata : questlang/repr/StaticData
+    questlang/repr/symbols : questlang/repr/Symbols
     calls = questlang/ssa/build/calls : questlang/ssa/build/Calls
     control = questlang/ssa/build/control : questlang/ssa/build/Control
+    descriptors = questlang/ssa/build/descriptors : questlang/ssa/build/Descriptors
+    questlang/ssa/build/representation : questlang/ssa/build/Representation
+    vals = questlang/ssa/build/values : questlang/ssa/build/Values
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/types/model : questlang/types/Model
 export
     Let Type = model.Type
     Let Variable = ir.Variable
@@ -29,7 +30,8 @@ export
      * adapters
      * ====================================================================== *)
 
-    let returnValues(fn: vals.Fn vs: Array(Int)): Ok = vals.terminate(fn option termReturn of ssa.Terminator with let values = vs end)
+    let returnValues(fn: vals.Fn vs: Array(Int)): Ok =
+        vals.terminate(fn option termReturn of ssa.Terminator with let values = vs end)
     let param(f: Function i: Int): Int = vector.get(ssa.block(f 0).params i)
 
     (* Builds the SSA parameter layout for a C function matching sig after lead
@@ -54,7 +56,7 @@ export
                     if extent ps is 0 then vector.append(types vals.tVal) end
                     if extent ps is 2 then vector.append(pairs vector.length(types)) end
                     if {extent ps is 1}
-                        andif {ps[0].width is 1} then vector.append(narrow vector.length(types)) end
+                            andif {ps[0].width is 1} then vector.append(narrow vector.length(types)) end
                     for k = 0 upto {extent ps - 1} do vector.append(types ps[k].type) end
                 end
             end
@@ -108,21 +110,24 @@ export
                 let direct = maybe.isSome(known)
                     andif {extent maybe.unwrap(:ir.OpMakeClosure known).typeArgs is 0}
                     andif {extent maybe.unwrap(:ir.OpMakeClosure known).captures is 0}
-                let results = if direct then
-                    (* Retype arguments and results to match the callee's own
-                     * SSA types (which may use pointers where the interface
-                     * uses QVal words) *)
-                    let code = maybe.unwrap(known).code
-                    let all = vals.retyped(fn vals.concat(array of vals.null(fn) end args) vals.codeParamTypes(code))
-                    let vs = vals.callQuest(fn vals.codeName(u code) all shifted(s.pairs 1) shifted(s.narrow 1)
-                        vals.codeResultParts(code))
-                    vals.retyped(fn vs vals.typesOf(ps))
-                else
-                    let clos = vals.read(fn v)[0]
-                    let fnPtr = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
-                    vals.callQuest(fn "" vals.concat(array of fnPtr clos end args) shifted(s.pairs 2) shifted(s.narrow 2)
-                        ps)
-                end
+                let results =
+                    if direct then
+                        (* Retype arguments and results to match the callee's own
+                         * SSA types (which may use pointers where the interface
+                         * uses QVal words) *)
+                        let code = maybe.unwrap(known).code
+                        let all =
+                            vals.retyped(fn vals.concat(array of vals.null(fn) end args) vals.codeParamTypes(code))
+                        let vs = vals.callQuest(fn vals.codeName(u code) all shifted(s.pairs 1) shifted(s.narrow 1)
+                                vals.codeResultParts(code))
+                        vals.retyped(fn vs vals.typesOf(ps))
+                    else
+                        let clos = vals.read(fn v)[0]
+                        let fnPtr = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
+                        vals.callQuest(fn "" vals.concat(array of fnPtr clos end args) shifted(s.pairs 2)
+                                shifted(s.narrow 2)
+                                ps)
+                    end
                 returnValues(fn calls.resultsOf(fn ps results))
                 maybe.some(finished(fn))
             end
@@ -148,21 +153,30 @@ export
             let paramType(fn: vals.Fn d: Int j: Int): Int =
                 vals.loadWord(fn d bytes("QFunTypeDescriptor") + {bytes("QFunParamDescriptor") * j} vals.tPtr)
             let convertWord(fn: vals.Fn w: Int from: Int to: Int): Int = vals.call1(fn "quest_convert" array of w from
-                to end)
-            let closureFn(fn: vals.Fn c: Int): Int = vals.invariantWord(fn c runtimeLayout.offset("QClosure" "fn") vals.tPtr)
+                to
+            end)
+            let closureFn(fn: vals.Fn c: Int): Int =
+                vals.invariantWord(fn c runtimeLayout.offset("QClosure" "fn") vals.tPtr)
 
             (* The thunk, whose closure is a QFunAdapterClosure *)
             let thunk = newFunction(u thunkName false s retParts)
             let tf = thunk.f
             let e = param(tf 0)
             let orig = vals.loadWord(thunk e runtimeLayout.offset("QFunAdapterClosure" "orig") vals.tPtr)
-            let from = vals.loadWord(thunk vals.loadWord(thunk e runtimeLayout.offset("QFunAdapterClosure" "from") vals.tPtr) extraAt vals.tPtr)
-            let to = vals.loadWord(thunk vals.loadWord(thunk e runtimeLayout.offset("QFunAdapterClosure" "to") vals.tPtr) extraAt vals.tPtr)
-            let directFlag = vals.load(thunk e runtimeLayout.offset("QFunAdapterClosure" "direct") vals.part(vals.tInt 1 false))
+            let from =
+                vals.loadWord(thunk vals.loadWord(thunk e runtimeLayout.offset("QFunAdapterClosure" "from") vals.tPtr)
+                        extraAt vals.tPtr)
+            let to =
+                vals.loadWord(thunk vals.loadWord(thunk e runtimeLayout.offset("QFunAdapterClosure" "to") vals.tPtr)
+                        extraAt vals.tPtr)
+            let directFlag =
+                vals.load(thunk e runtimeLayout.offset("QFunAdapterClosure" "direct") vals.part(vals.tInt 1 false))
             let directB = control.newBlock(thunk)
             let uniformB = control.newBlock(thunk)
             vals.terminate(thunk option termBranch of ssa.Terminator with
-                let cond = directFlag let ifTrue = ssa.target(directB vals.noValues) let ifFalse = ssa.target(uniformB vals.noValues)
+                let cond = directFlag
+                let ifTrue = ssa.target(directB vals.noValues)
+                let ifFalse = ssa.target(uniformB vals.noValues)
             end)
             let descs = array of(nq 0)
             for k = 0 upto {nq - 1} do descs[k] := param(tf 1 + k) end
@@ -187,17 +201,25 @@ export
                 let converted = not(byLocation(p)) andif not(isOk(p.type))
                     andif slots.mayBeStoredAsSubtype(shapes.shape(p.type))
                 directArgs := vals.concat(directArgs if converted then
-                    vals.fromWord(thunk convertWord(thunk vals.toWord(thunk vs p.type) paramType(thunk to j) paramType(thunk from j))
-                        p.type)
-                else vs end)
+                    vals.fromWord(thunk
+                            convertWord(thunk vals.toWord(thunk vs p.type) paramType(thunk to j)
+                                    paramType(thunk from j))
+                            p.type)
+                else
+                    vs
+                end)
             end
             let directResults = calls.resultsOf(thunk retParts vals.callQuest(thunk ""
-                vals.concat(array of closureFn(thunk orig) end directArgs) shifted(s.pairs 1) shifted(s.narrow
-                    1) retParts))
+                    vals.concat(array of closureFn(thunk orig) end directArgs) shifted(s.pairs 1) shifted(s.narrow
+                            1) retParts))
             returnValues(thunk if not(isOk(ret)) andif slots.mayBeStoredAsSubtype(shapes.shape(ret)) then
-                vals.fromWord(thunk convertWord(thunk vals.toWord(thunk directResults ret) vals.loadWord(thunk from resultAt vals.tPtr)
-                    vals.loadWord(thunk to resultAt vals.tPtr)) ret)
-            else directResults end)
+                vals.fromWord(thunk
+                        convertWord(thunk vals.toWord(thunk directResults ret)
+                                vals.loadWord(thunk from resultAt vals.tPtr)
+                                vals.loadWord(thunk to resultAt vals.tPtr)) ret)
+            else
+                directResults
+            end)
             (* Slow path: signatures differ, so pack arguments as QVal words
              * and call orig through its own type's invoker *)
             thunk.cur := uniformB
@@ -214,11 +236,15 @@ export
             let argsArray = descriptors.slotArray(thunk words)
             let invoker = vals.loadWord(thunk from runtimeLayout.offset("QFunTypeDescriptor" "invoke") vals.tPtr)
             let invoked = vals.callQuest(thunk "" array of invoker orig argsArray end vals.noValues vals.noValues
-                array of vals.part(vals.tVal 8 false) end)[0]
-            returnValues(thunk if isOk(ret) then vals.noValues
-                else vals.fromWord(thunk convertWord(thunk invoked vals.loadWord(thunk from resultAt vals.tPtr) vals.loadWord(thunk to resultAt vals.tPtr))
-                    ret)
-                end)
+                    array of vals.part(vals.tVal 8 false) end)[0]
+            returnValues(thunk if isOk(ret) then
+                vals.noValues
+            else
+                vals.fromWord(thunk
+                        convertWord(thunk invoked vals.loadWord(thunk from resultAt vals.tPtr)
+                                vals.loadWord(thunk to resultAt vals.tPtr))
+                        ret)
+            end)
 
             (* Adapter: allocates a QFunAdapterClosure pointing to the thunk *)
             let adapt = newFunction(u "quest_adapt_" <> tag false pointers(3) array of vals.part(vals.tPtr 8 false) end)
@@ -230,8 +256,9 @@ export
             vals.store(adapt adapted runtimeLayout.offset("QFunAdapterClosure" "from") 8 param(af 1))
             vals.store(adapt adapted runtimeLayout.offset("QFunAdapterClosure" "to") 8 param(af 2))
             let same = vals.narrowed(adapt vals.call1(adapt "quest_fun_signature_equivalent" array of param(af 1)
-                param(af 2) end)
-                vals.part(vals.tInt 1 false))
+                param(af 2)
+            end)
+                    vals.part(vals.tInt 1 false))
             vals.store(adapt adapted runtimeLayout.offset("QFunAdapterClosure" "direct") 1 same)
             vals.endInit(adapt mark adapted)
             returnValues(adapt array of adapted end)
@@ -244,7 +271,9 @@ export
             let c = param(vf 0)
             let argv = param(vf 1)
             let var invokeArgs = array of c end
-            for k = 0 upto {nq - 1} do invokeArgs := vals.concat(invokeArgs array of vals.loadWord(invoke argv 8 * k vals.tPtr) end) end
+            for k = 0 upto {nq - 1} do
+                invokeArgs := vals.concat(invokeArgs array of vals.loadWord(invoke argv 8 * k vals.tPtr) end)
+            end
             for j = 0 upto {np - 1} do
                 let p = vector.get(sig.params j)
                 let w = vals.loadWord(invoke argv 8 * {nq + j} if byLocation(p) then vals.tPtr else vals.tVal end)
@@ -252,11 +281,12 @@ export
                     else vals.fromWord(invoke w p.type) end)
             end
             let invokeResults = calls.resultsOf(invoke retParts vals.callQuest(invoke ""
-                vals.concat(array of closureFn(invoke c) end invokeArgs) shifted(s.pairs 1) shifted(s.narrow
-                    1) retParts))
+                    vals.concat(array of closureFn(invoke c) end invokeArgs) shifted(s.pairs 1) shifted(s.narrow
+                            1) retParts))
             returnValues(invoke array of
                 if isOk(ret) then vals.toVal(invoke vals.constant(invoke 0))
-                else vals.toWord(invoke invokeResults ret) end
+                else vals.toWord(invoke invokeResults ret)
+                end
             end)
             array of finished(thunk) finished(adapt) finished(invoke) end
         end

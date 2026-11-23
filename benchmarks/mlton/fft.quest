@@ -2,10 +2,11 @@
  * benchmark suite) *)
 
 import
+    conv : Conv
+    real : RealOp
+
     support/bench : support/Bench
     support/reals : support/Reals
-    real : RealOp
-    conv : Conv
 
 (* The original overrides print, so the benchmark is silent *)
 let print(s: String): Ok = ok
@@ -36,13 +37,15 @@ let fft(px: Array(Real) py: Array(Real) np: Int): Int =
         end
 
         let rec loopK(k: Int n2: Int): Ok =
-            if k >= m then ok
+            if k >= m then
+                ok
             else
                 begin
                     let n4 = n2 / 4
                     let e = tpi // real.int(n2)
                     let rec loopJ(j: Int a: Real): Ok =
-                        if j > n4 then ok
+                        if j > n4 then
+                            ok
                         else
                             begin
                                 let a3 = 3.0 ** a
@@ -51,11 +54,13 @@ let fft(px: Array(Real) py: Array(Real) np: Int): Int =
                                 let cc3 = real.cos(a3)
                                 let ss3 = real.sin(a3)
                                 let rec loopIs(start: Int id: Int): Ok =
-                                    if start >= n then ok
+                                    if start >= n then
+                                        ok
                                     else
                                         begin
                                             let rec loopI0(i0: Int): Ok =
-                                                if i0 >= n then ok
+                                                if i0 >= n then
+                                                    ok
                                                 else
                                                     begin
                                                         let i1 = i0 + n4
@@ -96,11 +101,13 @@ let fft(px: Array(Real) py: Array(Real) np: Int): Int =
 
         (* Last stage, length=2 butterfly *)
         let rec loopIs(start: Int id: Int): Ok =
-            if start >= n then ok
+            if start >= n then
+                ok
             else
                 begin
                     let rec loopI0(i0: Int): Ok =
-                        if i0 > n then ok
+                        if i0 > n then
+                            ok
                         else
                             begin
                                 let i1 = i0 + 1
@@ -121,7 +128,8 @@ let fft(px: Array(Real) py: Array(Real) np: Int): Int =
 
         (* Bit reverse counter *)
         let rec loopI(i: Int j: Int): Ok =
-            if i >= n then ok
+            if i >= n then
+                ok
             else
                 begin
                     if i < j then
@@ -158,7 +166,8 @@ let test(np: Int): Ok =
         pxr[n2 + 1] := ~0.5
         pxi[n2 + 1] := 0.0
         let rec loopI(i: Int): Ok =
-            if i > npm then ok
+            if i > npm then
+                ok
             else
                 begin
                     let j = np - i
@@ -175,7 +184,8 @@ let test(np: Int): Ok =
         fft(pxr pxi np)
         Let Errors = Tuple zr: Real zi: Real end
         let rec loopErr(i: Int zr: Real zi: Real kr: Int ki: Int): Errors =
-            if i >= np then tuple let zr = zr let zi = zi end
+            if i >= np then
+                tuple let zr = zr let zi = zi end
             else
                 begin
                     let a = abs(pxr[i + 1] -- real.int(i))

@@ -167,9 +167,9 @@ has traps that cost time:
 - **No semicolons except after a top-level phrase,** where they are optional
   ([extensions.md](extensions.md#semicolons)). `begin let a = 1; a end`, `f(1; 2)`, and `Record x: Int; y: Int end` are
   syntax errors. The style is to write none at all, and `quest fmt` removes them.
-- **Layout is `quest fmt`'s** ([formatter.md](formatter.md)): run `./quest fmt -w FILE` on what you write. It keeps
-  your line breaks, so where lines break is still yours to choose, within 120 columns. The tree is not formatted yet,
-  and `tools/check` does not check it.
+- **Layout is `quest fmt`'s** ([formatter.md](formatter.md)): run `./quest fmt -w FILE` on what you write;
+  `tools/check` fails on a file in `questlang/`, `lib/`, `tests/source/`, or `benchmarks/` that it would change. It
+  keeps your line breaks, so where lines break is still yours to choose, within 120 columns.
 
 ## 6. Tests
 

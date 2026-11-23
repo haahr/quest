@@ -1,19 +1,19 @@
 (* Language: simultaneous type declarations with 'and' *)
 
-import writer: Writer;
-import conv: Conv;
-import arrayOp: ArrayOp;
+import arrayOp : ArrayOp
+import conv : Conv
+import writer : Writer
 
-let wOut = writer.output;
+let wOut = writer.output
 let printInt(x: Int): Ok =
     begin
         writer.putString(wOut conv.int(x))
         writer.putString(wOut "\n")
-    end;
+    end
 
 (* 1. Mutually recursive types, and recursion over values of them *)
 Let Rec Forest::TYPE = Record trees: Array(Tree) end
-and Tree::TYPE = Variant leaf: Int node: Forest end;
+and Tree::TYPE = Variant leaf: Int node: Forest end
 
 let rec sum(t: Tree): Int =
     case t
@@ -27,43 +27,43 @@ let rec sum(t: Tree): Int =
                 total
             end
         else 0
-    end;
-let leaf(n: Int): Tree = variant leaf of Tree with n end;
-let node(f: Forest): Tree = variant node of Tree with f end;
-let inner: Forest = record trees = array of leaf(2) leaf(3) end end;
-let outer: Forest = record trees = array of leaf(1) node(inner) leaf(4) end end;
-printInt(sum(node(outer)));
-printInt(arrayOp.size(:Tree outer.trees));
+    end
+let leaf(n: Int): Tree = variant leaf of Tree with n end
+let node(f: Forest): Tree = variant node of Tree with f end
+let inner: Forest = record trees = array of leaf(2) leaf(3) end end
+let outer: Forest = record trees = array of leaf(1) node(inner) leaf(4) end end
+printInt(sum(node(outer)))
+printInt(arrayOp.size(:Tree outer.trees))
 
 (* 2. A member that only refers to its siblings, and one the others do not use *)
-Let Rec Ints = Array(Count) and Count = Int and Unused = String;
-let counts: Ints = array of 5 6 end;
-let total: Count = counts[0] + counts[1];
-printInt(total);
+Let Rec Ints = Array(Count) and Count = Int and Unused = String
+let counts: Ints = array of 5 6 end
+let total: Count = counts[0] + counts[1]
+printInt(total)
 
 (* 3. Without Rec, the members are declared simultaneously: each sees the enclosing scope, not its siblings *)
-Let Name = String and Size::TYPE = Int;
-Let Size = Bool and Flag = Size;
-let flag: Flag = 7;
-let size: Size = true;
-printInt(flag);
-printInt(if size then 1 else 0 end);
+Let Name = String and Size::TYPE = Int
+Let Size = Bool and Flag = Size
+let flag: Flag = 7
+let size: Size = true
+printInt(flag)
+printInt(if size then 1 else 0 end)
 
 (* 4. Members with type parameters *)
-Let Pair(A::TYPE B::TYPE)::TYPE = Tuple fst: A snd: B end and Box(A::TYPE)::TYPE = Tuple v: A end;
-let p: Pair(Int String) = tuple let fst = 8 let snd = "eight" end;
-let b: Box(Int) = tuple let v = 9 end;
-printInt(p.fst + b.v);
+Let Pair(A::TYPE B::TYPE)::TYPE = Tuple fst: A snd: B end and Box(A::TYPE)::TYPE = Tuple v: A end
+let p: Pair(Int String) = tuple let fst = 8 let snd = "eight" end
+let b: Box(Int) = tuple let v = 9 end
+printInt(p.fst + b.v)
 
 (* 5. In a tuple type (Def) and in a tuple value (Let), also simultaneously *)
-Let Sig = Tuple Def X = Int and Y = Array(Int) y: Y end;
-let s: Sig = tuple Let X = Int and Y = Array(Int) let y = array of 10 end end;
-printInt(s.y[0]);
-let pkg = tuple Let Size = Int and Other = Size let x: Size = 11 let y: Other = true end;
-printInt(pkg.x);
-printInt(if pkg.y then 1 else 0 end);
+Let Sig = Tuple Def X = Int and Y = Array(Int) y: Y end
+let s: Sig = tuple Let X = Int and Y = Array(Int) let y = array of 10 end end
+printInt(s.y[0])
+let pkg = tuple Let Size = Int and Other = Size let x: Size = 11 let y: Other = true end
+printInt(pkg.x)
+printInt(if pkg.y then 1 else 0 end)
 
 (* 6. A single declaration is a plain type binding, not a group *)
-Let Single = Int;
-let one: Single = 12;
-printInt(one);
+Let Single = Int
+let one: Single = 12
+printInt(one)

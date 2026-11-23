@@ -15,26 +15,28 @@
 
 unsound module target : Target
 import
-    questlang/common/location : questlang/common/Location
-    questlang/types/env : questlang/types/Env
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/modules/elaboration : questlang/modules/Elaboration
-    questlang/ir/nodes : questlang/ir/Nodes
-    questlang/ir/closure : questlang/ir/Closure
-    questlang/ir/represent : questlang/ir/Represent
-    irDescribe = questlang/ir/describe : questlang/ir/Describe
-    passes = questlang/ir/pipeline : questlang/ir/Pipeline
-    wasm = questlang/wasm/codegen : questlang/wasm/Codegen
-    questlang/wasm/encode : questlang/wasm/Encode
-    questlang/wasm/model : questlang/wasm/Model
-    questlang/repr/shapes : questlang/repr/Shapes
     raised : Raised
+    stringOp = string : StringOp
+    system : System
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/sort : util/Sort
-    stringOp = string : StringOp
-    system : System
+
+    questlang/common/location : questlang/common/Location
+    questlang/ir/closure : questlang/ir/Closure
+    irDescribe = questlang/ir/describe : questlang/ir/Describe
+    questlang/ir/nodes : questlang/ir/Nodes
+    passes = questlang/ir/pipeline : questlang/ir/Pipeline
+    questlang/ir/represent : questlang/ir/Represent
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/types/env : questlang/types/Env
+    questlang/types/symbols : questlang/types/Symbols
+    wasm = questlang/wasm/codegen : questlang/wasm/Codegen
+    questlang/wasm/encode : questlang/wasm/Encode
+    questlang/wasm/model : questlang/wasm/Model
 export
     Let T = Tuple e: env.T end
     Let Ran = Option
@@ -139,13 +141,14 @@ export
 
     let load(t: T unit: nodes.Unit): Ok =
         begin
-            let bytes = try
-                begin
-                    (* Tell the IR passes that pointers and boxed values share
-                     * the same representation (WebAssembly eqref) *)
-                    shapes.setReferencesAlike(true)
-                    encode.encode(wasm.unitModule(passes.runPasses(unit)))
-                end
+            let bytes =
+                try
+                    begin
+                        (* Tell the IR passes that pointers and boxed values share
+                         * the same representation (WebAssembly eqref) *)
+                        shapes.setReferencesAlike(true)
+                        encode.encode(wasm.unitModule(passes.runPasses(unit)))
+                    end
                 (* Convert IR and WebAssembly backend failures into
                  * unsupported *)
                 when closure.capturesMutable with x then fail(:String x)
@@ -182,19 +185,26 @@ export
                     if status is 3 then
                         let parts = reportParts(fatalReport())
                         option raised of Ran with
-                            let name = parts[0] let site = parts[1] let frames = array of "<main>" end let fatal = true
+                            let name = parts[0]
+                            let site = parts[1]
+                            let frames = array of "<main>" end
+                            let fatal = true
                         end
                     else
                         option raised of Ran with
                             let name = if status is 1 then "stack.overflow" else "trap" end
-                            let site = "" let frames = array of "<main>" end let fatal = false
+                            let site = ""
+                            let frames = array of "<main>" end
+                            let fatal = false
                         end
                     end
                 end
             else with r then
                 let discarded = shown()
                 option raised of Ran with
-                    let name = raisedName(r) let site = raisedSite(r) let frames = array of "<main>" end
+                    let name = raisedName(r)
+                    let site = raisedSite(r)
+                    let frames = array of "<main>" end
                     let fatal = false
                 end
             end

@@ -4,49 +4,50 @@
  * work, the wall clock is a time of this century that keeps pace with the
  * monotonic one, and the local offset is less than a day *)
 
-import time = os/time : os/Time;
-import writer: Writer;
-import conv: Conv;
-import intOp = int : IntOp;
+import conv : Conv
+import intOp = int : IntOp
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
-let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds));
+import time = os/time : os/Time
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds))
 
 (* 1. The monotonic clock *)
-let var last = time.ticks();
-let var back = false;
+let var last = time.ticks()
+let var back = false
 for i = 1 upto 1000 do
     let t = time.ticks()
     if t < last then back := true end
     last := t
-end;
-check("ticks never go back" not(back));
+end
+check("ticks never go back" not(back))
 
 (* 2. Sleeping, measured by both clocks *)
-let wallBefore = time.nowInNanoseconds();
-let ticksBefore = time.ticks();
-time.sleepNanoseconds(50000000);
-let slept = time.ticks() - ticksBefore;
-let wallSlept = time.nowInNanoseconds() - wallBefore;
-check("sleep lasts at least 50 ms" slept >= 50000000);
-check("sleep lasts under 5 s" slept < 5000000000);
-check("the wall clock keeps pace" intOp.abs(wallSlept - slept) < 1000000000);
-let shortStart = time.ticks();
-time.sleepNanoseconds(0);
-time.sleepNanoseconds(~1000000000);
-check("no sleep for 0 or less" {time.ticks() - shortStart} < 1000000000);
+let wallBefore = time.nowInNanoseconds()
+let ticksBefore = time.ticks()
+time.sleepNanoseconds(50000000)
+let slept = time.ticks() - ticksBefore
+let wallSlept = time.nowInNanoseconds() - wallBefore
+check("sleep lasts at least 50 ms" slept >= 50000000)
+check("sleep lasts under 5 s" slept < 5000000000)
+check("the wall clock keeps pace" intOp.abs(wallSlept - slept) < 1000000000)
+let shortStart = time.ticks()
+time.sleepNanoseconds(0)
+time.sleepNanoseconds(~1000000000)
+check("no sleep for 0 or less" {time.ticks() - shortStart} < 1000000000)
 
 (* 3. CPU time *)
-let cpuBefore = time.cpuTimeInNanoseconds();
-let var sum = 0;
-for i = 1 upto 100000 do sum := sum + {i % 7} end;
-check("CPU time grows under work" {time.cpuTimeInNanoseconds() >= cpuBefore} /\ {sum > 0});
+let cpuBefore = time.cpuTimeInNanoseconds()
+let var sum = 0
+for i = 1 upto 100000 do sum := sum + {i % 7} end
+check("CPU time grows under work" {time.cpuTimeInNanoseconds() >= cpuBefore} /\ {sum > 0})
 
 (* 4. The wall clock: after 2025, before 2100 *)
-let wall = time.nowInNanoseconds();
-check("the wall clock is this century" {wall > 1735689600000000000} /\ {wall < 4102444800000000000});
+let wall = time.nowInNanoseconds()
+check("the wall clock is this century" {wall > 1735689600000000000} /\ {wall < 4102444800000000000})
 
 (* 5. The local zone's offset, now and fifty years ago *)
 check("the local offset is less than a day"
-    {intOp.abs(time.localOffsetInSeconds(wall / 1000000000)) < 86400}
-        /\ {intOp.abs(time.localOffsetInSeconds(0 - 1577836800)) < 86400})
+        {intOp.abs(time.localOffsetInSeconds(wall / 1000000000)) < 86400}
+    /\ {intOp.abs(time.localOffsetInSeconds(0 - 1577836800)) < 86400})

@@ -2,9 +2,10 @@
 
 module nodes : Nodes
 import
+    stringOp = string : StringOp
+
     collections/vector : collections/Vector
     util/maybe : util/Maybe
-    stringOp = string : StringOp
 export
     Def Type = Option typeInt typePtr typeReal typeVal end
 
@@ -122,7 +123,8 @@ export
             end
             let rs = array of(extent results passWord)
             if extent results is 2 then begin rs[0] := passPair rs[1] := passPairRest end
-            else for k = 0 upto {extent results - 1} do rs[k] := wordOf(results[k]) end end
+            else for k = 0 upto {extent results - 1} do rs[k] := wordOf(results[k]) end
+            end
             tuple let params = ps let results = rs end
         end
 
@@ -237,7 +239,9 @@ export
 
     let words(symbol: String exported: Bool writable: Bool ws: Array(Word)): Data =
         tuple
-            let symbol = symbol let exported = exported let writable = writable
+            let symbol = symbol
+            let exported = exported
+            let writable = writable
             let contents = option contentsWords of Contents with let words = ws end
         end
 
@@ -322,10 +326,17 @@ export
         end
 
     let instruction(op: Opcode args: Array(Int) results: Array(Int) imm: Int symbol: String width: Int signed: Bool
-        s: Signature): Inst =
+            s: Signature): Inst =
         tuple
-            let op = op let var args = args let results = results let var imm = imm let symbol = symbol
-            let width = width let signed = signed let var signature = s let var loc = noLoc
+            let op = op
+            let var args = args
+            let results = results
+            let var imm = imm
+            let symbol = symbol
+            let width = width
+            let signed = signed
+            let var signature = s
+            let var loc = noLoc
             let var invariant = false
         end
 
@@ -364,9 +375,9 @@ export
         case op
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge then typeInt
             when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor,
-                opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
-                opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
-                opThreadLocal, opToVal, opFromVal, opMulHiU, opSelect, opUnproxy then
+                    opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
+                    opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
+                    opThreadLocal, opToVal, opFromVal, opMulHiU, opSelect, opUnproxy then
                 x
         end
 
@@ -475,13 +486,18 @@ export
             when termJump with x then option termJump of Terminator with let target = map(x.target) end
             when termBranch with x then
                 option termBranch of Terminator with
-                    let cond = x.cond let ifTrue = map(x.ifTrue) let ifFalse = map(x.ifFalse)
+                    let cond = x.cond
+                    let ifTrue = map(x.ifTrue)
+                    let ifFalse = map(x.ifFalse)
                 end
             when termSwitch with x then
                 let ts = array of(extent x.targets x.default)
                 for k = 0 upto {extent x.targets - 1} do ts[k] := map(x.targets[k]) end
                 option termSwitch of Terminator with
-                    let value = x.value let cases = x.cases let targets = ts let default = map(x.default)
+                    let value = x.value
+                    let cases = x.cases
+                    let targets = ts
+                    let default = map(x.default)
                 end
             when termTry with x then
                 option termTry of Terminator with let slot = x.slot let body = map(x.body) let handler = x.handler end
@@ -494,7 +510,9 @@ export
             case mapped
                 when termTry with x then
                     option termTry of Terminator with
-                        let slot = x.slot let body = x.body let handler = map(x.handler)
+                        let slot = x.slot
+                        let body = x.body
+                        let handler = map(x.handler)
                     end
                 when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then mapped
             end
@@ -511,11 +529,15 @@ export
                 case blk.term
                     when termBranch with x then
                         blk.term := option termBranch of Terminator with
-                            let cond = replace(x.cond) let ifTrue = x.ifTrue let ifFalse = x.ifFalse
+                            let cond = replace(x.cond)
+                            let ifTrue = x.ifTrue
+                            let ifFalse = x.ifFalse
                         end
                     when termSwitch with x then
                         blk.term := option termSwitch of Terminator with
-                            let value = replace(x.value) let cases = x.cases let targets = x.targets
+                            let value = replace(x.value)
+                            let cases = x.cases
+                            let targets = x.targets
                             let default = x.default
                         end
                     when termReturn with x then all(x.values)

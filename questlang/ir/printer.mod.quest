@@ -2,20 +2,22 @@
 
 module printer : Printer
 import
-    questlang/common/pyRepr : questlang/common/PyRepr
-    questlang/types/model : questlang/types/Model
-    questlang/types/dump : questlang/types/Dump
-    util/json : util/Json
-    questlang/ir/nodes : questlang/ir/Nodes
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/ir/walk : questlang/ir/Walk
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
+    util/json : util/Json
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/common/pyRepr : questlang/common/PyRepr
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/types/dump : questlang/types/Dump
+    questlang/types/model : questlang/types/Model
 export
     Let Variable = nodes.Variable
     Let Atom = nodes.Atom
@@ -66,13 +68,14 @@ export
                 let n = maybe.unwrapOr(hashMap.get(p.used v.hint) 0)
                 hashMap.insert(p.used v.hint n + 1)
                 (* A temporary: numbered, apart from the program's own names *)
-                let name = if stringOp.isEmpty(v.hint) then
-                    "%" <> conv.int(n + 1)
-                elsif n is 0 then
-                    v.hint
-                else
-                    v.hint <> "." <> conv.int(n)
-                end
+                let name =
+                    if stringOp.isEmpty(v.hint) then
+                        "%" <> conv.int(n + 1)
+                    elsif n is 0 then
+                        v.hint
+                    else
+                        v.hint <> "." <> conv.int(n)
+                    end
                 hashMap.insert(p.names v.id name)
                 name
             end
@@ -80,8 +83,7 @@ export
 
     (* A variable used before (or without) its binder prints with a mark, which
      * the verifier reports *)
-    let name(p: Printer v: Variable): String =
-        maybe.unwrapOr(hashMap.get(p.names v.id) v.hint <> "?")
+    let name(p: Printer v: Variable): String = maybe.unwrapOr(hashMap.get(p.names v.id) v.hint <> "?")
 
     let atom(p: Printer a: Atom): String =
         case a
@@ -112,7 +114,8 @@ export
             when descVar with x then name(p x.v)
             when descStatic with x then
                 if x.d.echo then "echo_descriptor(" <> typeText(x.d.type) <> ")"
-                else "descriptor(" <> typeText(x.d.type) <> ")" end
+                else "descriptor(" <> typeText(x.d.type) <> ")"
+                end
             when descInstantiate with x then
                 begin
                     let texts = vector.new(:String)
@@ -159,7 +162,14 @@ export
     let decl(p: Printer v: Variable): String =
         begin
             let t = typeText(v.type)
-            bind(p v) <> ": " <> if v.boxed then "box(" <> t <> ")" elsif v.unboxed then "unboxed(" <> t <> ")" else t end
+            bind(p v) <> ": "
+                <> if v.boxed then
+                    "box(" <> t <> ")"
+                elsif v.unboxed then
+                    "unboxed(" <> t <> ")"
+                else
+                    t
+                end
         end
 
     (* How a component of a tuple or option is read, after the represent pass:
@@ -246,27 +256,32 @@ export
     let op(p: Printer o: Op): String =
         case o
             when opAtom with x then atom(p x.atom)
-            when opPrim with x then "prim " <> nodes.primName(x.op) <> "(" <> atoms(p x.args) <> ")" <> access(x.access) <> ofDescriptor(p x.descriptor)
+            when opPrim with x then
+                "prim " <> nodes.primName(x.op) <> "(" <> atoms(p x.args) <> ")" <> access(x.access)
+                    <> ofDescriptor(p x.descriptor)
             when opCall with x then
                 "call " <> callee(p x.callee x.moduleRef x.member) <> typeArgs(p x.typeArgs x.descriptors) <> "("
                     <> atoms(p x.args) <> ")"
             when opTypeApp with x then
-                let thunk = if maybe.isSome(x.thunkParams)
-                    andif {extent maybe.unwrap(:Array(nodes.DescriptorParam) x.thunkParams) > 0} then
-                    thunkDecls(p maybe.unwrap(x.thunkParams))
-                else
-                    ""
-                end
+                let thunk =
+                    if maybe.isSome(x.thunkParams)
+                            andif {extent maybe.unwrap(:Array(nodes.DescriptorParam) x.thunkParams) > 0} then
+                        thunkDecls(p maybe.unwrap(x.thunkParams))
+                    else
+                        ""
+                    end
                 let var anyPlan = false
                 for i = 0 upto {extent x.plans - 1} do if maybe.isSome(x.plans[i]) then anyPlan := true end end
-                let converting = if anyPlan then
-                    let texts = vector.new(:String)
-                    for i = 0 upto {extent x.plans - 1} do vector.append(texts plan(p x.plans[i])) end
-                    thunk <> " converting (" <> joinWith(", " texts) <> ")"
-                else
-                    ""
-                end
-                "type_app " <> callee(p x.callee x.moduleRef x.member) <> typeArgs(p x.typeArgs x.descriptors) <> converting
+                let converting =
+                    if anyPlan then
+                        let texts = vector.new(:String)
+                        for i = 0 upto {extent x.plans - 1} do vector.append(texts plan(p x.plans[i])) end
+                        thunk <> " converting (" <> joinWith(", " texts) <> ")"
+                    else
+                        ""
+                    end
+                "type_app " <> callee(p x.callee x.moduleRef x.member) <> typeArgs(p x.typeArgs x.descriptors)
+                    <> converting
             when opModuleMember with x then
                 if maybe.isSome(x.member) then
                     "member " <> nodes.moduleRefName(x.moduleRef) <> "." <> maybe.unwrap(x.member)
@@ -276,9 +291,11 @@ export
             when opBuiltin with x then "builtin " <> x.name
             when opExternal with x then "external " <> quoted(x.symbol)
             when opCallExternal with x then
-                "call external " <> quoted(x.symbol) <> typeArgs(p x.typeArgs x.descriptors) <> "(" <> atoms(p x.args) <> ")"
+                "call external " <> quoted(x.symbol) <> typeArgs(p x.typeArgs x.descriptors) <> "(" <> atoms(p x.args)
+                    <> ")"
             when opMakeClosure with x then
-                "closure " <> name(p x.code.v) <> " {" <> atoms(p x.captures) <> "}" <> typeArgs(p x.typeArgs x.descriptors)
+                "closure " <> name(p x.code.v) <> " {" <> atoms(p x.captures) <> "}"
+                    <> typeArgs(p x.typeArgs x.descriptors)
             when opEnvField with x then "env_field(" <> atom(p x.env) <> ", " <> conv.int(x.index) <> ")"
             when opConvert with x then "convert(" <> atom(p x.value) <> ", " <> plan(p maybe.some(x.plan)) <> ")"
             when opMakeTuple with x then
@@ -312,30 +329,39 @@ export
                 let stored = if x.stored then " via stored types" <> ofDescriptor(p x.descriptor) else "" end
                 "record_field(" <> atom(p x.recordAtom) <> ", " <> x.name <> ")" <> stored
             when opMakeVariant with x then
-                "variant(" <> x.tag <> if maybe.isSome(x.payload) then ", " <> atom(p maybe.unwrap(x.payload)) else "" end <> ")"
-            when opMakeOption with x then
-                let head = if maybe.isNone(x.ordinalAtom) then
-                    maybe.unwrapOr(x.tag "")
-                else
-                    "#" <> atom(p maybe.unwrap(x.ordinalAtom)) <> " in (" <> strutil.joinArray(" " x.cases) <> ")"
-                end
-                let payloadText = if maybe.isSome(x.payload) then
-                    ", " <> atom(p maybe.unwrap(x.payload)) <> accesses(x.access)
+                "variant(" <> x.tag <> if maybe.isSome(x.payload) then
+                    ", " <> atom(p maybe.unwrap(x.payload))
                 else
                     ""
-                end
+                end <> ")"
+            when opMakeOption with x then
+                let head =
+                    if maybe.isNone(x.ordinalAtom) then
+                        maybe.unwrapOr(x.tag "")
+                    else
+                        "#" <> atom(p maybe.unwrap(x.ordinalAtom)) <> " in (" <> strutil.joinArray(" " x.cases) <> ")"
+                    end
+                let payloadText =
+                    if maybe.isSome(x.payload) then
+                        ", " <> atom(p maybe.unwrap(x.payload)) <> accesses(x.access)
+                    else
+                        ""
+                    end
                 "option(" <> head <> payloadText <> ")"
             when opIsTag with x then "is_tag(" <> atom(p x.value) <> ", " <> x.tag <> ")" <> access(x.access)
             when opPayload with x then
-                let ordinalText = if maybe.isSome(x.ordinalIndex) then " #" <> conv.int(maybe.unwrap(x.ordinalIndex)) else "" end
-                "payload(" <> atom(p x.value) <> ", " <> x.tag <> ")" <> ordinalText <> access(x.access) <> accesses(x.components)
+                let ordinalText =
+                    if maybe.isSome(x.ordinalIndex) then " #" <> conv.int(maybe.unwrap(x.ordinalIndex)) else "" end
+                "payload(" <> atom(p x.value) <> ", " <> x.tag <> ")" <> ordinalText <> access(x.access)
+                    <> accesses(x.components)
                     <> if x.decided then " decided" else "" end
             when opOrdinal with x then
                 "ordinal(" <> atom(p x.value) <> ") in (" <> strutil.joinArray(" " x.cases) <> ")" <> access(x.access)
             when opMakeArray with x then "array(" <> atoms(p x.args) <> ")"
             when opArrayRep with x then "array_rep(" <> atom(p x.count) <> ", " <> atom(p x.init) <> ")"
             when opIndex with x then "index(" <> atom(p x.arr) <> ", " <> atom(p x.index) <> ")"
-            when opMakeAuto with x then "auto[" <> typeText(x.witness) <> "](" <> atom(p x.payload) <> ")" <> ofDescriptor(p x.descriptor)
+            when opMakeAuto with x then
+                "auto[" <> typeText(x.witness) <> "](" <> atom(p x.payload) <> ")" <> ofDescriptor(p x.descriptor)
             when opMakeException with x then
                 let shown = maybe.isSome(x.payloadType)
                     andif not(eq(typeText(maybe.unwrap(x.payloadType)) "Ok"))
@@ -364,7 +390,8 @@ export
                 let c = maybe.unwrapOr(x.converted[i] "")
                 if maybe.isSome(pair) then
                     let dp = maybe.unwrap(pair)
-                    vector.append(converted c <> "(" <> descriptor(p dp.source) <> ", " <> descriptor(p dp.target) <> ")")
+                    vector.append(converted c <> "(" <> descriptor(p dp.source) <> ", " <> descriptor(p dp.target)
+                        <> ")")
                 else
                     vector.append(converted if maybe.isSome(x.converted[i]) then c else "none" end)
                 end
@@ -373,7 +400,7 @@ export
             vector.append(parts "converting (" <> joinWith(", " converted) <> ")")
             if x.exact then
                 vector.append(parts
-                    if x.shared then "if equivalent shared" else "if equivalent " <> plan(p x.plan) end)
+                        if x.shared then "if equivalent shared" else "if equivalent " <> plan(p x.plan) end)
             end
             if x.layoutError then vector.append(parts "or layout error") end
             " " <> joinWith(" " parts)
@@ -394,7 +421,8 @@ export
         begin
             let resolved = if maybe.isNone(p.unit) then maybe.none(:nodes.SourcePos)
                 else nodes.sourcePos(maybe.unwrap(p.unit) pos) end
-            if maybe.isNone(resolved) then " @+" <> conv.int(pos)
+            if maybe.isNone(resolved) then
+                " @+" <> conv.int(pos)
             else
                 let r = maybe.unwrap(resolved)
                 " @" <> if r.file is 0 then "" else conv.int(r.file) <> ":" end <> conv.int(r.line) <> ":"
@@ -414,15 +442,16 @@ export
 
     and function(p: Printer f: nodes.Function depth: Int): Ok =
         begin
-            let tps = if extent f.typeParams > 0 then
-                let texts = vector.new(:String)
-                for i = 0 upto {extent f.typeParams - 1} do
-                    vector.append(texts f.typeParams[i].name <> "::" <> model.showKind(f.typeParams[i].kind))
+            let tps =
+                if extent f.typeParams > 0 then
+                    let texts = vector.new(:String)
+                    for i = 0 upto {extent f.typeParams - 1} do
+                        vector.append(texts f.typeParams[i].name <> "::" <> model.showKind(f.typeParams[i].kind))
+                    end
+                    " [" <> joinWith(" " texts) <> "]"
+                else
+                    ""
                 end
-                " [" <> joinWith(" " texts) <> "]"
-            else
-                ""
-            end
             (* Its type parameters' descriptors (after the describe pass), then
              * its parameters *)
             let params = vector.new(:String)
@@ -434,7 +463,11 @@ export
             (* A lifted function's environment, which has no Quest type *)
             let env = if maybe.isSome(f.env) then " {" <> bind(p maybe.unwrap(f.env)) <> "}" else "" end
             emit(p depth "fun " <> name(p f.v) <> env <> tps <> "(" <> joinWith(", " params) <> "): "
-                <> if f.unboxedResult then "unboxed(" <> typeText(f.resultType) <> ")" else typeText(f.resultType) end <> " {")
+                <> if f.unboxedResult then
+                    "unboxed(" <> typeText(f.resultType) <> ")"
+                else
+                    typeText(f.resultType)
+                end <> " {")
             (* View maps (after the describe pass) map a bounded type
              * parameter's runtime layout to its upper bound *)
             for i = 0 upto {extent f.viewMaps - 1} do
@@ -458,7 +491,8 @@ export
 
     and statementLines(p: Printer s: Stmt depth: Int): Ok =
         case s
-            when sLet with x then emit(p depth "let " <> decl(p x.v) <> " = " <> op(p x.value) <> through(p walk.opViewMap(x.value)))
+            when sLet with x then
+                emit(p depth "let " <> decl(p x.v) <> " = " <> op(p x.value) <> through(p walk.opViewMap(x.value)))
             when sVarDecl with x then
                 if maybe.isNone(x.init) then
                     emit(p depth "var " <> decl(p x.v))
@@ -468,7 +502,8 @@ export
             when sAssign with x then emit(p depth name(p x.v) <> " := " <> atom(p x.value))
             when sStoreAt with x then emit(p depth "store *" <> atom(p x.address) <> " := " <> atom(p x.value))
             when sStoreField with x then
-                emit(p depth "store " <> atom(p x.base) <> "." <> x.name <> " := " <> atom(p x.value) <> through(p x.viewMap))
+                emit(p depth "store " <> atom(p x.base) <> "." <> x.name <> " := " <> atom(p x.value)
+                    <> through(p x.viewMap))
             when sStoreComponent with x then
                 emit(p depth "store " <> atom(p x.base) <> ".#" <> conv.int(x.index) <> " := " <> atom(p x.value)
                     <> access(x.access) <> through(p x.viewMap))
@@ -511,11 +546,12 @@ export
                         <> if x.decided then " decided" else "" end <> " {")
                     for i = 0 upto {extent x.cases - 1} do
                         let c = x.cases[i]
-                        let binder = if maybe.isSome(c.binder) then
-                            " (" <> decl(p maybe.unwrap(c.binder)) <> ")" <> accesses(c.components)
-                        else
-                            ""
-                        end
+                        let binder =
+                            if maybe.isSome(c.binder) then
+                                " (" <> decl(p maybe.unwrap(c.binder)) <> ")" <> accesses(c.components)
+                            else
+                                ""
+                            end
                         block(p "case " <> strutil.joinArray(", " c.tags) <> binder <> ":" c.body depth + 1)
                     end
                     if maybe.isSome(x.elseBody) then block(p "else:" maybe.unwrap(x.elseBody) depth + 1) end
@@ -523,11 +559,12 @@ export
                 end
             when sInspect with x then
                 begin
-                    let binding = if maybe.isSome(x.witness) then
-                        " (" <> decl(p maybe.unwrap(x.witness).v) <> ")"
-                    else
-                        ""
-                    end
+                    let binding =
+                        if maybe.isSome(x.witness) then
+                            " (" <> decl(p maybe.unwrap(x.witness).v) <> ")"
+                        else
+                            ""
+                        end
                     emit(p depth "inspect " <> atom(p x.value) <> binding <> " {")
                     for i = 0 upto {extent x.cases - 1} do
                         let c = x.cases[i]
@@ -566,7 +603,8 @@ export
                     emit(p depth "}")
                 end
             when sEcho with x then
-                emit(p depth "echo " <> quoted(x.prefix) <> " " <> atom(p x.value) <> " : " <> typeText(x.type) <> ofDescriptor(p x.descriptor))
+                emit(p depth "echo " <> quoted(x.prefix) <> " " <> atom(p x.value) <> " : " <> typeText(x.type)
+                    <> ofDescriptor(p x.descriptor))
             when sEchoText with x then emit(p depth "echo " <> quoted(x.text))
             when sReturn with x then emit(p depth "return " <> atom(p x.value))
             when sJump with x then emit(p depth "jump " <> x.label <> "(" <> atoms(p x.args) <> ")")

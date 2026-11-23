@@ -4,10 +4,11 @@
  * SML by Stephen Weeks. The count is the image's height and width. *)
 
 import
+    conv : Conv
+    stringOp = string : StringOp
+
     support/bench : support/Bench
     support/lists : support/Lists
-    stringOp = string : StringOp
-    conv : Conv
 
 (* The original overrides print, so the benchmark is silent *)
 let print(s: String): Ok = ok
@@ -19,7 +20,7 @@ let doo(max: Int f: All(i: Int) Ok): Ok =
     end
 
 let zero(x: Int): Bool = x is 0
-let writeChar(c: Char): Ok = ok (* TextIO.output1(TextIO.stdOut, c) *)
+let writeChar(c: Char): Ok = ok  (* TextIO.output1(TextIO.stdOut, c) *)
 let negative(x: Int): Bool = x < 0
 let positive(x: Int): Bool = x > 0
 
@@ -75,23 +76,28 @@ let pormat(controlString: String values: lists.T(PormatValue)): Ok =
                             if c2 is 's' then
                                 case values
                                     when cons with v then
-                                        case v.hd when integer with n
-                                            then begin print(conv.int(n.n)) loop1(i + 2 v.tl) end
-                                        else other() end
+                                        case v.hd when integer with n then
+                                            begin print(conv.int(n.n)) loop1(i + 2 v.tl) end
+                                            else other()
+                                        end
                                     else other()
                                 end
                             elsif c2 is 'a' then
                                 case values
                                     when cons with v then
                                         case v.hd when string with s then begin print(s.s) loop1(i + 2 v.tl) end
-                                        else other() end
+                                            else other()
+                                        end
                                     else other()
                                 end
-                            elsif c2 is '%' then begin print("\n") loop1(i + 2 values) end
-                            else other()
+                            elsif c2 is '%' then
+                                begin print("\n") loop1(i + 2 values) end
+                            else
+                                other()
                             end
                         end
-                    else begin writeChar(c) loop1(i + 1 values) end
+                    else
+                        begin writeChar(c) loop1(i + 1 values) end
                     end
                 end
             end
@@ -153,13 +159,13 @@ let raoRatioRegion(cRight: Array(Array(Int)) cDown: Array(Array(Int)) w: Array(A
                 let canPushT(y: Int x: Int): Bool = not(zero(e[y][x])) andif efT(y x) andif {h[y][x] is 1}
                 let canLift(y: Int x: Int): Bool =
                     not(zero(e[y][x]))
-                    andif {if x is {width - 1} then h[y][x] <= m1 else not(efRight(y x))
-                        orif {h[y][x] <= h[y][x + 1]} end}
-                    andif {if x is 0 then h[y][x] <= m1 else not(efLeft(y x)) orif {h[y][x] <= h[y][x - 1]} end}
-                    andif {if y is {height - 1} then h[y][x] <= m1 else not(efDown(y x))
-                        orif {h[y][x] <= h[y + 1][x]} end}
-                    andif {if y is 0 then h[y][x] <= m1 else not(efUp(y x)) orif {h[y][x] <= h[y - 1][x]} end}
-                    andif {not(efT(y x)) orif {h[y][x] is 0}}
+                        andif {if x is {width - 1} then h[y][x] <= m1 else not(efRight(y x))
+                            orif {h[y][x] <= h[y][x + 1]} end}
+                        andif {if x is 0 then h[y][x] <= m1 else not(efLeft(y x)) orif {h[y][x] <= h[y][x - 1]} end}
+                        andif {if y is {height - 1} then h[y][x] <= m1 else not(efDown(y x))
+                            orif {h[y][x] <= h[y + 1][x]} end}
+                        andif {if y is 0 then h[y][x] <= m1 else not(efUp(y x)) orif {h[y][x] <= h[y - 1][x]} end}
+                        andif {not(efT(y x)) orif {h[y][x] is 0}}
                 let pushRight(y: Int x: Int): Ok =
                     begin
                         let dfUV = positiveMin(e[y][x] cfRight(y x))
@@ -282,19 +288,18 @@ let raoRatioRegion(cRight: Array(Array(Int)) cDown: Array(Array(Int)) w: Array(A
                             relabel()
                             counts.relabels := counts.relabels + 1
                             if everyN(height fun(y: Int): Bool
-                                everyN(width fun(x: Int): Bool zero(e[y][x]) orif {h[y][x] is m1}))
-                            then
+                                everyN(width fun(x: Int): Bool zero(e[y][x]) orif {h[y][x] is m1})) then
                                 (* Every vertex with excess capacity is not reachable from the sink
                                  * in the inverse residual network. So terminate early because we
                                  * have already found a min cut (the original explains at
                                  * length). *)
                                 pormat("~s push~a, ~s lift~a, ~s relabel~a, ~s wave~a, terminated early~%"
-                                    values(array of
-                                    int(counts.pushes) str(plural(counts.pushes "es"))
-                                    int(counts.lifts) str(plural(counts.lifts "s"))
-                                    int(counts.relabels) str(plural(counts.relabels "s"))
-                                    int(i) str(plural(i "s"))
-                                end))
+                                        values(array of
+                                            int(counts.pushes) str(plural(counts.pushes "es"))
+                                            int(counts.lifts) str(plural(counts.lifts "s"))
+                                            int(counts.relabels) str(plural(counts.relabels "s"))
+                                            int(i) str(plural(i "s"))
+                                        end))
                             else
                                 (* We need to rebuild the priority queue after relabeling since the
                                  * heights might have changed and the priority queue is indexed by
@@ -312,10 +317,9 @@ let raoRatioRegion(cRight: Array(Array(Int)) cDown: Array(Array(Int)) w: Array(A
                     elsif someVector(q fun(ps: XYs): Bool
                         lists.exists(:XY)(fun(p: XY): Bool
                             canPushRight(p.y p.x) orif canPushLeft(p.y p.x) orif canPushDown(p.y p.x)
-                                orif canPushUp(p.y p.x)
-                                orif canPushT(p.y p.x) orif canLift(p.y p.x)
-                            ps))
-                    then
+                                    orif canPushUp(p.y p.x)
+                                    orif canPushT(p.y p.x) orif canLift(p.y p.x)
+                                ps)) then
                         begin
                             let rec loop2(k: Int): Ok =
                                 if not(negative(k)) then
@@ -327,21 +331,27 @@ let raoRatioRegion(cRight: Array(Array(Int)) cDown: Array(Array(Int)) w: Array(A
                                             begin
                                                 let x = p.x
                                                 let y = p.y
-                                                if canPushRight(y x)
-                                                    then begin counts.pushes := counts.pushes + 1 pushRight(y x) end end
-                                                if canPushLeft(y x)
-                                                    then begin counts.pushes := counts.pushes + 1 pushLeft(y x) end end
-                                                if canPushDown(y x)
-                                                    then begin counts.pushes := counts.pushes + 1 pushDown(y x) end end
-                                                if canPushUp(y x)
-                                                    then begin counts.pushes := counts.pushes + 1 pushUp(y x) end end
-                                                if canPushT(y x)
-                                                    then begin counts.pushes := counts.pushes + 1 pushT(y x) end end
-                                                if canLift(y x)
-                                                    then begin counts.lifts := counts.lifts + 1 lift(y x) end end
+                                                if canPushRight(y x) then
+                                                    begin counts.pushes := counts.pushes + 1 pushRight(y x) end
+                                                end
+                                                if canPushLeft(y x) then
+                                                    begin counts.pushes := counts.pushes + 1 pushLeft(y x) end
+                                                end
+                                                if canPushDown(y x) then
+                                                    begin counts.pushes := counts.pushes + 1 pushDown(y x) end
+                                                end
+                                                if canPushUp(y x) then
+                                                    begin counts.pushes := counts.pushes + 1 pushUp(y x) end
+                                                end
+                                                if canPushT(y x) then
+                                                    begin counts.pushes := counts.pushes + 1 pushT(y x) end
+                                                end
+                                                if canLift(y x) then
+                                                    begin counts.lifts := counts.lifts + 1 lift(y x) end
+                                                end
                                                 if not(zero(e[y][x])) then enqueue(y x) end
                                             end
-                                            ps)
+                                                ps)
                                         loop2(k - 1)
                                     end
                                 end
@@ -406,13 +416,19 @@ let doit(n: Int): Ok =
         doo(height fun(y: Int): Ok doo(width - 1 fun(x: Int): Ok
             cRight[y][x] :=
                 if {y >= {height / 4}} andif {y < {{3 * height} / 4}}
-                    andif {{x is {{width / 4} - 1}} orif {x is {{{3 * width} / 4} - 1}}}
-                then 1 else 128 end))
+                        andif {{x is {{width / 4} - 1}} orif {x is {{{3 * width} / 4} - 1}}} then
+                    1
+                else
+                    128
+                end))
         doo(height - 1 fun(y: Int): Ok doo(width fun(x: Int): Ok
             cDown[y][x] :=
                 if {x >= {width / 4}} andif {x < {{3 * width} / 4}}
-                    andif {{y is {{height / 4} - 1}} orif {y is {{{3 * height} / 4} - 1}}}
-                then 1 else 128 end))
+                        andif {{y is {{height / 4} - 1}} orif {y is {{{3 * height} / 4} - 1}}} then
+                    1
+                else
+                    128
+                end))
         raoRatioRegion(cRight cDown makeMatrix(:Int)(height width 1) lgMaxV)
     end
 

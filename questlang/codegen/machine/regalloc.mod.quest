@@ -8,12 +8,13 @@
 
 module regalloc : Regalloc
 import
-    targets = questlang/codegen/machine/target : questlang/codegen/machine/Target
-    questlang/codegen/machine/machine : questlang/codegen/machine/Machine
-    collections/vector : collections/Vector
     collections/bitset : collections/Bitset
     collections/heap : collections/Heap
+    collections/vector : collections/Vector
     util/sort : util/Sort
+
+    questlang/codegen/machine/machine : questlang/codegen/machine/Machine
+    targets = questlang/codegen/machine/target : questlang/codegen/machine/Target
 export
     Def Move = Tuple at: Int value: Int from: Int to: Int end
     Def Allocation = Tuple
@@ -100,7 +101,8 @@ export
                 let hi = if a.tos[i] < b.tos[j] then a.tos[i] else b.tos[j] end
                 if lo <= hi then found := lo
                 elsif a.tos[i] < b.tos[j] then i := i + 1
-                else j := j + 1 end
+                else j := j + 1
+                end
             end
             found
         end
@@ -148,8 +150,11 @@ export
             it.tos := vector.toArray(ht)
             it.uses := vector.toArray(hu)
             tuple
-                let value = it.value let var froms = vector.toArray(cf) let var tos = vector.toArray(ct)
-                let var uses = vector.toArray(cu) let var reg = ~2
+                let value = it.value
+                let var froms = vector.toArray(cf)
+                let var tos = vector.toArray(ct)
+                let var uses = vector.toArray(cu)
+                let var reg = ~2
             end
         end
 
@@ -270,7 +275,8 @@ export
             let child = split(it p)
             made(sc child)
             let u = nextUse(child p)
-            if u is firstPos(child) then heap.push(sc.unhandled child)
+            if u is firstPos(child) then
+                heap.push(sc.unhandled child)
             else
                 child.reg := ~1
                 if u isnot never then
@@ -341,7 +347,8 @@ export
                 end
             end
             if best < 0 then tuple let reg = ~1 let cost = 0 let use = never end
-            else tuple let reg = best let cost = costs[best] let use = use[best] end end
+            else tuple let reg = best let cost = costs[best] let use = use[best] end
+            end
         end
 
     (* Takes register r for cur: spills each holder from where it meets cur
@@ -414,17 +421,20 @@ export
             if chosen >= 0 then
                 cur.reg := chosen
                 true
-            elsif n is 0 then false
+            elsif n is 0 then
+                false
             else
                 let var best = 0
                 for r = 1 upto {n - 1} do if free[r] > free[best] then best := r end end
-                if free[best] <= s then false
+                if free[best] <= s then
+                    false
                 else
                     (* Prefer evicting existing holders if their spill cost is
                      * lower than spilling the tail of cur past free[best],
                      * provided the evicted register stays unblocked past it *)
                     let taken = choose(sc cur free[best])
-                    if {taken.reg >= 0} andif {taken.cost < cost(sc cur free[best])} then take(sc cur taken.reg)
+                    if {taken.reg >= 0} andif {taken.cost < cost(sc cur free[best])} then
+                        take(sc cur taken.reg)
                     else
                         cur.reg := best
                         splitSpill(sc cur free[best])
@@ -441,17 +451,20 @@ export
         begin
             let s = firstPos(cur)
             let taken = choose(sc cur s)
-            if taken.reg < 0 then spillCurrent(sc cur)
+            if taken.reg < 0 then
+                spillCurrent(sc cur)
             else
                 let x = cost(sc cur s)
                 if {x < taken.cost} orif {{x is taken.cost} andif {nextUse(cur s) > taken.use}} then
                     spillCurrent(sc cur)
-                else take(sc cur taken.reg) end
+                else
+                    take(sc cur taken.reg)
+                end
             end
         end
 
     let allocate(f: Function t: targets.Target rematerializable: All(i: machine.Inst) Bool cold: All(b: Int) Bool):
-        Allocation =
+            Allocation =
         begin
             let nValues = machine.virtuals(f)
             let nBlocks = vector.length(f.blocks)
@@ -546,15 +559,21 @@ export
             let fixed = array of(targets.classes array of :Interval end)
             for c = 0 upto {targets.classes - 1} do
                 fixed[c] := array of(extent pools[c] tuple
-                    let value = ~1 let var froms = array of :Int end let var tos = array of :Int end
-                    let var uses = array of :Int end let var reg = ~1
+                    let value = ~1
+                    let var froms = array of :Int end
+                    let var tos = array of :Int end
+                    let var uses = array of :Int end
+                    let var reg = ~1
                 end)
                 for j = 0 upto {extent pools[c] - 1} do
                     let r = pools[c][j]
                     (* In order of their starts, as the blocks are *)
                     fixed[c][j] := tuple
-                        let value = ~1 let var froms = vector.toArray(fixedFroms[r])
-                        let var tos = vector.toArray(fixedTos[r]) let var uses = array of :Int end let var reg = ~1
+                        let value = ~1
+                        let var froms = vector.toArray(fixedFroms[r])
+                        let var tos = vector.toArray(fixedTos[r])
+                        let var uses = array of :Int end
+                        let var reg = ~1
                     end
                 end
             end
@@ -593,7 +612,8 @@ export
             let setFrom(v: Int p: Int): Ok =
                 begin
                     let n = vector.length(rangeFroms[v])
-                    if n > 0 then vector.set(rangeFroms[v] n - 1 p)
+                    if n > 0 then
+                        vector.set(rangeFroms[v] n - 1 p)
                     else
                         vector.append(rangeFroms[v] p)
                         vector.append(rangeTos[v] p)
@@ -679,11 +699,20 @@ export
                 end
             end
             let sc = tuple
-                let classes = classes let intervals = vector.new(:Interval) let unhandled = heap.new(:Interval startOrder)
-                let var active = vector.new(:Interval) let var inactive = vector.new(:Interval)
-                let pools = pools let firstCallee = firstCallee let calls = callAt let handlers = handlerAt
-                let fixed = fixed let firstVirtual = f.firstVirtual let hints = hints
-                let given = array of(nValues ~1) let freqAt = freqAt
+                let classes = classes
+                let intervals = vector.new(:Interval)
+                let unhandled = heap.new(:Interval startOrder)
+                let var active = vector.new(:Interval)
+                let var inactive = vector.new(:Interval)
+                let pools = pools
+                let firstCallee = firstCallee
+                let calls = callAt
+                let handlers = handlerAt
+                let fixed = fixed
+                let firstVirtual = f.firstVirtual
+                let hints = hints
+                let given = array of(nValues ~1)
+                let freqAt = freqAt
             end
             (* Every value defined or used has an interval; the lists were
              * built latest first, so each is reversed. Its first and last
@@ -693,8 +722,11 @@ export
             for v = 0 upto {nValues - 1} do
                 if vector.length(rangeFroms[v]) > 0 then
                     let it = tuple
-                        let value = v let var froms = reversed(rangeFroms[v]) let var tos = reversed(rangeTos[v])
-                        let var uses = reversed(usesAt[v]) let var reg = ~2
+                        let value = v
+                        let var froms = reversed(rangeFroms[v])
+                        let var tos = reversed(rangeTos[v])
+                        let var uses = reversed(usesAt[v])
+                        let var reg = ~2
                     end
                     first[v] := firstPos(it)
                     last[v] := lastPos(it)
@@ -714,7 +746,8 @@ export
                 let classify(it: Interval): Ok =
                     if lastPos(it) >= s then
                         if covers(it s) then vector.append(stillActive it)
-                        else vector.append(stillInactive it) end
+                        else vector.append(stillInactive it)
+                        end
                     end
                 for k = 0 upto {vector.length(sc.active) - 1} do
                     classify(vector.get(sc.active k))
@@ -758,7 +791,10 @@ export
                     let inside = {k > 0} andif {ps[k].reg >= 0} andif not(bitset.contains(isStart starts[v][k]))
                     if inside andif {homes[v][k] isnot homes[v][k - 1]} then
                         vector.append(moves tuple
-                            let at = starts[v][k] let value = v let from = homes[v][k - 1] let to = homes[v][k]
+                            let at = starts[v][k]
+                            let value = v
+                            let from = homes[v][k - 1]
+                            let to = homes[v][k]
                         end)
                     end
                 end
@@ -788,9 +824,17 @@ export
             let ins = array of(nBlocks array of(0 0))
             for b = 0 upto {nBlocks - 1} do ins[b] := bitset.elements(liveIn[b]) end
             tuple
-                let starts = starts let homes = homes let spilled = spilled let remat = remat let moves = moved
-                let blockStart = blockStart let liveIn = ins let calleeUsed = vector.toArray(used)
-                let frequency = frequency let first = first let last = last
+                let starts = starts
+                let homes = homes
+                let spilled = spilled
+                let remat = remat
+                let moves = moved
+                let blockStart = blockStart
+                let liveIn = ins
+                let calleeUsed = vector.toArray(used)
+                let frequency = frequency
+                let first = first
+                let last = last
             end
         end
 
@@ -815,7 +859,8 @@ export
     let transfer(dst: Place src: Place): Transfer = tuple let dst = dst let src = src end
     let samePlace(a: Place b: Place): Bool =
         if a.reg isnot memory then a.reg is b.reg
-        else {b.reg is memory} andif {a.value is b.value} end
+        else {b.reg is memory} andif {a.value is b.value}
+        end
 
     Let Rewriter = Tuple
         f: Function
@@ -841,17 +886,21 @@ export
                 operands[k] := if i.operands[k].defines then machine.writes(reg) else i.operands[k] end
             end
             emit(w machine.inst(i.kind operands i.op i.target))
-        else emitAll(w w.lowering.load(reg w.f.firstVirtual + v)) end
+        else
+            emitAll(w w.lowering.load(reg w.f.firstVirtual + v))
+        end
 
     (* A place's word into a register *)
     let readInto(w: Rewriter reg: Int src: Place): Ok =
         if src.reg is memory then reload(w reg src.value)
-        elsif src.reg isnot reg then emit(w w.lowering.move(reg src.reg)) end
+        elsif src.reg isnot reg then emit(w w.lowering.move(reg src.reg))
+        end
 
     (* One move, memory to memory through the first integer scratch
      * register *)
     let place(w: Rewriter dst: Place src: Place): Ok =
-        if dst.reg isnot memory then readInto(w dst.reg src)
+        if dst.reg isnot memory then
+            readInto(w dst.reg src)
         else
             let scratch = w.lowering.scratch[0][0]
             let r = if src.reg isnot memory then src.reg else begin readInto(w scratch src) scratch end end
@@ -906,7 +955,8 @@ export
 
     (* Where a register is at a position: a physical one is in itself *)
     let at(w: Rewriter r: Int p: Int): Place =
-        if not(machine.isVirtual(w.f r)) then inRegister(r)
+        if not(machine.isVirtual(w.f r)) then
+            inRegister(r)
         else
             let v = machine.index(w.f r)
             let h = home(w.a v p)
@@ -965,7 +1015,8 @@ export
                 if machine.isVirtual(f o.reg) andif not(o.defines) then
                     let v = machine.index(f o.reg)
                     let h = home(w.a v p)
-                    if h isnot memory then operands[k] := machine.reads(h)
+                    if h isnot memory then
+                        operands[k] := machine.reads(h)
                     else
                         let c = targets.index(machine.virtualClass(f o.reg))
                         let scratch = w.lowering.scratch[c][used[c]]
@@ -1009,14 +1060,17 @@ export
             let f = w.f
             let dst = i.operands[0].reg
             let src = at(w i.operands[1].reg p)
-            if not(machine.isVirtual(f dst)) then readInto(w dst src)
+            if not(machine.isVirtual(f dst)) then
+                readInto(w dst src)
             else
                 let v = machine.index(f dst)
                 let h = home(w.a v p + 1)
                 if h isnot memory then
                     readInto(w h src)
                     if needsSlot(w.a v) then emitAll(w w.lowering.store(h dst)) end
-                elsif needsSlot(w.a v) then place(w inMemory(v) src) end
+                elsif needsSlot(w.a v) then
+                    place(w inMemory(v) src)
+                end
             end
         end
 
@@ -1117,7 +1171,11 @@ export
                 let blk = machine.block(f b)
                 let bs = a.blockStart[b]
                 let w = tuple
-                    let f = f let a = a let lowering = lowering let defs = defs let code = vector.new(:machine.Inst)
+                    let f = f
+                    let a = a
+                    let lowering = lowering
+                    let defs = defs
+                    let code = vector.new(:machine.Inst)
                 end
                 (* A block not reached is left empty *)
                 if bs >= 0 then

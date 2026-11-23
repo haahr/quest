@@ -8,15 +8,16 @@ first from stdin
 second from stdin
 *)
 
-import io/lines : io/Lines;
-import util/iter : util/Iter;
-import collections/vector : collections/Vector;
-import stringOp = string : StringOp;
-import writer: Writer;
-import reader: Reader;
-import conv: Conv;
+import conv : Conv
+import reader : Reader
+import stringOp = string : StringOp
+import writer : Writer
 
-let say(s: String): Ok = writer.putString(writer.output s <> "\n");
+import collections/vector : collections/Vector
+import io/lines : io/Lines
+import util/iter : util/Iter
+
+let say(s: String): Ok = writer.putString(writer.output s <> "\n")
 
 (* A line with each carriage return shown as \r, in brackets *)
 let shown(s: String): String =
@@ -27,7 +28,7 @@ let shown(s: String): String =
             t := t <> if c is '\r' then "\\r" else stringOp.new(1 c) end
         end
         t <> "]"
-    end;
+    end
 
 let fileOf(text: String): reader.T =
     begin
@@ -35,7 +36,7 @@ let fileOf(text: String): reader.T =
         writer.putString(w text)
         writer.close(w)
         reader.file("io_lines.txt")
-    end;
+    end
 
 (* Every line of text, by getLine and by the iterator *)
 let both(name: String text: String): Ok =
@@ -50,61 +51,61 @@ let both(name: String text: String): Ok =
         let var byIter = ""
         for i = 0 upto {vector.length(all) - 1} do byIter := byIter <> shown(vector.get(all i)) end
         say(name <> ": " <> conv.int(vector.length(all)) <> " " <> byGet <> " " <> byIter)
-    end;
+    end
 
-both("empty" "");
-both("no newline" "a\nb");
-both("newline" "a\n");
-both("empty lines" "\n\nx\n\n");
-both("only newlines" "\n\n");
-both("carriage returns" "a\r\nb\r\n\rc");
+both("empty" "")
+both("no newline" "a\nb")
+both("newline" "a\n")
+both("empty lines" "\n\nx\n\n")
+both("only newlines" "\n\n")
+both("carriage returns" "a\r\nb\r\n\rc")
 
 (* getLine at end of stream raises reader.error, as getChar does *)
-let r = fileOf("x");
-say(lines.getLine(r));
-say(try lines.getLine(r) when reader.error then "reader.error at end" end);
-reader.close(r);
+let r = fileOf("x")
+say(lines.getLine(r))
+say(try lines.getLine(r) when reader.error then "reader.error at end" end)
+reader.close(r)
 
 (* A line longer than the builder's working buffer *)
-let long = stringOp.new(1000 'q');
-let r = fileOf(long <> "\nshort\n");
-let l = lines.getLine(r);
-say("long: " <> conv.int(stringOp.length(l)) <> " " <> conv.bool(stringOp.equal(l long)));
-say("then: " <> lines.getLine(r));
-reader.close(r);
+let long = stringOp.new(1000 'q')
+let r = fileOf(long <> "\nshort\n")
+let l = lines.getLine(r)
+say("long: " <> conv.int(stringOp.length(l)) <> " " <> conv.bool(stringOp.equal(l long)))
+say("then: " <> lines.getLine(r))
+reader.close(r)
 
 (* Lines mixed with the reader's own reads, and more asked repeatedly *)
-let r = fileOf("ab\ncd\nef\ngh");
-say("getChar: " <> conv.char(reader.getChar(r)));
-say("getLine: " <> lines.getLine(r));
-let it = lines.iter(r);
-say("more: " <> conv.bool(iter.more(it)) <> " " <> conv.bool(iter.more(it)));
-say("next: " <> iter.next(it));
-say("getChar: " <> conv.char(reader.getChar(r)));
-say("next: " <> iter.next(it));
-say("getString: " <> reader.getString(r 5));
-say("more: " <> conv.bool(iter.more(it)));
-say(try iter.next(it) when iter.exhausted then "exhausted" end);
-reader.close(r);
+let r = fileOf("ab\ncd\nef\ngh")
+say("getChar: " <> conv.char(reader.getChar(r)))
+say("getLine: " <> lines.getLine(r))
+let it = lines.iter(r)
+say("more: " <> conv.bool(iter.more(it)) <> " " <> conv.bool(iter.more(it)))
+say("next: " <> iter.next(it))
+say("getChar: " <> conv.char(reader.getChar(r)))
+say("next: " <> iter.next(it))
+say("getString: " <> reader.getString(r 5))
+say("more: " <> conv.bool(iter.more(it)))
+say(try iter.next(it) when iter.exhausted then "exhausted" end)
+reader.close(r)
 
 (* Two iterators over one reader share its position *)
-let r = fileOf("1\n2\n3\n4\n");
-let one = lines.iter(r);
-let two = lines.iter(r);
-say(iter.next(one) <> iter.next(two) <> iter.next(one) <> iter.next(two));
-say(conv.bool(iter.more(one)) <> " " <> conv.bool(iter.more(two)));
-reader.close(r);
+let r = fileOf("1\n2\n3\n4\n")
+let one = lines.iter(r)
+let two = lines.iter(r)
+say(iter.next(one) <> iter.next(two) <> iter.next(one) <> iter.next(two))
+say(conv.bool(iter.more(one)) <> " " <> conv.bool(iter.more(two)))
+reader.close(r)
 
 (* A closed reader *)
-let r = fileOf("x\n");
-let it = lines.iter(r);
-reader.close(r);
-say(try lines.getLine(r) when reader.error then "getLine: reader.error" end);
-say(try conv.bool(iter.more(it)) when reader.error then "more: reader.error" end);
+let r = fileOf("x\n")
+let it = lines.iter(r)
+reader.close(r)
+say(try lines.getLine(r) when reader.error then "getLine: reader.error" end)
+say(try conv.bool(iter.more(it)) when reader.error then "more: reader.error" end)
 
 (* Standard input, numbered through a stage *)
-let numbered = iter.enumerate(lines.iter(reader.input));
+let numbered = iter.enumerate(lines.iter(reader.input))
 while iter.more(numbered) do
     let e = iter.next(numbered)
     say(conv.int(e.index + 1) <> ": " <> e.value)
-end;
+end

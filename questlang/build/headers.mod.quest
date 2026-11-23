@@ -2,18 +2,20 @@
 
 module headers : Headers
 import
-    questlang/syntax/ast : questlang/syntax/Ast
-    questlang/modules/paths : questlang/modules/Paths
-    questlang/common/files : questlang/common/Files
-    questlang/types/env : questlang/types/Env
-    questlang/modules/graph : questlang/modules/Graph
-    questlang/modules/loader : questlang/modules/Loader
-    questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
-    collections/vector : collections/Vector
-    util/maybe : util/Maybe
     stringOp = string : StringOp
     system : System
+
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+
     questlang/codegen/c/headers : questlang/codegen/c/Headers
+    questlang/common/files : questlang/common/Files
+    questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/loader : questlang/modules/Loader
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/types/env : questlang/types/Env
 export
     let interfaceHeaderFile(qi: String): String =
         begin
@@ -30,7 +32,7 @@ export
     let writeText(file: String text: String): Ok = files.writeAtomically(file text)
     Let Artifacts = Tuple header: String qi: String end
     let rec writeInterfaceHeader(compiled: interfaceCompiler.CompiledInterface buildDir: maybe.T(String)
-        programDir: maybe.T(String) res: graph.Resolver): String =
+            programDir: maybe.T(String) res: graph.Resolver): String =
         begin
             if maybe.isSome(buildDir) then
                 let buildRoot = files.absolute(maybe.unwrap(buildDir))
@@ -38,14 +40,14 @@ export
                 for i = 0 upto {vector.length(compiled.decl.imports) - 1} do
                     let imp = vector.get(compiled.decl.imports i)
                     ensureResolvedInterfaceHeader(graph.resolveInterface(res
-                        maybe.unwrapOr(imp.interfacePath imp.interfaceName)
-                        maybe.some(files.parent(compiled.source)) roots) buildRoot res)
+                            maybe.unwrapOr(imp.interfacePath imp.interfaceName)
+                            maybe.some(files.parent(compiled.source)) roots) buildRoot res)
                 end
             end
             let header = interfaceHeaderFile(compiled.qiFile)
             let canonicalName =
                 paths.canonicalizeInterfaceName(maybe.some(compiled.source) compiled.includePaths
-                compiled.decl.name maybe.none())
+                        compiled.decl.name maybe.none())
             writeText(header headers.compileInterfaceToHeader(compiled.decl compiled.scope canonicalName))
             header
         end
@@ -58,7 +60,7 @@ export
                     ok
                 end
             let artifacts = interfaceCompiler.ensureResolvedInterfaceArtifacts(resolved buildDir
-                maybe.some(write) res)
+                    maybe.some(write) res)
             let header = interfaceHeaderFile(artifacts.qiFile)
             if maybe.isNone(artifacts.source) orif headerIsCurrent(artifacts.qiFile header) then
                 tuple let header = header let qi = artifacts.qiFile end
@@ -72,14 +74,15 @@ export
                 system.makeDirectory(artifacts.targetDir)
                 let known = if inBuildDir then interfaceCompiler.compiledInterface(artifacts.qiFile)
                     else maybe.none(:interfaceCompiler.CompiledInterface) end
-                let compiled = if maybe.isSome(known) then
-                    maybe.unwrap(known)
-                else
-                    interfaceCompiler.compileInterfaceFile(maybe.unwrap(artifacts.source)
-                        maybe.some(artifacts.targetDir) artifacts.searchPaths maybe.some(buildDir)
-                            programDir
-                        not(inBuildDir) maybe.none() res)
-                end
+                let compiled =
+                    if maybe.isSome(known) then
+                        maybe.unwrap(known)
+                    else
+                        interfaceCompiler.compileInterfaceFile(maybe.unwrap(artifacts.source)
+                                maybe.some(artifacts.targetDir) artifacts.searchPaths maybe.some(buildDir)
+                                programDir
+                                not(inBuildDir) maybe.none() res)
+                    end
                 tuple
                     let header = writeInterfaceHeader(compiled maybe.some(buildDir) programDir res)
                     let qi = compiled.qiFile
@@ -95,7 +98,7 @@ export
             end
         end
     let compileInterfaceWithHeader(file: String outputDir: maybe.T(String) includePaths: Array(String)
-        buildDir: maybe.T(String) programDir: maybe.T(String)): Artifacts =
+            buildDir: maybe.T(String) programDir: maybe.T(String)): Artifacts =
         begin
             let res = graph.newResolver()
             let write = fun(c: interfaceCompiler.CompiledInterface): Ok
@@ -104,7 +107,7 @@ export
                     ok
                 end
             let compiled = interfaceCompiler.compileInterfaceFile(file outputDir includePaths buildDir programDir true
-                maybe.some(write) res)
+                    maybe.some(write) res)
             tuple let header = interfaceHeaderFile(compiled.qiFile) let qi = compiled.qiFile end
         end
 end

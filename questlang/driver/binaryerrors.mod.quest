@@ -2,15 +2,17 @@
 
 module binaryErrors : BinaryErrors
 import
-    questlang/common/location : questlang/common/Location
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/common/files : questlang/common/Files
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/vector : collections/Vector
     util/maybe : util/Maybe
-    util/strutil : util/Strutil
     util/stringBuilder : util/StringBuilder
-    stringOp = string : StringOp
-    conv : Conv
+    util/strutil : util/Strutil
+
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/files : questlang/common/Files
+    questlang/common/location : questlang/common/Location
 export
     (* The 0-indexed offset of a (1-indexed) line and column of a source, the
      * inverse of location.locate *)
@@ -21,8 +23,11 @@ export
             for i = 0 upto {stringOp.length(text) - 1} do
                 if stringOp.getChar(text i) is '\n' then vector.append(starts {i + 1}) end
             end
-            let index = if line < 1 then 0 elsif line > vector.length(starts) then
-                vector.length(starts) - 1 else line - 1 end
+            let index = if line < 1 then 0
+                elsif line > vector.length(starts) then
+                    vector.length(starts) - 1
+                else line - 1
+                end
             let offset = vector.get(starts index) + {if column > 1 then column - 1 else 0 end}
             if offset > stringOp.length(text) then stringOp.length(text) else offset end
         end
@@ -89,7 +94,8 @@ export
                     if digits(lineText) andif digits(columnText) then
                         maybe.some(tuple
                             let file = stringOp.getSub(rest 0 first)
-                            let line = strutil.toInt(lineText) let column = strutil.toInt(columnText)
+                            let line = strutil.toInt(lineText)
+                            let column = strutil.toInt(columnText)
                         end)
                     else
                         none
@@ -112,32 +118,33 @@ export
             let lines = strutil.splitlines(text)
             let var last = vector.length(lines)
             while {last > 0} andif {strutil.startsWith(vector.get(lines {last - 1}) "  in ")
-                orif strutil.startsWith(vector.get(lines {last - 1}) "  ... ")} do
+                    orif strutil.startsWith(vector.get(lines {last - 1}) "  ... ")} do
                 last := last - 1
             end
             let trace = traceOf(lines last)
             let site = if last > 0 then raiseSite(vector.get(lines {last - 1}))
                 else maybe.none(:Tuple file: String line: Int column: Int end) end
             let nowhere = location.span("" ~1 ~1)
-            let d = if maybe.isNone(site) then
-                diagnostics.error(strutil.strip(joinLines(lines 0 last)) nowhere)
-            else
-                let at = maybe.unwrap(site)
-                let message = strutil.strip(joinLines(lines 0 {last - 1}))
-                let siteText = if stringOp.equal(at.file location.file(sm)) then maybe.some(location.text(sm))
-                    else files.readText(at.file) end
-                if maybe.isNone(siteText) then
-                    diagnostics.error(message <> "\n  at " <> at.file <> ":" <> conv.int(at.line) <> ":"
-                        <> conv.int(at.column)
-                        nowhere)
+            let d =
+                if maybe.isNone(site) then
+                    diagnostics.error(strutil.strip(joinLines(lines 0 last)) nowhere)
                 else
-                    if not(stringOp.equal(at.file location.file(sm))) then
-                        diagnostics.registerSource(location.newSourceMap(at.file maybe.unwrap(siteText)))
+                    let at = maybe.unwrap(site)
+                    let message = strutil.strip(joinLines(lines 0 {last - 1}))
+                    let siteText = if stringOp.equal(at.file location.file(sm)) then maybe.some(location.text(sm))
+                        else files.readText(at.file) end
+                    if maybe.isNone(siteText) then
+                        diagnostics.error(message <> "\n  at " <> at.file <> ":" <> conv.int(at.line) <> ":"
+                            <> conv.int(at.column)
+                                nowhere)
+                    else
+                        if not(stringOp.equal(at.file location.file(sm))) then
+                            diagnostics.registerSource(location.newSourceMap(at.file maybe.unwrap(siteText)))
+                        end
+                        let offset = offsetOf(maybe.unwrap(siteText) at.line at.column)
+                        diagnostics.error(message location.span(at.file offset {offset + 1}))
                     end
-                    let offset = offsetOf(maybe.unwrap(siteText) at.line at.column)
-                    diagnostics.error(message location.span(at.file offset {offset + 1}))
                 end
-            end
             if extent trace > 0 then diagnostics.setTrace(d trace) end
             d
         end

@@ -5,12 +5,13 @@
  * the real and complex tensors' new, +, *, /, +*, and *+. *)
 
 import
-    support/bench : support/Bench
-    support/lists : support/Lists
-    stringOp = string : StringOp
     conv : Conv
     real : RealOp
+    stringOp = string : StringOp
     writer : Writer
+
+    support/bench : support/Bench
+    support/lists : support/Lists
 
 let print(s: String): Ok = writer.putString(writer.output s)
 
@@ -80,7 +81,8 @@ let doindexer(shape: Shape memo: lists.T(Int)): Indexer =
                                     let ndx = lists.hd(:Int)(ri)
                                     if {ndx >= 0} andif {ndx < dim.hd} then
                                         f(lists.tl(:Int)(rf) lists.tl(:Int)(ri) accum + {ndx * fac} dim.tl)
-                                    else raise indexE end
+                                    else
+                                        raise indexE end
                                     end
                                 end
                             else if lists.null(:Int)(rf) andif lists.null(:Int)(ri) then accum else raise indexE end end
@@ -121,7 +123,8 @@ let rMake(shape: Shape data: Array(Real)): RTensor =
     tuple let shape = shape let indexer = indexer(shape) let data = data end
 
 let rNew(shape: Shape init: Real): RTensor =
-    if not(validShape(shape)) then raise shapeE end
+    if not(validShape(shape)) then
+        raise shapeE end
     else
         begin
             let length = length(shape)
@@ -146,7 +149,8 @@ let rMap2(f: All(a: Real b: Real) Real t1: RTensor t2: RTensor): RTensor =
             let data = rArrayMap2(f t1.data t2.data)
             tuple let shape = t1.shape let indexer = t1.indexer let data = data end
         end
-    else raise matchE end
+    else
+        raise matchE end
     end
 
 (* LEFT INDEX CONTRACTION:
@@ -161,7 +165,8 @@ let rMap2(f: All(a: Real b: Real) Real t1: RTensor t2: RTensor): RTensor =
 let rDoFoldFirst(a: Array(Real) b: Array(Real) c: Array(Real) lk: Int lj: Int li: Int): Array(Real) =
     begin
         let rec loopk(k: Int ia: Int ib: Int accum: Real): Real =
-            if k is 0 then accum
+            if k is 0 then
+                accum
             else
                 begin
                     let delta = a[ia] ** b[ib]
@@ -169,11 +174,13 @@ let rDoFoldFirst(a: Array(Real) b: Array(Real) c: Array(Real) lk: Int lj: Int li
                 end
             end
         let rec loopj(j: Int ib: Int ic: Int): Array(Real) =
-            if j is 0 then c
+            if j is 0 then
+                c
             else
                 begin
                     let rec loopi(i: Int ia: Int ic: Int): Int =
-                        if i is 0 then ic
+                        if i is 0 then
+                            ic
                         else
                             begin
                                 c[ic] := loopk(lk ia ib 0.0)
@@ -192,7 +199,8 @@ let rPlusTimes(ta: RTensor tb: RTensor): RTensor =
         let restA = lists.tl(:Int)(ta.shape)
         let lk2 = lists.hd(:Int)(tb.shape)
         let restB = lists.tl(:Int)(tb.shape)
-        if lk isnot lk2 then raise matchE end
+        if lk isnot lk2 then
+            raise matchE end
         else
             begin
                 let li = length(restA)
@@ -232,7 +240,8 @@ let rDoFoldLast(a: Array(Real) b: Array(Real) c: Array(Real) lk: Int lj: Int li:
                             loopk(k - 1 ia + li ib + lj)
                         end
                     end
-                if j is 0 then c
+                if j is 0 then
+                    c
                 else
                     begin
                         loopk(lk 0 ib)
@@ -251,14 +260,15 @@ let rTimesPlus(ta: RTensor tb: RTensor): RTensor =
         let restA = lists.tl(:Int)(shapeA)
         let lk2 = lists.hd(:Int)(shapeB)
         let restB = lists.tl(:Int)(shapeB)
-        if lk isnot lk2 then raise matchE end
+        if lk isnot lk2 then
+            raise matchE end
         else
             begin
                 let li = length(restA)
                 let lj = length(restB)
                 let c = array of(li * lj 0.0)
                 rFromArray(lists.append(:Int)(lists.rev(:Int)(restA) lists.rev(:Int)(restB))
-                           rDoFoldLast(ta.data tb.data c lk li lj))
+                        rDoFoldLast(ta.data tb.data c lk li lj))
             end
         end
     end
@@ -269,7 +279,7 @@ Let Complex = Tuple r: Real i: Real end
 
 let make(r: Real i: Real): Complex = tuple let r = r let i = i end
 let cOne = make(1.0 0.0)
-let abs2(z: Complex): Real = {z.r ** z.r} ++ {z.i ** z.i} (* FIXME!!! *)
+let abs2(z: Complex): Real = {z.r ** z.r} ++ {z.i ** z.i}  (* FIXME!!! *)
 let cAdd(z: Complex w: Complex): Complex = make(z.r ++ w.r z.i ++ w.i)
 let cMul(z: Complex w: Complex): Complex = make({z.r ** w.r} -- {z.i ** w.i} {z.r ** w.i} ++ {w.r ** z.i})
 let cDiv(z: Complex w: Complex): Complex =
@@ -304,11 +314,11 @@ let cArrayMap2(f: All(a: Complex b: Complex) Complex a: CArray b: CArray): CArra
 
 Let CTensor = Tuple shape: Shape indexer: Indexer data: CArray end
 
-let cMake(shape: Shape data: CArray): CTensor =
-    tuple let shape = shape let indexer = indexer(shape) let data = data end
+let cMake(shape: Shape data: CArray): CTensor = tuple let shape = shape let indexer = indexer(shape) let data = data end
 
 let cNew(shape: Shape init: Complex): CTensor =
-    if not(validShape(shape)) then raise shapeE end
+    if not(validShape(shape)) then
+        raise shapeE end
     else
         begin
             let length = length(shape)
@@ -325,13 +335,15 @@ let cMap2(f: All(a: Complex b: Complex) Complex t1: CTensor t2: CTensor): CTenso
             let data = cArrayMap2(f t1.data t2.data)
             tuple let shape = t1.shape let indexer = t1.indexer let data = data end
         end
-    else raise matchE end
+    else
+        raise matchE end
     end
 
 let cDoFoldFirst(a: CArray b: CArray c: CArray lk: Int lj: Int li: Int): CArray =
     begin
         let rec loopk(k: Int ia: Int ib: Int r: Real i: Real): Complex =
-            if k is 0 then make(r i)
+            if k is 0 then
+                make(r i)
             else
                 begin
                     let x = cSub(a ia)
@@ -342,11 +354,13 @@ let cDoFoldFirst(a: CArray b: CArray c: CArray lk: Int lj: Int li: Int): CArray 
                 end
             end
         let rec loopj(j: Int ib: Int ic: Int): CArray =
-            if j is 0 then c
+            if j is 0 then
+                c
             else
                 begin
                     let rec loopi(i: Int ia: Int ic: Int): Int =
-                        if i is 0 then ic
+                        if i is 0 then
+                            ic
                         else
                             begin
                                 cUpdate(c ic loopk(lk ia ib 0.0 0.0))
@@ -365,7 +379,8 @@ let cPlusTimes(ta: CTensor tb: CTensor): CTensor =
         let restA = lists.tl(:Int)(ta.shape)
         let lk2 = lists.hd(:Int)(tb.shape)
         let restB = lists.tl(:Int)(tb.shape)
-        if lk isnot lk2 then raise matchE end
+        if lk isnot lk2 then
+            raise matchE end
         else
             begin
                 let li = length(restA)
@@ -399,7 +414,8 @@ let cDoFoldLast(a: CArray b: CArray c: CArray lk: Int lj: Int li: Int): CArray =
                             loopk(k - 1 ia + li ib + lj)
                         end
                     end
-                if j is 0 then c
+                if j is 0 then
+                    c
                 else
                     begin
                         loopk(lk 0 ib)
@@ -418,14 +434,15 @@ let cTimesPlus(ta: CTensor tb: CTensor): CTensor =
         let restA = lists.tl(:Int)(shapeA)
         let lk2 = lists.hd(:Int)(shapeB)
         let restB = lists.tl(:Int)(shapeB)
-        if lk isnot lk2 then raise matchE end
+        if lk isnot lk2 then
+            raise matchE end
         else
             begin
                 let li = length(restA)
                 let lj = length(restB)
                 let c = cArray(li * lj make(0.0 0.0))
                 cFromArray(lists.append(:Int)(lists.rev(:Int)(restA) lists.rev(:Int)(restB))
-                           cDoFoldLast(ta.data tb.data c lk li lj))
+                        cDoFoldLast(ta.data tb.data c lk li lj))
             end
         end
     end
@@ -470,29 +487,29 @@ let one(): Ok =
     begin
         print("Real tensors: (+, *, /, +*, *+)\n")
         testOperator(:RTensor)(
-            fun(t: RTensor): Real t.data[t.indexer(at12)]
-            fun(size: Int): RTensor rNew(square(size) 1.0)
-            lists.fromArray(:Op(RTensor))(array of
-                op(:RTensor)(20 fun(a: RTensor b: RTensor): RTensor rMap2(fun(x: Real y: Real): Real x ++ y a b))
-                op(:RTensor)(20 fun(a: RTensor b: RTensor): RTensor rMap2(fun(x: Real y: Real): Real x ** y a b))
-                op(:RTensor)(20 fun(a: RTensor b: RTensor): RTensor rMap2(fun(x: Real y: Real): Real x // y a b))
-                op(:RTensor)(4 rPlusTimes)
-                op(:RTensor)(4 rTimesPlus)
-            end)
-            sizes)
+                fun(t: RTensor): Real t.data[t.indexer(at12)]
+                fun(size: Int): RTensor rNew(square(size) 1.0)
+                lists.fromArray(:Op(RTensor))(array of
+                    op(:RTensor)(20 fun(a: RTensor b: RTensor): RTensor rMap2(fun(x: Real y: Real): Real x ++ y a b))
+                    op(:RTensor)(20 fun(a: RTensor b: RTensor): RTensor rMap2(fun(x: Real y: Real): Real x ** y a b))
+                    op(:RTensor)(20 fun(a: RTensor b: RTensor): RTensor rMap2(fun(x: Real y: Real): Real x // y a b))
+                    op(:RTensor)(4 rPlusTimes)
+                    op(:RTensor)(4 rTimesPlus)
+                end)
+                sizes)
         print("\n\n")
         print("Real tensors: (+, *, /, +*, *+)\n")
         testOperator(:CTensor)(
-            fun(t: CTensor): Real begin let z = cSub(t.data t.indexer(at12)) z.r ++ z.i end
-            fun(size: Int): CTensor cNew(square(size) cOne)
-            lists.fromArray(:Op(CTensor))(array of
-                op(:CTensor)(20 fun(a: CTensor b: CTensor): CTensor cMap2(cAdd a b))
-                op(:CTensor)(20 fun(a: CTensor b: CTensor): CTensor cMap2(cMul a b))
-                op(:CTensor)(20 fun(a: CTensor b: CTensor): CTensor cMap2(cDiv a b))
-                op(:CTensor)(4 cPlusTimes)
-                op(:CTensor)(4 cTimesPlus)
-            end)
-            sizes)
+                fun(t: CTensor): Real begin let z = cSub(t.data t.indexer(at12)) z.r ++ z.i end
+                fun(size: Int): CTensor cNew(square(size) cOne)
+                lists.fromArray(:Op(CTensor))(array of
+                    op(:CTensor)(20 fun(a: CTensor b: CTensor): CTensor cMap2(cAdd a b))
+                    op(:CTensor)(20 fun(a: CTensor b: CTensor): CTensor cMap2(cMul a b))
+                    op(:CTensor)(20 fun(a: CTensor b: CTensor): CTensor cMap2(cDiv a b))
+                    op(:CTensor)(4 cPlusTimes)
+                    op(:CTensor)(4 cTimesPlus)
+                end)
+                sizes)
         print("\n\n")
     end
 

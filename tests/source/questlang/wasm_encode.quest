@@ -28,40 +28,41 @@
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
+    ascii : Ascii
+    stringOp = string : StringOp
+    writer : Writer
+
+    collections/vector : collections/Vector
+
+    questlang/wasm/encode : questlang/wasm/Encode
     questlang/wasm/model : questlang/wasm/Model
     questlang/wasm/ops : questlang/wasm/Ops
-    questlang/wasm/encode : questlang/wasm/Encode
     questlang/wasm/printer : questlang/wasm/Printer
     rt = questlang/wasm/runtimeTypes : questlang/wasm/RuntimeTypes
-    collections/vector : collections/Vector
-    stringOp = string : StringOp
-    ascii : Ascii
-    writer : Writer
-;
 
-let put(s: String): Ok = writer.putString(writer.output s);
+let put(s: String): Ok = writer.putString(writer.output s)
 
 (* ======================================================================
  * Building
  * ====================================================================== *)
 
-let none = array of :Int end;
-let noTypes = array of :model.ValType end;
-let noNames = array of :String end;
-let i(o: model.Op): model.Inst = model.op(o none);
-let i1(o: model.Op a: Int): model.Inst = model.op(o array of a end);
-let i2(o: model.Op a: Int b: Int): model.Inst = model.op(o array of a b end);
-let empty = option blockEmpty of model.BlockType end;
-let result(t: model.ValType): model.BlockType = option blockValue of model.BlockType with let type = t end;
-let typed(t: Int): model.BlockType = option blockIndex of model.BlockType with let index = t end;
-let heap(t: Int): model.HeapType = option heapIndex of model.HeapType with let index = t end;
-let abstractRef(nullable: Bool h: model.HeapType): model.RefType = tuple let nullable = nullable let heap = h end;
-let refOf(nullable: Bool t: Int): model.RefType = abstractRef(nullable heap(t));
-let eq = option heapEq of model.HeapType end;
-let i31 = option heapI31 of model.HeapType end;
-let exnref = model.refTo(true option heapExn of model.HeapType end);
-let f64Bits(bits: Int): model.Inst = option instF64Const of model.Inst with let bits = bits end;
-let local(name: String t: model.ValType): model.Local = tuple let name = name let type = t end;
+let none = array of :Int end
+let noTypes = array of :model.ValType end
+let noNames = array of :String end
+let i(o: model.Op): model.Inst = model.op(o none)
+let i1(o: model.Op a: Int): model.Inst = model.op(o array of a end)
+let i2(o: model.Op a: Int b: Int): model.Inst = model.op(o array of a b end)
+let empty = option blockEmpty of model.BlockType end
+let result(t: model.ValType): model.BlockType = option blockValue of model.BlockType with let type = t end
+let typed(t: Int): model.BlockType = option blockIndex of model.BlockType with let index = t end
+let heap(t: Int): model.HeapType = option heapIndex of model.HeapType with let index = t end
+let abstractRef(nullable: Bool h: model.HeapType): model.RefType = tuple let nullable = nullable let heap = h end
+let refOf(nullable: Bool t: Int): model.RefType = abstractRef(nullable heap(t))
+let eq = option heapEq of model.HeapType end
+let i31 = option heapI31 of model.HeapType end
+let exnref = model.refTo(true option heapExn of model.HeapType end)
+let f64Bits(bits: Int): model.Inst = option instF64Const of model.Inst with let bits = bits end
+let local(name: String t: model.ValType): model.Local = tuple let name = name let type = t end
 
 let typeCount(m: model.Module): Int =
     begin
@@ -70,7 +71,7 @@ let typeCount(m: model.Module): Int =
             n := n + extent vector.get(:model.RecGroup m.types g)
         end
         n
-    end;
+    end
 
 (* A type of its own, in a group of one, by its index *)
 let addType(m: model.Module name: String c: model.Composite): Int =
@@ -80,33 +81,36 @@ let addType(m: model.Module name: String c: model.Composite): Int =
             tuple let name = name let final = true let supers = none let composite = c end
         end)
         n
-    end;
+    end
 let funcType(m: model.Module name: String params: Array(model.ValType) results: Array(model.ValType)): Int =
-    addType(m name option compFunc of model.Composite with let params = params let results = results end);
+    addType(m name option compFunc of model.Composite with let params = params let results = results end)
 
 (* A function defined, by its index in the function space *)
 let addFunction(m: model.Module name: String t: Int params: Array(String) locals: Array(model.Local)
-    body: Array(model.Inst)): Int =
+        body: Array(model.Inst)): Int =
     begin
         let n = model.importedFunctions(m) + vector.length(:model.Function m.functions)
         vector.append(:model.Function m.functions tuple
-            let name = name let type = t let params = params let locals = vector.fromArray(:model.Local locals)
+            let name = name
+            let type = t
+            let params = params
+            let locals = vector.fromArray(:model.Local locals)
             let body = vector.fromArray(:model.Inst body)
         end)
         n
-    end;
+    end
 
 let addImport(m: model.Module moduleName: String field: String name: String kind: model.ImportKind): Ok =
     vector.append(:model.Import m.imports
-        tuple let moduleName = moduleName let field = field let name = name let kind = kind end);
+            tuple let moduleName = moduleName let field = field let name = name let kind = kind end)
 let addExport(m: model.Module field: String kind: model.ExportKind index: Int): Ok =
-    vector.append(:model.Export m.exports tuple let field = field let kind = kind let index = index end);
+    vector.append(:model.Export m.exports tuple let field = field let kind = kind let index = index end)
 
 (* ======================================================================
  * Printing
  * ====================================================================== *)
 
-let hexDigit(d: Int): String = stringOp.getSub("0123456789abcdef" d 1);
+let hexDigit(d: Int): String = stringOp.getSub("0123456789abcdef" d 1)
 
 (* m's text and bytes, after a line naming it *)
 let show(kind: String m: model.Module label: String): Ok =
@@ -129,67 +133,68 @@ let show(kind: String m: model.Module label: String): Ok =
             put("\n")
             k := k + 32
         end
-    end;
+    end
 
 (* ======================================================================
  * empty, runtime
  * ====================================================================== *)
 
-show("module" model.newModule("") "empty");
+show("module" model.newModule("") "empty")
 
-let runtime = model.newModule("runtime");
-vector.append(:model.RecGroup runtime.types rt.group);
-show("module" runtime "runtime");
+let runtime = model.newModule("runtime")
+vector.append(:model.RecGroup runtime.types rt.group)
+show("module" runtime "runtime")
 
 (* ======================================================================
  * numbers
  * ====================================================================== *)
 
-let numbers = model.newModule("numbers");
-let binop = funcType(numbers "binop" array of model.i64 model.i64 end array of model.i64 end);
-let pair = funcType(numbers "pair" array of model.i64 end array of model.i64 model.i64 end);
-let void = funcType(numbers "void" noTypes noTypes);
-let realType = funcType(numbers "real" array of model.f64 end array of model.f64 end);
-let switchType = funcType(numbers "" array of model.i32 end array of model.i32 end);
+let numbers = model.newModule("numbers")
+let binop = funcType(numbers "binop" array of model.i64 model.i64 end array of model.i64 end)
+let pair = funcType(numbers "pair" array of model.i64 end array of model.i64 model.i64 end)
+let void = funcType(numbers "void" noTypes noTypes)
+let realType = funcType(numbers "real" array of model.f64 end array of model.f64 end)
+let switchType = funcType(numbers "" array of model.i32 end array of model.i32 end)
 
-let constants = vector.new(:model.Inst);
-let ints32 = array of 0 63 64 ~64 ~65 8191 8192 ~8193 2147483647 ~2147483648 end;
+let constants = vector.new(:model.Inst)
+let ints32 = array of 0 63 64 ~64 ~65 8191 8192 ~8193 2147483647 ~2147483648 end
 for k = 0 upto extent ints32 - 1 do
     vector.append(:model.Inst constants model.i32Const(ints32[k]))
     vector.append(:model.Inst constants i(ops.drop))
-end;
-let ints64 = array of 127 128 ~129 4294967296 9223372036854775807 ~9223372036854775808 end;
+end
+let ints64 = array of 127 128 ~129 4294967296 9223372036854775807 ~9223372036854775808 end
 for k = 0 upto extent ints64 - 1 do
     vector.append(:model.Inst constants model.i64Const(ints64[k]))
     vector.append(:model.Inst constants i(ops.drop))
-end;
+end
 (* 0, -0, 1.5, 0.1, the least subnormal, the greatest finite, infinities, the
  * canonical NaN, a NaN with a payload *)
 let reals = array of
     0 ~9223372036854775808 0x3FF8000000000000 0x3FB999999999999A 1 0x7FEFFFFFFFFFFFFF 0x7FF0000000000000
     ~4503599627370496 0x7FF8000000000000 0x7FF0000000000004
-end;
+end
 for k = 0 upto extent reals - 1 do
     vector.append(:model.Inst constants f64Bits(reals[k]))
     vector.append(:model.Inst constants i(ops.drop))
-end;
-vector.append(:model.Inst constants model.f64Const(1.0 // 3.0));
-vector.append(:model.Inst constants i(ops.drop));
-addFunction(numbers "constants" void noNames array of :model.Local end vector.toArray(:model.Inst constants));
+end
+vector.append(:model.Inst constants model.f64Const(1.0 // 3.0))
+vector.append(:model.Inst constants i(ops.drop))
+addFunction(numbers "constants" void noNames array of :model.Local end vector.toArray(:model.Inst constants))
 
 let arith = addFunction(numbers "arith" binop array of "a" "b" end
-    array of local("t" model.i64) local("" model.i64) local("" model.i32) local("" model.i64) local("" model.f64)
-        local("" model.eqref) local("" model.eqref) end
-    array of
-        i1(ops.localGet 0) i1(ops.localGet 1) i(ops.i64Add) i1(ops.localGet 1) i(ops.i64Mul) model.i64Const(3)
-        i(ops.i64ShrS) i1(ops.localTee 2) i1(ops.localGet 0) i(ops.i64LtS)
-        model.ifInst(result(model.i64) "positive") i1(ops.localGet 2) model.elseInst model.i64Const(0) model.endInst
-        i1(ops.localGet 0) i1(ops.localGet 1) i1(ops.localGet 1) i(ops.i64Eqz)
-        option instSelect of model.Inst with let types = noTypes end
-        i1(ops.localGet 1) model.i64Const(7) i1(ops.localGet 0) i(ops.i32WrapI64)
-        option instSelect of model.Inst with let types = array of model.i64 end end
-        i(ops.i64Add) i(ops.i64Add)
-    end);
+        array of local("t" model.i64) local("" model.i64) local("" model.i32) local("" model.i64) local("" model.f64)
+            local("" model.eqref) local("" model.eqref)
+        end
+        array of
+            i1(ops.localGet 0) i1(ops.localGet 1) i(ops.i64Add) i1(ops.localGet 1) i(ops.i64Mul) model.i64Const(3)
+            i(ops.i64ShrS) i1(ops.localTee 2) i1(ops.localGet 0) i(ops.i64LtS)
+            model.ifInst(result(model.i64) "positive") i1(ops.localGet 2) model.elseInst model.i64Const(0) model.endInst
+            i1(ops.localGet 0) i1(ops.localGet 1) i1(ops.localGet 1) i(ops.i64Eqz)
+            option instSelect of model.Inst with let types = noTypes end
+            i1(ops.localGet 1) model.i64Const(7) i1(ops.localGet 0) i(ops.i32WrapI64)
+            option instSelect of model.Inst with let types = array of model.i64 end end
+            i(ops.i64Add) i(ops.i64Add)
+        end)
 
 addFunction(numbers "sum" binop array of "n" "acc" end array of :model.Local end array of
     model.blockInst(result(model.i64) "done")
@@ -202,7 +207,7 @@ addFunction(numbers "sum" binop array of "n" "acc" end array of :model.Local end
     model.endInst
     i(ops.unreachable)
     model.endInst
-end);
+end)
 
 addFunction(numbers "switch" switchType array of "x" end array of :model.Local end array of
     model.blockInst(empty "high")
@@ -216,77 +221,94 @@ addFunction(numbers "switch" switchType array of "x" end array of :model.Local e
     model.i32Const(11) i(ops.returnOp)
     model.endInst
     model.i32Const(12)
-end);
+end)
 
 (* The inner $x shadows the outer, so a branch to the outer is by depth *)
 addFunction(numbers "shadow" void noNames array of :model.Local end array of
     model.blockInst(empty "x") model.blockInst(empty "x") i1(ops.br 1) i1(ops.br 0) model.endInst model.endInst
-end);
+end)
 
 let swap = addFunction(numbers "swap" pair array of "" end array of :model.Local end array of
     i1(ops.localGet 0) model.blockInst(typed(pair) "") model.i64Const(2) model.endInst
-end);
+end)
 addFunction(numbers "useSwap" binop array of "x" "y" end array of :model.Local end array of
     i1(ops.localGet 0) i1(ops.call swap) i1(ops.call arith)
-end);
+end)
 
 addFunction(numbers "convert" realType array of "r" end array of :model.Local end array of
     i1(ops.localGet 0) i(ops.i64TruncSatF64S) i(ops.f64ConvertI64S) i1(ops.localGet 0) i(ops.f64Sqrt) i(ops.f64Add)
     i1(ops.localGet 0) i(ops.i64ReinterpretF64) i(ops.f64ReinterpretI64) i(ops.f64Mul)
-end);
-show("module" numbers "numbers");
+end)
+show("module" numbers "numbers")
 
 (* ======================================================================
  * gc
  * ====================================================================== *)
 
-let gc = model.newModule("gc");
-vector.append(:model.RecGroup gc.types rt.group);
-let tTuple = rt.index("tuple");
-let tSlots = rt.index("slots");
-let tBytes = rt.index("bytes");
-let tBoxInt = rt.index("boxInt");
-let packed = addType(gc "packed" option compStruct of model.Composite with let fields = array of
-    tuple let name = "lo" let storage = option storageI8 of model.Storage end let mutable = true end
-    tuple let name = "hi" let storage = option storageI16 of model.Storage end let mutable = false end
-end end);
-let mkType = funcType(gc "mk" array of model.i64 end array of model.ref(tTuple) end);
-let testType = funcType(gc "test" array of model.eqref end array of model.i32 end);
-let gcVoid = funcType(gc "" noTypes noTypes);
-vector.append(:model.Data gc.data tuple let name = "d" let bytes = "ab\"\\\x00\xff" let offset = ~1 end);
+let gc = model.newModule("gc")
+vector.append(:model.RecGroup gc.types rt.group)
+let tTuple = rt.index("tuple")
+let tSlots = rt.index("slots")
+let tBytes = rt.index("bytes")
+let tBoxInt = rt.index("boxInt")
+let packed = addType(gc "packed" option compStruct of model.Composite with
+    let fields = array of
+        tuple let name = "lo" let storage = option storageI8 of model.Storage end let mutable = true end
+        tuple let name = "hi" let storage = option storageI16 of model.Storage end let mutable = false end
+    end
+end)
+let mkType = funcType(gc "mk" array of model.i64 end array of model.ref(tTuple) end)
+let testType = funcType(gc "test" array of model.eqref end array of model.i32 end)
+let gcVoid = funcType(gc "" noTypes noTypes)
+vector.append(:model.Data gc.data tuple let name = "d" let bytes = "ab\"\\\x00\xff" let offset = ~1 end)
 
 addFunction(gc "mk" mkType array of "n" end array of local("s" model.ref(tSlots)) local("t" model.ref(tTuple)) end
-    array of
-        i1(ops.localGet 0) model.i64Const(1) i(ops.i64Add) i(ops.i32WrapI64) i(ops.refI31)
-        option instRefNull of model.Inst with let heap = option heapNone of model.HeapType end end
-        i2(ops.arrayNewFixed tSlots 2) i1(ops.localSet 1)
-        model.i32Const(0) i1(ops.localGet 1) i1(ops.structNew tTuple) i1(ops.localTee 2)
-        i2(ops.structGet tTuple rt.field("tuple" "slots")) model.i32Const(0) i1(ops.localGet 2) i1(ops.arraySet tSlots)
-        i1(ops.localGet 2) model.i32Const(7) i2(ops.structSet tTuple rt.field("tuple" "hash"))
-        i1(ops.localGet 1) i(ops.arrayLen) i(ops.drop)
-        i1(ops.localGet 2)
-    end);
+        array of
+            i1(ops.localGet 0) model.i64Const(1) i(ops.i64Add) i(ops.i32WrapI64) i(ops.refI31)
+            option instRefNull of model.Inst with let heap = option heapNone of model.HeapType end end
+            i2(ops.arrayNewFixed tSlots 2) i1(ops.localSet 1)
+            model.i32Const(0) i1(ops.localGet 1) i1(ops.structNew tTuple) i1(ops.localTee 2)
+            i2(ops.structGet tTuple rt.field("tuple" "slots"))
+            model.i32Const(0)
+            i1(ops.localGet 2)
+            i1(ops.arraySet tSlots)
+            i1(ops.localGet 2) model.i32Const(7) i2(ops.structSet tTuple rt.field("tuple" "hash"))
+            i1(ops.localGet 1) i(ops.arrayLen) i(ops.drop)
+            i1(ops.localGet 2)
+        end)
 
 addFunction(gc "test" testType array of "v" end array of :model.Local end array of
     model.blockInst(result(model.refTo(false i31)) "isI31")
     model.blockInst(result(model.ref(tTuple)) "isTuple")
     i1(ops.localGet 0)
     option instBrOnCast of model.Inst with
-        let fail = false let label = 0 let from = abstractRef(true eq) let to = refOf(false tTuple) end
+        let fail = false
+        let label = 0
+        let from = abstractRef(true eq)
+        let to = refOf(false tTuple)
+    end
     option instBrOnCast of model.Inst with
-        let fail = false let label = 1 let from = abstractRef(true eq) let to = abstractRef(false i31) end
+        let fail = false
+        let label = 1
+        let from = abstractRef(true eq)
+        let to = abstractRef(false i31)
+    end
     i(ops.drop) model.i32Const(0) i(ops.returnOp)
     model.endInst
     i2(ops.structGet tTuple rt.field("tuple" "hash")) i(ops.returnOp)
     model.endInst
     i(ops.i31GetS)
-end);
+end)
 
 addFunction(gc "unbox" testType array of "v" end array of :model.Local end array of
     model.blockInst(result(model.eqref) "other")
     i1(ops.localGet 0)
     option instBrOnCast of model.Inst with
-        let fail = true let label = 0 let from = abstractRef(true eq) let to = abstractRef(false i31) end
+        let fail = true
+        let label = 0
+        let from = abstractRef(true eq)
+        let to = abstractRef(false i31)
+    end
     i(ops.i31GetU) i(ops.returnOp)
     model.endInst
     option instRefTest of model.Inst with let type = refOf(false tBoxInt) end
@@ -296,7 +318,7 @@ addFunction(gc "unbox" testType array of "v" end array of :model.Local end array
     i1(ops.localGet 0)
     option instRefTest of model.Inst with let type = abstractRef(true eq) end
     i(ops.i32Add)
-end);
+end)
 
 addFunction(gc "data" gcVoid noNames array of local("a" model.ref(tSlots)) end array of
     model.i32Const(0) model.i32Const(3) i2(ops.arrayNewData tBytes 0) model.i32Const(1) i1(ops.arrayGetU tBytes)
@@ -319,60 +341,69 @@ addFunction(gc "data" gcVoid noNames array of local("a" model.ref(tSlots)) end a
     model.endInst
     option instRefNull of model.Inst with let heap = option heapNoExtern of model.HeapType end end
     i(ops.anyConvertExtern) i(ops.externConvertAny) i(ops.drop)
-end);
-show("module" gc "gc");
+end)
+show("module" gc "gc")
 
 (* ======================================================================
  * control
  * ====================================================================== *)
 
-let control = model.newModule("control");
-let cVoid = funcType(control "v" noTypes noTypes);
-let cTag = funcType(control "i" array of model.i64 end noTypes);
-let cUnary = funcType(control "ii" array of model.i64 end array of model.i64 end);
-let caughtRef = funcType(control "caughtRef" noTypes array of model.i64 exnref end);
-addImport(control "host" "log" "log" option importFunc of model.ImportKind with let type = cTag end);
-addImport(control "host" "memory" "mem" option importMemory of model.ImportKind with let min = 1 let max = 2 end);
+let control = model.newModule("control")
+let cVoid = funcType(control "v" noTypes noTypes)
+let cTag = funcType(control "i" array of model.i64 end noTypes)
+let cUnary = funcType(control "ii" array of model.i64 end array of model.i64 end)
+let caughtRef = funcType(control "caughtRef" noTypes array of model.i64 exnref end)
+addImport(control "host" "log" "log" option importFunc of model.ImportKind with let type = cTag end)
+addImport(control "host" "memory" "mem" option importMemory of model.ImportKind with let min = 1 let max = 2 end)
 addImport(control "host" "base" "base"
-    option importGlobal of model.ImportKind with let type = model.i64 let mutable = false end);
-addImport(control "host" "error" "hostError" option importTag of model.ImportKind with let type = cTag end);
-vector.append(:model.Tag control.tags tuple let name = "e" let type = cTag end);
+        option importGlobal of model.ImportKind with let type = model.i64 let mutable = false end)
+addImport(control "host" "error" "hostError" option importTag of model.ImportKind with let type = cTag end)
+vector.append(:model.Tag control.tags tuple let name = "e" let type = cTag end)
 vector.append(:model.Global control.globals
-    tuple let name = "counter" let type = model.i64 let mutable = true let init = array of model.i64Const(0) end end);
-vector.append(:model.Data control.data tuple let name = "greeting" let bytes = "hi\n" let offset = 0 end);
-vector.append(:model.Data control.data tuple let name = "passive" let bytes = "zz" let offset = ~1 end);
+        tuple
+            let name = "counter"
+            let type = model.i64
+            let mutable = true
+            let init = array of model.i64Const(0) end
+        end)
+vector.append(:model.Data control.data tuple let name = "greeting" let bytes = "hi\n" let offset = 0 end)
+vector.append(:model.Data control.data tuple let name = "passive" let bytes = "zz" let offset = ~1 end)
 
 let init = addFunction(control "init" cVoid noNames array of :model.Local end array of
     i1(ops.globalGet 0) i1(ops.globalSet 1) i1(ops.globalGet 0) i1(ops.call 0)
-end);
+end)
 let double = addFunction(control "double" cUnary array of "x" end array of :model.Local end array of
     i1(ops.localGet 0) i1(ops.localGet 0) i(ops.i64Add)
-end);
+end)
 addFunction(control "twice" cUnary array of "x" end array of :model.Local end array of
     i1(ops.localGet 0) i1(ops.refFunc double) i1(ops.callRef cUnary) i1(ops.refFunc double)
     i1(ops.returnCallRef cUnary)
-end);
-let count = model.importedFunctions(control) + vector.length(:model.Function control.functions);
+end)
+let count = model.importedFunctions(control) + vector.length(:model.Function control.functions)
 addFunction(control "count" cUnary array of "n" end array of :model.Local end array of
     i1(ops.globalGet 1) model.i64Const(1) i(ops.i64Add) i1(ops.globalSet 1)
     i1(ops.localGet 0) i(ops.i64Eqz)
     model.ifInst(result(model.i64) "") model.i64Const(0)
     model.elseInst i1(ops.localGet 0) model.i64Const(1) i(ops.i64Sub) i1(ops.returnCall count)
     model.endInst
-end);
+end)
 let catchOf(kind: model.CatchKind tag: Int label: Int): model.Catch =
-    tuple let kind = kind let tag = tag let label = label end;
+    tuple let kind = kind let tag = tag let label = label end
 addFunction(control "catcher" cUnary array of "x" end array of :model.Local end array of
     model.blockInst(result(exnref) "caughtAllRef")
     model.blockInst(empty "caughtAll")
     model.blockInst(typed(caughtRef) "caughtRef")
     model.blockInst(result(model.i64) "caught")
-    option instTryTable of model.Inst with let type = result(model.i64) let label = "" let catches = array of
-        catchOf(option catchTag of model.CatchKind end 1 0)
-        catchOf(option catchTagRef of model.CatchKind end 0 1)
-        catchOf(option catchAll of model.CatchKind end 0 2)
-        catchOf(option catchAllRef of model.CatchKind end 0 3)
-    end end
+    option instTryTable of model.Inst with
+        let type = result(model.i64)
+        let label = ""
+        let catches = array of
+            catchOf(option catchTag of model.CatchKind end 1 0)
+            catchOf(option catchTagRef of model.CatchKind end 0 1)
+            catchOf(option catchAll of model.CatchKind end 0 2)
+            catchOf(option catchAllRef of model.CatchKind end 0 3)
+        end
+    end
     i1(ops.localGet 0) i1(ops.throw 1)
     model.endInst
     i(ops.returnOp)
@@ -384,7 +415,7 @@ addFunction(control "catcher" cUnary array of "x" end array of :model.Local end 
     model.i64Const(~1) i(ops.returnOp)
     model.endInst
     i(ops.throwRef)
-end);
+end)
 addFunction(control "memory" cUnary array of "x" end array of :model.Local end array of
     model.i32Const(16) i1(ops.localGet 0) i1(ops.i64Store 8)
     model.i32Const(16) i1(ops.i64Load 8)
@@ -395,28 +426,33 @@ addFunction(control "memory" cUnary array of "x" end array of :model.Local end a
     model.i32Const(0) model.i32Const(0) model.i32Const(4) i1(ops.memoryFill 0)
     i1(ops.dataDrop 1)
     model.i32Const(4) i1(ops.i32Load 4) i(ops.i64ExtendI32S) i(ops.i64Add)
-end);
-vector.append(:Int control.declared double);
-control.start := init;
-addExport(control "double" option exportFunc of model.ExportKind end double);
-addExport(control "memory" option exportMemory of model.ExportKind end 0);
-addExport(control "counter" option exportGlobal of model.ExportKind end 1);
-addExport(control "e" option exportTag of model.ExportKind end 1);
-show("module" control "control");
+end)
+vector.append(:Int control.declared double)
+control.start := init
+addExport(control "double" option exportFunc of model.ExportKind end double)
+addExport(control "memory" option exportMemory of model.ExportKind end 0)
+addExport(control "counter" option exportGlobal of model.ExportKind end 1)
+addExport(control "e" option exportTag of model.ExportKind end 1)
+show("module" control "control")
 
 (* ======================================================================
  * indices
  * ====================================================================== *)
 
-let indices = model.newModule("");
+let indices = model.newModule("")
 for k = 0 upto 129 do
-    addType(indices "" option compStruct of model.Composite with let fields = array of
-        tuple let name = "" let storage = option storageValue of model.Storage with let type = model.i64 end
-            let mutable = false end
-    end end)
-end;
-let wide = funcType(indices "" noTypes array of model.refNull(129) end);
-let many = array of(200 local("" model.i32));
+    addType(indices "" option compStruct of model.Composite with
+        let fields = array of
+            tuple
+                let name = ""
+                let storage = option storageValue of model.Storage with let type = model.i64 end
+                let mutable = false
+            end
+        end
+    end)
+end
+let wide = funcType(indices "" noTypes array of model.refNull(129) end)
+let many = array of(200 local("" model.i32))
 addFunction(indices "" wide noNames many array of
     model.blockInst(result(model.refNull(70)) "")
     option instRefNull of model.Inst with let heap = heap(70) end
@@ -424,23 +460,23 @@ addFunction(indices "" wide noNames many array of
     i(ops.drop)
     model.i32Const(0) i1(ops.localSet 199)
     model.i64Const(1) i1(ops.structNew 129)
-end);
-show("module" indices "indices");
+end)
+show("module" indices "indices")
 
 (* ======================================================================
  * run
  * ====================================================================== *)
 
-let run = model.newModule("run");
-vector.append(:model.RecGroup run.types rt.group);
-let fdWrite = funcType(run "fdWrite" array of model.i32 model.i32 model.i32 model.i32 end array of model.i32 end);
-let rVoid = funcType(run "void" noTypes noTypes);
-let rTag = funcType(run "tag" array of model.i64 end noTypes);
-let rSum = funcType(run "sum" array of model.i64 model.i64 end array of model.i64 end);
+let run = model.newModule("run")
+vector.append(:model.RecGroup run.types rt.group)
+let fdWrite = funcType(run "fdWrite" array of model.i32 model.i32 model.i32 model.i32 end array of model.i32 end)
+let rVoid = funcType(run "void" noTypes noTypes)
+let rTag = funcType(run "tag" array of model.i64 end noTypes)
+let rSum = funcType(run "sum" array of model.i64 model.i64 end array of model.i64 end)
 addImport(run "wasi_snapshot_preview1" "fd_write" "fdWrite"
-    option importFunc of model.ImportKind with let type = fdWrite end);
-vector.append(:model.Memory run.memories tuple let name = "memory" let min = 1 let max = ~1 end);
-vector.append(:model.Tag run.tags tuple let name = "error" let type = rTag end);
+        option importFunc of model.ImportKind with let type = fdWrite end)
+vector.append(:model.Memory run.memories tuple let name = "memory" let min = 1 let max = ~1 end)
+vector.append(:model.Tag run.tags tuple let name = "error" let type = rTag end)
 
 (* Writes n, at least 0, in decimal and a newline, assembled down from byte
  * 96, through an iovec at 0 *)
@@ -457,8 +493,8 @@ let print = addFunction(run "print" rTag array of "n" end array of local("p" mod
     model.i32Const(0) i1(ops.localGet 1) i1(ops.i32Store 0)
     model.i32Const(4) model.i32Const(96) i1(ops.localGet 1) i(ops.i32Sub) i1(ops.i32Store 0)
     model.i32Const(1) model.i32Const(0) model.i32Const(1) model.i32Const(32) i1(ops.call 0) i(ops.drop)
-end);
-let sum = model.importedFunctions(run) + vector.length(:model.Function run.functions);
+end)
+let sum = model.importedFunctions(run) + vector.length(:model.Function run.functions)
 addFunction(run "sum" rSum array of "n" "acc" end array of :model.Local end array of
     i1(ops.localGet 0) i(ops.i64Eqz)
     model.ifInst(result(model.i64) "") i1(ops.localGet 1)
@@ -466,16 +502,20 @@ addFunction(run "sum" rSum array of "n" "acc" end array of :model.Local end arra
     i1(ops.localGet 0) model.i64Const(1) i(ops.i64Sub) i1(ops.localGet 1) i1(ops.localGet 0) i(ops.i64Add)
     i1(ops.returnCall sum)
     model.endInst
-end);
+end)
 let thrower = addFunction(run "thrower" rTag array of "n" end array of :model.Local end array of
     i1(ops.localGet 0) i1(ops.throw 0)
-end);
+end)
 let start = addFunction(run "_start" rVoid noNames array of :model.Local end array of
     model.i64Const(1000000) model.i64Const(0) i1(ops.refFunc sum) i1(ops.callRef rSum) i1(ops.call print)
     model.blockInst(result(model.i64) "caught")
-    option instTryTable of model.Inst with let type = empty let label = "" let catches = array of
-        catchOf(option catchTag of model.CatchKind end 0 0)
-    end end
+    option instTryTable of model.Inst with
+        let type = empty
+        let label = ""
+        let catches = array of
+            catchOf(option catchTag of model.CatchKind end 0 0)
+        end
+    end
     model.i64Const(42) i1(ops.call thrower)
     model.endInst
     model.i64Const(0)
@@ -487,9 +527,9 @@ let start = addFunction(run "_start" rVoid noNames array of :model.Local end arr
     i2(ops.structGet rt.index("tuple") rt.field("tuple" "slots")) model.i32Const(0) i1(ops.arrayGet rt.index("slots"))
     option instRefCast of model.Inst with let type = abstractRef(false i31) end
     i(ops.i31GetS) i(ops.i64ExtendI32S) i1(ops.call print)
-end);
-vector.append(:Int run.declared sum);
-addExport(run "memory" option exportMemory of model.ExportKind end 0);
-addExport(run "_start" option exportFunc of model.ExportKind end start);
-show("run" run "run");
-put(";; expect 500000500000\n;; expect 42\n;; expect 7\n");
+end)
+vector.append(:Int run.declared sum)
+addExport(run "memory" option exportMemory of model.ExportKind end 0)
+addExport(run "_start" option exportFunc of model.ExportKind end start)
+show("run" run "run")
+put(";; expect 500000500000\n;; expect 42\n;; expect 7\n")

@@ -3,13 +3,15 @@
 
 module escape : Escape
 import
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/types/model : questlang/types/Model
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/sort : util/Sort
-    stringOp = string : StringOp
+
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/model : questlang/types/Model
 export
     let pathName(p: model.Type): String =
         case p.form when typePath with x then x.rootName <> "." <> x.fieldName else "" end
@@ -29,20 +31,21 @@ export
                 for i = 0 upto {vector.length(names) - 1} do
                     joined := if i is 0 then vector.get(names i) else joined <> ", " <> vector.get(names i) end
                 end
-                diagnostics.fail(:Ok what <> " cannot mention " <> joined <> ", an abstract type of a package value, " <>
-                    "because its identity is not known at run time" offset)
+                diagnostics.fail(:Ok what <> " cannot mention " <> joined <> ", an abstract type of a package value, "
+                    <> "because its identity is not known at run time" offset)
             end
         end
 
-    let checkNoEscapingPathTypes(t: model.Type localSymbolIds: hashMap.T(Int Bool) contextDesc: String offset: Int): Ok =
+    let checkNoEscapingPathTypes(t: model.Type localSymbolIds: hashMap.T(Int Bool) contextDesc: String
+            offset: Int): Ok =
         begin
             let paths = model.findPathTypes(t)
             for i = 0 upto {extent paths - 1} do
                 case paths[i].form
                     when typePath with p then
                         if hashMap.contains(localSymbolIds p.rootSymbolId) then
-                            diagnostics.fail(:Ok "Abstract type '" <> p.rootName <> "." <> p.fieldName <>
-                                "' cannot escape " <> contextDesc <> " in type '" <> model.show(t) <> "'" offset)
+                            diagnostics.fail(:Ok "Abstract type '" <> p.rootName <> "." <> p.fieldName
+                                <> "' cannot escape " <> contextDesc <> " in type '" <> model.show(t) <> "'" offset)
                         end
                     else ok
                 end

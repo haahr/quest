@@ -18,20 +18,22 @@
 
 module genericLayout : GenericLayout
 import
-    questlang/common/strings : questlang/common/Strings
-    questlang/types/model : questlang/types/Model
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/repr/syntax : questlang/repr/Syntax
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
-    stringOp = string : StringOp
+
+    questlang/common/strings : questlang/common/Strings
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/repr/syntax : questlang/repr/Syntax
+    questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
 export
     Let Type = model.Type
     Let Shape = shapes.Shape
@@ -84,7 +86,8 @@ export
                 strings.isOneOf(argC registerWords) orif endsWith(argC "*")
             elsif eq(place cellPlace) then
                 (* A cell holds a record or variant boxed, as a QVal does *)
-                strings.isOneOf(argC cellWords) orif endsWith(argC "*") orif strings.isOneOf(argC array of "QRecordVal" "QVariantVal" end)
+                strings.isOneOf(argC cellWords) orif endsWith(argC "*")
+                    orif strings.isOneOf(argC array of "QRecordVal" "QVariantVal" end)
             else
                 true
             end
@@ -129,7 +132,7 @@ export
                         for i = 0 upto {extent s.cases - 1} do
                             let c = s.cases[i].shape
                             if all andif maybe.isSome(c)
-                                andif not(slot(maybe.unwrap(c))) then all := false end
+                                    andif not(slot(maybe.unwrap(c))) then all := false end
                         end
                         all
                     (* An exception's payload is raised in a QVal word, read as
@@ -150,7 +153,7 @@ export
                     (* Anything else that mentions a type parameter (auto types,
                      * path types) may differ *)
                     when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
-                        shapeAuto, shapeTypevar, shapeExternal, shapeOperator, shapePending then false
+                            shapeAuto, shapeTypevar, shapeExternal, shapeOperator, shapePending then false
                 end
             end
         end
@@ -190,7 +193,7 @@ export
                                 let c = s.components[i]
                                 let cs = shapes.componentShape(c)
                                 if not(any) andif {{c.isVar andif disagrees(cs slotPlace)}
-                                    orif visit(cs)} then any := true end
+                                        orif visit(cs)} then any := true end
                             end
                             any
                         when shapeVariant then
@@ -208,15 +211,16 @@ export
                             for i = 0 upto {extent s.cases - 1} do
                                 let c = s.cases[i]
                                 if not(any) andif maybe.isSome(c.shape)
-                                    andif visit(maybe.unwrap(c.shape)) then
+                                        andif visit(maybe.unwrap(c.shape)) then
                                     any := true
                                 end
                             end
                             any
                         (* Closures are adapted rather than copied *)
                         when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
-                            shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal,
-                            shapeOperator, shapePending then false
+                                shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract,
+                                shapeExternal,
+                                shapeOperator, shapePending then false
                     end
                 end
             visit(shapes.shape(t))
@@ -228,22 +232,29 @@ export
             let t = model.prune(t0)
             case t.form
                 when typeApp with x then
-                    let symbol = case model.prune(x.constructor).form
-                        when typeVariable with v then v.symbolId
-                        when typeAbstract with v then v.symbolId
-                        else ~1
-                    end
-                    let entry = if abstractTypes.isAbstractTypeSymbol(symbol) then
-                        abstractTypes.abstractTypeBySymbol(symbol)
-                    else maybe.none(:abstractTypes.ModuleAbstractType) end
+                    let symbol =
+                        case model.prune(x.constructor).form
+                            when typeVariable with v then v.symbolId
+                            when typeAbstract with v then v.symbolId
+                            else ~1
+                        end
+                    let entry =
+                        if abstractTypes.isAbstractTypeSymbol(symbol) then
+                            abstractTypes.abstractTypeBySymbol(symbol)
+                        else
+                            maybe.none(:abstractTypes.ModuleAbstractType)
+                        end
                     (* A transparent one (in a whole program) is laid out as its
                      * representation is, everywhere *)
                     let transparent = shapes.transparentAbstractTypes()
                         andif maybe.isSome(entry)
                         andif abstractTypes.unbounded(maybe.unwrap(entry))
-                    let written = if maybe.isSome(entry) andif not(transparent) then
-                        maybe.unwrap(entry).rep
-                    else maybe.none(:Type) end
+                    let written =
+                        if maybe.isSome(entry) andif not(transparent) then
+                            maybe.unwrap(entry).rep
+                        else
+                            maybe.none(:Type)
+                        end
                     if maybe.isNone(written) then
                         none
                     else
@@ -256,7 +267,9 @@ export
                                         hashMap.insert(subst op.params[i].symbolId x.arguments[i])
                                     end
                                     maybe.some(tuple let generic = op.body let subst = subst end)
-                                else none end
+                                else
+                                    none
+                                end
                             else none
                         end
                     end
@@ -279,7 +292,7 @@ export
                             let var found = false
                             for i = 0 upto {extent shapes0 - 1} do
                                 if not(found) andif maybe.isSome(shapes0[i])
-                                    andif visit(maybe.unwrap(shapes0[i])) then found := true end
+                                        andif visit(maybe.unwrap(shapes0[i])) then found := true end
                             end
                             found
                         end

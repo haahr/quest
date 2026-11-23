@@ -3,15 +3,17 @@
 
 module contractiveness : Contractiveness
 import
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/types/env : questlang/types/Env
+    conv : Conv
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    conv : Conv
+
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/env : questlang/types/Env
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let Type = model.Type
     Let Ids = hashMap.T(Int Bool)
@@ -57,8 +59,8 @@ export
         begin
             if depth > maxTypeExpansionDepth then
                 diagnostics.raiseError(:Ok tuple
-                    let message = "Fatal compiler error: Type contractiveness check exceeded recursion depth of " <>
-                        conv.int(maxTypeExpansionDepth)
+                    let message = "Fatal compiler error: Type contractiveness check exceeded recursion depth of "
+                        <> conv.int(maxTypeExpansionDepth)
                     let offset = 0
                     let length = 1
                     let isFatal = true
@@ -82,8 +84,8 @@ export
                  * variable, so it is contractive *)
                 when typeMeta then true
                 when typeRec with x then
-                    contractive(x.body plus(newIds() x.symbolId) e {depth + 1}) andif
-                        contractive(x.body ids e {depth + 1})
+                    contractive(x.body plus(newIds() x.symbolId) e {depth + 1})
+                        andif contractive(x.body ids e {depth + 1})
                 when typeRecGroup with x then
                     begin
                         let groupIds = newIds()
@@ -103,16 +105,17 @@ export
     let checkTypeContractive(t: Type ids: Ids varName: String offset: Int e: maybe.T(env.T)): Ok =
         if not(isTypeContractive(t ids e)) then
             diagnostics.raiseError(:Ok tuple
-                let message = "Recursive type '" <> varName <> "' is not contractive; " <>
-                    "recursive type variable must be guarded by a constructor"
+                let message = "Recursive type '" <> varName <> "' is not contractive; "
+                    <> "recursive type variable must be guarded by a constructor"
                 let offset = offset
                 let length = 1
                 let isFatal = false
-                let help = maybe.some("ensure recursive variable appears inside a record, tuple, function, option, variant, or " <>
-                        "array type")
+                let help =
+                    maybe.some("ensure recursive variable appears inside a record, tuple, function, option, variant, or "
+                        <> "array type")
                 let notes = vector.fromArray(array of
-                    "definition of '" <> varName <> "' refers directly to itself as a bare alias without a " <>
-                        "guarding constructor"
+                    "definition of '" <> varName <> "' refers directly to itself as a bare alias without a "
+                        <> "guarding constructor"
                 end)
                 let file = maybe.none()
                 let silent = false

@@ -3,14 +3,15 @@
 
 module datetime : DateTime
 import
+    ascii : Ascii
+    conv : Conv
+    intOp = int : IntOp
+    real : RealOp
+    stringOp = string : StringOp
+
+    time = os/time : os/Time
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
-    stringOp = string : StringOp
-    intOp = int : IntOp
-    time = os/time : os/Time
-    real: RealOp
-    ascii: Ascii
-    conv: Conv
 export
     let error: Exception = exception error: Ok end
 
@@ -200,8 +201,9 @@ export
             let days = daysFromCivil(d.year d.month d.day)
             let ofDay = {{d.hour * 3600} + {d.minute * 60}} + d.second
             let secs = {{days * 86400} + ofDay} - d.offset
-            if {secs < firstSecond} \/ {secs > lastSecond} \/ {{secs is firstSecond} /\ {d.nanosecond < firstNanosecond}}
-                \/ {{secs is lastSecond} /\ {d.nanosecond > lastNanosecond}} then
+            if {secs < firstSecond} \/ {secs > lastSecond}
+                    \/ {{secs is firstSecond} /\ {d.nanosecond < firstNanosecond}}
+                    \/ {{secs is lastSecond} /\ {d.nanosecond > lastNanosecond}} then
                 raise error end
             end
             {secs * second} + d.nanosecond
@@ -265,29 +267,29 @@ export
                     let twelve = if {d.hour % 12} is 0 then 12 else d.hour % 12 end
                     let offset = intOp.abs(d.offset)
                     sb.str(buf
-                        if k is 'Y' then if d.year < 0 then "-" <> padded(0 - d.year 4) else padded(d.year 4) end
-                        elsif k is 'm' then padded(d.month 2)
-                        elsif k is 'd' then padded(d.day 2)
-                        elsif k is 'H' then padded(d.hour 2)
-                        elsif k is 'M' then padded(d.minute 2)
-                        elsif k is 'S' then padded(d.second 2)
-                        elsif k is 'f' then padded(d.nanosecond 9)
-                        elsif k is 'j' then padded(yearDay(d) 3)
-                        elsif k is 'y' then padded(floorMod(d.year 100) 2)
-                        elsif k is 'I' then padded(twelve 2)
-                        elsif k is 'p' then if d.hour < 12 then "AM" else "PM" end
-                        elsif k is 'a' then short(weekdayNames[weekday(d)])
-                        elsif k is 'A' then weekdayNames[weekday(d)]
-                        elsif k is 'b' then short(monthName(d))
-                        elsif k is 'B' then monthName(d)
-                        elsif k is 'z' then
-                            if d.offset < 0 then "-" else "+" end <> padded(offset / 3600 2)
-                                <> padded({offset / 60} % 60 2)
-                        elsif k is 'e' then if d.day < 10 then " " <> conv.int(d.day) else conv.int(d.day) end
-                        elsif k is 'u' then conv.int(if weekday(d) is 0 then 7 else weekday(d) end)
-                        elsif k is 'w' then conv.int(weekday(d))
-                        else "%"
-                        end)
+                            if k is 'Y' then if d.year < 0 then "-" <> padded(0 - d.year 4) else padded(d.year 4) end
+                            elsif k is 'm' then padded(d.month 2)
+                            elsif k is 'd' then padded(d.day 2)
+                            elsif k is 'H' then padded(d.hour 2)
+                            elsif k is 'M' then padded(d.minute 2)
+                            elsif k is 'S' then padded(d.second 2)
+                            elsif k is 'f' then padded(d.nanosecond 9)
+                            elsif k is 'j' then padded(yearDay(d) 3)
+                            elsif k is 'y' then padded(floorMod(d.year 100) 2)
+                            elsif k is 'I' then padded(twelve 2)
+                            elsif k is 'p' then if d.hour < 12 then "AM" else "PM" end
+                            elsif k is 'a' then short(weekdayNames[weekday(d)])
+                            elsif k is 'A' then weekdayNames[weekday(d)]
+                            elsif k is 'b' then short(monthName(d))
+                            elsif k is 'B' then monthName(d)
+                            elsif k is 'z' then
+                                if d.offset < 0 then "-" else "+" end <> padded(offset / 3600 2)
+                                    <> padded({offset / 60} % 60 2)
+                            elsif k is 'e' then if d.day < 10 then " " <> conv.int(d.day) else conv.int(d.day) end
+                            elsif k is 'u' then conv.int(if weekday(d) is 0 then 7 else weekday(d) end)
+                            elsif k is 'w' then conv.int(weekday(d))
+                            else "%"
+                            end)
                 end
             end
             sb.toString(buf)
@@ -349,7 +351,9 @@ export
             let fits = {{r.pos + n} <= stringOp.length(r.s)} andif begin
                 let var same = true
                 for i = 0 upto {n - 1} do
-                    if lower(stringOp.getChar(r.s r.pos + i)) isnot lower(stringOp.getChar(name i)) then same := false end
+                    if lower(stringOp.getChar(r.s r.pos + i)) isnot lower(stringOp.getChar(name i)) then
+                        same := false
+                    end
                 end
                 same
             end
@@ -373,7 +377,8 @@ export
 
     (* Reads an offset: Z, or a sign, two digits, an optional :, two digits *)
     let readOffset(r: Reading): Int =
-        if more(r) andif {lower(here(r)) is 'z'} then begin r.pos := r.pos + 1 0 end
+        if more(r) andif {lower(here(r)) is 'z'} then
+            begin r.pos := r.pos + 1 0 end
         else
             let negative = more(r) andif {here(r) is '-'}
             if not(negative) then expect(r '+') else r.pos := r.pos + 1 end
@@ -390,24 +395,30 @@ export
             if negative then r.pos := r.pos + 1 end
             let v = digits(r 4 4)
             r.year := if negative then 0 - v else v end
-        elsif k is 'm' then r.month := digits(r 1 2)
-        elsif k is 'd' then r.day := digits(r 1 2)
+        elsif k is 'm' then
+            r.month := digits(r 1 2)
+        elsif k is 'd' then
+            r.day := digits(r 1 2)
         elsif k is 'e' then
             if more(r) andif {here(r) is ' '} then r.pos := r.pos + 1 end
             r.day := digits(r 1 2)
-        elsif k is 'H' then r.hour := digits(r 1 2)
+        elsif k is 'H' then
+            r.hour := digits(r 1 2)
         elsif k is 'I' then
             r.hour := digits(r 1 2)
             r.twelveHour := true
-        elsif k is 'M' then r.minute := digits(r 1 2)
-        elsif k is 'S' then r.second := digits(r 1 2)
+        elsif k is 'M' then
+            r.minute := digits(r 1 2)
+        elsif k is 'S' then
+            r.second := digits(r 1 2)
         elsif k is 'f' then
             let start = r.pos
             let v = digits(r 1 9)
             let var scaled = v
             for i = {r.pos - start} + 1 upto 9 do scaled := scaled * 10 end
             r.nanosecond := scaled
-        elsif k is 'j' then r.yearDayRead := digits(r 1 3)
+        elsif k is 'j' then
+            r.yearDayRead := digits(r 1 3)
         elsif k is 'y' then
             r.year := digits(r 1 2)
             r.twoDigitYear := true
@@ -416,11 +427,16 @@ export
             elsif readsName(r "PM") then r.afternoon := true
             else raise mismatch end
             end
-        elsif {k is 'a'} \/ {k is 'A'} then begin let ignored = oneOf(r weekdayNames) ok end
-        elsif {k is 'b'} \/ {k is 'B'} then r.month := oneOf(r monthNames) + 1
-        elsif k is 'z' then r.offset := readOffset(r)
-        elsif {k is 'u'} \/ {k is 'w'} then begin let ignored = digits(r 1 1) ok end
-        else expect(r '%')
+        elsif {k is 'a'} \/ {k is 'A'} then
+            begin let ignored = oneOf(r weekdayNames) ok end
+        elsif {k is 'b'} \/ {k is 'B'} then
+            r.month := oneOf(r monthNames) + 1
+        elsif k is 'z' then
+            r.offset := readOffset(r)
+        elsif {k is 'u'} \/ {k is 'w'} then
+            begin let ignored = digits(r 1 1) ok end
+        else
+            expect(r '%')
         end
 
     let parse(s: String pattern: String): maybe.T(Date) =
@@ -491,7 +507,8 @@ export
         begin
             let d = utc(i)
             let whole = format(d "%Y-%m-%dT%H:%M:%S")
-            if d.nanosecond is 0 then whole <> "Z"
+            if d.nanosecond is 0 then
+                whole <> "Z"
             else
                 let text = fraction(d.nanosecond 9)
                 (* fraction gives 0.25 for 250000000 *)
@@ -550,7 +567,8 @@ export
                     end
                     if {{r.month >= 1} /\ {r.month <= 12}} andif valid(d) then
                         try maybe.some(:Instant instant(d)) when error then maybe.none(:Instant) end
-                    else maybe.none(:Instant)
+                    else
+                        maybe.none(:Instant)
                     end
                 end
             when mismatch then maybe.none(:Instant)

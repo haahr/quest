@@ -2,18 +2,19 @@
 
 module path : Path
 import
-    strings = util/path : util/Path
+    reader : Reader
+    stringOp = string : StringOp
+    system : System
+    word : Word
+    writer : Writer
+
     collections/vector : collections/Vector
-    util/maybe : util/Maybe
-    sb = util/stringBuilder : util/StringBuilder
-    hashLib = util/hash : util/Hash
     os/fileStats : os/FileStats
     os/files : os/Files
-    stringOp = string : StringOp
-    word : Word
-    reader : Reader
-    writer : Writer
-    system: System
+    hashLib = util/hash : util/Hash
+    util/maybe : util/Maybe
+    strings = util/path : util/Path
+    sb = util/stringBuilder : util/StringBuilder
 export
     (* A T is its normalized string *)
     Let T = String
@@ -44,8 +45,7 @@ export
     let equal(a: T b: T): Bool = stringOp.equal(a b)
     let hash(p: T): word.T = hashLib.string(p)
 
-    let name(p: T): String =
-        if stringOp.equal(p "/") orif stringOp.equal(p ".") then "" else strings.baseName(p) end
+    let name(p: T): String = if stringOp.equal(p "/") orif stringOp.equal(p ".") then "" else strings.baseName(p) end
 
     let parent(p: T): T =
         if stringOp.equal(p "/") orif stringOp.equal(p ".") then p else fromString(strings.dirName(p)) end
@@ -55,10 +55,10 @@ export
 
     let withSuffix(p: T newSuffix: String): T =
         if stringOp.length(name(p)) is 0 then raise strings.error end
-        else fromString(strings.withExtension(p newSuffix)) end
+        else fromString(strings.withExtension(p newSuffix))
+        end
 
-    let parts(p: T): vector.T(String) =
-        if stringOp.equal(p ".") then vector.new(:String) else strings.parts(p) end
+    let parts(p: T): vector.T(String) = if stringOp.equal(p ".") then vector.new(:String) else strings.parts(p) end
 
     let child(p: T s: String): T = fromString(strings.join(p s))
     let join(p: T q: T): T = fromString(strings.join(p q))

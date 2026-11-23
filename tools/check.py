@@ -44,6 +44,10 @@ docs/collector.md section 7). Every suite adds, at once, the bootstrap's
 suite and the unit tests but those that drive a terminal, and then, alone, the
 terminal tests, which time out under load.
 
+Every run also checks, at once with the suites, that the tree is formatted:
+./quest fmt --check over FORMATTED (docs/formatter.md section 5), which fails
+on a file the formatter would change or cannot parse.
+
 Before the suites, the stress tier (docs/testing.md section 4.1): the compiled
 tests alone, under the collector's `stress` mode (a collection at every
 allocation, thinning as a program's heap grows: docs/collector.md section 7)
@@ -120,6 +124,9 @@ def self_hosted_only_file(path: str) -> bool:
     suites: one of its own, or documentation, which no test reads."""
     return path.startswith(SELF_HOSTED_ONLY_PATHS) or path.endswith(".md")
 
+
+# The trees whose Quest files must be as quest fmt writes them
+FORMATTED = ("questlang", "lib", "tests/source", "benchmarks")
 
 # The IR runs left to run by hand: those between Core and the described stage
 SKIPPED_PHASES = ("run_ir_simplified", "run_ir_specialized", "run_ir_closed", "run_ir_represented")
@@ -450,11 +457,13 @@ def checks(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         if args.stress:
             return 0
 
+    formatted = Suite("format", [str(ROOT_DIR / "quest"), "fmt", "--check", *FORMATTED])
     if self_hosted_only:
         together = [
             Suite("self-hosting", [*self_hosting, "-j", str(min(8, cores))]),
             Suite("backends", [*backends, "-j", str(share(cores, 1, 4))], INCREMENTAL_PROGRAMS_ENVIRONMENT),
             *fixed_points,
+            formatted,
         ]
         after: list[Suite] = []
     else:
@@ -466,6 +475,7 @@ def checks(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             *fixed_points,
             Suite("bootstrap", [*run_tests, "-j", str(share(cores, 3, 10))]),
             Suite("unit", [*unit, "discover", "-s", "tests/python"], {**unit_environment, "QUEST_SKIP_PTY_TESTS": "1"}),
+            formatted,
         ]
         after = [Suite("pty", [*unit, PTY_TESTS], unit_environment)]
 

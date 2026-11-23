@@ -2,21 +2,23 @@
 
 module thunks : Thunks
 import
-    questlang/types/model : questlang/types/Model
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/ir/nodes : questlang/ir/Nodes
-    questlang/ir/walk : questlang/ir/Walk
-    questlang/ir/clone : questlang/ir/Clone
-    questlang/repr/written : questlang/repr/Written
-    questlang/repr/digests : questlang/repr/Digests
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/strutil : util/Strutil
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
-    stringOp = string : StringOp
-    conv : Conv
+    util/strutil : util/Strutil
+
+    questlang/ir/clone : questlang/ir/Clone
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/repr/digests : questlang/repr/Digests
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/repr/written : questlang/repr/Written
+    questlang/types/model : questlang/types/Model
 export
     Let Type = model.Type
     Let Variable = nodes.Variable
@@ -36,7 +38,10 @@ export
     let isFunctionType(t: Type): Bool =
         shapes.kindIs(shapes.shape(t) shapes.shapeFun) orif shapes.kindIs(shapes.shape(t) shapes.shapeAll)
     let okAtom(): Atom =
-        nodes.atomOfConst(tuple let value = option constOk of nodes.ConstValue end let shape = shapes.shape(model.okType) end)
+        nodes.atomOfConst(tuple
+            let value = option constOk of nodes.ConstValue end
+            let shape = shapes.shape(model.okType)
+        end)
     let descVar(v: Variable): Descriptor = option descVar of Descriptor with let v = v end
     let doStmt(o: Op): Stmt = option sDo of Stmt with let var pos = ~1 let var value = o end
     let returnStmt(a: Atom): Stmt = option sReturn of Stmt with let var pos = ~1 let var value = a end
@@ -241,58 +246,61 @@ export
                     when knownFunction with k then "\nknown " <> conv.int(k.f.id)
                     when knownMember with k then "\nmember " <> k.i.canonicalPath <> "\n" <> k.member
                 end
-            end
-            let key = "adapt\n" <> typeKey(plan.source) <> "\n" <> typeKey(plan.target) <> "\n" <> layoutKey(plan.layout)
-                <> knownKey
+                end
+            let key =
+                "adapt\n" <> typeKey(plan.source) <> "\n" <> typeKey(plan.target) <> "\n" <> layoutKey(plan.layout)
+                    <> knownKey
             let found = hashMap.get(t.thunks key)
             if maybe.isSome(found) then
                 maybe.unwrap(found)
             else
-                    let source = written.funSignature(plan.source)
-                    let target = written.funSignature(plan.target)
-                    let typeParams = typeParamsOf(written.quantified(plan.target).quantifiers)
-                    let orig = nodes.newVar("orig" plan.source false)
-                    let params = paramsOf(target)
-                    let stmts = vector.new(:Stmt)
-                    let member = if maybe.isNone(known) then maybe.none(:Known)
-                        else case maybe.unwrap(known)
-                            when knownFunction with k then
-                                vector.append(stmts nodes.letStmt(orig closureOp(k.f
+                let source = written.funSignature(plan.source)
+                let target = written.funSignature(plan.target)
+                let typeParams = typeParamsOf(written.quantified(plan.target).quantifiers)
+                let orig = nodes.newVar("orig" plan.source false)
+                let params = paramsOf(target)
+                let stmts = vector.new(:Stmt)
+                let member = if maybe.isNone(known) then maybe.none(:Known)
+                    else case maybe.unwrap(known)
+                        when knownFunction with k then
+                            vector.append(stmts nodes.letStmt(orig closureOp(k.f
                                     array of :Atom end array of :Type end array of :Descriptor end)))
-                                maybe.none(:Known)
-                            when knownMember then known
-                        end
+                            maybe.none(:Known)
+                        when knownMember then known
                     end
-                    let args = forwarded(stmts params a.fields)
-                    let called = if maybe.isSome(member) then
+                    end
+                let args = forwarded(stmts params a.fields)
+                let called =
+                    if maybe.isSome(member) then
                         case maybe.unwrap(member)
                             when knownMember with k then
                                 nodes.call(maybe.none() typeVariables(typeParams) args
-                                    maybe.some(option refImport of nodes.ModuleRef with let i = k.i end)
-                                    maybe.some(k.member) maybe.some(k.type))
+                                        maybe.some(option refImport of nodes.ModuleRef with let i = k.i end)
+                                        maybe.some(k.member) maybe.some(k.type))
                             else nodes.call(maybe.some(orig) typeVariables(typeParams) args
-                                maybe.none() maybe.none() maybe.none())
+                                    maybe.none() maybe.none() maybe.none())
                         end
                     else
-                        nodes.call(maybe.some(orig) typeVariables(typeParams) args maybe.none() maybe.none() maybe.none())
+                        nodes.call(maybe.some(orig) typeVariables(typeParams) args maybe.none() maybe.none()
+                                maybe.none())
                     end
-                    case called when opCall with c then c.descriptors := descriptorsOf(a.thunkParams) else ok end
-                    let last = if extent a.fields > 0 then a.fields[extent a.fields - 1] else maybe.none(:Plan) end
-                    finish(stmts called source.result target.result last)
-                    let f = nodes.newFunction(nodes.newVar("qa_adapt" plan.target false) typeParams params target.result
+                case called when opCall with c then c.descriptors := descriptorsOf(a.thunkParams) else ok end
+                let last = if extent a.fields > 0 then a.fields[extent a.fields - 1] else maybe.none(:Plan) end
+                finish(stmts called source.result target.result last)
+                let f = nodes.newFunction(nodes.newVar("qa_adapt" plan.target false) typeParams params target.result
                         nodes.bodyOf(vector.toArray(stmts)) maybe.none())
-                    if maybe.isNone(known) then f.env := maybe.some(orig) end
-                    (* Each thunk parameter carries both the target and source
-                     * type-parameter symbol ids; on the adapter function
-                     * itself, record only the target's symbol id *)
-                    let descriptorParams = vector.new(:nodes.DescriptorParam)
-                    for i = 0 upto {extent a.thunkParams - 1} do
-                        let tp = a.thunkParams[i]
-                        vector.append(descriptorParams
+                if maybe.isNone(known) then f.env := maybe.some(orig) end
+                (* Each thunk parameter carries both the target and source
+                 * type-parameter symbol ids; on the adapter function
+                 * itself, record only the target's symbol id *)
+                let descriptorParams = vector.new(:nodes.DescriptorParam)
+                for i = 0 upto {extent a.thunkParams - 1} do
+                    let tp = a.thunkParams[i]
+                    vector.append(descriptorParams
                             tuple let v = tp.v let symbols = array of tp.symbols[0] end end)
-                    end
-                    f.descriptorParams := vector.toArray(descriptorParams)
-                    addThunk(t key f)
+                end
+                f.descriptorParams := vector.toArray(descriptorParams)
+                addThunk(t key f)
             end
         end
 
@@ -372,7 +380,7 @@ export
                 vector.append(stmts vector.get(copied.statements i))
             end
             let g = nodes.newFunction(nodes.newVar("qa_lambda" plan.target false) typeParams params target.result
-                nodes.bodyOf(vector.toArray(stmts)) f.traceName)
+                    nodes.bodyOf(vector.toArray(stmts)) f.traceName)
             g.env := maybe.some(env)
             let descriptorParams = vector.new(:nodes.DescriptorParam)
             for i = 0 upto {extent a.thunkParams - 1} do
@@ -401,50 +409,50 @@ export
             if maybe.isSome(found) then
                 maybe.unwrap(found)
             else
-                    let n = extent o.typeArgs
-                    let origQuantifiers = written.quantified(origType).quantifiers
-                    let captured = vector.new(:model.Quantifier)
-                    for i = 0 upto {n - 1} do
-                        if i < extent origQuantifiers then vector.append(captured origQuantifiers[i]) end
-                    end
-                    let capturedParams = typeParamsOf(vector.toArray(captured))
-                    let ownParams = typeParamsOf(written.quantified(targetType).quantifiers)
-                    let thunkParams = maybe.unwrap(o.thunkParams)
-                    let allParams = vector.new(:nodes.TypeParam)
-                    let descriptorParams = vector.new(:nodes.DescriptorParam)
-                    for i = 0 upto {extent capturedParams - 1} do
-                        vector.append(allParams capturedParams[i])
-                        vector.append(descriptorParams tuple
-                            let v = nodes.newVar("descriptor_" <> capturedParams[i].name nodes.descriptorType false)
-                            let symbols = array of capturedParams[i].symbolId end
-                        end)
-                    end
-                    for i = 0 upto {extent ownParams - 1} do vector.append(allParams ownParams[i]) end
-                    let typeParams = vector.toArray(allParams)
-                    for i = 0 upto {extent thunkParams - 1} do vector.append(descriptorParams thunkParams[i]) end
-                    (* The environment, as closure conversion makes it: its
-                     * type is a placeholder *)
-                    let env = nodes.newVar("env" model.okType false)
-                    let orig = nodes.newVar("orig" origType false)
-                    let stmts = vector.new(:Stmt)
-                    vector.append(stmts nodes.letStmt(orig option opEnvField of Op with
-                        let var env = nodes.atomOfVar(env)
-                        let index = 0
-                    end))
-                    let target = written.funSignature(targetType)
-                    let params = paramsOf(target)
-                    let args = forwarded(stmts params o.plans)
-                    let descriptors = descriptorsOf(vector.toArray(descriptorParams))
-                    let called = nodes.call(maybe.some(orig) typeVariables(typeParams) args
+                let n = extent o.typeArgs
+                let origQuantifiers = written.quantified(origType).quantifiers
+                let captured = vector.new(:model.Quantifier)
+                for i = 0 upto {n - 1} do
+                    if i < extent origQuantifiers then vector.append(captured origQuantifiers[i]) end
+                end
+                let capturedParams = typeParamsOf(vector.toArray(captured))
+                let ownParams = typeParamsOf(written.quantified(targetType).quantifiers)
+                let thunkParams = maybe.unwrap(o.thunkParams)
+                let allParams = vector.new(:nodes.TypeParam)
+                let descriptorParams = vector.new(:nodes.DescriptorParam)
+                for i = 0 upto {extent capturedParams - 1} do
+                    vector.append(allParams capturedParams[i])
+                    vector.append(descriptorParams tuple
+                        let v = nodes.newVar("descriptor_" <> capturedParams[i].name nodes.descriptorType false)
+                        let symbols = array of capturedParams[i].symbolId end
+                    end)
+                end
+                for i = 0 upto {extent ownParams - 1} do vector.append(allParams ownParams[i]) end
+                let typeParams = vector.toArray(allParams)
+                for i = 0 upto {extent thunkParams - 1} do vector.append(descriptorParams thunkParams[i]) end
+                (* The environment, as closure conversion makes it: its
+                 * type is a placeholder *)
+                let env = nodes.newVar("env" model.okType false)
+                let orig = nodes.newVar("orig" origType false)
+                let stmts = vector.new(:Stmt)
+                vector.append(stmts nodes.letStmt(orig option opEnvField of Op with
+                    let var env = nodes.atomOfVar(env)
+                    let index = 0
+                end))
+                let target = written.funSignature(targetType)
+                let params = paramsOf(target)
+                let args = forwarded(stmts params o.plans)
+                let descriptors = descriptorsOf(vector.toArray(descriptorParams))
+                let called = nodes.call(maybe.some(orig) typeVariables(typeParams) args
                         maybe.none() maybe.none() maybe.none())
-                    case called when opCall with c then c.descriptors := descriptors else ok end
-                    let resultPlan = if extent o.plans > 0 then o.plans[extent o.plans - 1] else maybe.none(:Plan) end
-                    finish(stmts called written.funSignature(origType).result target.result resultPlan)
-                    let f = nodes.newFunction(nodes.newVar("qa_type_app" targetType false) typeParams params target.result
+                case called when opCall with c then c.descriptors := descriptors else ok end
+                let resultPlan = if extent o.plans > 0 then o.plans[extent o.plans - 1] else maybe.none(:Plan) end
+                finish(stmts called written.funSignature(origType).result target.result resultPlan)
+                let f = nodes.newFunction(nodes.newVar("qa_type_app" targetType false) typeParams params target.result
                         nodes.bodyOf(vector.toArray(stmts)) maybe.none())
-                    f.env := maybe.some(env)
-                    f.descriptorParams := vector.toArray(descriptorParams)
-                    addThunk(t key f)
+                f.env := maybe.some(env)
+                f.descriptorParams := vector.toArray(descriptorParams)
+                addThunk(t key f)
             end
         end
 
@@ -459,30 +467,30 @@ export
             if maybe.isSome(found) then
                 maybe.unwrap(found)
             else
-                    let sig = written.funSignature(ty)
-                    let typeParams = typeParamsOf(written.quantified(ty).quantifiers)
-                    let made = vector.new(:nodes.DescriptorParam)
-                    for i = 0 upto {extent typeParams - 1} do
-                        vector.append(made tuple
-                            let v = nodes.newVar("qd_" <> conv.int(i) nodes.descriptorType false)
-                            let symbols = array of typeParams[i].symbolId end
-                        end)
-                    end
-                    let descriptorParams = vector.toArray(made)
-                    let params = paramsOf(sig)
-                    let stmts = vector.new(:Stmt)
-                    let args = forwarded(stmts params array of :maybe.T(Plan) end)
-                    let called = option opCallExternal of Op with
-                        let symbol = symbol
-                        let var typeArgs = array of :Type end
-                        let var args = args
-                        let var descriptors = array of :Descriptor end
-                    end
-                    finish(stmts called sig.result sig.result maybe.none())
-                    let f = nodes.newFunction(nodes.newVar("qx_" <> symbol ty false) typeParams params sig.result
+                let sig = written.funSignature(ty)
+                let typeParams = typeParamsOf(written.quantified(ty).quantifiers)
+                let made = vector.new(:nodes.DescriptorParam)
+                for i = 0 upto {extent typeParams - 1} do
+                    vector.append(made tuple
+                        let v = nodes.newVar("qd_" <> conv.int(i) nodes.descriptorType false)
+                        let symbols = array of typeParams[i].symbolId end
+                    end)
+                end
+                let descriptorParams = vector.toArray(made)
+                let params = paramsOf(sig)
+                let stmts = vector.new(:Stmt)
+                let args = forwarded(stmts params array of :maybe.T(Plan) end)
+                let called = option opCallExternal of Op with
+                    let symbol = symbol
+                    let var typeArgs = array of :Type end
+                    let var args = args
+                    let var descriptors = array of :Descriptor end
+                end
+                finish(stmts called sig.result sig.result maybe.none())
+                let f = nodes.newFunction(nodes.newVar("qx_" <> symbol ty false) typeParams params sig.result
                         nodes.bodyOf(vector.toArray(stmts)) maybe.none())
-                    f.descriptorParams := descriptorParams
-                    addThunk(t key f)
+                f.descriptorParams := descriptorParams
+                addThunk(t key f)
             end
         end
 
@@ -496,7 +504,7 @@ export
         begin
             if not(hashMap.contains(t.adapted p.id)) then
                 hashMap.insert(t.adapted p.id
-                    tuple let fields = p.fields let thunkParams = p.thunkParams end)
+                        tuple let fields = p.fields let thunkParams = p.thunkParams end)
             end
             hashMap.find(t.adapted p.id)
         end
@@ -527,7 +535,7 @@ export
                 when planCopy then
                     for i = 0 upto {extent p.fields - 1} do plan(t p.fields[i]) end
                 when planBox, planUnbox, planRecordView, planVariantTags, planCast, planUnproxy, planSlotBox,
-                    planSlotUnbox, planView, planRuntime then ok
+                        planSlotUnbox, planView, planRuntime then ok
             end
         end
 
@@ -547,9 +555,12 @@ export
             let r = maybe.unwrap(o.moduleRef)
             let member = maybe.unwrap(o.member)
             let m = moduleOf(r)
-            let ty = if maybe.isSome(m) then
-                maybe.unwrap(nodes.member(maybe.unwrap(m).members member)).type
-            else maybe.unwrap(o.calleeType) end
+            let ty =
+                if maybe.isSome(m) then
+                    maybe.unwrap(nodes.member(maybe.unwrap(m).members member)).type
+                else
+                    maybe.unwrap(o.calleeType)
+                end
             let v = nodes.newVar(member ty false)
             vector.append(before nodes.letStmt(v option opModuleMember of Op with
                 let var moduleRef = r
@@ -567,13 +578,16 @@ export
     let lambdaOf(t: Thunker x: nodes.OpConvert): maybe.T(nodes.OpMakeClosure) =
         begin
             let isAdapt = case x.plan.kind when planAdapt then true else false end
-            let c = case x.value
-                when atomVar with v then
-                    if isAdapt andif {countOf(t.uses v.v.id) is 1} then hashMap.get(t.closures v.v.id)
-                    else maybe.none(:nodes.OpMakeClosure) end
-                when atomConst then maybe.none(:nodes.OpMakeClosure)
-            end
-            if maybe.isNone(c) then c
+            let c =
+                case x.value
+                    when atomVar with v then
+                        if isAdapt andif {countOf(t.uses v.v.id) is 1} then hashMap.get(t.closures v.v.id)
+                        else maybe.none(:nodes.OpMakeClosure)
+                        end
+                    when atomConst then maybe.none(:nodes.OpMakeClosure)
+                end
+            if maybe.isNone(c) then
+                c
             else
                 let k = maybe.unwrap(c)
                 let f = k.code
@@ -588,9 +602,10 @@ export
                     let target = written.funSignature(x.plan.target)
                     let fields = adaptedOf(t x.plan).fields
                     let last = if extent fields > 0 then fields[extent fields - 1] else maybe.none(:Plan) end
-                    if {extent target.params isnot extent f.params} orif
-                        {maybe.isNone(last) andif {isOk(source.result) isnot isOk(target.result)}}
-                    then simple := false end
+                    if {extent target.params isnot extent f.params}
+                            orif {maybe.isNone(last) andif {isOk(source.result) isnot isOk(target.result)}} then
+                        simple := false
+                    end
                 end
                 if simple then c else maybe.none(:nodes.OpMakeClosure) end
             end
@@ -641,12 +656,12 @@ export
             when atomVar with v then
                 let isAdapt = case x.plan.kind when planAdapt then true else false end
                 if isAdapt andif not(v.v.isMutable) andif hashMap.contains(t.topLets v.v.id)
-                    andif planOwnDescriptors(x.plan.descriptors adaptedOf(t x.plan)
-                        hashMap.new(:Int :Bool intEqual hash.int))
-                then
+                        andif planOwnDescriptors(x.plan.descriptors adaptedOf(t x.plan)
+                                hashMap.new(:Int :Bool intEqual hash.int)) then
                     let key = conv.int(v.v.id) <> "\n" <> typeKey(x.plan.target) <> "\n" <> layoutKey(x.plan.layout)
                     let found = hashMap.get(t.globalConversions key)
-                    if maybe.isSome(found) then found
+                    if maybe.isSome(found) then
+                        found
                     else
                         let g = nodes.newVar(v.v.hint x.plan.target false)
                         let converted = option opConvert of Op with
@@ -658,7 +673,9 @@ export
                         begin hashMap.insert(t.globalConversions key g) ok end
                         maybe.some(g)
                     end
-                else maybe.none(:Variable) end
+                else
+                    maybe.none(:Variable)
+                end
             when atomConst then maybe.none(:Variable)
         end
 
@@ -708,11 +725,12 @@ export
             when opCall with x then
                 (* A call of an external C function bound to a variable calls
                  * it directly, without its type parameters' descriptors *)
-                let symbol = if maybe.isSome(x.callee) then
-                    hashMap.get(t.externals maybe.unwrap(x.callee).id)
-                else
-                    maybe.none(:String)
-                end
+                let symbol =
+                    if maybe.isSome(x.callee) then
+                        hashMap.get(t.externals maybe.unwrap(x.callee).id)
+                    else
+                        maybe.none(:String)
+                    end
                 if maybe.isSome(symbol) andif {extent x.typeArgs is 0} then
                     maybe.some(option opCallExternal of Op with
                         let symbol = maybe.unwrap(symbol)
@@ -736,29 +754,34 @@ export
                     when sLet with x then
                         let r = operation(t before x.value maybe.some(x.v))
                         if maybe.isSome(r) then x.value := maybe.unwrap(r) end
-                        let known = case x.value
-                            when opMakeClosure with c then
-                                if {extent c.captures is 0} andif {extent c.typeArgs is 0} then
-                                    maybe.some(option knownFunction of Known with let f = c.code end)
-                                else
-                                    maybe.none(:Known)
-                                end
-                            when opAtom with c then knownOf(t c.atom)
-                            when opModuleMember with m then
-                                (* An imported member of function type; the
-                                 * unit's own module's members are its
-                                 * globals, which may still be unbound *)
-                                case m.moduleRef
-                                    when refImport with r then
-                                        if maybe.isSome(m.member) andif isFunctionType(x.v.type) then
-                                            maybe.some(option knownMember of Known with
-                                                let i = r.i let member = maybe.unwrap(m.member) let type = x.v.type
-                                            end)
-                                        else maybe.none(:Known) end
-                                    when refModule then maybe.none(:Known)
-                                end
-                            else maybe.none(:Known)
-                        end
+                        let known =
+                            case x.value
+                                when opMakeClosure with c then
+                                    if {extent c.captures is 0} andif {extent c.typeArgs is 0} then
+                                        maybe.some(option knownFunction of Known with let f = c.code end)
+                                    else
+                                        maybe.none(:Known)
+                                    end
+                                when opAtom with c then knownOf(t c.atom)
+                                when opModuleMember with m then
+                                    (* An imported member of function type; the
+                                     * unit's own module's members are its
+                                     * globals, which may still be unbound *)
+                                    case m.moduleRef
+                                        when refImport with r then
+                                            if maybe.isSome(m.member) andif isFunctionType(x.v.type) then
+                                                maybe.some(option knownMember of Known with
+                                                    let i = r.i
+                                                    let member = maybe.unwrap(m.member)
+                                                    let type = x.v.type
+                                                end)
+                                            else
+                                                maybe.none(:Known)
+                                            end
+                                        when refModule then maybe.none(:Known)
+                                    end
+                                else maybe.none(:Known)
+                            end
                         if maybe.isSome(known) andif not(x.v.isMutable) then
                             hashMap.insert(t.known x.v.id maybe.unwrap(known))
                         end
@@ -837,7 +860,7 @@ export
                                 if hashMap.contains(globals x.params[j].id) then
                                     begin
                                         hashMap.insert(t.topLets x.params[j].id
-                                            tuple let body = x.continuation let atStart = true end)
+                                                tuple let body = x.continuation let atStart = true end)
                                         ok
                                     end
                                 end

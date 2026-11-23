@@ -2,10 +2,11 @@
  * a tautology of implications (from the SML/NJ benchmark suite) *)
 
 import
-    support/bench : support/Bench
-    support/lists : support/Lists
     stringOp = string : StringOp
     writer : Writer
+
+    support/bench : support/Bench
+    support/lists : support/Lists
 
 (* terms.sml: Manipulations over terms *)
 
@@ -51,9 +52,10 @@ let addLemma(t: Term): Ok =
                                 when cons with a2 then
                                     if lists.null(:Term)(a2.tl) then
                                         left.head.props.v :=
-                                            lists.cons(:Lemma)(tuple let left = a1.hd let right = a2.hd end
-                                            left.head.props.v)
-                                    else raise match end
+                                                lists.cons(:Lemma)(tuple let left = a1.hd let right = a2.hd end
+                                                        left.head.props.v)
+                                    else
+                                        raise match end
                                     end
                                 else raise match end
                             end
@@ -125,7 +127,8 @@ and unify1Lst(l1: Terms l2: Terms unifySubst: Bindings): Bindings =
         when nil then case l2 when nil then unifySubst else raise unifyFailed end end
         when cons with c1 then
             case l2 when cons with c2 then unify1Lst(c1.tl c2.tl unify1(c1.hd c2.hd unifySubst))
-                else raise unifyFailed end end
+                else raise unifyFailed end
+            end
     end
 
 let unify(term1: Term term2: Term): Bindings = unify1(term1 term2 lists.nil(:Binding))
@@ -796,10 +799,12 @@ let rec tautologyp(x: Term trueLst: Terms falseLst: Terms): Bool =
                             else tautologyp(yes lists.cons(:Term)(test trueLst) falseLst)
                                 andif tautologyp(no trueLst lists.cons(:Term)(test falseLst))
                             end
-                        else false
+                        else
+                            false
                         end
                     end
-                else raise match end
+                else
+                    raise match end
                 end
         end
     end
@@ -814,16 +819,20 @@ let bind(v: Int t: Term): Binding = tuple let v = v let t = t end
 
 let subst = lists.fromArray(:Binding)(array of
     bind(23 p("f" array
-        of p("plus" array of p("plus" array of v(0) v(1) end)
-            p("plus" array of v(2) p("zero" array of :Term end) end) end) end))
+            of p("plus" array of p("plus" array of v(0) v(1) end)
+                p("plus" array of v(2) p("zero" array of :Term end) end)
+            end) end))
     bind(24 p("f" array
-        of p("times" array of p("times" array of v(0) v(1) end) p("plus" array of v(2) v(3) end) end) end))
+            of p("times" array of p("times" array of v(0) v(1) end) p("plus" array of v(2) v(3) end) end) end))
     bind(25 p("f" array
-        of p("reverse" array
-            of p("append" array of p("append" array of v(0) v(1) end) p("nil" array of :Term end) end) end) end))
+            of p("reverse" array
+                    of p("append" array of p("append" array of v(0) v(1) end)
+                        p("nil" array of :Term end)
+                    end) end) end))
     bind(20 p("equal" array of p("plus" array of v(0) v(1) end) p("difference" array of v(23) v(24) end) end))
     bind(22 p("lt" array of p("remainder" array of v(0) v(1) end)
-        p("member" array of v(0) p("length" array of v(1) end) end) end))
+        p("member" array of v(0) p("length" array of v(1) end) end)
+    end))
 end)
 
 let term =

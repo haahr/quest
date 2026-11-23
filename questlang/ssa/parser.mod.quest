@@ -2,14 +2,16 @@
 
 module parser : Parser
 import
-    questlang/ssa/nodes : questlang/ssa/Nodes
+    ascii : Ascii
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
-    ascii : Ascii
+
+    questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let Function = nodes.Function
     Let Type = nodes.Type
@@ -34,7 +36,9 @@ export
             if {{l.at + n} <= stringOp.length(l.text)} andif stringOp.equal(stringOp.getSub(l.text l.at n) s) then
                 l.at := l.at + n
                 true
-            else false end
+            else
+                false
+            end
         end
 
     let expect(l: Line s: String): Ok = if not(lit(l s)) then fail(:Ok l "expected '" <> s <> "'") end
@@ -83,7 +87,8 @@ export
             elsif stringOp.equal(name "ptr") then nodes.typePtr
             elsif stringOp.equal(name "real") then nodes.typeReal
             elsif stringOp.equal(name "val") then nodes.typeVal
-            else fail(l "unknown type " <> name) end
+            else fail(l "unknown type " <> name)
+            end
         end
 
     (* Gives value v type t, the numbers before it int until defined *)
@@ -131,8 +136,12 @@ export
             if {stringOp.length(name) < 2} orif not({stringOp.getChar(name 0) is 'b'}) then
                 fail(:Ok l "expected a block, not " <> name)
             end
-            let digits = tuple let text = stringOp.getSub(name 1
-                stringOp.length(name) - 1) let number = l.number let var at = 0 end
+            let digits = tuple
+                let text = stringOp.getSub(name 1
+                        stringOp.length(name) - 1)
+                let number = l.number
+                let var at = 0
+            end
             integer(digits)
         end
 
@@ -172,16 +181,25 @@ export
                         expect(l ":")
                         vector.append(bytes integer(l))
                     end
-                else more := false end
+                else more := false
+                end
             end
-            let result = if lit(l "result") then
-                if lit(l "narrow") then maybe.some(nodes.passByte)
-                elsif lit(l "int32") then maybe.some(nodes.passInt32)
-                else fail(:maybe.T(nodes.Passed) l "expected narrow or int32") end
-            else maybe.none(:nodes.Passed) end
+            let result =
+                if lit(l "result") then
+                    if lit(l "narrow") then maybe.some(nodes.passByte)
+                    elsif lit(l "int32") then maybe.some(nodes.passInt32)
+                    else fail(:maybe.T(nodes.Passed) l "expected narrow or int32")
+                    end
+                else
+                    maybe.none(:nodes.Passed)
+                end
             tuple
-                let pairs = pairs let narrow = narrow let memory = vector.toArray(memory)
-                let bytes = vector.toArray(bytes) let int32 = int32 let result = result
+                let pairs = pairs
+                let narrow = narrow
+                let memory = vector.toArray(memory)
+                let bytes = vector.toArray(bytes)
+                let int32 = int32
+                let result = result
             end
         end
 
@@ -230,13 +248,13 @@ export
             let width(prefix: String): Int =
                 begin
                     let rest = stringOp.getSub(name stringOp.length(prefix)
-                        stringOp.length(name) - stringOp.length(prefix))
+                            stringOp.length(name) - stringOp.length(prefix))
                     let digits = if strutil.endsWith(rest "s") then stringOp.getSub(rest 0
-                        stringOp.length(rest) - 1) else rest end
+                            stringOp.length(rest) - 1) else rest end
                     integer(tuple let text = digits let number = l.number let var at = 0 end)
                 end
             if strutil.startsWith(name "load") andif {stringOp.length(name) > 4}
-                andif isDigit(stringOp.getChar(name 4)) then
+                    andif isDigit(stringOp.getChar(name 4)) then
                 let w = width("load")
                 let address = value(l)
                 expect(l "+")
@@ -244,7 +262,7 @@ export
                 i.invariant := lit(l "invariant")
                 i
             elsif strutil.startsWith(name "store") andif {stringOp.length(name) > 5}
-                andif isDigit(stringOp.getChar(name 5)) then
+                    andif isDigit(stringOp.getChar(name 5)) then
                 let w = width("store")
                 let address = value(l)
                 expect(l "+")
@@ -272,10 +290,10 @@ export
                         let args = values(l)
                         call(o args "")
                     when opNull, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr,
-                        opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul,
-                        opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
-                        opBitsReal, opSext8, opZext8, opCopy, opLoad, opStore, opPtrAdd, opToVal, opFromVal,
-                        opSelect, opUnproxy then
+                            opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul,
+                            opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
+                            opBitsReal, opSext8, opZext8, opCopy, opLoad, opStore, opPtrAdd, opToVal, opFromVal,
+                            opSelect, opUnproxy then
                         make(o values(l) 0 "" 0 false)
                 end
             end
@@ -305,14 +323,17 @@ export
             else
                 let name = word(l)
                 if stringOp.equal(name "jump") then some(option termJump of nodes.Terminator with let target = target(l)
-                    end)
+                end)
                 elsif stringOp.equal(name "branch") then
                     let cond = value(l)
                     expect(l ",")
                     let ifTrue = target(l)
                     expect(l ",")
-                    some(option termBranch of nodes.Terminator with let cond = cond let ifTrue = ifTrue
-                        let ifFalse = target(l) end)
+                    some(option termBranch of nodes.Terminator with
+                        let cond = cond
+                        let ifTrue = ifTrue
+                        let ifFalse = target(l)
+                    end)
                 elsif stringOp.equal(name "switch") then
                     let v = value(l)
                     expect(l "[")
@@ -326,7 +347,9 @@ export
                     end
                     expect(l "default")
                     some(option termSwitch of nodes.Terminator with
-                        let value = v let cases = vector.toArray(cases) let targets = vector.toArray(targets)
+                        let value = v
+                        let cases = vector.toArray(cases)
+                        let targets = vector.toArray(targets)
                         let default = target(l)
                     end)
                 elsif stringOp.equal(name "return") then
@@ -340,8 +363,11 @@ export
                     let body = target(l)
                     expect(l ",")
                     expect(l "handler")
-                    some(option termTry of nodes.Terminator with let slot = slot let body = body
-                        let handler = blockNumber(l) end)
+                    some(option termTry of nodes.Terminator with
+                        let slot = slot
+                        let body = body
+                        let handler = blockNumber(l)
+                    end)
                 elsif stringOp.equal(name "unreachable") then some(nodes.termUnreachable)
                 else
                     l.at := start
@@ -353,13 +379,15 @@ export
     (* The source position after an @, of the instructions that follow:
      * line:col (in file 1), file:line:col, or - for none *)
     let loc(l: Line): nodes.Loc =
-        if lit(l "-") then nodes.noLoc
+        if lit(l "-") then
+            nodes.noLoc
         else
             let first = integer(l)
             expect(l ":")
             let second = integer(l)
             if lit(l ":") then tuple let file = first let line = second let col = integer(l) end
-            else tuple let file = 1 let line = first let col = second end end
+            else tuple let file = 1 let line = first let col = second end
+            end
         end
 
     (* function SYMBOL [exported](params) signature[: results] [result ..]
@@ -384,8 +412,12 @@ export
             end
             let result = written(l)
             let w = tuple
-                let pairs = params.pairs let narrow = params.narrow let memory = params.memory let bytes = params.bytes
-                let int32 = params.int32 let result = result.result
+                let pairs = params.pairs
+                let narrow = params.narrow
+                let memory = params.memory
+                let bytes = params.bytes
+                let int32 = params.int32
+                let result = result.result
             end
             f.signature := signatureOf(vector.toArray(f.paramTypes) vector.toArray(f.resultTypes) w)
             if lit(l "slots") then
@@ -434,7 +466,8 @@ export
                         let d3 = ascii.val(stringOp.getChar(l.text l.at + 1)) - 48
                         l.at := l.at + 2
                         sb.char(b ascii.char({{{ascii.val(e) - 48} * 64} + {d2 * 8}} + d3))
-                    else sb.char(b e) end
+                    else sb.char(b e)
+                    end
                 else
                     sb.char(b c)
                 end
@@ -463,12 +496,15 @@ export
                         else
                             let s = word(l)
                             let addend = if lit(l "+") then integer(l) else 0 end
-                            vector.append(ws option wordSymbol of nodes.Word with let symbol = s
-                                let addend = addend end)
+                            vector.append(ws option wordSymbol of nodes.Word with
+                                let symbol = s
+                                let addend = addend
+                            end)
                         end
                     end
                     option contentsWords of nodes.Contents with let words = vector.toArray(ws) end
-                else fail(:nodes.Contents l "expected zero, text, or words") end
+                else fail(:nodes.Contents l "expected zero, text, or words")
+                end
             tuple let symbol = symbol let exported = exported let writable = writable let contents = contents end
         end
 
@@ -482,7 +518,7 @@ export
             for i = 0 upto {vector.length(lines) - 1} do
                 let l = tuple let text = vector.get(lines i) let number = i + 1 let var at = 0 end
                 let finished = fun(): Ok if not(atEnd(l)) then fail(:Ok l "unexpected " <> stringOp.getSub(l.text l.at
-                    stringOp.length(l.text) - l.at)) end
+                        stringOp.length(l.text) - l.at)) end
                 skip(l)
                 if atEnd(l) then ok
                 elsif strutil.startsWith(l.text "function ") then
@@ -512,12 +548,15 @@ export
                     if l.at is 0 then
                         b := blockHeader(f l)
                         f.at := nodes.noLoc
-                    elsif b < 0 then fail(:Ok l "an instruction outside a block")
-                    elsif lit(l "@") then f.at := loc(l)
+                    elsif b < 0 then
+                        fail(:Ok l "an instruction outside a block")
+                    elsif lit(l "@") then
+                        f.at := loc(l)
                     else
                         let t = terminator(f l pending)
                         if maybe.isSome(t) then nodes.terminate(f b maybe.unwrap(t))
-                        else nodes.append(f b instruction(f l pending)) end
+                        else nodes.append(f b instruction(f l pending))
+                        end
                     end
                     finished()
                 end

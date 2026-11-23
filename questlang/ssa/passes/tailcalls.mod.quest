@@ -2,9 +2,10 @@
 
 module tailCalls : TailCalls
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/cfg : questlang/ssa/Cfg
     collections/vector : collections/Vector
+
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let Function = ssa.Function
 
@@ -33,17 +34,22 @@ export
                     let blk = ssa.block(f b)
                     for k = 0 upto {vector.length(blk.insts) - 1} do
                         let i = vector.get(blk.insts k)
-                        let from = case i.op
-                            when opSlot then true
-                            when opAdd, opSub, opPtrAdd then derived[i.args[0]] orif derived[i.args[1]]
-                            when opIntToPtr, opPtrToInt, opCopy, opToVal, opFromVal, opUnproxy then derived[i.args[0]]
-                            when opSelect then derived[i.args[1]] orif derived[i.args[2]]
-                            when opConst, opRealConst, opSymbol, opNull, opMul, opMulHiU, opDiv, opRem, opAnd, opOr,
-                                opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne,
-                                opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opRealBits,
-                                opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opThreadLocal then
-                                false
-                        end
+                        let from =
+                            case i.op
+                                when opSlot then true
+                                when opAdd, opSub, opPtrAdd then derived[i.args[0]] orif derived[i.args[1]]
+                                when opIntToPtr, opPtrToInt, opCopy, opToVal, opFromVal, opUnproxy then
+                                    derived[i.args[0]]
+                                when opSelect then derived[i.args[1]] orif derived[i.args[2]]
+                                when opConst, opRealConst, opSymbol, opNull, opMul, opMulHiU, opDiv, opRem, opAnd, opOr,
+                                        opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq,
+                                        opPne,
+                                        opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN,
+                                        opRealBits,
+                                        opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect,
+                                        opThreadLocal then
+                                    false
+                            end
                         if from then
                             for r = 0 upto {extent i.results - 1} do if mark(i.results[r]) then changed := true end end
                         end
@@ -152,7 +158,7 @@ export
                     when termJump with x then returnsThrough(f x.target returned)
                     when termNone, termBranch, termSwitch, termTailCall, termTry, termUnreachable then false
                 end
-            end
+                end
             if tail then pops else 0 end
         end
 

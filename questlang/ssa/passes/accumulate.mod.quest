@@ -2,10 +2,12 @@
 
 module accumulate : Accumulate
 import
+    stringOp = string : StringOp
+
+    collections/vector : collections/Vector
+
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/passes/tailCalls : questlang/ssa/passes/TailCalls
-    collections/vector : collections/Vector
-    stringOp = string : StringOp
 export
     Let Function = ssa.Function
 
@@ -20,8 +22,7 @@ export
         ssa.isOp(i ssa.opAdd) orif ssa.isOp(i ssa.opMul) orif ssa.isOp(i ssa.opAnd) orif ssa.isOp(i ssa.opOr)
             orif ssa.isOp(i ssa.opXor)
 
-    let identity(op: ssa.Inst): Int =
-        if ssa.isOp(op ssa.opMul) then 1 elsif ssa.isOp(op ssa.opAnd) then ~1 else 0 end
+    let identity(op: ssa.Inst): Int = if ssa.isOp(op ssa.opMul) then 1 elsif ssa.isOp(op ssa.opAnd) then ~1 else 0 end
 
     (* Whether f returns one int, passed as a word *)
     let returnsInt(f: Function): Bool =
@@ -75,12 +76,15 @@ export
                         let r = before.results
                         let a = last.args
                         if isSelf(before) andif {a[0] isnot a[1]} andif {{a[0] is r[0]} orif {a[1] is r[0]}}
-                            andif {not(chosen) orif ssa.isOp(last op.op)} then
+                                andif {not(chosen) orif ssa.isOp(last op.op)} then
                             op := last
                             chosen := true
                             let other = if a[0] is r[0] then a[1] else a[0] end
                             vector.append(found tuple
-                                let block = b let call = before let op = last let other = other
+                                let block = b
+                                let call = before
+                                let op = last
+                                let other = other
                             end)
                         end
                     end

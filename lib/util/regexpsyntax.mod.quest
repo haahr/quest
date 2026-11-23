@@ -3,13 +3,14 @@
 
 module regexpSyntax : RegexpSyntax
 import
+    ascii : Ascii
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/bitset : collections/Bitset
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
-    stringOp = string : StringOp
-    ascii: Ascii
-    conv: Conv
 export
     Let Assertion = Option
         lineStart
@@ -165,7 +166,8 @@ export
                     end
                     tuple let value = if k is j then ~1 else v end let after = k end
                 end
-            if not(isAt(st i 123)) then maybe.none(:Counted)
+            if not(isAt(st i 123)) then
+                maybe.none(:Counted)
             else
                 let lo = number(i + 1)
                 if lo.value < 0 then maybe.none(:Counted)
@@ -174,10 +176,11 @@ export
                     maybe.some(:Counted tuple let min = lo.value let max = lo.value let after = lo.after + 1 end)
                 elsif isAt(st lo.after 44) then
                     let hi = number(lo.after + 1)
-                    if not(isAt(st hi.after 125)) then maybe.none(:Counted)
+                    if not(isAt(st hi.after 125)) then
+                        maybe.none(:Counted)
                     else
                         if {lo.value > maxRepeat} \/ {hi.value > maxRepeat}
-                            \/ {{hi.value >= 0} /\ {hi.value < lo.value}} then
+                                \/ {{hi.value >= 0} /\ {hi.value < lo.value}} then
                             fail(:maybe.T(Counted) "invalid repeat count" i)
                         end
                         maybe.some(:Counted tuple let min = lo.value let max = hi.value let after = hi.after + 1 end)
@@ -190,7 +193,7 @@ export
     (* Whether a repetition operator starts at offset i *)
     let isQuantifier(st: Parser i: Int): Bool =
         {i < st.n} andif {{at(st i) is 42} \/ {at(st i) is 43} \/ {at(st i) is 63}
-                          \/ maybe.isSome(:Counted counted(st i))}
+            \/ maybe.isSome(:Counted counted(st i))}
 
     (* The one byte or the set an escape stands for *)
     Let Escaped = Option
@@ -260,7 +263,7 @@ export
                     st.pos := k + 1
                     escByte(v)
                 elsif {{st.pos + 1} < st.n} andif {hexValue(at(st st.pos)) >= 0}
-                    andif {hexValue(at(st st.pos + 1)) >= 0} then
+                        andif {hexValue(at(st st.pos + 1)) >= 0} then
                     let v = {hexValue(at(st st.pos)) * 16} + hexValue(at(st st.pos + 1))
                     st.pos := st.pos + 2
                     escByte(v)
@@ -399,7 +402,7 @@ export
                 let start = st.pos
                 let c = peek(st)
                 if {c is 42} \/ {c is 43} \/ {c is 63}
-                    \/ {{c is 123} andif maybe.isSome(:Counted counted(st st.pos))} then
+                        \/ {{c is 123} andif maybe.isSome(:Counted counted(st st.pos))} then
                     fail(:Ok "missing argument to repetition operator" start)
                 end
                 let item = if c is 40 then group(st cell) else maybe.some(:Node atom(st cell.f)) end
@@ -415,7 +418,8 @@ export
 
     (* item with the repetition operator after it, if there is one *)
     and quantified(st: Parser item: Node flags: Flags): Node =
-        if not(isQuantifier(st st.pos)) then item
+        if not(isQuantifier(st st.pos)) then
+            item
         else
             let c = peek(st)
             let var min = 0
@@ -474,11 +478,13 @@ export
                 if c is 58 then
                     st.pos := st.pos + 1
                     maybe.some(:Node inner(cell.f))
-                elsif {c is 61} \/ {c is 33} \/ {{c is 60} andif {isAt(st st.pos + 1 61) \/ isAt(st st.pos + 1 33)}}
-                then
+                elsif {c is 61} \/ {c is 33}
+                        \/ {{c is 60} andif {isAt(st st.pos + 1 61) \/ isAt(st st.pos + 1 33)}} then
                     fail(:maybe.T(Node) "lookaround is not supported" start)
-                elsif c is 60 then named(st.pos + 1)
-                elsif {c is 80} andif isAt(st st.pos + 1 60) then named(st.pos + 2)
+                elsif c is 60 then
+                    named(st.pos + 1)
+                elsif {c is 80} andif isAt(st st.pos + 1 60) then
+                    named(st.pos + 2)
                 elsif {c is 80} andif {isAt(st st.pos + 1 61) \/ isAt(st st.pos + 1 62)} then
                     fail(:maybe.T(Node) "backreferences are not supported" start)
                 else
@@ -492,14 +498,30 @@ export
                         let b = peek(st)
                         st.pos := st.pos + 1
                         let on = not(negate)
-                        if b is 105 then begin f := tuple let caseless = on let multiline = f.multiline
-                                let dotAll = f.dotAll let ungreedy = f.ungreedy end any := true end
-                        elsif b is 109 then begin f := tuple let caseless = f.caseless let multiline = on
-                                let dotAll = f.dotAll let ungreedy = f.ungreedy end any := true end
-                        elsif b is 115 then begin f := tuple let caseless = f.caseless let multiline = f.multiline
-                                let dotAll = on let ungreedy = f.ungreedy end any := true end
-                        elsif b is 85 then begin f := tuple let caseless = f.caseless let multiline = f.multiline
-                                let dotAll = f.dotAll let ungreedy = on end any := true end
+                        if b is 105 then begin f := tuple
+                            let caseless = on
+                            let multiline = f.multiline
+                            let dotAll = f.dotAll
+                            let ungreedy = f.ungreedy
+                        end any := true end
+                        elsif b is 109 then begin f := tuple
+                            let caseless = f.caseless
+                            let multiline = on
+                            let dotAll = f.dotAll
+                            let ungreedy = f.ungreedy
+                        end any := true end
+                        elsif b is 115 then begin f := tuple
+                            let caseless = f.caseless
+                            let multiline = f.multiline
+                            let dotAll = on
+                            let ungreedy = f.ungreedy
+                        end any := true end
+                        elsif b is 85 then begin f := tuple
+                            let caseless = f.caseless
+                            let multiline = f.multiline
+                            let dotAll = f.dotAll
+                            let ungreedy = on
+                        end any := true end
                         elsif {b is 45} /\ not(negate) then
                             negate := true
                             any := false
@@ -529,11 +551,11 @@ export
             elsif c is 94 then
                 st.pos := st.pos + 1
                 assertNode(if flags.multiline then option lineStart of Assertion end
-                           else option textStart of Assertion end end)
+                    else option textStart of Assertion end end)
             elsif c is 36 then
                 st.pos := st.pos + 1
                 assertNode(if flags.multiline then option lineEnd of Assertion end
-                           else option textEnd of Assertion end end)
+                    else option textEnd of Assertion end end)
             elsif c is 91 then
                 setNode(charClass(st flags.caseless))
             elsif c is 92 then
@@ -635,7 +657,8 @@ export
                                                     end
                                                 else false
                                             end
-                                        else false
+                                        else
+                                            false
                                         end
                                     if not(merged) then vector.append(:Node parts p) end
                                 end

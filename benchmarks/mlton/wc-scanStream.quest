@@ -2,11 +2,12 @@
  * through a functional stream (SML's TextIO.scanStream) *)
 
 import
-    support/bench : support/Bench
-    stringOp = string : StringOp
     reader : Reader
-    writer : Writer
+    stringOp = string : StringOp
     system : System
+    writer : Writer
+
+    support/bench : support/Bench
 
 (* SML's TextIO.StreamIO functional streams, as TextIO.scanStream reads them: a
  * stream is a position in a chunk of the file, and each chunk reads the next
@@ -19,7 +20,8 @@ Let Read = Option none some with c: Char s: Stream end end
 let chunkSize = 4096
 
 let readChunk(source: reader.T): Next =
-    if not(reader.more(source)) then option eof of Next end
+    if not(reader.more(source)) then
+        option eof of Next end
     else
         begin
             let c: Chunk = tuple
@@ -34,8 +36,13 @@ let readChunk(source: reader.T): Next =
 (* StreamIO.input1 *)
 let rec input1(s: Stream): Read =
     if s.pos < stringOp.length(s.chunk.text) then
-        option some of Read with stringOp.getChar(s.chunk.text s.pos) tuple let chunk = s.chunk
-            let pos = s.pos + 1 end end
+        option some of Read with
+            stringOp.getChar(s.chunk.text s.pos)
+            tuple
+                let chunk = s.chunk
+                let pos = s.pos + 1
+            end
+        end
     else
         begin
             case s.chunk.next when unread then s.chunk.next := readChunk(s.chunk.source) else ok end
@@ -80,7 +87,7 @@ let doit(n: Int): Ok =
                             end
                         count(s 0)
                     end
-                    ins)
+                        ins)
             end
         for i = 1 upto n do wc(f) end
         system.removeFile(f)

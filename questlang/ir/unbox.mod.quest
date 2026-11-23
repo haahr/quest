@@ -2,13 +2,14 @@
 
 module unbox : Unbox
 import
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/ir/nodes : questlang/ir/Nodes
-    questlang/ir/walk : questlang/ir/Walk
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
+
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/repr/shapes : questlang/repr/Shapes
 export
     Let Variable = nodes.Variable
     Let Atom = nodes.Atom
@@ -45,15 +46,16 @@ export
             let stmts = walk.walkStatements(b true)
             for i = 0 upto {vector.length(stmts) - 1} do
                 let st = vector.get(stmts i)
-                let op = case st
-                    when sLet with x then
-                        begin
-                            hashMap.insert(f.defs x.v.id x.value)
-                            maybe.some(x.value)
-                        end
-                    when sDo with x then maybe.some(x.value)
-                    else maybe.none(:Op)
-                end
+                let op =
+                    case st
+                        when sLet with x then
+                            begin
+                                hashMap.insert(f.defs x.v.id x.value)
+                                maybe.some(x.value)
+                            end
+                        when sDo with x then maybe.some(x.value)
+                        else maybe.none(:Op)
+                    end
                 if maybe.isSome(op) then
                     case maybe.unwrap(op)
                         when opCall with c then
@@ -82,7 +84,7 @@ export
      * two, each an Int, Bool, Char, or String, none var *)
     let unboxable(s: shapes.Shape): Bool =
         if not(shapes.kindIs(s shapes.shapeTuple)) orif {extent s.components is 0}
-            orif {extent s.components > maxComponents} then
+                orif {extent s.components > maxComponents} then
             false
         else
             let var all = true
@@ -90,7 +92,7 @@ export
                 let c = s.components[i]
                 let k = shapes.componentShape(c)
                 if c.isVar orif not(shapes.kindIs(k shapes.shapeInt) orif shapes.kindIs(k shapes.shapeBool)
-                    orif shapes.kindIs(k shapes.shapeChar) orif shapes.kindIs(k shapes.shapeString)) then
+                        orif shapes.kindIs(k shapes.shapeChar) orif shapes.kindIs(k shapes.shapeString)) then
                     all := false
                 end
             end
@@ -111,10 +113,13 @@ export
                         case r.value
                             when atomVar with x then
                                 let d = hashMap.get(f.defs x.v.id)
-                                let made = maybe.isSome(d) andif
-                                    {case maybe.unwrap(d) when opMakeTuple with t then extent t.embedded is 0 else false end}
+                                let made = maybe.isSome(d)
+                                    andif {case maybe.unwrap(d)
+                                        when opMakeTuple with t then extent t.embedded is 0
+                                        else false
+                                    end}
                                 if made andif {countOf(f.uses x.v) is 1} andif not(x.v.isMutable)
-                                    andif nodes.sameType(x.v.type fun1.resultType) then
+                                        andif nodes.sameType(x.v.type fun1.resultType) then
                                     vector.append(found x.v)
                                 else
                                     all := false
@@ -144,7 +149,7 @@ export
             for i = 0 upto {vector.length(unit.functions) - 1} do
                 let fun1 = vector.get(unit.functions i)
                 let closures = maybe.unwrapOr(hashMap.get(f.closures fun1.id)
-                    vector.new(:Variable))
+                        vector.new(:Variable))
                 (* Every closure of it is only called *)
                 let var known = {extent fun1.typeParams is 0} andif not(vector.empty(closures))
                     andif unboxable(shapes.shape(fun1.resultType))
@@ -160,22 +165,25 @@ export
                 if known then
                     for k = 0 upto {vector.length(f.calls) - 1} do
                         let st = vector.get(f.calls k)
-                        let callee = case st
-                            when sLet with x then case x.value when opCall with c then c.callee else maybe.none(:Variable) end
-                            when sDo with x then case x.value when opCall with c then c.callee else maybe.none(:Variable) end
-                            else maybe.none(:Variable)
-                        end
+                        let callee =
+                            case st
+                                when sLet with x then
+                                    case x.value when opCall with c then c.callee else maybe.none(:Variable) end
+                                when sDo with x then
+                                    case x.value when opCall with c then c.callee else maybe.none(:Variable) end
+                                else maybe.none(:Variable)
+                            end
                         let var mine = false
                         for j = 0 upto {vector.length(closures) - 1} do
                             if maybe.isSome(callee)
-                                andif nodes.same(maybe.unwrap(callee) vector.get(closures j)) then mine := true end
+                                    andif nodes.same(maybe.unwrap(callee) vector.get(closures j)) then mine := true end
                         end
                         if mine then
                             case st
                                 when sLet with x then
                                     if nodes.sameType(x.v.type fun1.resultType) andif not(x.v.isMutable)
-                                        andif not(hashMap.contains(f.pinned x.v.id))
-                                        andif {countOf(f.uses x.v) is countOf(f.reads x.v)} then
+                                            andif not(hashMap.contains(f.pinned x.v.id))
+                                            andif {countOf(f.uses x.v) is countOf(f.reads x.v)} then
                                         vector.append(results x.v)
                                     else
                                         known := false

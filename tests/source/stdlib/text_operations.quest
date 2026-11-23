@@ -10,13 +10,13 @@
  * written as Python's repr writes them. *)
 
 import
-    util/text : util/Text
-    writer : Writer
-    conv : Conv
     ascii : Ascii
-;
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
-let char(n: Int): String = string.new(1 ascii.char(n));
+    conv : Conv
+    writer : Writer
+
+    util/text : util/Text
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+let char(n: Int): String = string.new(1 ascii.char(n))
 
 (* s as Python's repr writes a string without quotes in it *)
 let repr(s: String): String =
@@ -26,34 +26,41 @@ let repr(s: String): String =
         for i = 0 upto {string.length(s) - 1} do
             let c = string.getChar(s i)
             let v = ascii.val(c)
-            r := r <> if c is '\n' then "\\n"
-                elsif c is '\t' then "\\t"
-                elsif c is '\r' then "\\r"
-                elsif c is '\\' then "\\\\"
-                elsif {v < 32} \/ {v >= 127} then
-                    "\\x" <> string.new(1 string.getChar(digits v / 16)) <> string.new(1 string.getChar(digits v % 16))
-                else string.new(1 c)
-                end
+            r := r
+                <> if c is '\n' then "\\n"
+                    elsif c is '\t' then "\\t"
+                    elsif c is '\r' then "\\r"
+                    elsif c is '\\' then "\\\\"
+                    elsif {v < 32} \/ {v >= 127} then
+                        "\\x" <> string.new(1 string.getChar(digits v / 16))
+                            <> string.new(1 string.getChar(digits v % 16))
+                    else string.new(1 c)
+                    end
         end
         r <> "'"
-    end;
+    end
 
 let show(lines: Array(String)): String =
     begin
         let var r = ""
         for i = 0 upto {extent(lines) - 1} do r := r <> "[" <> lines[i] <> "]" end
         r
-    end;
-let wrapped(s: String o: text.Options): String = try show(text.wrapWith(s o)) when text.error then "error" end;
+    end
+let wrapped(s: String o: text.Options): String = try show(text.wrapWith(s o)) when text.error then "error" end
 
 (* options(width) with each field given *)
 let opts(width: Int initialIndent: String subsequentIndent: String breakLongWords: Bool breakOnHyphens: Bool
         tabSize: Int maxLines: Int placeholder: String): text.Options =
     tuple
-        let width = width let initialIndent = initialIndent let subsequentIndent = subsequentIndent
-        let breakLongWords = breakLongWords let breakOnHyphens = breakOnHyphens let tabSize = tabSize
-        let maxLines = maxLines let placeholder = placeholder
-    end;
+        let width = width
+        let initialIndent = initialIndent
+        let subsequentIndent = subsequentIndent
+        let breakLongWords = breakLongWords
+        let breakOnHyphens = breakOnHyphens
+        let tabSize = tabSize
+        let maxLines = maxLines
+        let placeholder = placeholder
+    end
 
 let paragraphs = array of
     "The quick brown fox jumps over the lazy dog, a well-known pangram used by typists."
@@ -65,8 +72,8 @@ let paragraphs = array of
     ""
     "   \t  \n "
     "one"
-end;
-let widths = array of 1 5 10 15 20 30 60 end;
+end
+let widths = array of 1 5 10 15 20 30 60 end
 for i = 0 upto {extent(paragraphs) - 1} do
     let p = paragraphs[i]
     let n = conv.int(i)
@@ -84,9 +91,9 @@ for i = 0 upto {extent(paragraphs) - 1} do
     print("tabs 4 " <> n <> " " <> wrapped(p opts(30 "" "" true true 4 0 " [...]")))
     print("fill " <> n <> " [" <> text.fill(p 25) <> "]")
     print("shorten " <> n <> " [" <> text.shorten(p 30 " [...]") <> "] [" <> text.shorten(p 12 "...") <> "]")
-end;
+end
 print("errors " <> wrapped("abc" text.options(0)) <> " " <> wrapped("a b c" opts(5 "" "" true true 8 1 "  [toolong]"))
-    <> " " <> wrapped("a b c" opts(8 "" "    " true true 8 2 " [..]")));
+    <> " " <> wrapped("a b c" opts(8 "" "    " true true 8 2 " [..]")))
 
 let dedents = array of
     "    a\n      b\n    c\n"
@@ -98,20 +105,21 @@ let dedents = array of
     "\n\n    only\n\n"
     "  \t mixed\n  \t  more\n"
     ""
-end;
+end
 for i = 0 upto {extent(dedents) - 1} do
     print("dedent " <> repr(dedents[i]) <> " " <> repr(text.dedent(dedents[i])))
-end;
+end
 let indents = array of
     "a\nb\n" "a\n\nb" "  \n x\n" "r\rcr\r\nlf\nvt" <> char(11) <> "ff" <> char(12) <> "fs" <> char(28) <> "end" "" "\n"
-end;
+end
 for i = 0 upto {extent(indents) - 1} do
     let s = indents[i]
     print("indent " <> repr(s) <> " " <> repr(text.indent(s "> ")) <> " "
         <> repr(text.indentIf(s "+" fun(line: String): Bool true)))
-end;
-let tabbed = array of "a\tb\tc" "ab\tc\n\td" "\t" "x\r\ty" "abcdefgh\ti" end;
-let sizes = array of 8 4 0 2 4 end;
+end
+let tabbed = array of "a\tb\tc" "ab\tc\n\td" "\t" "x\r\ty" "abcdefgh\ti" end
+let sizes = array of 8 4 0 2 4 end
 for i = 0 upto {extent(tabbed) - 1} do
-    print("expandTabs " <> repr(tabbed[i]) <> " " <> conv.int(sizes[i]) <> " " <> repr(text.expandTabs(tabbed[i] sizes[i])))
-end;
+    print("expandTabs " <> repr(tabbed[i]) <> " " <> conv.int(sizes[i]) <> " "
+        <> repr(text.expandTabs(tabbed[i] sizes[i])))
+end

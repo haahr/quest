@@ -2,17 +2,19 @@
 
 module contify : Contify
 import
-    questlang/types/model : questlang/types/Model
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/ir/nodes : questlang/ir/Nodes
-    questlang/ir/walk : questlang/ir/Walk
-    questlang/ir/clone : questlang/ir/Clone
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/ir/clone : questlang/ir/Clone
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/types/model : questlang/types/Model
 export
     Let Variable = nodes.Variable
     Let Atom = nodes.Atom
@@ -103,7 +105,8 @@ export
             for i = 0 upto {vector.length(b.statements) - 1} do
                 let st = vector.get(b.statements i)
                 case st
-                    when sFuns with x then for k = 0 upto {extent x.functions - 1} do bodyIds(x.functions[k].body ids) end
+                    when sFuns with x then
+                        for k = 0 upto {extent x.functions - 1} do bodyIds(x.functions[k].body ids) end
                     else ok
                 end
                 let inner = walk.statementBodies(st)
@@ -137,15 +140,16 @@ export
                     sc.calls := sc.calls + 1
                     case st
                         when sLet with x then
-                            let returned = if maybe.isSome(next) andif {{k + 2} is n} then
-                                case maybe.unwrap(next)
-                                    when sReturn with r then
-                                        case r.value when atomVar with y then nodes.same(y.v x.v) else false end
-                                    else false
+                            let returned =
+                                if maybe.isSome(next) andif {{k + 2} is n} then
+                                    case maybe.unwrap(next)
+                                        when sReturn with r then
+                                            case r.value when atomVar with y then nodes.same(y.v x.v) else false end
+                                        else false
+                                    end
+                                else
+                                    false
                                 end
-                            else
-                                false
-                            end
                             if allowed andif returned then
                                 vector.append(sc.tails tuple let body = b let index = k let withReturn = true end)
                             end
@@ -168,7 +172,8 @@ export
                             for j = 0 upto {extent x.cases - 1} do scan(f sc x.cases[j].body allowed tail) end
                             if maybe.isSome(x.elseBody) then scan(f sc maybe.unwrap(x.elseBody) allowed tail) end
                         end
-                    when sJoin with x then begin scan(f sc x.continuation allowed tail) scan(f sc x.body allowed tail) end
+                    when sJoin with x then
+                        begin scan(f sc x.continuation allowed tail) scan(f sc x.body allowed tail) end
                     (* Falling off a loop's body repeats it; a try's body runs
                      * under an exception handler, so calls inside it are not
                      * tail calls *)
@@ -210,7 +215,8 @@ export
     let rec endsControl(b: Body): Bool =
         begin
             let n = vector.length(b.statements)
-            if n is 0 then false
+            if n is 0 then
+                false
             else
                 case vector.get(b.statements n - 1)
                     when sReturn, sRaise, sUnreachable, sJump, sBreak, sContinue then true
@@ -247,7 +253,9 @@ export
             case s
                 when sReturn with x then
                     vector.set(b.statements i option sJump of Stmt with
-                        let var pos = x.pos let label = label let var args = array of x.value end
+                        let var pos = x.pos
+                        let label = label
+                        let var args = array of x.value end
                     end)
                 else
                     let inner = walk.statementBodies(s)
@@ -299,11 +307,14 @@ export
                 for i = 0 upto {tail.index - 1} do vector.append(kept vector.get(tail.body.statements i)) end
                 for i = 0 upto {extent vars - 1} do
                     vector.append(kept option sAssign of Stmt with
-                        let var pos = nodes.stmtPos(tailCall) let var v = vars[i] let var value = c.args[i]
+                        let var pos = nodes.stmtPos(tailCall)
+                        let var v = vars[i]
+                        let var value = c.args[i]
                     end)
                 end
                 vector.append(kept option sContinue of Stmt with
-                    let var pos = nodes.stmtPos(tailCall) let label = loopLabel
+                    let var pos = nodes.stmtPos(tailCall)
+                    let label = loopLabel
                 end)
                 tail.body.statements := kept
             end
@@ -318,7 +329,9 @@ export
             let inner = vector.new(:Stmt)
             for i = 0 upto {extent vars - 1} do
                 vector.append(inner option sVarDecl of Stmt with
-                    let var pos = nodes.stmtPos(st) let var v = vars[i] let var init = maybe.some(call.args[i])
+                    let var pos = nodes.stmtPos(st)
+                    let var v = vars[i]
+                    let var init = maybe.some(call.args[i])
                 end)
             end
             vector.append(inner option sLoop of Stmt with
@@ -353,7 +366,7 @@ export
      * transformation moves bodies and statements, invalidating earlier
      * sites. *)
     let contifyOne(all: Array(Body) recursive: hashMap.T(Int Bool) pinned: hashMap.T(Int Bool) labels: clone.Labels)
-        : Bool =
+            : Bool =
         begin
             let u = tuple
                 let functions = vector.new(:nodes.Function)
@@ -372,7 +385,7 @@ export
                 let sites = maybe.unwrapOr(hashMap.get(u.sites f.v.id) vector.new(:Site))
                 let uses = maybe.unwrapOr(hashMap.get(u.uses f.v.id) 0)
                 if not(done) andif values andif not(hashMap.contains(pinned f.v.id))
-                    andif {uses is vector.length(sites)} andif {uses > 0} andif endsControl(f.body) then
+                        andif {uses is vector.length(sites)} andif {uses > 0} andif endsControl(f.body) then
                     let sc = tuple let tails = vector.new(:Tail) let var calls = 0 end
                     scan(f sc f.body true false)
                     let inside = hashMap.new(:Int :Bool intEqual hash.int)
@@ -390,7 +403,7 @@ export
                     let loops = {sc.calls > 0}
                         orif maybe.unwrapOr(hashMap.get(recursive f.v.id) false)
                     if {vector.length(outside) is 1} andif {vector.length(sc.tails) is sc.calls}
-                        andif loops andif {{sc.calls + 1} is uses} then
+                            andif loops andif {{sc.calls + 1} is uses} then
                         transform(f hashMap.find(u.funs f.v.id) vector.get(outside 0) sc.tails labels)
                         done := true
                     end
@@ -400,7 +413,7 @@ export
         end
 
     let contify(all: Array(Body) recursive: hashMap.T(Int Bool) pinned: hashMap.T(Int Bool) labels: clone.Labels)
-        : Bool =
+            : Bool =
         begin
             let var any = false
             let var more = true

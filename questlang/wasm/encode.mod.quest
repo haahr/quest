@@ -2,13 +2,15 @@
 
 module encode : Encode
 import
-    questlang/wasm/model : questlang/wasm/Model
-    collections/vector : collections/Vector
-    sb = util/stringBuilder : util/StringBuilder
     ascii : Ascii
-    word : Word
     conv : Conv
     stringOp = string : StringOp
+    word : Word
+
+    collections/vector : collections/Vector
+    sb = util/stringBuilder : util/StringBuilder
+
+    questlang/wasm/model : questlang/wasm/Model
 export
     Let Builder = sb.T
     Let Module = model.Module
@@ -120,7 +122,8 @@ export
      * single-byte shorthand (like eqref), while any other reference type is
      * prefixed by 0x63 (nullable) or 0x64 (non-nullable) *)
     let refType(b: Builder nullable: Bool h: HeapType): Ok =
-        if nullable andif not(h?heapIndex) then heapType(b h)
+        if nullable andif not(h?heapIndex) then
+            heapType(b h)
         else
             byte(b if nullable then 0x63 else 0x64 end)
             heapType(b h)
@@ -167,7 +170,8 @@ export
     let subType(b: Builder t: model.SubType): Ok =
         begin
             if {extent t.supers} > 1 then fail("type " <> t.name <> " has more than one supertype") end
-            if t.final andif {extent t.supers is 0} then composite(b t.composite)
+            if t.final andif {extent t.supers is 0} then
+                composite(b t.composite)
             else
                 byte(b if t.final then 0x4F else 0x50 end)
                 u32(b extent t.supers)
@@ -184,7 +188,8 @@ export
                 u32(s vector.length(groups))
                 for g = 0 upto vector.length(groups) - 1 do
                     let group = vector.get(groups g)
-                    if extent group is 1 then subType(s group[0])
+                    if extent group is 1 then
+                        subType(s group[0])
                     else
                         byte(s 0x4E)
                         u32(s extent group)
@@ -207,7 +212,8 @@ export
         end
 
     let opcode(b: Builder prefix: Int code: Int): Ok =
-        if prefix is 0 then byte(b code)
+        if prefix is 0 then
+            byte(b code)
         else
             byte(b prefix)
             u32(b code)
@@ -219,7 +225,7 @@ export
                 let o = x.op
                 if {extent x.args} isnot {extent o.imms} then
                     fail(o.name <> " has " <> conv.int(extent x.args) <> " immediates, not "
-                         <> conv.int(extent o.imms))
+                        <> conv.int(extent o.imms))
                 end
                 opcode(b o.prefix o.code)
                 for k = 0 upto extent o.imms - 1 do
@@ -282,7 +288,8 @@ export
                 heapType(b x.from.heap)
                 heapType(b x.to.heap)
             when instSelect with x then
-                if extent x.types is 0 then byte(b 0x1B)
+                if extent x.types is 0 then
+                    byte(b 0x1B)
                 else
                     byte(b 0x1C)
                     valTypes(b x.types)
@@ -496,7 +503,8 @@ export
             u32(s vector.length(m.data))
             for k = 0 upto vector.length(m.data) - 1 do
                 let d = vector.get(m.data k)
-                if d.offset < 0 then u32(s 1)
+                if d.offset < 0 then
+                    u32(s 1)
                 else
                     u32(s 0)
                     expression(s array of model.i32Const(d.offset) end)

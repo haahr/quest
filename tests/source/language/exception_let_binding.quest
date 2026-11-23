@@ -1,39 +1,39 @@
 (* Language: A let binds an exception by the let's name; the exception's own name only labels it *)
 
-import writer: Writer;
-import conv: Conv;
-import dynamic: Dynamic;
+import conv : Conv
+import dynamic : Dynamic
+import writer : Writer
 
-let wOut = writer.output;
+let wOut = writer.output
 let printInt(x: Int): Ok =
     begin
         writer.putString(wOut conv.int(x))
         writer.putString(wOut "\n")
-    end;
+    end
 
 (* 1. A let-bound exception is reachable by its let name *)
-let e = exception Boom: Int end;
-let d1 = dynamic.new(:Exception(Int) e);
+let e = exception Boom: Int end
+let d1 = dynamic.new(:Exception(Int) e)
 
-printInt(try raise e with 7 end when e with n then n + 1 end);
-printInt(try raise e with 8 end when e with n then n + 2 end);
+printInt(try raise e with 7 end when e with n then n + 1 end)
+printInt(try raise e with 8 end when e with n then n + 2 end)
 
 (* 2. An exception constructed inside a larger expression is the expression's value *)
-let quiet = tuple let exc = exception Quiet: Ok end end.exc;
-printInt(try raise quiet end when quiet then 42 end);
+let quiet = tuple let exc = exception Quiet: Ok end end.exc
+printInt(try raise quiet end when quiet then 42 end)
 
 (* 3. Block-local let-bound exceptions *)
 let r4 =
     begin
         let local = exception Local: Int end
         try raise local with 5 as Int end when local with n then n * 10 end
-    end;
-printInt(r4);
+    end
+printInt(r4)
 
 (* 4. Function-local let-bound exceptions *)
 let f(x: Int): Int =
     begin
         let inner = exception Inner: Int end
         try raise inner with x as Int end when inner with n then n * 100 end
-    end;
-printInt(f(3));
+    end
+printInt(f(3))

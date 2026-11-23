@@ -2,16 +2,18 @@
 
 module peephole : Peephole
 import
-    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
-    questlang/codegen/arm64/printer : questlang/codegen/arm64/Printer
-    questlang/codegen/arm64/target : questlang/codegen/arm64/Target
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+    questlang/codegen/arm64/printer : questlang/codegen/arm64/Printer
+    questlang/codegen/arm64/target : questlang/codegen/arm64/Target
 export
     Let Code = vector.T(minst.Inst)
     let eq(a: String b: String): Bool = stringOp.equal(a b)
@@ -29,29 +31,37 @@ export
         case op
             when opCbz with x then maybe.some(tuple
                 let inverse = fun(l: String): minst.Op option opCbnz of minst.Op with let label = l end
-                let target = x.label let reach = branchReach
+                let target = x.label
+                let reach = branchReach
             end)
             when opCbnz with x then maybe.some(tuple
                 let inverse = fun(l: String): minst.Op option opCbz of minst.Op with let label = l end
-                let target = x.label let reach = branchReach
+                let target = x.label
+                let reach = branchReach
             end)
             when opTbz with x then maybe.some(tuple
                 let inverse = fun(l: String): minst.Op minst.tbnz(0 x.bit l).op
-                let target = x.label let reach = bitBranchReach
+                let target = x.label
+                let reach = bitBranchReach
             end)
             when opTbnz with x then maybe.some(tuple
                 let inverse = fun(l: String): minst.Op minst.tbz(0 x.bit l).op
-                let target = x.label let reach = bitBranchReach
+                let target = x.label
+                let reach = bitBranchReach
             end)
             when opBCond with x then maybe.some(tuple
-                let inverse = fun(l: String): minst.Op minst.bCond(minst.inverse(x.cond) l).op let target = x.label
+                let inverse = fun(l: String): minst.Op minst.bCond(minst.inverse(x.cond) l).op
+                let target = x.label
                 let reach = branchReach
             end)
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
-                opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
-                opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
-                opBr, opRet, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa, opCfiOffset,
-                opLoc then
+                    opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp,
+                    opCcmpImm,
+                    opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl,
+                    opBlr,
+                    opBr, opRet, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa,
+                    opCfiOffset,
+                    opLoc then
                 maybe.none()
         end
     (* Rewrites out-of-range conditional branches into an inverted branch
@@ -75,10 +85,12 @@ export
                     case i.op
                         when opLabel with x then put(at x.label n)
                         when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith,
-                            opAddImm, opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm,
-                            opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff,
-                            opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond,
-                            opBrk, opNop, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
+                                opAddImm, opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp,
+                                opCmpImm,
+                                opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff,
+                                opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond,
+                                opBrk, opNop, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa, opCfiOffset,
+                                opLoc then
                             n := n + printer.count(i.op)
                     end
                 end
@@ -96,8 +108,12 @@ export
                         let t = hashMap.get(at target)
                         if not(strutil.startsWith(target prefix <> "_r")) andif maybe.isSome(t) then
                             let d = maybe.unwrap(t) - position
-                            let within = if maybe.unwrap(c).reach < reach then
-                                maybe.unwrap(c).reach else reach end
+                            let within =
+                                if maybe.unwrap(c).reach < reach then
+                                    maybe.unwrap(c).reach
+                                else
+                                    reach
+                                end
                             far := {d > within} orif {{0 - d} > within}
                         end
                     end
@@ -105,7 +121,8 @@ export
                         count := count + 1
                         let skip = prefix <> "_r" <> conv.int(count)
                         vector.append(next tuple
-                            let op = maybe.unwrap(c).inverse(skip) let regs = i.regs
+                            let op = maybe.unwrap(c).inverse(skip)
+                            let regs = i.regs
                         end)
                         vector.append(next minst.b(maybe.unwrap(c).target))
                         vector.append(next minst.label(skip))
@@ -144,10 +161,12 @@ export
                         when store32, store8 then maybe.none()
                     end
                 when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
-                    opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp,
-                    opCcmpImm, opCset, opCsel, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
-                    opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry,
-                    opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
+                        opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp,
+                        opCcmpImm, opCset, opCsel, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl,
+                        opBlr,
+                        opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable,
+                        opJumpEntry,
+                        opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
                     maybe.none()
             end
         end
@@ -162,8 +181,9 @@ export
     let crossing(op: minst.Op): Int =
         case op
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith, opAddImm, opSubImm, opLogicImm,
-                opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opAdrp,
-                opAddPageOff, opAdr, opLoc then
+                    opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel,
+                    opAdrp,
+                    opAddPageOff, opAdr, opLoc then
                 registersOnly
             when opLoad with x then
                 case x.mode
@@ -171,8 +191,8 @@ export
                     when modePre, modePost then barrier
                 end
             when opTlvAddress, opStore, opLdp, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz,
-                opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa,
-                opCfiOffset then
+                    opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa,
+                    opCfiOffset then
                 barrier
         end
     (* Reports whether b can be paired with a given the registers written and
@@ -264,7 +284,8 @@ export
                             when opB with x then
                                 let target = hashMap.get(labelAt x.label)
                                 if maybe.isSome(target) then to := maybe.unwrap(target)
-                                else going := false end
+                                else going := false
+                                end
                             when opBSymbol, opBl, opBlr, opBr, opRet, opBrk then going := false
                             else ok
                         end
@@ -293,8 +314,9 @@ export
                         let fits = maybe.isSome(accesses[j]) andif not(paired[j])
                             andif pairable(a maybe.unwrap(accesses[j]) written read)
                         let partner = fits andif {a.load orif not(halfLoaded(j + 1 a.base
-                            if a.offset < maybe.unwrap(accesses[j]).offset then a.offset
-                            else maybe.unwrap(accesses[j]).offset end))}
+                                if a.offset < maybe.unwrap(accesses[j]).offset then a.offset
+                                else maybe.unwrap(accesses[j]).offset
+                                end))}
                         if partner then
                             let b = maybe.unwrap(accesses[j])
                             let lowFirst = a.offset < b.offset

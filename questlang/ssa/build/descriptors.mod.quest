@@ -2,19 +2,19 @@
 
 module descriptors : Descriptors
 import
-    ir = questlang/ir/nodes : questlang/ir/Nodes
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/repr/staticdata : questlang/repr/StaticData
-    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     util/maybe : util/Maybe
-    vals = questlang/ssa/build/values : questlang/ssa/build/Values
-export
 
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    questlang/repr/staticdata : questlang/repr/StaticData
+    vals = questlang/ssa/build/values : questlang/ssa/build/Values
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
     (* The SSA address of the static type descriptor described by f *)
     let formAddress(fn: vals.Fn f: staticdata.DescriptorForm): Int =
         begin
             ssa.symbolPlus(fn.f fn.cur f.symbol
-                f.index * maybe.unwrap(runtimeLayout.struct("QTypeDescriptor")).bytes)
+                    f.index * maybe.unwrap(runtimeLayout.struct("QTypeDescriptor")).bytes)
         end
 
     (* Resolves a static descriptor operand to its DescriptorForm, preferring
@@ -22,9 +22,11 @@ export
     let staticFormOf(u: vals.UnitBuilder d: ir.StaticDescriptor): staticdata.DescriptorForm =
         begin
             let ctx = maybe.some(u.naming)
-            let echo = if d.echo then staticdata.echoDescriptorForm(d.type ctx) else maybe.none(:staticdata.DescriptorForm) end
+            let echo =
+                if d.echo then staticdata.echoDescriptorForm(d.type ctx) else maybe.none(:staticdata.DescriptorForm) end
             if maybe.isSome(echo) then maybe.unwrap(echo)
-            else staticdata.descriptorForm(d.type ctx) end
+            else staticdata.descriptorForm(d.type ctx)
+            end
         end
 
     let rec descriptor(fn: vals.Fn d: ir.Descriptor): Int =
@@ -40,7 +42,7 @@ export
                     for i = 0 upto {extent x.args - 1} do args[i] := descriptor(fn x.args[i]) end
                     let array0 = slotArray(fn args)
                     vals.call1(fn "quest_instantiate_descriptor" array of formAddress(fn form) vals.constant(fn extent
-                        x.args) array0 end)
+                            x.args) array0 end)
                 end
         end
 

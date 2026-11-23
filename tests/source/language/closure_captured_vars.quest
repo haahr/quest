@@ -2,18 +2,18 @@
    closure that captures it share one variable, which the lowering holds in a box (docs/type-system.md section
    6.2.3). *)
 
-import writer: Writer;
-import conv: Conv;
-let s(text: String): Ok = writer.putString(writer.output text <> "\n");
+import conv : Conv
+import writer : Writer
+let s(text: String): Ok = writer.putString(writer.output text <> "\n")
 
 (* 1. A counter *)
 let counter(): All() Int = begin
     let var n = 0
     fun(): Int begin n := n + 1 n end
-end;
-let c = counter();
-c(); c();
-s(conv.int(c()));
+end
+let c = counter()
+c() c()
+s(conv.int(c()))
 
 (* 2. Two closures sharing one variable, and the frame seeing their updates *)
 let pair(): Int = begin
@@ -24,8 +24,8 @@ let pair(): Int = begin
     add(7)
     total := total * 2
     get()
-end;
-s(conv.int(pair()));
+end
+s(conv.int(pair()))
 
 (* 3. A capture in a loop, and an update after the closure is made *)
 let looped(): Int = begin
@@ -35,28 +35,28 @@ let looped(): Int = begin
     sum := sum + 100
     let read(): Int = sum
     read()
-end;
-s(conv.int(looped()));
+end
+s(conv.int(looped()))
 
 (* 4. Passed by address from the frame, then read by a closure *)
-let incr(var x: Int): Ok = x := x + 1;
+let incr(var x: Int): Ok = x := x + 1
 let viaAddress(): Int = begin
     let var v = 41
     let read(): Int = v
     incr(@v)
     read()
-end;
-s(conv.int(viaAddress()));
+end
+s(conv.int(viaAddress()))
 
 (* 5. A record held in a captured variable *)
-Let P = Record x: Int end;
+Let P = Record x: Int end
 let records(): Int = begin
     let var p: P = record x = 1 end
     let set(k: Int): Ok = p := record x = k end
     set(9)
     p.x
-end;
-s(conv.int(records()));
+end
+s(conv.int(records()))
 
 (* 6. A variable of a type parameter's type, in a polymorphic function *)
 let latest(A::TYPE first: A second: A): A = begin
@@ -64,8 +64,8 @@ let latest(A::TYPE first: A second: A): A = begin
     let replace(x: A): Ok = v := x
     replace(second)
     v
-end;
-s(latest(:String "first" "second"));
+end
+s(latest(:String "first" "second"))
 
 (* 7. Captured two functions deep *)
 let deep(): Int = begin
@@ -76,19 +76,19 @@ let deep(): Int = begin
         d
     end
     outer() + d
-end;
-s(conv.int(deep()));
+end
+s(conv.int(deep()))
 
 (* 8. A var local to a top-level block, and one local to a loop's body: neither is global *)
 let tick = begin
     let var t = 0
     fun(): Int begin t := t + 1 t end
-end;
-tick();
-s(conv.int(tick()));
+end
+tick()
+s(conv.int(tick()))
 for i = 1 upto 2 do
     let var m = i * 10
     let get(): Int = m
     m := m + 1
     s(conv.int(get()))
-end;
+end

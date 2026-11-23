@@ -3,31 +3,31 @@
    body and applies the result (docs/type-system.md section 6.4). So its body runs at each call, not when it is
    applied to types. *)
 
-import writer: Writer;
-import conv: Conv;
+import conv : Conv
+import writer : Writer
 
-let s(text: String): Ok = writer.putString(writer.output text <> "\n");
+let s(text: String): Ok = writer.putString(writer.output text <> "\n")
 
 (* 1. A result that is a function *)
-let h(A::TYPE): All() Int = begin s("h runs") fun(): Int begin s("h's result runs") 1 end end;
-let hi = h(:Int);
-s("h applied to types");
-s(conv.int(hi()));
+let h(A::TYPE): All() Int = begin s("h runs") fun(): Int begin s("h's result runs") 1 end end
+let hi = h(:Int)
+s("h applied to types")
+s(conv.int(hi()))
 
 (* 2. The same, anonymous *)
-let lam = fun(A::TYPE) fun(): Int begin s("lam's result runs") 2 end;
-let la = lam(:Int);
-s("lam applied to types");
-s(conv.int(la()));
+let lam = fun(A::TYPE) fun(): Int begin s("lam's result runs") 2 end
+let la = lam(:Int)
+s("lam applied to types")
+s(conv.int(la()))
 
 (* 3. Type parameters, then type parameters *)
-let q(A::TYPE)(B::TYPE): Int = begin s("q runs") 3 end;
-let qa = q(:Int);
-s("q applied to its first types");
-s(conv.int(qa(:Bool)));
+let q(A::TYPE)(B::TYPE): Int = begin s("q runs") 3 end
+let qa = q(:Int)
+s("q applied to its first types")
+s(conv.int(qa(:Bool)))
 
 (* 4. Type parameters, then type and value parameters *)
-let r(A::TYPE)(B::TYPE x: B): Int = begin s("r runs") 4 end;
-let ra = r(:Int);
-s("r applied to its first types");
-s(conv.int(ra(:Bool true)));
+let r(A::TYPE)(B::TYPE x: B): Int = begin s("r runs") 4 end
+let ra = r(:Int)
+s("r applied to its first types")
+s(conv.int(ra(:Bool true)))

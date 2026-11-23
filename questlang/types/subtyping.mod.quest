@@ -2,16 +2,18 @@
 
 module subtyping : Subtyping
 import
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let Env = maybe.T(model.Lookup)
     Let Type = model.Type
@@ -145,7 +147,7 @@ export
             vector.forEach(trail.pairs fun(p: Pair): Ok cacheStore(p.sub p.sup env true))
         else
             vector.forEach(trail.results
-                fun(r: Result): Ok if not(r.result) then cacheStore(r.sub r.sup env false) end)
+                    fun(r: Result): Ok if not(r.result) then cacheStore(r.sub r.sup env false) end)
         end
 
     (* ======================================================================
@@ -254,9 +256,9 @@ export
         begin
             if fuel0 <= 0 then
                 diagnostics.raiseError(:Ok tuple
-                    let message = "Fatal compiler error: Subtyping proof exceeded step limit of " <>
-                        conv.int(maxSubtypeFuel) <> " steps while checking (" <> model.show(sub0) <> " <: " <>
-                        model.show(sup0) <> ")"
+                    let message = "Fatal compiler error: Subtyping proof exceeded step limit of "
+                        <> conv.int(maxSubtypeFuel) <> " steps while checking (" <> model.show(sub0) <> " <: "
+                        <> model.show(sup0) <> ")"
                     let offset = 0
                     let length = 1
                     let isFatal = true
@@ -359,8 +361,8 @@ export
                                     else
                                         let subField = maybe.unwrap(found)
                                         if supField.isVar then
-                                            if not(subField.isVar) orif
-                                                not(both(subField.type supField.type env trail fuel)) then
+                                            if not(subField.isVar)
+                                                    orif not(both(subField.type supField.type env trail fuel)) then
                                                 good := false
                                             end
                                         elsif not(prove(subField.type supField.type env trail fuel)) then
@@ -394,11 +396,12 @@ export
                                             else
                                                 let a = maybe.unwrap(subVar.type)
                                                 let b = maybe.unwrap(supVar.type)
-                                                let holds = if subVar.isVar orif supVar.isVar then
-                                                    both(a b env trail fuel)
-                                                else
-                                                    prove(a b env trail fuel)
-                                                end
+                                                let holds =
+                                                    if subVar.isVar orif supVar.isVar then
+                                                        both(a b env trail fuel)
+                                                    else
+                                                        prove(a b env trail fuel)
+                                                    end
                                                 if not(holds) then good := false end
                                             end
                                         elsif maybe.isSome(supVar.type) then
@@ -429,7 +432,7 @@ export
                                             if maybe.isNone(supOpt.payload) then
                                                 good := false
                                             elsif not(prove(subPayload maybe.unwrap(supOpt.payload)
-                                                env trail fuel)) then
+                                                    env trail fuel)) then
                                                 good := false
                                             end
                                         elsif maybe.isSome(supOpt.payload) then
@@ -460,8 +463,8 @@ export
                                             good := false
                                         end
                                     elsif sp.isOut orif tp.isOut then
-                                        if {sp.isOut isnot tp.isOut} orif
-                                            not(prove(sp.type tp.type env trail fuel)) then
+                                        if {sp.isOut isnot tp.isOut}
+                                                orif not(prove(sp.type tp.type env trail fuel)) then
                                             good := false
                                         end
                                     elsif not(prove(tp.type sp.type env trail fuel)) then
@@ -505,12 +508,12 @@ export
                         (* Subkind for the type component; for the signature, a
                          * prefix match with matching names, covariant immutable
                          * and invariant mutable components *)
-                        if {extent s.signature < extent t.signature} orif
-                            not(isSubkind(s.kindBound t.kindBound env)) then
+                        if {extent s.signature < extent t.signature}
+                                orif not(isSubkind(s.kindBound t.kindBound env)) then
                             false
                         else
                             let subst = model.singleSubst(t.symbolId
-                                model.typeVariable(s.typeParam s.symbolId maybe.some(s.kindBound)))
+                                    model.typeVariable(s.typeParam s.symbolId maybe.some(s.kindBound)))
                             let var good = true
                             for i = 0 upto {extent t.signature - 1} do
                                 if good then
@@ -544,7 +547,7 @@ export
                             for i = 0 upto {extent s.params - 1} do
                                 let sp = s.params[i]
                                 hashMap.insert(subst t.params[i].symbolId
-                                    model.typeVariable(sp.name sp.symbolId maybe.some(sp.bound)))
+                                        model.typeVariable(sp.name sp.symbolId maybe.some(sp.bound)))
                             end
                             let var good = true
                             for i = 0 upto {extent s.params - 1} do
@@ -560,8 +563,8 @@ export
             when typeApp with s then
                 case sup.form
                     when typeApp with t then
-                        if {extent s.arguments isnot extent t.arguments} orif
-                            not(isTypeEqual(s.constructor t.constructor env)) then
+                        if {extent s.arguments isnot extent t.arguments}
+                                orif not(isTypeEqual(s.constructor t.constructor env)) then
                             false
                         else
                             let var good = true
@@ -589,8 +592,9 @@ export
      * may be matched by one that sub defines (A = T), and that definition is
      * substituted into sup's later components (rename). *)
     and tuples(
-        subFields: Array(model.TupleComponent) supFields0: Array(model.TupleComponent) env: Env trail: Trail fuel: Int
-    ): Bool =
+            subFields: Array(model.TupleComponent) supFields0: Array(model.TupleComponent) env: Env trail: Trail
+            fuel: Int
+            ): Bool =
         if extent subFields < extent supFields0 then
             false
         else
@@ -598,7 +602,7 @@ export
             let rename = fun(from: Int subst: model.Subst): Ok
                 for j = from upto {vector.length(supFields) - 1} do
                     vector.set(supFields j
-                        model.substituteComponent(vector.get(supFields j) subst))
+                            model.substituteComponent(vector.get(supFields j) subst))
                 end
             let var good = true
             for i = 0 upto {vector.length(supFields) - 1} do
@@ -613,7 +617,7 @@ export
                                         good := false
                                     elsif t.symbolId isnot s.symbolId then
                                         rename({i + 1} model.singleSubst(t.symbolId
-                                            model.typeVariable(s.name s.symbolId maybe.some(s.bound))))
+                                                model.typeVariable(s.name s.symbolId maybe.some(s.bound))))
                                     end
                                 else good := false
                             end
@@ -622,15 +626,15 @@ export
                                 when tupleTypeFormal with t then
                                     if not(stringOp.equal(s.name t.name)) then
                                         good := false
-                                    elsif model.isPower(t.bound) andif
-                                        not(prove(s.type model.powerBound(t.bound) env trail fuel)) then
+                                    elsif model.isPower(t.bound)
+                                            andif not(prove(s.type model.powerBound(t.bound) env trail fuel)) then
                                         good := false
                                     else
                                         rename({i + 1} model.singleSubst(t.symbolId s.type))
                                     end
                                 when tupleTypeBinding with t then
-                                    if not(stringOp.equal(s.name t.name)) orif
-                                        not(prove(s.type t.type env trail fuel)) then
+                                    if not(stringOp.equal(s.name t.name))
+                                            orif not(prove(s.type t.type env trail fuel)) then
                                         good := false
                                     end
                                 else good := false
@@ -679,11 +683,12 @@ export
                     let freshBound = model.substituteInKind(tq.bound supSubst)
                     let fresh = model.typeVariable(tq.name symbols.allocateSymbolId() maybe.some(freshBound))
                     let sBound = model.substituteInKind(sq.bound subSubst)
-                    let holds = if model.isPower(freshBound) andif model.isPower(sBound) then
-                        prove(model.powerBound(freshBound) model.powerBound(sBound) env trail fuel)
-                    else
-                        isSubkind(freshBound sBound env)
-                    end
+                    let holds =
+                        if model.isPower(freshBound) andif model.isPower(sBound) then
+                            prove(model.powerBound(freshBound) model.powerBound(sBound) env trail fuel)
+                        else
+                            isSubkind(freshBound sBound env)
+                        end
                     if holds then
                         hashMap.insert(subSubst sq.symbolId fresh)
                         hashMap.insert(supSubst tq.symbolId fresh)
@@ -738,7 +743,7 @@ export
                                 else
                                     let renamedParam = model.typeVariable(s.paramName s.paramId maybe.none())
                                     let renamedTypes = model.substituteInKind(t.resultKind
-                                        model.singleSubst(t.paramId renamedParam))
+                                            model.singleSubst(t.paramId renamedParam))
                                     let kindSubst = model.newKindSubst()
                                     hashMap.insert(kindSubst t.paramId model.kindVar(s.paramName s.paramId))
                                     isSubkind(s.resultKind model.substituteKinds(renamedTypes kindSubst) env)

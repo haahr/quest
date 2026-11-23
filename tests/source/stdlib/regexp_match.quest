@@ -2,118 +2,125 @@
  * (docs/regexp.md section 3.3): leftmost-first matches and their groups,
  * matches and contains, findFrom and matchAt with the bytes before start,
  * named groups, patterns built as values, and the errors. The corpora are
- * tests/python/test_regexp.py's. *) (* @timeout: 60.0 *)
+ * tests/python/test_regexp.py's. *)  (* @timeout: 60.0 *)
 
-import regexp = util/regexp : util/Regexp;
-import util/maybe : util/Maybe;
-import writer: Writer;
-import conv: Conv;
+import conv : Conv
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
-let b(x: Bool): String = if x then "t" else "f" end;
+import util/maybe : util/Maybe
+import regexp = util/regexp : util/Regexp
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+let b(x: Bool): String = if x then "t" else "f" end
 
 (* A match's groups: start-end, or - for a group that took no part *)
 let groups(r: regexp.T m: maybe.T(regexp.Match)): String =
-    if maybe.isNone(:regexp.Match m) then "none"
+    if maybe.isNone(:regexp.Match m) then
+        "none"
     else
         let x = maybe.unwrap(:regexp.Match m)
         let var text = ""
         for i = 0 upto regexp.groupCount(r) do
-            text := text <> if i > 0 then " " else "" end <> if regexp.matched(x i) then
-                conv.int(regexp.start(x i)) <> "-" <> conv.int(regexp.start(x i) + regexp.size(x i)) <> "\""
-                    <> regexp.group(x i) <> "\""
-                else "-" end
+            text := text <> if i > 0 then " " else "" end
+                <> if regexp.matched(x i) then
+                    conv.int(regexp.start(x i)) <> "-" <> conv.int(regexp.start(x i) + regexp.size(x i)) <> "\""
+                        <> regexp.group(x i) <> "\""
+                else
+                    "-"
+                end
         end
         text
-    end;
+    end
 
 let find(pattern: String s: String): Ok =
     begin
         let r = regexp.compile(pattern)
         print(pattern <> " in \"" <> s <> "\": " <> groups(r regexp.find(r s)) <> "  matches " <> b(regexp.matches(r s))
             <> " contains " <> b(regexp.contains(r s)))
-    end;
+    end
 
 (* 1. Leftmost-first: of the matches that begin leftmost, the preferred *)
-find("abc" "xxabcxx");
-find("a|ab" "ab");
-find("ab|a" "ab");
-find("(a|ab)(c|bcd)(d*)" "abcd");
-find("a+" "baaab");
-find("a+?" "baaab");
-find("(a+?)(a*)" "aaa");
-find("a*" "baaa");
-find("x*" "");
-find("[0-9]+" "abc123def");
-find("(?i)HeLLo" "say hello");
-find("a{2,3}" "aaaa");
-find("a{2,3}?" "aaaa");
-find("(a)|b" "b");
-find("a.c" "a\nc abc");
-find("(?s)a.c" "a\nc");
-find("q" "abc");
+find("abc" "xxabcxx")
+find("a|ab" "ab")
+find("ab|a" "ab")
+find("(a|ab)(c|bcd)(d*)" "abcd")
+find("a+" "baaab")
+find("a+?" "baaab")
+find("(a+?)(a*)" "aaa")
+find("a*" "baaa")
+find("x*" "")
+find("[0-9]+" "abc123def")
+find("(?i)HeLLo" "say hello")
+find("a{2,3}" "aaaa")
+find("a{2,3}?" "aaaa")
+find("(a)|b" "b")
+find("a.c" "a\nc abc")
+find("(?s)a.c" "a\nc")
+find("q" "abc")
 
 (* 2. Empty matches and groups under repetition, as RE2 and Go give them *)
-find("(a*)*" "b");
-find("(a*)+" "b");
-find("()*" "x");
-find("(a|b)*" "abba");
-find("(a){0}b" "ab");
+find("(a*)*" "b")
+find("(a*)+" "b")
+find("()*" "x")
+find("(a|b)*" "abba")
+find("(a){0}b" "ab")
 
 (* 3. Assertions *)
-find("^abc$" "abc");
-find("^abc$" "abcd");
-find("(?m)^b$" "a\nb\nc");
-find("^b" "a\nb");
-find("\\bfoo\\b" "a foo b");
-find("\\bfoo\\b" "afoob");
-find("\\Bo\\B" "foo");
-find("\\Aa\\z" "a");
+find("^abc$" "abc")
+find("^abc$" "abcd")
+find("(?m)^b$" "a\nb\nc")
+find("^b" "a\nb")
+find("\\bfoo\\b" "a foo b")
+find("\\bfoo\\b" "afoob")
+find("\\Bo\\B" "foo")
+find("\\Aa\\z" "a")
 
 (* 4. findFrom and matchAt: the search begins at start, but ^ and \b see the
  * bytes before it *)
-let r = regexp.compile("\\b[a-z]+");
-let s = "one two three";
-print("findFrom 0: " <> groups(r regexp.findFrom(r s 0)));
-print("findFrom 1: " <> groups(r regexp.findFrom(r s 1)));
-print("findFrom 4: " <> groups(r regexp.findFrom(r s 4)));
-print("findFrom 13: " <> groups(r regexp.findFrom(r s 13)));
-print("matchAt 4: " <> groups(r regexp.matchAt(r s 4)));
-print("matchAt 5: " <> groups(r regexp.matchAt(r s 5)));
-let caret = regexp.compile("^t");
-print("^ at 4: " <> groups(caret regexp.findFrom(caret s 4)));
+let r = regexp.compile("\\b[a-z]+")
+let s = "one two three"
+print("findFrom 0: " <> groups(r regexp.findFrom(r s 0)))
+print("findFrom 1: " <> groups(r regexp.findFrom(r s 1)))
+print("findFrom 4: " <> groups(r regexp.findFrom(r s 4)))
+print("findFrom 13: " <> groups(r regexp.findFrom(r s 13)))
+print("matchAt 4: " <> groups(r regexp.matchAt(r s 4)))
+print("matchAt 5: " <> groups(r regexp.matchAt(r s 5)))
+let caret = regexp.compile("^t")
+print("^ at 4: " <> groups(caret regexp.findFrom(caret s 4)))
 
 (* 5. Named groups *)
-let date = regexp.compile("(?P<y>\\d{4})-(?P<m>\\d\\d)-(?<d>\\d\\d)");
-let found = maybe.unwrap(:regexp.Match regexp.find(date "on 2026-11-17, a plan"));
+let date = regexp.compile("(?P<y>\\d{4})-(?P<m>\\d\\d)-(?<d>\\d\\d)")
+let found = maybe.unwrap(:regexp.Match regexp.find(date "on 2026-11-17, a plan"))
 print("groups " <> conv.int(regexp.groupCount(date)) <> ", m is group " <> conv.int(regexp.groupIndex(date "m"))
-    <> ", z is " <> conv.int(regexp.groupIndex(date "z")));
+    <> ", z is " <> conv.int(regexp.groupIndex(date "z")))
 print(regexp.named(found "y") <> "/" <> regexp.named(found "m") <> "/" <> regexp.named(found "d")
-    <> " in \"" <> regexp.subject(found) <> "\"");
-print("pattern: " <> regexp.pattern(date));
+    <> " in \"" <> regexp.subject(found) <> "\"")
+print("pattern: " <> regexp.pattern(date))
 
 (* 6. Patterns built as values *)
-let digits(n: Int): regexp.RE = regexp.repeat(regexp.digit n n true);
+let digits(n: Int): regexp.RE = regexp.repeat(regexp.digit n n true)
 let built = regexp.compileRE(regexp.seq(array of
-    regexp.namedCapture("y" digits(4)) regexp.literal("-") regexp.namedCapture("m" digits(2)) end));
-print("built: " <> regexp.pattern(built) <> ": " <> groups(built regexp.find(built "x 2026-11 y")));
-let word = regexp.plus(regexp.wordByte);
-let pair = regexp.compileRE(regexp.seq(array of regexp.capture(word) regexp.literal("=") regexp.capture(word) end));
-print("pair: " <> groups(pair regexp.find(pair "  key=value  ")));
-let ci = regexp.compileRE(regexp.caseless(regexp.literal("quest")));
-print("caseless: " <> groups(ci regexp.find(ci "the QuEsT language")));
+    regexp.namedCapture("y" digits(4)) regexp.literal("-") regexp.namedCapture("m" digits(2))
+end))
+print("built: " <> regexp.pattern(built) <> ": " <> groups(built regexp.find(built "x 2026-11 y")))
+let word = regexp.plus(regexp.wordByte)
+let pair = regexp.compileRE(regexp.seq(array of regexp.capture(word) regexp.literal("=") regexp.capture(word) end))
+print("pair: " <> groups(pair regexp.find(pair "  key=value  ")))
+let ci = regexp.compileRE(regexp.caseless(regexp.literal("quest")))
+print("caseless: " <> groups(ci regexp.find(ci "the QuEsT language")))
 
 (* 7. The errors *)
 let check(what: String f: All() String): Ok =
     print(what <> ": " <> try f() when regexp.error then "regexp.error"
-        when regexp.syntax with e then "syntax error at " <> conv.int(e.offset) <> ": " <> e.message end);
-check("findFrom ~1" fun(): String groups(r regexp.findFrom(r s ~1)));
-check("findFrom 14" fun(): String groups(r regexp.findFrom(r s 14)));
-check("matchAt 99" fun(): String groups(r regexp.matchAt(r s 99)));
-check("group 2 of 1" fun(): String regexp.group(maybe.unwrap(:regexp.Match regexp.find(r s)) 2));
-check("group ~1" fun(): String b(regexp.matched(maybe.unwrap(:regexp.Match regexp.find(r s)) ~1)));
-check("named zz" fun(): String regexp.named(found "zz"));
-check("compile (" fun(): String regexp.pattern(regexp.compile("(")));
+    when regexp.syntax with e then "syntax error at " <> conv.int(e.offset) <> ": " <> e.message end)
+check("findFrom ~1" fun(): String groups(r regexp.findFrom(r s ~1)))
+check("findFrom 14" fun(): String groups(r regexp.findFrom(r s 14)))
+check("matchAt 99" fun(): String groups(r regexp.matchAt(r s 99)))
+check("group 2 of 1" fun(): String regexp.group(maybe.unwrap(:regexp.Match regexp.find(r s)) 2))
+check("group ~1" fun(): String b(regexp.matched(maybe.unwrap(:regexp.Match regexp.find(r s)) ~1)))
+check("named zz" fun(): String regexp.named(found "zz"))
+check("compile (" fun(): String regexp.pattern(regexp.compile("(")))
 check("one name twice" fun(): String regexp.pattern(regexp.compileRE(regexp.seq(array of
-    regexp.namedCapture("x" regexp.digit) regexp.namedCapture("x" regexp.digit) end))));
+    regexp.namedCapture("x" regexp.digit) regexp.namedCapture("x" regexp.digit)
+end))))
 check("too large" fun(): String regexp.pattern(regexp.compile("((a{1000}){1000}){1000}")))

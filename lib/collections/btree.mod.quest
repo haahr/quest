@@ -7,9 +7,9 @@
 
 module bTree : BTree
 import
-    util/maybe : util/Maybe
     collections/vector : collections/Vector
     iterLib = util/iter : util/Iter
+    util/maybe : util/Maybe
 export
     let error: Exception = exception error: Ok end
     Let Entry = Fun(K::TYPE V::TYPE) Tuple key: K value: V end
@@ -76,8 +76,10 @@ export
                 if isAt(:K :V t x i key) then
                     result := maybe.some(:Tuple node: Node(K V) index: Int end tuple let node = x let index = i end)
                     at := maybe.none(:Node(K V))
-                elsif isLeaf(:K :V x) then at := maybe.none(:Node(K V))
-                else at := maybe.some(:Node(K V) x.children[i])
+                elsif isLeaf(:K :V x) then
+                    at := maybe.none(:Node(K V))
+                else
+                    at := maybe.some(:Node(K V) x.children[i])
                 end
             end
             result
@@ -86,7 +88,8 @@ export
     let get(K::TYPE V::TYPE)(t: T(K V) key: K): maybe.T(V) =
         begin
             let found = locate(:K :V t key)
-            if maybe.isNone(:Tuple node: Node(K V) index: Int end found) then maybe.none(:V)
+            if maybe.isNone(:Tuple node: Node(K V) index: Int end found) then
+                maybe.none(:V)
             else
                 let f = maybe.unwrap(:Tuple node: Node(K V) index: Int end found)
                 maybe.some(:V f.node.values[f.index])
@@ -358,7 +361,8 @@ export
         end
 
     let delete(K::TYPE V::TYPE)(t: T(K V) key: K): maybe.T(V) =
-        if maybe.isNone(:Tuple node: Node(K V) index: Int end locate(:K :V t key)) then maybe.none(:V)
+        if maybe.isNone(:Tuple node: Node(K V) index: Int end locate(:K :V t key)) then
+            maybe.none(:V)
         else
             t.changes := t.changes + 1
             let r = maybe.unwrap(:Node(K V) t.root)
@@ -507,7 +511,7 @@ export
     (* The walk's order, kept as a path of frames from the root (at most the
      * tree's height) where walk recurses *)
     let cursor(K::TYPE V::TYPE R::TYPE)(t: T(K V) lo: maybe.T(K) hi: maybe.T(K) read: All(k: K v: V) R)
-        : iterLib.T(R) =
+            : iterLib.T(R) =
         begin
             let changes = t.changes
             let path = vector.new(:Frame(K V))

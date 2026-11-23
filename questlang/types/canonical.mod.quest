@@ -10,20 +10,22 @@
 
 module canonical : Canonical
 import
-    questlang/types/model : questlang/types/Model
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/types/dump : questlang/types/Dump
+    conv : Conv
+    stringOp = string : StringOp
+    system : System
+    writer : Writer
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
+
     questlang/common/keys : questlang/common/Keys
-    stringOp = string : StringOp
-    conv : Conv
-    system : System
-    writer : Writer
+    questlang/types/dump : questlang/types/Dump
+    questlang/types/model : questlang/types/Model
     questlang/types/reduce : questlang/types/Reduce
+    questlang/types/subtyping : questlang/types/Subtyping
 export
     Let Type = model.Type
     Let Kind = model.Kind
@@ -42,7 +44,7 @@ export
         begin
             let decoded = model.reservedSymbolUse(symbolId)
             if maybe.isSome(decoded)
-                andif {ordinal(maybe.unwrap(decoded).use) is ordinal(use)} then
+                    andif {ordinal(maybe.unwrap(decoded).use) is ordinal(use)} then
                 maybe.some(maybe.unwrap(decoded).index)
             else
                 maybe.none()
@@ -142,7 +144,11 @@ export
                         result := maybe.some(unfolded)
                     elsif reduce.isApp(t) then
                         let reduced = reduce.betaReduceHead(t)
-                        if reduce.isApp(reduced) orif reduce.isRecursive(reduced) then result := maybe.some(t) else t := reduced end
+                        if reduce.isApp(reduced) orif reduce.isRecursive(reduced) then
+                            result := maybe.some(t)
+                        else
+                            t := reduced
+                        end
                     else
                         result := maybe.some(t)
                     end
@@ -211,7 +217,8 @@ export
     let keyStr(b: keys.T s: String): Ok = keys.str(b s)
     let keyOptStr(b: keys.T s: maybe.T(String)): Ok =
         if maybe.isSome(s) then begin keys.bool(b true) keys.str(b maybe.unwrap(s)) end
-        else keys.bool(b false) end
+        else keys.bool(b false)
+        end
     let keyBool(b: keys.T v: Bool): Ok = keys.bool(b v)
     let keyInt(b: keys.T n: Int): Ok = keys.int(b n)
     let keyLabels(b: keys.T labels: Array(Label)): Ok =
@@ -312,7 +319,7 @@ export
                     when kindPower with x then info(option sKindPower of Shape end array of ofType(x.bound) end)
                     when kindAll with x then
                         binderInfo(option sKindAll of Shape end array of ofKind(x.paramKind) ofKind(x.resultKind) end
-                            array of x.paramId end)
+                                array of x.paramId end)
                     else maybe.none()
                 end
             when nodeType with nt then
@@ -358,11 +365,11 @@ export
                             let parts = vector.new(:Node)
                             for i = 0 upto {extent values - 1} do
                                 vector.append(labels
-                                    tuple let name = values[i].name let isVar = values[i].isVar end)
+                                        tuple let name = values[i].name let isVar = values[i].isVar end)
                                 vector.append(parts ofType(values[i].type))
                             end
                             info(option sTuple of Shape with let fields = vector.toArray(labels) end
-                                vector.toArray(parts))
+                                    vector.toArray(parts))
                         else
                             let comps = vector.new(:Comp)
                             let parts = vector.new(:Node)
@@ -391,7 +398,7 @@ export
                                 end
                             end
                             binderInfo(option sXTuple of Shape with let comps = vector.toArray(comps) end
-                                vector.toArray(parts) vector.toArray(binds))
+                                    vector.toArray(parts) vector.toArray(binds))
                         end
                     when typeRecord with x then
                         let fields = byName(x.fields fun(f: model.RecordField): String f.name)
@@ -461,7 +468,11 @@ export
                         let labels = array of(n tuple let name = "" let isVar = false let has = true end)
                         let parts = array of({n + 1} ofKind(x.kindBound))
                         for i = 0 upto {n - 1} do
-                            labels[i] := tuple let name = x.signature[i].name let isVar = x.signature[i].isVar let has = true end
+                            labels[i] := tuple
+                                let name = x.signature[i].name
+                                let isVar = x.signature[i].isVar
+                                let has = true
+                            end
                             parts[i + 1] := ofType(x.signature[i].type)
                         end
                         binderInfo(option sAuto of Shape with let fields = labels end parts array of x.symbolId end)
@@ -498,21 +509,26 @@ export
             when sRecord with x then
                 let fields = array of(extent x.fields tuple let name = "" let type = model.okType let isVar = false end)
                 for i = 0 upto {extent x.fields - 1} do
-                    fields[i] := tuple let name = x.fields[i].name let type = asType(parts[i]) let isVar = x.fields[i].isVar end
+                    fields[i] := tuple
+                        let name = x.fields[i].name
+                        let type = asType(parts[i])
+                        let isVar = x.fields[i].isVar
+                    end
                 end
                 ofType(model.recordType(fields x.provenance))
             when sVariant with x then
                 let next = tuple let var i = 0 end
                 let cases = array of(extent x.cases
-                    tuple let name = "" let type = maybe.none(:Type) let isVar = false end)
+                        tuple let name = "" let type = maybe.none(:Type) let isVar = false end)
                 for i = 0 upto {extent x.cases - 1} do
-                    let payload = if x.cases[i].has then
-                        let p = asType(parts[next.i])
-                        next.i := next.i + 1
-                        maybe.some(p)
-                    else
-                        maybe.none(:Type)
-                    end
+                    let payload =
+                        if x.cases[i].has then
+                            let p = asType(parts[next.i])
+                            next.i := next.i + 1
+                            maybe.some(p)
+                        else
+                            maybe.none(:Type)
+                        end
                     cases[i] := tuple let name = x.cases[i].name let type = payload let isVar = x.cases[i].isVar end
                 end
                 ofType(model.variantType(cases))
@@ -520,13 +536,14 @@ export
                 let next = tuple let var i = 0 end
                 let cases = array of(extent x.cases tuple let name = "" let payload = maybe.none(:Type) end)
                 for i = 0 upto {extent x.cases - 1} do
-                    let payload = if x.cases[i].has then
-                        let p = asType(parts[next.i])
-                        next.i := next.i + 1
-                        maybe.some(p)
-                    else
-                        maybe.none(:Type)
-                    end
+                    let payload =
+                        if x.cases[i].has then
+                            let p = asType(parts[next.i])
+                            next.i := next.i + 1
+                            maybe.some(p)
+                        else
+                            maybe.none(:Type)
+                        end
                     cases[i] := tuple let name = x.cases[i].name let payload = payload end
                 end
                 ofType(model.optionType(cases))
@@ -537,7 +554,7 @@ export
                 (* Parameter names are not part of a function type's identity;
                  * canonical ones keep equal types identical *)
                 let params = array of(extent x.modes
-                    tuple let name = "" let type = model.okType let isVar = false let isOut = false end)
+                        tuple let name = "" let type = model.okType let isVar = false let isOut = false end)
                 for i = 0 upto {extent x.modes - 1} do
                     params[i] := tuple
                         let name = "x" <> conv.int(i + 1)
@@ -739,7 +756,9 @@ export
                     end
                     let found = canonicalNode(n bound)
                     if maybe.isNone(found) then
-                        option refLeaf of Ref with let leaf = tuple let node = n let bound = vector.toArray(free) end end
+                        option refLeaf of Ref with
+                            let leaf = tuple let node = n let bound = vector.toArray(free) end
+                        end
                     else
                         let nodeInfo = maybe.unwrap(found)
                         keys.start(index)
@@ -762,11 +781,11 @@ export
                             vector.append(shapes nodeInfo.shape)
                             vector.append(children array of :Ref end)
                             vector.append(scope
-                                if maybe.isSome(nodeInfo.occurrenceOf) then
-                                    hashMap.find(bound maybe.unwrap(nodeInfo.occurrenceOf)).binder
-                                else
-                                    ~1
-                                end)
+                                    if maybe.isSome(nodeInfo.occurrenceOf) then
+                                        hashMap.find(bound maybe.unwrap(nodeInfo.occurrenceOf)).binder
+                                    else
+                                        ~1
+                                    end)
                             let var inner = bound
                             if extent nodeInfo.binds > 0 then
                                 let copied = newPlaces()
@@ -774,7 +793,7 @@ export
                                     begin hashMap.insert(copied k v) ok end)
                                 for pos = 0 upto {extent nodeInfo.binds - 1} do
                                     hashMap.insert(copied nodeInfo.binds[pos]
-                                        tuple let binder = i let pos = pos end)
+                                            tuple let binder = i let pos = pos end)
                                 end
                                 inner := copied
                             end
@@ -852,19 +871,23 @@ export
                 let kids = vector.get(children i)
                 let mapped = array of(extent kids option refClass of Ref with let k = 0 end)
                 for j = 0 upto {extent kids - 1} do
-                    mapped[j] := case kids[j]
-                        when refClass with x then option refClass of Ref with let k = classes[x.k] end
-                        when refLeaf with x then
-                            let bound = array of(extent x.leaf.bound tuple let symbolId = 0 let binder = 0 let pos = 0 end)
-                            for f = 0 upto {extent bound - 1} do
-                                bound[f] := tuple
-                                    let symbolId = x.leaf.bound[f].symbolId
-                                    let binder = classes[x.leaf.bound[f].binder]
-                                    let pos = x.leaf.bound[f].pos
+                    mapped[j] :=
+                        case kids[j]
+                            when refClass with x then option refClass of Ref with let k = classes[x.k] end
+                            when refLeaf with x then
+                                let bound =
+                                    array of(extent x.leaf.bound tuple let symbolId = 0 let binder = 0 let pos = 0 end)
+                                for f = 0 upto {extent bound - 1} do
+                                    bound[f] := tuple
+                                        let symbolId = x.leaf.bound[f].symbolId
+                                        let binder = classes[x.leaf.bound[f].binder]
+                                        let pos = x.leaf.bound[f].pos
+                                    end
                                 end
-                            end
-                            option refLeaf of Ref with let leaf = tuple let node = x.leaf.node let bound = bound end end
-                    end
+                                option refLeaf of Ref with
+                                    let leaf = tuple let node = x.leaf.node let bound = bound end
+                                end
+                        end
                 end
                 qChildren[k] := mapped
                 let s = vector.get(scope i)
@@ -954,7 +977,8 @@ export
                                                 if component[x.k] isnot comp then
                                                     if vector.get(reachesCycle component[x.k]) then reaches := true end
                                                     hashMap.forEach(vector.get(refers component[x.k])
-                                                        fun(b: Int v: Bool): Ok begin hashMap.insert(referred b true) ok end)
+                                                            fun(b: Int v: Bool): Ok
+                                                                begin hashMap.insert(referred b true) ok end)
                                                 end
                                             when refLeaf with x then
                                                 for f = 0 upto {extent x.leaf.bound - 1} do
@@ -1112,11 +1136,11 @@ export
                         let f = x.leaf.bound[i]
                         let params = hashMap.get(ctx0.scope f.binder)
                         if maybe.isNone(params)
-                            orif {f.pos >= vector.length(maybe.unwrap(params))} then
+                                orif {f.pos >= vector.length(maybe.unwrap(params))} then
                             raise notCanonicalizable end
                         end
                         hashMap.insert(subst f.symbolId
-                            paramVar(vector.get(maybe.unwrap(params) f.pos)))
+                                paramVar(vector.get(maybe.unwrap(params) f.pos)))
                     end
                     substituteNode(x.leaf.node subst)
                 end
@@ -1128,17 +1152,18 @@ export
                     ofType(hashMap.find(ctx0.recVars k))
                 else
                     let refers = g.refers[comp]
-                    let ctx = if inRec then
-                        ctx0
-                    else
-                        let scope = hashMap.new(:Int :vector.T(Param) intEqual hash.int)
-                        hashMap.forEach(ctx0.scope fun(b: Int p: vector.T(Param)): Ok
-                            if hashMap.contains(refers b) then
-                                begin hashMap.insert(scope b p) ok end
-                            end)
-                        let e = emptyContext()
-                        contextWith(e scope if hashMap.empty(refers) then 0 else ctx0.depth end)
-                    end
+                    let ctx =
+                        if inRec then
+                            ctx0
+                        else
+                            let scope = hashMap.new(:Int :vector.T(Param) intEqual hash.int)
+                            hashMap.forEach(ctx0.scope fun(b: Int p: vector.T(Param)): Ok
+                                if hashMap.contains(refers b) then
+                                    begin hashMap.insert(scope b p) ok end
+                                end)
+                            let e = emptyContext()
+                            contextWith(e scope if hashMap.empty(refers) then 0 else ctx0.depth end)
+                        end
                     let binders = vector.new(:Int)
                     hashMap.forEach(ctx.scope fun(b: Int p: vector.T(Param)): Ok
                         if hashMap.contains(refers b) then vector.append(binders b) end)
@@ -1160,22 +1185,24 @@ export
                     (* Intern the key before building the node, because
                      * recursive calls reuse g.built's key buffer *)
                     let number = keys.intern(g.built)
-                    let found = if number < vector.length(g.builtNodes) then
-                        vector.get(g.builtNodes number)
-                    else
-                        maybe.none(:Node)
-                    end
+                    let found =
+                        if number < vector.length(g.builtNodes) then
+                            vector.get(g.builtNodes number)
+                        else
+                            maybe.none(:Node)
+                        end
                     if maybe.isSome(found) then
                         maybe.unwrap(found)
                     else
                         (* Write the node directly from its parts when we are
                          * already inside its recursive type, outside any cycle,
                          * or at a shape that recursion variables do not bind *)
-                        let result = if inRec orif not(g.cyclic[comp]) orif not(isRecShape(g k comp)) then
-                            buildNode(g k ctx)
-                        else
-                            ofType(recursiveTerm(g k ctx))
-                        end
+                        let result =
+                            if inRec orif not(g.cyclic[comp]) orif not(isRecShape(g k comp)) then
+                                buildNode(g k ctx)
+                            else
+                                ofType(recursiveTerm(g k ctx))
+                            end
                         while vector.length(g.builtNodes) <= number do
                             vector.append(g.builtNodes maybe.none(:Node))
                         end
@@ -1208,7 +1235,7 @@ export
                     (* The occurrence's binder does not enclose it as written
                      * back *)
                     if maybe.isNone(params)
-                        orif {x.pos >= vector.length(maybe.unwrap(params))} then
+                            orif {x.pos >= vector.length(maybe.unwrap(params))} then
                         raise notCanonicalizable end
                     end
                     let param = vector.get(maybe.unwrap(params) x.pos)
@@ -1291,7 +1318,7 @@ export
                     for i = 1 upto x.count do
                         let p = newParam("")
                         vector.append(quantifiers
-                            tuple let name = p.name let symbolId = p.symbolId let bound = p.kind end)
+                                tuple let name = p.name let symbolId = p.symbolId let bound = p.kind end)
                     end
                     ofType(model.allType(vector.toArray(quantifiers) asType(nextPart())))
                 when sOperator with x then
@@ -1299,7 +1326,7 @@ export
                     for i = 1 upto x.count do
                         let p = newParam("")
                         vector.append(formals
-                            tuple let name = p.name let symbolId = p.symbolId let bound = p.kind end)
+                                tuple let name = p.name let symbolId = p.symbolId let bound = p.kind end)
                     end
                     ofType(model.typeOperator(vector.toArray(formals) asType(nextPart())))
                 when sKindAll then
@@ -1325,23 +1352,23 @@ export
                                  * name, so formals keep their names *)
                                 let p = newParam(f.name)
                                 vector.append(components
-                                    option tupleTypeFormal of model.TupleComponent with
-                                        let name = p.name
-                                        let symbolId = p.symbolId
-                                        let bound = p.kind
-                                    end)
+                                        option tupleTypeFormal of model.TupleComponent with
+                                            let name = p.name
+                                            let symbolId = p.symbolId
+                                            let bound = p.kind
+                                        end)
                             when compBinding with f then
                                 let type = asType(nextPart())
                                 let bound = if f.hasBound then maybe.some(asKind(nextPart())) else maybe.none(:Kind) end
                                 vector.append(components
-                                    option tupleTypeBinding of model.TupleComponent with
-                                        let name = f.name
-                                        let type = type
-                                        let bound = bound
-                                    end)
+                                        option tupleTypeBinding of model.TupleComponent with
+                                            let name = f.name
+                                            let type = type
+                                            let bound = bound
+                                        end)
                             when compField with f then
                                 vector.append(components
-                                    model.tupleField(f.name asType(nextPart()) f.isVar))
+                                        model.tupleField(f.name asType(nextPart()) f.isVar))
                         end
                     end
                     ofType(model.tupleType(vector.toArray(components)))
@@ -1415,7 +1442,7 @@ export
             let vars = array of(vector.length(binders) model.okType)
             for i = 0 upto {vector.length(binders) - 1} do
                 vars[i] := model.typeVariable("Rec." <> conv.int(i) model.reservedSymbolId(canonicalRecUse i)
-                    maybe.some(model.typeKind))
+                        maybe.some(model.typeKind))
                 hashMap.insert(variables vector.get(binders i) vars[i])
             end
             let inner = tuple
@@ -1431,7 +1458,7 @@ export
                 model.recType(varName(vars[0]) varId(vars[0]) model.typeKind asType(buildNode(g root inner)))
             else
                 let bindings = array of(extent vars
-                    tuple let name = "" let symbolId = 0 let bound = model.typeKind let body = model.okType end)
+                        tuple let name = "" let symbolId = 0 let bound = model.typeKind let body = model.okType end)
                 for i = 0 upto {extent vars - 1} do
                     bindings[i] := tuple
                         let name = varName(vars[i])
@@ -1452,11 +1479,12 @@ export
             if maybe.isSome(found) then
                 maybe.unwrap(found)
             else
-                let result = if g.reachesCycle[g.component[k]] then
-                    maybe.some(build(g option refClass of Ref with let k = k end emptyContext()))
-                else
-                    maybe.none(:Node)
-                end
+                let result =
+                    if g.reachesCycle[g.component[k]] then
+                        maybe.some(build(g option refClass of Ref with let k = k end emptyContext()))
+                    else
+                        maybe.none(:Node)
+                    end
                 hashMap.insert(g.terms k result)
                 result
             end
@@ -1536,9 +1564,13 @@ export
                 when typeRecord with x then
                     for i = 0 upto {extent x.fields - 1} do if mayRecur(x.fields[i].type) then found := true end end
                 when typeVariant with x then
-                    for i = 0 upto {extent x.variants - 1} do if mayRecurOpt(x.variants[i].type) then found := true end end
+                    for i = 0 upto {extent x.variants - 1} do
+                        if mayRecurOpt(x.variants[i].type) then found := true end
+                    end
                 when typeOption with x then
-                    for i = 0 upto {extent x.options - 1} do if mayRecurOpt(x.options[i].payload) then found := true end end
+                    for i = 0 upto {extent x.options - 1} do
+                        if mayRecurOpt(x.options[i].payload) then found := true end
+                    end
                 when typeFun with x then
                     found := mayRecur(x.result)
                     for i = 0 upto {extent x.params - 1} do if mayRecur(x.params[i].type) then found := true end end
@@ -1552,10 +1584,14 @@ export
                     end
                 when typeAuto with x then
                     found := mayRecurKind(x.kindBound)
-                    for i = 0 upto {extent x.signature - 1} do if mayRecur(x.signature[i].type) then found := true end end
+                    for i = 0 upto {extent x.signature - 1} do
+                        if mayRecur(x.signature[i].type) then found := true end
+                    end
                 when typeOperator with x then
                     found := mayRecur(x.body)
-                    for i = 0 upto {extent x.params - 1} do if mayRecurKind(x.params[i].bound) then found := true end end
+                    for i = 0 upto {extent x.params - 1} do
+                        if mayRecurKind(x.params[i].bound) then found := true end
+                    end
                 when typeVariable with x then found := mayRecurOptKind(x.bound)
                 when typeAbstract with x then found := mayRecurKind(x.bound)
                 when typePath with x then found := mayRecurKind(x.bound)
@@ -1620,33 +1656,35 @@ export
             else
                 let s = canonicalStructure(t)
                 let entry = hashMap.get(canonicalNodes s.id)
-                let place = if maybe.isSome(entry) then
-                    entry
-                else
-                    let g = registerGraph(s)
-                    if maybe.isNone(g) then
-                        maybe.none(:GraphClass)
+                let place =
+                    if maybe.isSome(entry) then
+                        entry
                     else
-                        let graph = maybe.unwrap(g)
-                        maybe.some(tuple
-                            let graph = graph
-                            let k = graph.cls[maybe.unwrap(graph.root)]
-                        end)
+                        let g = registerGraph(s)
+                        if maybe.isNone(g) then
+                            maybe.none(:GraphClass)
+                        else
+                            let graph = maybe.unwrap(g)
+                            maybe.some(tuple
+                                let graph = graph
+                                let k = graph.cls[maybe.unwrap(graph.root)]
+                            end)
+                        end
                     end
-                end
                 if maybe.isNone(place) then
                     maybe.none()
                 else
                     let gc = maybe.unwrap(place)
                     let found = try term(gc.graph gc.k) when notCanonicalizable then maybe.none(:Node) end
-                    let canonical = if maybe.isSome(found) then
-                        case maybe.unwrap(found)
-                            when nodeType with x then maybe.some(x.t)
-                            else maybe.none(:Type)
+                    let canonical =
+                        if maybe.isSome(found) then
+                            case maybe.unwrap(found)
+                                when nodeType with x then maybe.some(x.t)
+                                else maybe.none(:Type)
+                            end
+                        else
+                            maybe.none(:Type)
                         end
-                    else
-                        maybe.none(:Type)
-                    end
                     if maybe.isNone(canonical) orif model.same(maybe.unwrap(canonical) t) then
                         maybe.none()
                     else
@@ -1655,12 +1693,14 @@ export
                          * canonical form is used only if it is equal to the
                          * type *)
                         if not(subtyping.isTypeEqual(c model.stripAliases(t) maybe.none())) then
-                            let message = "canonical form of the type " <> dump.shortTypeName(t) <> " is not equal to it"
+                            let message =
+                                "canonical form of the type " <> dump.shortTypeName(t) <> " is not equal to it"
                             if checkCanonical() then raise canonicalError with message end end
                             (* The type is named as written; the program is
                              * still compiled *)
                             writer.putString(writer.err
-                                "quest: warning: internal: " <> message <> "; naming it as written (please report this)\n")
+                                    "quest: warning: internal: " <> message
+                                <> "; naming it as written (please report this)\n")
                             maybe.none()
                         else
                             (* Tags and descriptors ask next for the parts of

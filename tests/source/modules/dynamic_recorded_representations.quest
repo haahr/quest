@@ -3,14 +3,16 @@
  * many arguments (docs/dynamic.md section 2.3; docs/wasm.md section 4.2,
  * the registry, which the wasm backend once did not check) *)
 
-import writer : Writer;
-import reader : Reader;
-import dynamic : Dynamic;
-import small: Small = geom/small : geom/Small;
-import strutil : Strutil = util/strutil : util/Strutil;
-import string : StringOp;
+import dynamic : Dynamic
+import reader : Reader
+import string : StringOp
+import writer : Writer
 
-let show(s: String): Ok = writer.putString(writer.output s <> "\n");
+import strutil : Strutil = util/strutil : util/Strutil
+
+import small : Small = geom/small : geom/Small
+
+let show(s: String): Ok = writer.putString(writer.output s <> "\n")
 let interned(text: String): String =
     try
         begin
@@ -21,7 +23,7 @@ let interned(text: String): String =
             "read"
         end
     when dynamic.error then "dynamic.error"
-    end;
+    end
 (* The type's global name, which depends on where the module is found: as a
  * document extern writes names it *)
 let name: String =
@@ -35,12 +37,12 @@ let name: String =
         let key = "\"abstract\":\""
         let start = strutil.find(text key) + string.length(key)
         string.getSub(text start strutil.findFrom(text "\"" start) - start)
-    end;
+    end
 let doc(args: String rep: String value: String): String =
     "{\"quest\":1,\"types\":[{\"abstract\":\"" <> name <> "\"" <> args <> ",\"rep\":1}," <> rep
-        <> "],\"type\":0,\"value\":" <> value <> "}";
-show("the same: " <> interned(doc("" "{\"record\":{\"x\":\"Int\",\"y\":\"Int\"}}" "{\"x\":1,\"y\":2}")));
-show("another: " <> interned(doc("" "{\"record\":{\"x\":\"Int\"}}" "{\"x\":1}")));
-show("another kind: " <> interned(doc("" "{\"tuple\":[\"Int\"]}" "[1]")));
+        <> "],\"type\":0,\"value\":" <> value <> "}"
+show("the same: " <> interned(doc("" "{\"record\":{\"x\":\"Int\",\"y\":\"Int\"}}" "{\"x\":1,\"y\":2}")))
+show("another: " <> interned(doc("" "{\"record\":{\"x\":\"Int\"}}" "{\"x\":1}")))
+show("another kind: " <> interned(doc("" "{\"tuple\":[\"Int\"]}" "[1]")))
 show("an argument: " <> interned(doc(",\"args\":[\"Int\"]" "{\"record\":{\"x\":\"Int\",\"y\":\"Int\"}}"
-    "{\"x\":1,\"y\":2}")))
+        "{\"x\":1,\"y\":2}")))

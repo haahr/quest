@@ -10,16 +10,17 @@
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
-    questlang/ssa/parser : questlang/ssa/Parser
-    questlang/ssa/printer : questlang/ssa/Printer
-    questlang/ssa/passes/valueNumbers : questlang/ssa/passes/ValueNumbers
-    questlang/ssa/passes/unproxies : questlang/ssa/passes/Unproxies
-    questlang/ssa/verify : questlang/ssa/Verify
-    util/strutil : util/Strutil
     writer : Writer
-;
 
-let emit(s: String): Ok = writer.putString(writer.output s);
+    util/strutil : util/Strutil
+
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/passes/unproxies : questlang/ssa/passes/Unproxies
+    questlang/ssa/passes/valueNumbers : questlang/ssa/passes/ValueNumbers
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/verify : questlang/ssa/Verify
+
+let emit(s: String): Ok = writer.putString(writer.output s)
 
 let show(title: String lines: Array(String)): Ok =
     begin
@@ -34,7 +35,7 @@ let show(title: String lines: Array(String)): Ok =
         emit("-- after unproxies\n")
         emit(printer.formatUnit(u))
         try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
-    end;
+    end
 
 show("a loop over a record's fields" array of
     "function sum(%0: ptr, %1: int): int {"
@@ -57,7 +58,7 @@ show("a loop over a record's fields" array of
     "b3():"
     "  return %6"
     "}"
-end);
+end)
 
 show("unproxies in sibling blocks" array of
     "function either(%0: ptr, %1: int): int {"
@@ -72,7 +73,7 @@ show("unproxies in sibling blocks" array of
     "  %5: int = load8 %4 + 8"
     "  return %5"
     "}"
-end);
+end)
 
 show("two values in one block" array of
     "function both(%0: ptr, %1: ptr): int {"
@@ -84,4 +85,4 @@ show("two values in one block" array of
     "  %6: int = add %3, %5"
     "  return %6"
     "}"
-end);
+end)

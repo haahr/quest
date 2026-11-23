@@ -2,18 +2,20 @@
 
 module scoping : Scoping
 import
-    questlang/common/pyRepr : questlang/common/PyRepr
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    conv : Conv
+    stringOp = string : StringOp
+    system : System
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/iter : util/Iter
     util/hash : util/Hash
+    util/iter : util/Iter
     util/maybe : util/Maybe
-    stringOp = string : StringOp
-    conv : Conv
-    system : System
+
+    questlang/common/pyRepr : questlang/common/PyRepr
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let Expr = typedAst.Expr
     Let Binding = typedAst.Binding
@@ -43,14 +45,20 @@ export
             when exprChar then "TypedChar" when exprString then "TypedString" when exprOk then "TypedOk"
             when exprExternal then "TypedExternal" when exprVar then "TypedVar" when exprFun then "TypedFun"
             when exprApp then "TypedApp" when exprTypeApp then "TypedTypeApp" when exprInfix then "TypedInfix"
-            when exprRecord then "TypedRecord" when exprTypeWitness then "TypedTypeWitness" when exprTuple then "TypedTuple"
-            when exprSelect then "TypedSelect" when exprIndex then "TypedIndex" when exprIndexAssign then "TypedIndexAssign"
+            when exprRecord then "TypedRecord"
+            when exprTypeWitness then "TypedTypeWitness"
+            when exprTuple then "TypedTuple"
+            when exprSelect then "TypedSelect"
+            when exprIndex then "TypedIndex"
+            when exprIndexAssign then "TypedIndexAssign"
             when exprArray then "TypedArray" when exprArrayRep then "TypedArrayRep" when exprVarCell then "TypedVarCell"
             when exprDerefCell then "TypedDerefCell" when exprSelectRef then "TypedSelectRef"
             when exprIndexRef then "TypedIndexRef" when exprTupleSelectRef then "TypedTupleSelectRef"
             when exprAssign then "TypedAssign" when exprVariant then "TypedVariant" when exprOption then "TypedOption"
             when exprAuto then "TypedAuto" when exprVariantCheck then "TypedVariantCheck"
-            when exprVariantAssert then "TypedVariantAssert" when exprCase then "TypedCase" when exprInspect then "TypedInspect"
+            when exprVariantAssert then "TypedVariantAssert"
+            when exprCase then "TypedCase"
+            when exprInspect then "TypedInspect"
             when exprBlock then "TypedBlock" when exprIf then "TypedIf" when exprWhile then "TypedWhile"
             when exprLoop then "TypedLoop" when exprFor then "TypedFor" when exprExit then "TypedExit"
             when exprException then "TypedException" when exprRaise then "TypedRaise" when exprTry then "TypedTry"
@@ -118,9 +126,10 @@ export
                             end
                         end
                         if {extent x.typeParamIds > 0} andif not(same) then
-                            vector.append(st.problems "function at offset " <> conv.int(e.offset) <>
-                                ": type_param_ids " <> pyRepr.ints(x.typeParamIds "(" ")") <> " are not the quantifiers " <>
-                                pyRepr.ints(quants "(" ")") <> " of its type " <> model.show(e.type))
+                            vector.append(st.problems "function at offset " <> conv.int(e.offset)
+                                <> ": type_param_ids " <> pyRepr.ints(x.typeParamIds "(" ")")
+                                <> " are not the quantifiers "
+                                <> pyRepr.ints(quants "(" ")") <> " of its type " <> model.show(e.type))
                         end
                     end
                 when exprBlock with x then
@@ -144,12 +153,12 @@ export
                             let binder = x.branches[i].binder
                             if maybe.isSome(binder) then
                                 hashMap.insert(st.localIds maybe.unwrap(binder).symbolId
-                                    true)
+                                        true)
                             end
                         end
                         if maybe.isSome(x.elseBinder) then
                             hashMap.insert(st.localIds maybe.unwrap(x.elseBinder).symbolId
-                                true)
+                                    true)
                         end
                     end
                 when exprInspect with x then
@@ -185,9 +194,9 @@ export
                 end
             end
             if not(vector.empty(stray)) then
-                vector.append(st.problems whereName <> " at offset " <> conv.int(whereOffset) <> ": type " <>
-                    model.show(t) <> " mentions type parameters " <> pyRepr.ints(vector.toArray(stray) "[" "]") <>
-                    " outside their function")
+                vector.append(st.problems whereName <> " at offset " <> conv.int(whereOffset) <> ": type "
+                    <> model.show(t) <> " mentions type parameters " <> pyRepr.ints(vector.toArray(stray) "[" "]")
+                    <> " outside their function")
             end
         end
 
@@ -230,8 +239,8 @@ export
                     begin
                         let symId = x.symbol.symbolId
                         if hashMap.contains(st.localIds symId) andif not(hashMap.contains(values symId)) then
-                            vector.append(st.problems "variable '" <> x.name <> "' (#" <> conv.int(symId) <>
-                                ") at offset " <> conv.int(e.offset) <> " is used outside the scope of its binder")
+                            vector.append(st.problems "variable '" <> x.name <> "' (#" <> conv.int(symId)
+                                <> ") at offset " <> conv.int(e.offset) <> " is used outside the scope of its binder")
                         end
                     end
                 when exprFun with x then
@@ -258,13 +267,17 @@ export
                             for j = 0 upto {extent lets - 1} do if lets[j].isRec then isRec := true end end
                             if isRec then
                                 (* Recursive members see one another *)
-                                for j = 0 upto {extent lets - 1} do hashMap.insert(scope lets[j].symbol.symbolId true) end
+                                for j = 0 upto {extent lets - 1} do
+                                    hashMap.insert(scope lets[j].symbol.symbolId true)
+                                end
                                 walkBinding(st b copyIds(scope) types)
                             else
                                 (* The values see the bindings in scope before
                                  * the declaration, not its members *)
                                 walkBinding(st b copyIds(scope) types)
-                                for j = 0 upto {extent lets - 1} do hashMap.insert(scope lets[j].symbol.symbolId true) end
+                                for j = 0 upto {extent lets - 1} do
+                                    hashMap.insert(scope lets[j].symbol.symbolId true)
+                                end
                             end
                         end
                         walkExpr(st x.result scope types)
@@ -280,11 +293,12 @@ export
                         walkExpr(st x.target values types)
                         for i = 0 upto {extent x.branches - 1} do
                             let br = x.branches[i]
-                            let inner = if maybe.isSome(br.binder) then
-                                withIds(values array of maybe.unwrap(br.binder).symbolId end)
-                            else
-                                values
-                            end
+                            let inner =
+                                if maybe.isSome(br.binder) then
+                                    withIds(values array of maybe.unwrap(br.binder).symbolId end)
+                                else
+                                    values
+                                end
                             walkExpr(st br.body inner types)
                         end
                         walkOpt(st x.elseBranch values types)
@@ -295,18 +309,20 @@ export
                         for i = 0 upto {extent x.branches - 1} do
                             let br = x.branches[i]
                             walkExpr(st br.excPattern values types)
-                            let inner = if maybe.isSome(br.binder) then
-                                withIds(values array of maybe.unwrap(br.binder).symbolId end)
+                            let inner =
+                                if maybe.isSome(br.binder) then
+                                    withIds(values array of maybe.unwrap(br.binder).symbolId end)
+                                else
+                                    values
+                                end
+                            walkExpr(st br.body inner types)
+                        end
+                        let elseInner =
+                            if maybe.isSome(x.elseBinder) then
+                                withIds(values array of maybe.unwrap(x.elseBinder).symbolId end)
                             else
                                 values
                             end
-                            walkExpr(st br.body inner types)
-                        end
-                        let elseInner = if maybe.isSome(x.elseBinder) then
-                            withIds(values array of maybe.unwrap(x.elseBinder).symbolId end)
-                        else
-                            values
-                        end
                         walkOpt(st x.elseBranch elseInner types)
                     end
                 when exprInspect with x then
@@ -346,7 +362,9 @@ export
     let checkWellScoped(p: typedAst.Program): Array(String) =
         begin
             let st: State = tuple let problems = vector.new() let localIds = newIds() let paramIds = newIds() end
-            for i = 0 upto {extent p.phrases - 1} do collectChildren(st array of option childBinding of typedAst.Child with let b = p.phrases[i] end end) end
+            for i = 0 upto {extent p.phrases - 1} do
+                collectChildren(st array of option childBinding of typedAst.Child with let b = p.phrases[i] end end)
+            end
             for i = 0 upto {extent p.phrases - 1} do walkBinding(st p.phrases[i] newIds() newIds()) end
             vector.toArray(st.problems)
         end

@@ -3,15 +3,16 @@
 
 module descriptors : Descriptors
 import
-    questlang/types/model : questlang/types/Model
-    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/repr/syntax : questlang/repr/Syntax
-    questlang/repr/digests : questlang/repr/Digests
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
+
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
+    questlang/repr/digests : questlang/repr/Digests
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/repr/syntax : questlang/repr/Syntax
+    questlang/types/model : questlang/types/Model
 export
     Let Type = model.Type
     Let Kind = model.Kind
@@ -49,7 +50,7 @@ export
         begin
             let decoded = model.reservedSymbolUse(symbolId)
             if maybe.isSome(decoded)
-                andif {ordinal(maybe.unwrap(decoded).use) is ordinal(use)} then
+                    andif {ordinal(maybe.unwrap(decoded).use) is ordinal(use)} then
                 maybe.some(maybe.unwrap(decoded).index)
             else
                 maybe.none()
@@ -90,7 +91,8 @@ export
                             hashMap.insert(seen x.t.id true)
                             case x.t.form
                                 when typeVariable with v then
-                                    if maybe.isSome(boundVarIndex(x.t)) andif not(hashMap.contains(foundIds v.symbolId)) then
+                                    if maybe.isSome(boundVarIndex(x.t))
+                                            andif not(hashMap.contains(foundIds v.symbolId)) then
                                         hashMap.insert(foundIds v.symbolId true)
                                         vector.append(found x.t)
                                     end
@@ -117,7 +119,7 @@ export
                     when typeVariable with x then
                         begin
                             hashMap.insert(subst x.symbolId
-                                boundVar(maybe.unwrap(boundVarIndex(vector.get(present i))) + by x.bound))
+                                    boundVar(maybe.unwrap(boundVarIndex(vector.get(present i))) + by x.bound))
                             ok
                         end
                     else ok
@@ -146,7 +148,7 @@ export
             case t.form
                 when typeFun with x then
                     let params = array of(extent x.params
-                        tuple let name = "" let type = model.okType let isVar = false let isOut = false end)
+                            tuple let name = "" let type = model.okType let isVar = false let isOut = false end)
                     for i = 0 upto {extent x.params - 1} do
                         let p = x.params[i]
                         params[i] := tuple let name = "" let type = p.type let isVar = p.isVar let isOut = p.isOut end
@@ -171,7 +173,7 @@ export
                         let subst = model.newSubst()
                         for j = 0 upto {k - 1} do
                             hashMap.insert(subst quants[j].symbolId
-                                boundVar({k - 1} - j maybe.some(newQuants[j].bound)))
+                                    boundVar({k - 1} - j maybe.some(newQuants[j].bound)))
                         end
                         newQuants[k] := tuple
                             let name = "$" <> syntax.cInt(k)
@@ -182,7 +184,7 @@ export
                     let placeholders = model.newSubst()
                     for k = 0 upto {n - 1} do
                         hashMap.insert(placeholders quants[k].symbolId
-                            boundVar({n - 1} - k maybe.some(newQuants[k].bound)))
+                                boundVar({n - 1} - k maybe.some(newQuants[k].bound)))
                     end
                     let body0 = model.substitute(shiftType(x.body n) placeholders)
                     let body = if body0.form?typeFun then canonicalFunType(body0) else body0 end
@@ -200,7 +202,8 @@ export
                 let placeholder = boundVar(0 maybe.some(kindBound))
                 let placeholderId = model.reservedSymbolId(boundVarUse 0)
                 let subst = model.singleSubst(x.symbolId placeholder)
-                let signature = array of(extent x.signature tuple let name = "" let type = model.okType let isVar = false end)
+                let signature =
+                    array of(extent x.signature tuple let name = "" let type = model.okType let isVar = false end)
                 for i = 0 upto {extent x.signature - 1} do
                     let f = x.signature[i]
                     signature[i] := tuple

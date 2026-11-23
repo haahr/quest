@@ -2,26 +2,28 @@
 
 module headers : Headers
 import
-    questlang/syntax/ast : questlang/syntax/Ast
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    linked = questlang/repr/symbols : questlang/repr/Symbols
-    questlang/modules/paths : questlang/modules/Paths
-    questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
-    questlang/config/abi : questlang/config/Abi
-    questlang/repr/syntax : questlang/repr/Syntax
-    questlang/repr/layout : questlang/repr/Layout
-    questlang/repr/staticdata : questlang/repr/StaticData
-    questlang/codegen/c/types : questlang/codegen/c/Types
-    questlang/codegen/c/declarations : questlang/codegen/c/Declarations
+    ascii : Ascii
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    ascii : Ascii
+
+    questlang/codegen/c/declarations : questlang/codegen/c/Declarations
+    questlang/codegen/c/types : questlang/codegen/c/Types
+    questlang/config/abi : questlang/config/Abi
+    questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/staticdata : questlang/repr/StaticData
+    linked = questlang/repr/symbols : questlang/repr/Symbols
+    questlang/repr/syntax : questlang/repr/Syntax
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let Type = model.Type
 
@@ -133,35 +135,44 @@ export
                         (* A bounded abstract type (POWER(B)) is held as a value
                          * of B, as the signatures below declare it *)
                         let formal = symbols.lookupTypeLocal(scope s.val.name)
-                        let kind = if maybe.isSome(formal) then
-                            maybe.some(maybe.unwrap(formal).kind)
-                        else
-                            maybe.none(:model.Kind)
-                        end
+                        let kind =
+                            if maybe.isSome(formal) then
+                                maybe.some(maybe.unwrap(formal).kind)
+                            else
+                                maybe.none(:model.Kind)
+                            end
                         let isPower = maybe.isSome(kind) andif model.isPower(maybe.unwrap(kind))
-                        let rep = if isPower then
-                            cType(model.powerBound(maybe.unwrap(kind))) else "QVal" end
-                        let kindText = if maybe.isSome(kind) then
-                            interfaceCompiler.formatKindForQi(maybe.unwrap(kind))
-                        else
-                            "TYPE"
-                        end
+                        let rep =
+                            if isPower then
+                                cType(model.powerBound(maybe.unwrap(kind)))
+                            else
+                                "QVal"
+                            end
+                        let kindText =
+                            if maybe.isSome(kind) then
+                                interfaceCompiler.formatKindForQi(maybe.unwrap(kind))
+                            else
+                                "TYPE"
+                            end
                         add(lines "/* Abstract type " <> s.val.name <> "::" <> kindText <> " */")
-                        add(lines "typedef " <> rep <> " quest_type_" <> cName <> "_" <> linked.memberIdent(s.val.name) <> ";")
+                        add(lines "typedef " <> rep <> " quest_type_" <> cName <> "_" <> linked.memberIdent(s.val.name)
+                            <> ";")
                     when sigTypeBinding with s then
                         if not(s.val.isRec) then
                             hasTypes := true
                             let typeSym = symbols.lookupTypeLocal(scope s.val.name)
-                            let concrete = if maybe.isSome(typeSym) then
-                                maybe.unwrap(typeSym).definition
-                            else
-                                maybe.none(:Type)
-                            end
+                            let concrete =
+                                if maybe.isSome(typeSym) then
+                                    maybe.unwrap(typeSym).definition
+                                else
+                                    maybe.none(:Type)
+                                end
                             add(lines "/* Manifest type " <> s.val.name <> " */")
                             let isRecord = maybe.isSome(concrete)
                                 andif case maybe.unwrap(concrete).form when typeRecord then true else false end
                             if isRecord then
-                                add(lines "typedef struct quest_rec_" <> cName <> "_" <> linked.memberIdent(s.val.name) <> " {")
+                                add(lines "typedef struct quest_rec_" <> cName <> "_" <> linked.memberIdent(s.val.name)
+                                    <> " {")
                                 case maybe.unwrap(concrete).form
                                     when typeRecord with r then
                                         for j = 0 upto {extent r.fields - 1} do
@@ -172,11 +183,17 @@ export
                                     else ok
                                 end
                                 add(lines "} quest_rec_" <> cName <> "_" <> linked.memberIdent(s.val.name) <> ";")
-                                add(lines "typedef QRecordVal quest_type_" <> cName <> "_" <> linked.memberIdent(s.val.name) <> ";")
+                                add(lines "typedef QRecordVal quest_type_" <> cName <> "_"
+                                    <> linked.memberIdent(s.val.name) <> ";")
                             else
-                                let c = if maybe.isSome(concrete) then
-                                    cType(maybe.unwrap(concrete)) else "QVal" end
-                                add(lines "typedef " <> c <> " quest_type_" <> cName <> "_" <> linked.memberIdent(s.val.name) <> ";")
+                                let c =
+                                    if maybe.isSome(concrete) then
+                                        cType(maybe.unwrap(concrete))
+                                    else
+                                        "QVal"
+                                    end
+                                add(lines "typedef " <> c <> " quest_type_" <> cName <> "_"
+                                    <> linked.memberIdent(s.val.name) <> ";")
                             end
                         end
                     else ok
@@ -195,11 +212,12 @@ export
                             hasValues := true
                             let name = maybe.unwrap(s.val.name)
                             let valSym = symbols.lookupValueLocal(scope name)
-                            let valType = if maybe.isSome(valSym) then
-                                maybe.some(maybe.unwrap(valSym).type)
-                            else
-                                maybe.none(:Type)
-                            end
+                            let valType =
+                                if maybe.isSome(valSym) then
+                                    maybe.some(maybe.unwrap(valSym).type)
+                                else
+                                    maybe.none(:Type)
+                                end
                             let comment = "/* " <> name <> ": " <> if maybe.isSome(valType) then
                                 interfaceCompiler.formatTypeForQi(maybe.unwrap(valType))
                             else
@@ -212,43 +230,53 @@ export
                             if isFunction then
                                 let t = maybe.unwrap(valType)
                                 let params = vector.new(:String)
-                                let inner = case t.form
-                                    when typeAll with a then
-                                        for j = 0 upto {extent a.quantifiers - 1} do
-                                            add(params "const QTypeDescriptor *desc_" <> a.quantifiers[j].name)
-                                        end
-                                        a.body
-                                    else t
-                                end
-                                let ret = case inner.form
-                                    when typeFun with f then
-                                        for j = 0 upto {extent f.params - 1} do
-                                            let p = f.params[j]
-                                            let pName0 = if stringOp.length(p.name) > 0 then p.name else "arg" end
-                                            (* A parameter named as a C keyword
-                                             * is renamed *)
-                                            let pName = if isCKeyword(pName0) then "q_" <> pName0 else pName0 end
-                                            if p.isVar orif p.isOut then
-                                                add(params layout.locationRepresentation(p.type) <> " *" <> pName)
-                                            else
-                                                add(params cType(p.type) <> " " <> pName)
+                                let inner =
+                                    case t.form
+                                        when typeAll with a then
+                                            for j = 0 upto {extent a.quantifiers - 1} do
+                                                add(params "const QTypeDescriptor *desc_" <> a.quantifiers[j].name)
                                             end
-                                        end
-                                        cType(f.result)
-                                    else cType(inner)
-                                end
-                                let shown = if vector.empty(params) then
-                                    vector.fromArray(array of "void" end)
-                                    else params
-                                end
+                                            a.body
+                                        else t
+                                    end
+                                let ret =
+                                    case inner.form
+                                        when typeFun with f then
+                                            for j = 0 upto {extent f.params - 1} do
+                                                let p = f.params[j]
+                                                let pName0 = if stringOp.length(p.name) > 0 then p.name else "arg" end
+                                                (* A parameter named as a C keyword
+                                                 * is renamed *)
+                                                let pName = if isCKeyword(pName0) then "q_" <> pName0 else pName0 end
+                                                if p.isVar orif p.isOut then
+                                                    add(params layout.locationRepresentation(p.type) <> " *" <> pName)
+                                                else
+                                                    add(params cType(p.type) <> " " <> pName)
+                                                end
+                                            end
+                                            cType(f.result)
+                                        else cType(inner)
+                                    end
+                                let shown =
+                                    if vector.empty(params) then
+                                        vector.fromArray(array of "void" end)
+                                    else
+                                        params
+                                    end
                                 add(lines comment)
-                                add(lines "typedef " <> ret <> " (*quest_sig_" <> cName <> "_" <> linked.memberIdent(name) <> ")("
+                                add(lines "typedef " <> ret <> " (*quest_sig_" <> cName <> "_"
+                                    <> linked.memberIdent(name) <> ")("
                                     <> syntax.comma(shown) <> ");")
                             else
-                                let c = if maybe.isSome(valType) then
-                                    cType(maybe.unwrap(valType)) else "QVal" end
+                                let c =
+                                    if maybe.isSome(valType) then
+                                        cType(maybe.unwrap(valType))
+                                    else
+                                        "QVal"
+                                    end
                                 add(lines comment)
-                                add(lines "typedef " <> c <> " quest_sig_" <> cName <> "_" <> linked.memberIdent(name) <> ";")
+                                add(lines "typedef " <> c <> " quest_sig_" <> cName <> "_" <> linked.memberIdent(name)
+                                    <> ";")
                             end
                         end
                     else ok
@@ -265,5 +293,4 @@ export
             add(lines "")
             syntax.linesText(lines)
         end
-
 end

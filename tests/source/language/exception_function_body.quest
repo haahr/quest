@@ -1,29 +1,29 @@
 (* Language: Exceptions in function bodies: one a body's block declares is its own, made anew on each call *)
 
-import writer: Writer;
-import conv: Conv;
+import conv : Conv
+import writer : Writer
 
-let wOut = writer.output;
+let wOut = writer.output
 let printInt(x: Int): Ok =
     begin
         writer.putString(wOut conv.int(x))
         writer.putString(wOut "\n")
-    end;
+    end
 
 (* 1. An exception expression as a function's whole body; each call makes a new exception *)
-let mk(x: Int): Exception(Int) = exception Made: Int end;
-let m1 = mk(1);
-let m2 = mk(2);
-printInt(try raise m1 with 5 as Int end when m1 with n then n end);
-printInt(try try raise m1 with 6 as Int end when m2 with n then 0 - n end when m1 with n then n end);
+let mk(x: Int): Exception(Int) = exception Made: Int end
+let m1 = mk(1)
+let m2 = mk(2)
+printInt(try raise m1 with 5 as Int end when m1 with n then n end)
+printInt(try try raise m1 with 6 as Int end when m2 with n then 0 - n end when m1 with n then n end)
 
 (* 2. An exception a function's block declares is visible to the block's handlers *)
 let g(x: Int): Int =
     begin
         exception Inline: Int end
         try raise Inline with x as Int end when Inline with n then n + 1 end
-    end;
-printInt(g(4));
+    end
+printInt(g(4))
 
 (* 3. Inside a branch of a conditional function body *)
 let h(x: Int): Int =
@@ -34,9 +34,9 @@ let h(x: Int): Int =
         end
     else
         0
-    end;
-printInt(h(8));
-printInt(h(~8));
+    end
+printInt(h(8))
+printInt(h(~8))
 
 (* 4. Inside a lambda that captures a variable of the enclosing function *)
 let k(x: Int): Int =
@@ -47,8 +47,8 @@ let k(x: Int): Int =
                 try raise Cap with y as Int end when Cap with n then n + x end
             end
         catcher(10)
-    end;
-printInt(k(1));
+    end
+printInt(k(1))
 
 (* 5. A lambda raising an exception declared in the enclosing function *)
 let lam(x: Int): Int =
@@ -57,15 +57,15 @@ let lam(x: Int): Int =
         let thrower = fun(y: Int): Int
             if y > 0 then raise e with y as Int end else y end
         try thrower(x) when e with n then n * 2 end
-    end;
-printInt(lam(21));
+    end
+printInt(lam(21))
 
 (* 6. A function-local exception shadows a top-level exception of the same name *)
-exception Shadow: Int end;
+exception Shadow: Int end
 let sh(x: Int): Int =
     begin
         exception Shadow: Int end
         try raise Shadow with x as Int end when Shadow with n then n end
-    end;
-printInt(sh(9));
-printInt(try raise Shadow with 3 as Int end when Shadow with n then n + 30 end);
+    end
+printInt(sh(9))
+printInt(try raise Shadow with 3 as Int end when Shadow with n then n + 30 end)

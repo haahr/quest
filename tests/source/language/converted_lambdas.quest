@@ -11,36 +11,39 @@
  * converted inside another, whose copy holds the inner one's closure and a
  * known function's static closure, of the functions the unit has. *)
 
-import writer : Writer;
-import conv : Conv;
-import realOp = real : RealOp;
-import stringOp = string : StringOp;
-import collections/vector : collections/Vector;
-import collections/hashMap : collections/HashMap;
-import util/hash : util/Hash;
+import conv : Conv
+import realOp = real : RealOp
+import stringOp = string : StringOp
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+import collections/hashMap : collections/HashMap
+import collections/vector : collections/Vector
+import util/hash : util/Hash
 
-let intEqual(a: Int b: Int): Bool = a is b;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
 
-let ints = vector.new(:Int);
-for i = 1 upto 3 do vector.append(ints i) end;
+let intEqual(a: Int b: Int): Bool = a is b
+
+let ints = vector.new(:Int)
+for i = 1 upto 3 do vector.append(ints i) end
 
 (* A Real result, with Int, Real, Bool, Char, and String captures *)
 let rec scaled(n: Int r: Real b: Bool c: Char s: String): Real =
-    if n is 0 then 0.0
+    if n is 0 then
+        0.0
     else
         begin
             let rs = vector.map(:Int :Real ints fun(x: Int): Real
                 if b andif {c is 'q'} then realOp.int(x * n + stringOp.length(s)) ** r else 0.0 end)
             vector.fold(:Real :Real rs 0.0 fun(acc: Real e: Real): Real acc ++ e ** r) ++ scaled(n - 1 r b c s)
         end
-    end;
-print("scaled " <> conv.real(scaled(4 0.5 true 'q' "ab")));
+    end
+print("scaled " <> conv.real(scaled(4 0.5 true 'q' "ab")))
 
 (* A tuple result *)
 let rec pairs(k: Int): Int =
-    if k is 0 then 0
+    if k is 0 then
+        0
     else
         begin
             let ps = vector.map(:Int :Tuple x: Int y: Int end ints fun(x: Int): Tuple x: Int y: Int end
@@ -48,29 +51,31 @@ let rec pairs(k: Int): Int =
             vector.fold(:Tuple x: Int y: Int end :Int ps 0 fun(acc: Int p: Tuple x: Int y: Int end): Int
                 acc + p.x * p.y) + pairs(k - 1)
         end
-    end;
-print("pairs " <> conv.int(pairs(5)));
+    end
+print("pairs " <> conv.int(pairs(5)))
 
 (* An Ok result, writing through a captured tuple *)
 let rec visited(m: hashMap.T(Int Int) k: Int): Int =
-    if k is 0 then 0
+    if k is 0 then
+        0
     else
         begin
             let acc = tuple let var s = 0 end
             hashMap.forEach(m fun(a: Int b: Int): Ok acc.s := acc.s + a * b + k)
             acc.s + visited(m k - 1)
         end
-    end;
-let m = hashMap.new(:Int :Int intEqual hash.int);
-for i = 0 upto 9 do let ignored = hashMap.insert(m i i + 1) end;
-let var all = 0;
-for i = 1 upto 200 do all := all + visited(m i % 4) end;
-print("visited " <> conv.int(all));
+    end
+let m = hashMap.new(:Int :Int intEqual hash.int)
+for i = 0 upto 9 do let ignored = hashMap.insert(m i i + 1) end
+let var all = 0
+for i = 1 upto 200 do all := all + visited(m i % 4) end
+print("visited " <> conv.int(all))
 
 (* A lambda converted inside a lambda converted *)
-let double(x: Int): Int = 2 * x;
+let double(x: Int): Int = 2 * x
 let rec nested(k: Int): Int =
-    if k is 0 then 0
+    if k is 0 then
+        0
     else
         begin
             let sums = vector.map(:Int :Int ints fun(x: Int): Int
@@ -81,6 +86,5 @@ let rec nested(k: Int): Int =
                 end)
             vector.fold(:Int :Int sums 0 fun(t: Int e: Int): Int t + e) + nested(k - 1)
         end
-    end;
-print("nested " <> conv.int(nested(3)));
-
+    end
+print("nested " <> conv.int(nested(3)))

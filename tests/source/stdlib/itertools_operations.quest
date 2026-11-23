@@ -4,40 +4,41 @@
  * length, sizes that do not divide); more repeated and next past the end; the
  * errors; and the counts of the combinatoric ones against their formulas *)
 
-import util/iter : util/Iter;
-import util/iterTools : util/IterTools;
-import util/maybe : util/Maybe;
-import util/hash : util/Hash;
-import stringOp = string : StringOp;
-import writer: Writer;
-import conv: Conv;
+import conv : Conv
+import stringOp = string : StringOp
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
-let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds));
+import util/hash : util/Hash
+import util/iter : util/Iter
+import util/iterTools : util/IterTools
+import util/maybe : util/Maybe
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+let check(what: String holds: Bool): Ok = print(what <> ": " <> conv.bool(holds))
 let ints(it: iter.T(Int)): String =
     begin
         let var text = "["
         while iter.more(it) do text := text <> " " <> conv.int(iter.next(it)) end
         text <> " ]"
-    end;
+    end
 let row(a: Array(Int)): String =
     begin
         let var text = "("
         for i = 0 upto {extent a - 1} do text := text <> conv.int(a[i]) end
         text <> ")"
-    end;
+    end
 let rows(it: iter.T(Array(Int))): String =
     begin
         let var text = ""
         while iter.more(it) do text := text <> " " <> row(iter.next(it)) end
         text
-    end;
+    end
 let strings(it: iter.T(String)): String =
     begin
         let var text = "["
         while iter.more(it) do text := text <> " " <> iter.next(it) end
         text <> " ]"
-    end;
+    end
 let pairs(it: iter.T(iter.Pair(Int Int))): String =
     begin
         let var text = ""
@@ -46,97 +47,103 @@ let pairs(it: iter.T(iter.Pair(Int Int))): String =
             text := text <> " " <> conv.int(p.first) <> ":" <> conv.int(p.second)
         end
         text
-    end;
-let same(x: Int y: Int): Bool = x is y;
-let plus(x: Int y: Int): Int = x + y;
-let raised(f: All() Ok): Bool = try begin f() false end when iterTools.error then true end;
-let abc = array of 1 2 3 end;
-let none = array of :Int end;
+    end
+let same(x: Int y: Int): Bool = x is y
+let plus(x: Int y: Int): Int = x + y
+let raised(f: All() Ok): Bool = try begin f() false end when iterTools.error then true end
+let abc = array of 1 2 3 end
+let none = array of :Int end
 
 (* Sources *)
-print("count " <> ints(iter.take(iterTools.count(10 ~3) 5)));
+print("count " <> ints(iter.take(iterTools.count(10 ~3) 5)))
 print("repeat " <> ints(iter.take(iterTools.repeat(7) 3)) <> " repeatN " <> ints(iterTools.repeatN(7 2))
-    <> ints(iterTools.repeatN(7 0)));
+    <> ints(iterTools.repeatN(7 0)))
 print("cycle " <> ints(iter.take(iterTools.cycle(iter.range(1 4)) 7)) <> " of empty "
-    <> ints(iterTools.cycle(iter.empty())));
-let pulled = tuple let var n = 0 end;
-let counted = iterTools.cycle(iter.map(iter.range(0 2) fun(x: Int): Int begin pulled.n := pulled.n + 1 x end));
-print("cycle " <> ints(iter.take(counted 5)) <> ", source pulled " <> conv.int(pulled.n) <> " times");
-print("cycleFrom " <> ints(iter.take(iterTools.cycleFrom(fun(): iter.T(Int) iter.ofArray(abc)) 7)));
-print("cycleFrom of empty " <> ints(iterTools.cycleFrom(fun(): iter.T(Int) iter.empty())));
-let made = tuple let var n = 0 end;
-let doubled = iterTools.iterate(1 fun(x: Int): Int begin made.n := made.n + 1 2 * x end);
-print("iterate " <> ints(iter.take(doubled 6)) <> ", f called " <> conv.int(made.n) <> " times");
+    <> ints(iterTools.cycle(iter.empty())))
+let pulled = tuple let var n = 0 end
+let counted = iterTools.cycle(iter.map(iter.range(0 2) fun(x: Int): Int begin pulled.n := pulled.n + 1 x end))
+print("cycle " <> ints(iter.take(counted 5)) <> ", source pulled " <> conv.int(pulled.n) <> " times")
+print("cycleFrom " <> ints(iter.take(iterTools.cycleFrom(fun(): iter.T(Int) iter.ofArray(abc)) 7)))
+print("cycleFrom of empty " <> ints(iterTools.cycleFrom(fun(): iter.T(Int) iter.empty())))
+let made = tuple let var n = 0 end
+let doubled = iterTools.iterate(1 fun(x: Int): Int begin made.n := made.n + 1 2 * x end)
+print("iterate " <> ints(iter.take(doubled 6)) <> ", f called " <> conv.int(made.n) <> " times")
 
 (* Stages *)
-print("accumulate " <> ints(iterTools.accumulate(iter.range(1 6) plus)) <> ints(iterTools.accumulate(iter.empty() plus)));
-print("scan " <> ints(iterTools.scan(iter.range(1 4) 100 plus)) <> ints(iterTools.scan(iter.empty() 0 plus)));
-print("flatten " <> ints(iterTools.flatten(iter.map(iter.range(0 4) fun(n: Int): iter.T(Int) iter.range(0 n)))));
-print("reject " <> ints(iterTools.reject(iter.range(0 10) fun(x: Int): Bool {x % 3} is 0)));
-print("compress " <> ints(iterTools.compress(iter.range(0 6) iter.ofArray(array of true false true true end))));
-print("stepBy " <> ints(iterTools.stepBy(iter.range(0 10) 3)) <> " slice " <> ints(iterTools.slice(iter.range(0 20) 2 11 4))
-    <> ints(iterTools.slice(iter.range(0 5) 3 2 1)));
-print("pairwise" <> pairs(iterTools.pairwise(iter.range(0 4))) <> " short" <> pairs(iterTools.pairwise(iter.once(1))));
-print("windows" <> rows(iterTools.windows(iter.range(0 5) 3)) <> " short" <> rows(iterTools.windows(iter.range(0 2) 3)));
-print("batched" <> rows(iterTools.batched(iter.range(0 7) 3)) <> " exact" <> rows(iterTools.batched(iter.range(0 4) 2)));
-let words = array of "apple" "avocado" "banana" "blueberry" "cherry" "apricot" end;
+print("accumulate " <> ints(iterTools.accumulate(iter.range(1 6) plus))
+    <> ints(iterTools.accumulate(iter.empty() plus)))
+print("scan " <> ints(iterTools.scan(iter.range(1 4) 100 plus)) <> ints(iterTools.scan(iter.empty() 0 plus)))
+print("flatten " <> ints(iterTools.flatten(iter.map(iter.range(0 4) fun(n: Int): iter.T(Int) iter.range(0 n)))))
+print("reject " <> ints(iterTools.reject(iter.range(0 10) fun(x: Int): Bool {x % 3} is 0)))
+print("compress " <> ints(iterTools.compress(iter.range(0 6) iter.ofArray(array of true false true true end))))
+print("stepBy " <> ints(iterTools.stepBy(iter.range(0 10) 3)) <> " slice "
+    <> ints(iterTools.slice(iter.range(0 20) 2 11 4))
+    <> ints(iterTools.slice(iter.range(0 5) 3 2 1)))
+print("pairwise" <> pairs(iterTools.pairwise(iter.range(0 4))) <> " short" <> pairs(iterTools.pairwise(iter.once(1))))
+print("windows" <> rows(iterTools.windows(iter.range(0 5) 3)) <> " short" <> rows(iterTools.windows(iter.range(0 2) 3)))
+print("batched" <> rows(iterTools.batched(iter.range(0 7) 3)) <> " exact" <> rows(iterTools.batched(iter.range(0 4) 2)))
+let words = array of "apple" "avocado" "banana" "blueberry" "cherry" "apricot" end
 let groups = iterTools.groupBy(iter.ofArray(words) fun(w: String): Char stringOp.getChar(w 0)
-    fun(x: Char y: Char): Bool x is y);
+        fun(x: Char y: Char): Bool x is y)
 while iter.more(groups) do
     let g = iter.next(groups)
     print("group " <> conv.char(g.key) <> " " <> strings(iter.ofArray(g.values)))
-end;
-let keys = tuple let var n = 0 end;
-let keyed = iterTools.groupBy(iter.range(0 10) fun(x: Int): Int begin keys.n := keys.n + 1 x / 4 end same);
+end
+let keys = tuple let var n = 0 end
+let keyed = iterTools.groupBy(iter.range(0 10) fun(x: Int): Int begin keys.n := keys.n + 1 x / 4 end same)
 print("groups" <> rows(iter.map(keyed fun(g: iterTools.Group(Int Int)): Array(Int) g.values)) <> ", key called "
-    <> conv.int(keys.n) <> " times");
-print("uniqueRuns " <> ints(iterTools.uniqueRuns(iter.ofArray(array of 1 1 2 3 3 3 1 2 2 end) same)));
-print("unique " <> ints(iterTools.unique(iter.ofArray(array of 3 1 3 2 1 4 end) same hash.int)));
+    <> conv.int(keys.n) <> " times")
+print("uniqueRuns " <> ints(iterTools.uniqueRuns(iter.ofArray(array of 1 1 2 3 3 3 1 2 2 end) same)))
+print("unique " <> ints(iterTools.unique(iter.ofArray(array of 3 1 3 2 1 4 end) same hash.int)))
 print("intersperse " <> strings(iterTools.intersperse(iter.ofArray(array of "a" "b" "c" end) ","))
-    <> strings(iterTools.intersperse(iter.once("a") ",")) <> strings(iterTools.intersperse(iter.empty() ",")));
-print("interleave " <> ints(iterTools.interleave(array of iter.range(0 3) iter.range(10 11) iter.empty() iter.range(20 24) end))
-    <> ints(iterTools.interleave(array of :iter.T(Int) end)));
-print("zipLongest" <> pairs(iterTools.zipLongest(iter.range(0 2) iter.range(10 14) ~1 ~2)));
-let ts = iterTools.tee(iter.range(0 4) 3);
+    <> strings(iterTools.intersperse(iter.once("a") ",")) <> strings(iterTools.intersperse(iter.empty() ",")))
+print("interleave "
+    <> ints(iterTools.interleave(array of iter.range(0 3) iter.range(10 11) iter.empty() iter.range(20 24) end))
+    <> ints(iterTools.interleave(array of :iter.T(Int) end)))
+print("zipLongest" <> pairs(iterTools.zipLongest(iter.range(0 2) iter.range(10 14) ~1 ~2)))
+let ts = iterTools.tee(iter.range(0 4) 3)
 print("tee " <> ints(iter.take(ts[0] 2)) <> ints(ts[1]) <> ints(ts[0]) <> ints(ts[2]) <> " none "
-    <> conv.int(extent iterTools.tee(iter.range(0 4) 0)));
+    <> conv.int(extent iterTools.tee(iter.range(0 4) 0)))
 
 (* Combinatoric *)
-print("product" <> pairs(iterTools.product(abc array of 7 8 end)) <> " empty" <> pairs(iterTools.product(abc none)));
+print("product" <> pairs(iterTools.product(abc array of 7 8 end)) <> " empty" <> pairs(iterTools.product(abc none)))
 print("productOf" <> rows(iterTools.productOf(array of array of 1 2 end array of 3 end array of 4 5 end end))
-    <> " of none" <> rows(iterTools.productOf(array of :Array(Int) end)));
-print("power" <> rows(iterTools.power(array of 0 1 end 3)) <> " r 0" <> rows(iterTools.power(abc 0)));
-print("permutations" <> rows(iterTools.permutations(abc 3)) <> " r 2" <> rows(iterTools.permutations(abc 2)));
-print("permutations r 0" <> rows(iterTools.permutations(abc 0)) <> " r 4" <> rows(iterTools.permutations(abc 4)));
+    <> " of none" <> rows(iterTools.productOf(array of :Array(Int) end)))
+print("power" <> rows(iterTools.power(array of 0 1 end 3)) <> " r 0" <> rows(iterTools.power(abc 0)))
+print("permutations" <> rows(iterTools.permutations(abc 3)) <> " r 2" <> rows(iterTools.permutations(abc 2)))
+print("permutations r 0" <> rows(iterTools.permutations(abc 0)) <> " r 4" <> rows(iterTools.permutations(abc 4)))
 print("combinations" <> rows(iterTools.combinations(array of 1 2 3 4 end 2)) <> " r 0"
-    <> rows(iterTools.combinations(abc 0)) <> " r 4" <> rows(iterTools.combinations(abc 4)));
+    <> rows(iterTools.combinations(abc 0)) <> " r 4" <> rows(iterTools.combinations(abc 4)))
 print("with replacement" <> rows(iterTools.combinationsWithReplacement(abc 2)) <> " of none"
-    <> rows(iterTools.combinationsWithReplacement(none 2)) <> rows(iterTools.combinationsWithReplacement(none 0)));
-let five = array of 1 2 3 4 5 end;
+    <> rows(iterTools.combinationsWithReplacement(none 2)) <> rows(iterTools.combinationsWithReplacement(none 0)))
+let five = array of 1 2 3 4 5 end
 check("counts 5^3 5!/2! C(5,3) C(7,3)" {iter.count(iterTools.power(five 3)) is 125}
     andif {iter.count(iterTools.permutations(five 3)) is 60} andif {iter.count(iterTools.combinations(five 3)) is 10}
-    andif {iter.count(iterTools.combinationsWithReplacement(five 3)) is 35});
-let fresh = iterTools.combinations(abc 2);
-let first = iter.next(fresh);
-first[0] := 99;
-print("fresh arrays" <> row(first) <> rows(fresh));
+    andif {iter.count(iterTools.combinationsWithReplacement(five 3)) is 35})
+let fresh = iterTools.combinations(abc 2)
+let first = iter.next(fresh)
+first[0] := 99
+print("fresh arrays" <> row(first) <> rows(fresh))
 
 (* Consumers *)
 print("nth " <> conv.int(maybe.unwrap(iterTools.nth(iter.range(10 20) 3))) <> " past the end "
-    <> conv.bool(maybe.isNone(iterTools.nth(iter.range(0 3) 3))));
+    <> conv.bool(maybe.isNone(iterTools.nth(iter.range(0 3) 3))))
 check("allEqual" iterTools.allEqual(iterTools.repeatN(4 3) same) andif iterTools.allEqual(iter.empty() same)
-    andif not(iterTools.allEqual(iter.ofArray(array of 1 1 2 end) same)));
-let parts = iterTools.partition(iter.range(0 10) fun(x: Int): Bool {x % 3} is 0);
-print("partition " <> ints(iter.ofArray(parts.first)) <> ints(iter.ofArray(parts.second)));
+    andif not(iterTools.allEqual(iter.ofArray(array of 1 1 2 end) same)))
+let parts = iterTools.partition(iter.range(0 10) fun(x: Int): Bool {x % 3} is 0)
+print("partition " <> ints(iter.ofArray(parts.first)) <> ints(iter.ofArray(parts.second)))
 
 (* more repeated, next past the end, and the errors *)
-let w = iterTools.windows(iter.range(0 3) 2);
-check("more repeated" iterTools.allEqual(iter.map(iter.range(0 3) fun(i: Int): Int if iter.more(w) then 1 else 0 end) same));
-print("then" <> rows(w) <> " next past the end: " <> try row(iter.next(w)) when iter.exhausted then "iter.exhausted" end);
+let w = iterTools.windows(iter.range(0 3) 2)
+check("more repeated"
+        iterTools.allEqual(iter.map(iter.range(0 3) fun(i: Int): Int if iter.more(w) then 1 else 0 end) same))
+print("then" <> rows(w) <> " next past the end: " <> try row(iter.next(w))
+when iter.exhausted then "iter.exhausted"
+end)
 check("errors" raised(fun(): Ok begin let x = iterTools.stepBy(iter.range(0 3) 0) end)
     andif raised(fun(): Ok begin let x = iterTools.batched(iter.range(0 3) 0) end)
     andif raised(fun(): Ok begin let x = iterTools.windows(iter.range(0 3) 0) end)
     andif raised(fun(): Ok begin let x = iterTools.slice(iter.range(0 3) ~1 2 1) end)
     andif raised(fun(): Ok begin let x = iterTools.combinations(abc ~1) end)
     andif raised(fun(): Ok begin let x = iterTools.tee(iter.range(0 3) ~1) end)
-    andif raised(fun(): Ok begin let x = iterTools.nth(iter.range(0 3) ~1) end));
+    andif raised(fun(): Ok begin let x = iterTools.nth(iter.range(0 3) ~1) end))

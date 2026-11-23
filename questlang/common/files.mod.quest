@@ -2,16 +2,18 @@
 
 module files : Files
 import
-    questlang/common/memoryFiles : questlang/common/MemoryFiles
+    stringOp = string : StringOp
+    system : System
+    writer : Writer
+
     collections/vector : collections/Vector
+    os/fileStats : os/FileStats
+    filePath = os/path : os/Path
     util/maybe : util/Maybe
     pathLib = util/path : util/Path
-    filePath = os/path : os/Path
-    os/fileStats : os/FileStats
     sb = util/stringBuilder : util/StringBuilder
-    stringOp = string : StringOp
-    writer : Writer
-    system : System
+
+    questlang/common/memoryFiles : questlang/common/MemoryFiles
 export
     let isAbsolute(p: String): Bool = pathLib.isAbsolute(p)
     let join(a: String b: String): String = pathLib.join(a b)
@@ -110,7 +112,8 @@ export
             end
         end
     (* A file in memory is newer than every file *)
-    let modifiedNs(p: String): Int = if memoryFiles.isMemory(p) then 9223372036854775807 else fileStats.stat(p).modifiedNs end
+    let modifiedNs(p: String): Int =
+        if memoryFiles.isMemory(p) then 9223372036854775807 else fileStats.stat(p).modifiedNs end
     let isFile(p: String): Bool =
         if memoryFiles.isMemory(p) then maybe.isSome(memoryFiles.read(p)) else system.isFile(p) end
     (* Suffix appended to temporary file names; only parallel build workers

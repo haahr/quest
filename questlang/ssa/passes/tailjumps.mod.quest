@@ -2,12 +2,14 @@
 
 module tailJumps : TailJumps
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    collections/vector : collections/Vector
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    stringOp = string : StringOp
+
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let Function = ssa.Function
 
@@ -169,7 +171,7 @@ export
             let copy(i: ssa.Inst): ssa.Inst =
                 begin
                     let c = ssa.instruction(i.op renumber(i.args) renumber(i.results) i.imm i.symbol i.width i.signed
-                        i.signature)
+                            i.signature)
                     c.loc := i.loc
                     c.invariant := i.invariant
                     c
@@ -186,28 +188,37 @@ export
                 for k = 0 upto {vector.length(from.insts) - 1} do
                     vector.append(to.insts copy(vector.get(from.insts k)))
                 end
-                to.term := case from.term
-                    when termJump with x then option termJump of ssa.Terminator with let target = retarget(x.target) end
-                    when termBranch with x then
-                        option termBranch of ssa.Terminator with
-                            let cond = numbers[x.cond] let ifTrue = retarget(x.ifTrue) let ifFalse = retarget(x.ifFalse)
-                        end
-                    when termSwitch with x then
-                        let ts = array of(extent x.targets retarget(x.default))
-                        for k = 0 upto {extent x.targets - 1} do ts[k] := retarget(x.targets[k]) end
-                        option termSwitch of ssa.Terminator with
-                            let value = numbers[x.value] let cases = x.cases let targets = ts
-                            let default = retarget(x.default)
-                        end
-                    when termReturn with x then
-                        option termReturn of ssa.Terminator with let values = renumber(x.values) end
-                    when termTailCall with x then option termTailCall of ssa.Terminator with let call = copy(x.call) end
-                    when termTry with x then
-                        option termTry of ssa.Terminator with
-                            let slot = x.slot let body = retarget(x.body) let handler = blockOf(x.handler)
-                        end
-                    when termNone, termUnreachable then from.term
-                end
+                to.term :=
+                    case from.term
+                        when termJump with x then
+                            option termJump of ssa.Terminator with let target = retarget(x.target) end
+                        when termBranch with x then
+                            option termBranch of ssa.Terminator with
+                                let cond = numbers[x.cond]
+                                let ifTrue = retarget(x.ifTrue)
+                                let ifFalse = retarget(x.ifFalse)
+                            end
+                        when termSwitch with x then
+                            let ts = array of(extent x.targets retarget(x.default))
+                            for k = 0 upto {extent x.targets - 1} do ts[k] := retarget(x.targets[k]) end
+                            option termSwitch of ssa.Terminator with
+                                let value = numbers[x.value]
+                                let cases = x.cases
+                                let targets = ts
+                                let default = retarget(x.default)
+                            end
+                        when termReturn with x then
+                            option termReturn of ssa.Terminator with let values = renumber(x.values) end
+                        when termTailCall with x then
+                            option termTailCall of ssa.Terminator with let call = copy(x.call) end
+                        when termTry with x then
+                            option termTry of ssa.Terminator with
+                                let slot = x.slot
+                                let body = retarget(x.body)
+                                let handler = blockOf(x.handler)
+                            end
+                        when termNone, termUnreachable then from.term
+                    end
                 to.termLoc := from.termLoc
             end
             blockOf(0)
@@ -261,7 +272,7 @@ export
                         let g = vector.pop(pending)
                         let cost = size(function(g) blocks[g])
                         if not(copied[g]) andif {component[g] is component[k]} andif copiable(function(g))
-                            andif sameResults(f function(g)) andif {{spent + cost} <= budget} then
+                                andif sameResults(f function(g)) andif {{spent + cost} <= budget} then
                             copied[g] := true
                             spent := spent + cost
                             let entry = copyInto(f function(g) blocks[g] values[g])

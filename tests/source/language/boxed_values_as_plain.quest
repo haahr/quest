@@ -4,29 +4,29 @@
  * (docs/wasm.md section 2.5, where the wasm backend once pushed the box
  * for the record's two parts and the unit failed to load) *)
 
-import writer : Writer;
-import conv : Conv;
+import conv : Conv
+import writer : Writer
 
-Def P = Record a: Int end;
-Def V = Variant one: Int two: String end;
-let show(s: String): Ok = writer.putString(writer.output s <> "\n");
+Def P = Record a: Int end
+Def V = Variant one: Int two: String end
+let show(s: String): Ok = writer.putString(writer.output s <> "\n")
 
-let rec last(var q: P k: Int): P = if k > 0 then last(@q k - 1) else q end;
-let pick(var q: P c: Bool): P = if c then q else record a = 0 end end;
-let viaCase(var q: P v: V): P = case v when one then q when two then record a = 0 end end;
-let viaTry(var q: P): P = try q else record a = ~1 end end;
-let viaDecl(var q: P): P = begin let var cur = q cur end;
-let viaAssign(var q: P): P = begin let var cur = record a = 0 end cur := q cur end;
-let bump(var v: V): Ok = begin let n: V = variant two of V with "bumped" end v := n end;
-let viaLocal(): V = begin let var l: V = variant one of V with 1 end bump(@l) l end;
-let tag(v: V): String = case v when one with n then "one " <> conv.int(n) when two with s then "two " <> s end;
+let rec last(var q: P k: Int): P = if k > 0 then last(@q k - 1) else q end
+let pick(var q: P c: Bool): P = if c then q else record a = 0 end end
+let viaCase(var q: P v: V): P = case v when one then q when two then record a = 0 end end
+let viaTry(var q: P): P = try q else record a = ~1 end end
+let viaDecl(var q: P): P = begin let var cur = q cur end
+let viaAssign(var q: P): P = begin let var cur = record a = 0 end cur := q cur end
+let bump(var v: V): Ok = begin let n: V = variant two of V with "bumped" end v := n end
+let viaLocal(): V = begin let var l: V = variant one of V with 1 end bump(@l) l end
+let tag(v: V): String = case v when one with n then "one " <> conv.int(n) when two with s then "two " <> s end
 
-let three: V = variant one of V with 3 end;
-let arr: Array(P) = array of record a = 5 end end;
-show(conv.int(last(@arr[0] 2).a));
-show(conv.int(pick(@arr[0] true).a));
-show(conv.int(viaCase(@arr[0] three).a));
-show(conv.int(viaTry(@arr[0]).a));
-show(conv.int(viaDecl(@arr[0]).a));
-show(conv.int(viaAssign(@arr[0]).a));
+let three: V = variant one of V with 3 end
+let arr: Array(P) = array of record a = 5 end end
+show(conv.int(last(@arr[0] 2).a))
+show(conv.int(pick(@arr[0] true).a))
+show(conv.int(viaCase(@arr[0] three).a))
+show(conv.int(viaTry(@arr[0]).a))
+show(conv.int(viaDecl(@arr[0]).a))
+show(conv.int(viaAssign(@arr[0]).a))
 show(tag(viaLocal()))

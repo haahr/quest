@@ -2,13 +2,14 @@
 
 module closure : Closure
 import
-    questlang/types/model : questlang/types/Model
-    questlang/ir/nodes : questlang/ir/Nodes
-    questlang/ir/walk : questlang/ir/Walk
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
+
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/types/model : questlang/types/Model
 export
     Let Variable = nodes.Variable
     Let Body = nodes.Body
@@ -73,7 +74,8 @@ export
      * needs an environment: each lifted function constructs static,
      * capture-free closures for the others instead (docs/ir.md section 8.2),
      * avoiding heap allocation on every call to the enclosing function. *)
-    and funs(c: Converter functions: Array(nodes.Function) recursive: Bool typeParams: Array(nodes.TypeParam)): Array(Stmt) =
+    and funs(c: Converter functions: Array(nodes.Function) recursive: Bool
+            typeParams: Array(nodes.TypeParam)): Array(Stmt) =
         begin
             let typeArgs = array of(extent typeParams model.okType)
             for i = 0 upto {extent typeParams - 1} do
@@ -85,7 +87,8 @@ export
             let group = hashMap.new(:Int :Bool intEqual hash.int)
             for i = 0 upto {extent functions - 1} do hashMap.insert(group functions[i].v.id true) end
             let all = array of(extent functions tuple
-                let code = functions[0] let captures = array of :Variable end
+                let code = functions[0]
+                let captures = array of :Variable end
             end)
             (* True when the group has no enclosing type parameters or outer
              * captures *)
@@ -94,7 +97,8 @@ export
                 all[i] := lift(c functions[i] typeParams)
                 for j = 0 upto {extent all[i].captures - 1} do
                     if hashMap.contains(group all[i].captures[j].id) then capturesGroup := true
-                    else closed := false end
+                    else closed := false
+                    end
                 end
             end
             if closed andif capturesGroup then
@@ -144,7 +148,10 @@ export
             if recursive andif capturesGroup then
                 let vars = array of(extent functions functions[0].v)
                 for i = 0 upto {extent functions - 1} do vars[i] := functions[i].v end
-                array of option sLetRec of Stmt with let var vars = vars let var body = nodes.bodyOf(vector.toArray(lets)) end end
+                array of option sLetRec of Stmt with
+                    let var vars = vars
+                    let var body = nodes.bodyOf(vector.toArray(lets))
+                end end
             else
                 vector.toArray(lets)
             end
@@ -213,7 +220,7 @@ export
                 f.body.statements := prologue
             end
             let code = nodes.newFunction(nodes.newVar(f.v.hint f.v.type false) concat(typeParams f.typeParams) f.params
-                f.resultType f.body f.traceName)
+                    f.resultType f.body f.traceName)
             code.env := env
             vector.append(c.unit.functions code)
             tuple let code = code let captures = vector.toArray(captures) end

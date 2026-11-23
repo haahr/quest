@@ -13,15 +13,16 @@
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
-    questlang/ssa/parser : questlang/ssa/Parser
-    questlang/ssa/printer : questlang/ssa/Printer
-    questlang/ssa/passes/tailCalls : questlang/ssa/passes/TailCalls
-    questlang/ssa/verify : questlang/ssa/Verify
-    util/strutil : util/Strutil
     writer : Writer
-;
 
-let emit(s: String): Ok = writer.putString(writer.output s);
+    util/strutil : util/Strutil
+
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/passes/tailCalls : questlang/ssa/passes/TailCalls
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/verify : questlang/ssa/Verify
+
+let emit(s: String): Ok = writer.putString(writer.output s)
 
 let show(title: String lines: Array(String)): Ok =
     begin
@@ -32,7 +33,7 @@ let show(title: String lines: Array(String)): Ok =
         emit("-- after tailCalls\n")
         emit(printer.formatUnit(u))
         try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
-    end;
+    end
 
 show("results returned" array of
     "function direct(%0: int): int {"
@@ -40,7 +41,7 @@ show("results returned" array of
     "  %1: int = call g(%0)"
     "  return %1"
     "}"
-end);
+end)
 
 show("results returned through a jump" array of
     "function through(%0: int): int {"
@@ -50,7 +51,7 @@ show("results returned through a jump" array of
     "b1(%2: int):"
     "  return %2"
     "}"
-end);
+end)
 
 show("a join's parameters passed but not returned" array of
     "function join(%0: int): int {"
@@ -61,7 +62,7 @@ show("a join's parameters passed but not returned" array of
     "b1(%3: int, %4: int):"
     "  return %4"
     "}"
-end);
+end)
 
 show("a jump to a block that returns another value" array of
     "function other(%0: int): int {"
@@ -71,7 +72,7 @@ show("a jump to a block that returns another value" array of
     "b1(%2: int):"
     "  return %2"
     "}"
-end);
+end)
 
 show("a byte result extended" array of
     "function extended(%0: int): int {"
@@ -80,7 +81,7 @@ show("a byte result extended" array of
     "  %2: int = zext8 %1"
     "  return %2"
     "}"
-end);
+end)
 
 show("a result added to" array of
     "function added(%0: int): int {"
@@ -89,7 +90,7 @@ show("a result added to" array of
     "  %2: int = add %1, %0"
     "  return %2"
     "}"
-end);
+end)
 
 show("a slot's address escaping" array of
     "function escaping(%0: int): int slots [8:8] {"
@@ -99,4 +100,4 @@ show("a slot's address escaping" array of
     "  %2: int = call h(%1)"
     "  return %2"
     "}"
-end);
+end)

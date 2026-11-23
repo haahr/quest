@@ -8,42 +8,44 @@
 
 unsound module target : Target
 import
-    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
-    questlang/common/location : questlang/common/Location
-    questlang/types/env : questlang/types/Env
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/modules/elaboration : questlang/modules/Elaboration
-    mangling = questlang/repr/symbols : questlang/repr/Symbols
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/ir/nodes : questlang/ir/Nodes
-    questlang/ir/closure : questlang/ir/Closure
-    questlang/ir/represent : questlang/ir/Represent
-    irDescribe = questlang/ir/describe : questlang/ir/Describe
-    passes = questlang/ir/pipeline : questlang/ir/Pipeline
-    ssaBuild = questlang/ssa/build : questlang/ssa/Build
-    ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
-    ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
-    arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
-    questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
-    questlang/jit/loader : questlang/jit/Loader
-    questlang/jit/debugObject : questlang/jit/DebugObject
-    questlang/common/files : questlang/common/Files
-    os/value : os/Value
-    os/code : os/Code
+    ascii : Ascii
+    conv : Conv
     raised : Raised
+    stringOp = string : StringOp
+    system : System
+    words = word : Word
+    writer : Writer
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
+    os/code : os/Code
+    os/value : os/Value
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
-    util/strutil : util/Strutil
     util/stringBuilder : util/StringBuilder
-    words = word : Word
-    stringOp = string : StringOp
-    ascii : Ascii
-    conv : Conv
-    system : System
-    writer : Writer
+    util/strutil : util/Strutil
+
+    arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
+    questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
+    questlang/common/files : questlang/common/Files
+    questlang/common/location : questlang/common/Location
+    questlang/ir/closure : questlang/ir/Closure
+    irDescribe = questlang/ir/describe : questlang/ir/Describe
+    questlang/ir/nodes : questlang/ir/Nodes
+    passes = questlang/ir/pipeline : questlang/ir/Pipeline
+    questlang/ir/represent : questlang/ir/Represent
+    questlang/jit/debugObject : questlang/jit/DebugObject
+    questlang/jit/loader : questlang/jit/Loader
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    questlang/repr/shapes : questlang/repr/Shapes
+    mangling = questlang/repr/symbols : questlang/repr/Symbols
+    ssaBuild = questlang/ssa/build : questlang/ssa/Build
+    ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
+    ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
+    questlang/types/env : questlang/types/Env
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let T = Tuple
         e: env.T
@@ -115,7 +117,8 @@ export
     let refusal(): maybe.T(String) =
         if maybe.isSome(code.symbol(hostSymbol)) then maybe.none()
         else maybe.some("this driver cannot host the JIT: its modules carry no fingerprints (a whole-program "
-            <> "build drops them)") end
+            <> "build drops them)")
+        end
 
     let new(e: env.T args: Array(String) sources: hashMap.T(String location.SourceMap)): T =
         begin
@@ -146,9 +149,9 @@ export
             for i = 0 upto {vector.length(lines) - 1} do
                 let line = vector.get(lines i)
                 if stringOp.equal(line "  in os/code.call")
-                    orif stringOp.equal(line "  in questlang/jit/target.run")
-                    orif stringOp.equal(line "  in questlang/jit/session.runInput")
-                    orif stringOp.equal(line "  in questlang/jit/session.run") then
+                        orif stringOp.equal(line "  in questlang/jit/target.run")
+                        orif stringOp.equal(line "  in questlang/jit/session.runInput")
+                        orif stringOp.equal(line "  in questlang/jit/session.run") then
                     done := true
                 end
                 if done then
@@ -248,7 +251,7 @@ export
                  * suffix *)
                 let tmp = system.getEnv("TMPDIR")
                 let base = files.join(if stringOp.length(tmp) > 0 then tmp else "/tmp" end
-                    "quest-jit-" <> conv.int(value.be(bytesOf(name)) % 1000000007))
+                        "quest-jit-" <> conv.int(value.be(bytesOf(name)) % 1000000007))
                 let var n = 0
                 while system.isDirectory(base <> "-" <> conv.int(n)) do n := n + 1 end
                 t.sourceDir := base <> "-" <> conv.int(n)
@@ -279,8 +282,12 @@ export
         begin
             let slash = strutil.rfind(file "/")
             let base = stringOp.getSub(file slash + 1 {stringOp.length(file) - slash} - 1)
-            let original = if strutil.startsWith(base sourcePrefix) then
-                hashMap.get(t.sources base) else maybe.none(:location.SourceMap) end
+            let original =
+                if strutil.startsWith(base sourcePrefix) then
+                    hashMap.get(t.sources base)
+                else
+                    maybe.none(:location.SourceMap)
+                end
             if maybe.isNone(original) then
                 file
             else
@@ -288,7 +295,8 @@ export
                 let named = files.absolute(location.file(sm))
                 if system.isFile(named) then named
                 else writeSource(t "input-" <> stringOp.getSub(base stringOp.length(sourcePrefix)
-                    {stringOp.length(base) - stringOp.length(sourcePrefix)}) <> ".quest" location.text(sm)) end
+                        {stringOp.length(base) - stringOp.length(sourcePrefix)}) <> ".quest" location.text(sm))
+                end
             end
         end
 
@@ -310,13 +318,14 @@ export
 
     let load(t: T unit: nodes.Unit): Ok =
         begin
-            let encoded = try
-                (* The passes hold a pointer and a QVal word alike, as
-                 * arm64 does (choice.referencesAlike) *)
-                shapes.setReferencesAlike(true)
-                let built = ssaPipeline.build(passes.runPasses(unit))
-                ssaPipeline.lower(built)
-                arm64.encodeUnit(built)
+            let encoded =
+                try
+                    (* The passes hold a pointer and a QVal word alike, as
+                     * arm64 does (choice.referencesAlike) *)
+                    shapes.setReferencesAlike(true)
+                    let built = ssaPipeline.build(passes.runPasses(unit))
+                    ssaPipeline.lower(built)
+                    arm64.encodeUnit(built)
                 (* Convert IR, SSA, arm64, and encoding failures into
                  * unsupported *)
                 when closure.capturesMutable with x then fail(:encode.Encoded x)
@@ -328,7 +337,8 @@ export
                 when arm64.unsupported with x then fail(:encode.Encoded x)
                 when encode.unencodable with x then fail(:encode.Encoded "encoding: " <> x)
                 end
-            let symbols = try loader.load(t.loader encoded)
+            let symbols =
+                try loader.load(t.loader encoded)
                 when loader.loadError with x then fail(:hashMap.T(String value.T) x)
                 end
             describe(t encoded symbols)
@@ -345,7 +355,9 @@ export
                 let fatal = strutil.startsWith(name "fatal: ")
                 option raised of Ran with
                     let name = if fatal then stringOp.getSub(name 7 {stringOp.length(name) - 7}) else name end
-                    let site = code.raiseSite(r) let frames = framesOf(code.frames(r)) let fatal = fatal
+                    let site = code.raiseSite(r)
+                    let frames = framesOf(code.frames(r))
+                    let fatal = fatal
                 end
             else
                 let shown = if capture then value.be(:String value.fetch(symbolAt(t.symbols name <> "_echo") 0))

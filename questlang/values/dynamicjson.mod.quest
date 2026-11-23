@@ -2,21 +2,23 @@
 
 module dynamicJson : DynamicJson
 import
-    tm = questlang/types/model : questlang/types/Model
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/types/reduce : questlang/types/Reduce
-    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
-    questlang/values/model : questlang/values/Model
-    util/json : util/Json
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
+    util/json : util/Json
     util/maybe : util/Maybe
     util/sort : util/Sort
     sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
+    tm = questlang/types/model : questlang/types/Model
+    questlang/types/reduce : questlang/types/Reduce
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/values/model : questlang/values/Model
 export
     Let Type = tm.Type
     Let Value = model.Value
@@ -45,7 +47,8 @@ export
 
     (* The built-in types a ref may name *)
     let builtinNames = array of "Ok" "Bool" "Char" "String" "Int" "Real" "Dynamic" end
-    let builtinTypes = array of tm.okType tm.boolType tm.charType tm.stringType tm.intType tm.realType tm.dynamicType end
+    let builtinTypes =
+        array of tm.okType tm.boolType tm.charType tm.stringType tm.intType tm.realType tm.dynamicType end
 
     let builtinType(name: String): Type =
         begin
@@ -59,7 +62,9 @@ export
     let isBuiltinName(name: String): Bool =
         begin
             let var found = false
-            for i = 0 upto {extent builtinNames - 1} do if stringOp.equal(builtinNames[i] name) then found := true end end
+            for i = 0 upto {extent builtinNames - 1} do
+                if stringOp.equal(builtinNames[i] name) then found := true end
+            end
             found
         end
 
@@ -69,7 +74,8 @@ export
     let fieldName(label: String): String =
         if strutil.startsWith(label "var ") then stringOp.getSub(label 4 {stringOp.length(label) - 4})
         elsif stringOp.equal(label "var") then ""
-        else label end
+        else label
+        end
 
     let mentions(t: Type symbolId: Int): Bool =
         begin
@@ -89,8 +95,8 @@ export
             when typeAuto with x then
                 if tm.sameKind(x.kindBound tm.typeKind) andif {extent x.signature is 1} then
                     let f = x.signature[0]
-                    stringOp.equal(f.name "a") andif not(f.isVar) andif
-                        case f.type.form when typeVariable with v then v.symbolId is x.symbolId else false end
+                    stringOp.equal(f.name "a") andif not(f.isVar)
+                        andif case f.type.form when typeVariable with v then v.symbolId is x.symbolId else false end
                 else
                     false
                 end
@@ -165,11 +171,12 @@ export
                 when typeVariable with v then
                     let entry = abstractTypes.abstractTypeBySymbol(v.symbolId)
                     if maybe.isNone(entry)
-                        orif not(isUnbounded(boundOf(maybe.unwrap(entry).typeVar))) then
+                            orif not(isUnbounded(boundOf(maybe.unwrap(entry).typeVar))) then
                         maybe.none()
                     else
                         maybe.some(tuple
-                            let entry = maybe.unwrap(entry) let args = args
+                            let entry = maybe.unwrap(entry)
+                            let args = args
                         end)
                     end
                 else maybe.none()
@@ -290,7 +297,8 @@ export
     let nodeOf(g: Graph r: Ref): Node = vector.get(g.nodes r.index)
     let kindOf(g: Graph r: Ref): String = if isBuiltin(r) then "" else nodeOf(g r).shape.kind end
 
-    let placeholder: Node = tuple let shape = shape("" array of :String end array of :Bool end "" 0) let children = array of :Ref end end
+    let placeholder: Node =
+        tuple let shape = shape("" array of :String end array of :Bool end "" 0) let children = array of :Ref end end
 
     let sortedRecordFields(fields: Array(tm.RecordField)): Array(tm.RecordField) =
         sort.sorted(fields fun(a: tm.RecordField b: tm.RecordField): Int sort.stringCompare(a.name b.name))
@@ -309,7 +317,9 @@ export
             let s = structure(t)
             let var found = maybe.none(:Ref)
             for i = 0 upto {extent builtinTypes - 1} do
-                if maybe.isNone(found) andif tm.same(s builtinTypes[i]) then found := maybe.some(builtin(builtinNames[i])) end
+                if maybe.isNone(found) andif tm.same(s builtinTypes[i]) then
+                    found := maybe.some(builtin(builtinNames[i]))
+                end
             end
             if maybe.isSome(found) then
                 maybe.unwrap(found)
@@ -361,9 +371,15 @@ export
                 let index = vector.length(g.nodes)
                 hashMap.insert(g.index key index)
                 vector.append(g.nodes placeholder)
-                let n = if isStructure then makeNode(g s) else
-                    tuple let shape = shape("param" array of :String end array of :Bool end "" depth) let children = array of :Ref end end
-                end
+                let n =
+                    if isStructure then
+                        makeNode(g s)
+                    else
+                        tuple
+                            let shape = shape("param" array of :String end array of :Bool end "" depth)
+                            let children = array of :Ref end
+                        end
+                    end
                 vector.set(g.nodes index n)
                 nodeRef(index)
             end
@@ -399,7 +415,7 @@ export
                     (* Cases are listed by name, as compiled code numbers them
                      * (docs/dynamic.md section 2.2) *)
                     let cases = sort.sorted(x.variants
-                        fun(a: tm.VariantField b: tm.VariantField): Int sort.stringCompare(a.name b.name))
+                            fun(a: tm.VariantField b: tm.VariantField): Int sort.stringCompare(a.name b.name))
                     let labels = array of(extent cases "")
                     let flags = array of(extent cases false)
                     let children = vector.new(:Ref)
@@ -411,7 +427,7 @@ export
                     make(shape("variant" labels flags "" 0) vector.toArray(children))
                 when typeOption with x then
                     let cases = sort.sorted(x.options
-                        fun(a: tm.OptionField b: tm.OptionField): Int sort.stringCompare(a.name b.name))
+                            fun(a: tm.OptionField b: tm.OptionField): Int sort.stringCompare(a.name b.name))
                     let labels = array of(extent cases "")
                     let flags = array of(extent cases false)
                     let children = vector.new(:Ref)
@@ -435,13 +451,14 @@ export
                 when typeException with x then
                     make(shape("exception" noLabels noFlags "" 0) array of ref(g x.payload) end)
                 when typeAuto with x then
-                    let bound = if tm.isPower(x.kindBound) then
-                        array of ref(g tm.powerBound(x.kindBound)) end
-                    elsif x.kindBound.form?kindType then
-                        array of :Ref end
-                    else
-                        fail(:Array(Ref))
-                    end
+                    let bound =
+                        if tm.isPower(x.kindBound) then
+                            array of ref(g tm.powerBound(x.kindBound)) end
+                        elsif x.kindBound.form?kindType then
+                            array of :Ref end
+                        else
+                            fail(:Array(Ref))
+                        end
                     let labels = array of(extent x.signature "")
                     let children = refs({extent bound + extent x.signature})
                     if extent bound > 0 then children[0] := bound[0] end
@@ -453,10 +470,11 @@ export
                     vector.pop(g.binders)
                     make(shape("auto" labels array of {extent bound > 0} end "" 0) children)
                 else
-                    let isWord = case s.form
-                        when typeExternal with x then stringOp.equal(x.cType wordType)
-                        else false
-                    end
+                    let isWord =
+                        case s.form
+                            when typeExternal with x then stringOp.equal(x.cType wordType)
+                            else false
+                        end
                     if isWord then
                         make(shape("external" noLabels noFlags wordType 0) array of :Ref end)
                     else
@@ -525,7 +543,8 @@ export
                     let children = vector.get(nodes i).children
                     for j = 0 upto {extent children - 1} do
                         if isBuiltin(children[j]) then sb.char(key ':') sb.str(key children[j].name)
-                        else sb.char(key '#') sb.int(key cls[children[j].index]) end
+                        else sb.char(key '#') sb.int(key cls[children[j].index])
+                        end
                     end
                     let k = sb.toString(key)
                     if not(hashMap.contains(sigs k)) then hashMap.insert(sigs k hashMap.size(sigs)) end
@@ -624,5 +643,4 @@ export
             end
             tuple let types = json.arrayValue(table) let index = index end
         end
-
 end

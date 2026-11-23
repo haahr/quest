@@ -110,7 +110,8 @@ export
         end
 
     let isLogical(n: Int): Bool =
-        if {n is 0} orif {n is ~1} then false
+        if {n is 0} orif {n is ~1} then
+            false
         else
             let w = word.fromInt(n)
             let same(a: word.T b: word.T): Bool = word.toInt(a) is word.toInt(b)
@@ -179,23 +180,26 @@ export
     let results(op: Op): Int =
         case op
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
-                opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCset, opCsel, opLoad, opAdrp, opAddPageOff,
-                opAdr then
+                    opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCset, opCsel, opLoad, opAdrp,
+                    opAddPageOff,
+                    opAdr then
                 1
             when opLdp then 2
             when opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opStore, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet,
-                opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa,
-                opCfiOffset, opLoc then
+                    opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry,
+                    opJumpTableEnd, opCfiDefCfa,
+                    opCfiOffset, opLoc then
                 0
         end
     let pure(op: Op): Bool =
         case op
             when opMovImm, opMovz, opMovConst, opSymbolAddress, opMov, opArith, opAddImm, opSubImm, opLogicImm,
-                opShiftImm, opMsub, opSxtb, opSxtw, opAdrp, opAddPageOff, opAdr then
+                    opShiftImm, opMsub, opSxtb, opSxtw, opAdrp, opAddPageOff, opAdr then
                 true
             when opMovk, opTlvAddress, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore,
-                opLdp, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk,
-                opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
+                    opLdp, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond,
+                    opBrk,
+                    opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
                 false
         end
 
@@ -209,7 +213,7 @@ export
     let movConst(d: Int imm: Int): Inst = inst(option opMovConst of Op with let imm = imm end array of d end)
     let symbolAddress(d: Int symbol: String offset: Int local: Bool): Inst =
         inst(option opSymbolAddress of Op with let symbol = symbol let offset = offset let local = local end
-            array of d end)
+                array of d end)
     let tlvAddress(d: Int symbol: String): Inst =
         inst(option opTlvAddress of Op with let symbol = symbol end array of d end)
     let mov(d: Int s: Int): Inst = inst(option opMov of Op end array of d s end)
@@ -234,18 +238,17 @@ export
     let cmp(x: Int y: Int): Inst = inst(option opCmp of Op end array of x y end)
     let fcmp(x: Int y: Int): Inst = inst(option opFcmp of Op end array of x y end)
     let cset(c: Cond d: Int): Inst = inst(option opCset of Op with let cond = c end array of d end)
-    let csel(c: Cond d: Int x: Int y: Int): Inst =
-        inst(option opCsel of Op with let cond = c end array of d x y end)
+    let csel(c: Cond d: Int x: Int y: Int): Inst = inst(option opCsel of Op with let cond = c end array of d x y end)
     let load(l: Load t: Int base: Int m: Mode): Inst =
         inst(option opLoad of Op with let load = l let mode = m end array of t base end)
     let store(s: Store t: Int base: Int m: Mode): Inst =
         inst(option opStore of Op with let store = s let mode = m end array of t base end)
     let loadIndex(l: Load t: Int base: Int index: Int shift: Int): Inst =
         inst(option opLoad of Op with let load = l let mode = option modeIndex of Mode with let shift = shift end end
-            array of t base index end)
+                array of t base index end)
     let storeIndex(s: Store t: Int base: Int index: Int shift: Int): Inst =
         inst(option opStore of Op with let store = s let mode = option modeIndex of Mode with let shift = shift end end
-            array of t base index end)
+                array of t base index end)
     let ldp(a: Int b: Int base: Int m: Mode): Inst =
         inst(option opLdp of Op with let mode = m end array of a b base end)
     let stp(a: Int b: Int base: Int m: Mode): Inst =

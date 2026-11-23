@@ -2,12 +2,13 @@
 
 module path : Path
 import
-    util/strutil : util/Strutil
-    sb = util/stringBuilder : util/StringBuilder
-    collections/vector : collections/Vector
+    ascii : Ascii
     stringOp = string : StringOp
-    system: System
-    ascii: Ascii
+    system : System
+
+    collections/vector : collections/Vector
+    sb = util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
 export
     (* Exception raised on invalid path operations *)
     let error: Exception = exception error: Ok end
@@ -22,8 +23,7 @@ export
             stringOp.getChar(path 0) is '/'
         end
 
-    let isRelative(path: String): Bool =
-        not(isAbsolute(path))
+    let isRelative(path: String): Bool = not(isAbsolute(path))
 
     (* Strip trailing slashes unless path is only "/" or "//" etc. *)
     let privateStripTrailingSlashes(path: String): String =
@@ -112,8 +112,7 @@ export
             end
         end
 
-    let hasExtension(path: String): Bool =
-        stringOp.length(extension(path)) > 0
+    let hasExtension(path: String): Bool = stringOp.length(extension(path)) > 0
 
     let parts(path: String): vector.T(String) =
         begin
@@ -273,8 +272,8 @@ export
 
                 (* Find length of shared prefix *)
                 let var common = 0
-                while {common < pLen} andif {common < bLen} andif
-                      stringOp.equal(vector.get(:String pParts common) vector.get(:String bParts common)) do
+                while {common < pLen} andif {common < bLen}
+                        andif stringOp.equal(vector.get(:String pParts common) vector.get(:String bParts common)) do
                     common := common + 1
                 end
 
@@ -328,7 +327,7 @@ export
                     let a = stringOp.getChar(pattern j)
                     if {a is ']'} andif {j > first} then closed := true
                     elsif {{j + 2} < n} andif {stringOp.getChar(pattern j + 1) is '-'}
-                        andif {stringOp.getChar(pattern j + 2) isnot ']'} then
+                            andif {stringOp.getChar(pattern j + 2) isnot ']'} then
                         let b = stringOp.getChar(pattern j + 2)
                         if {ascii.val(a) <= ascii.val(c)} andif {ascii.val(c) <= ascii.val(b)} then hit := true end
                         j := j + 3
@@ -339,8 +338,10 @@ export
                 end
                 if not(closed) then
                     if c is '[' then pi + 1 else ~1 end
-                elsif hit isnot negate then j + 1
-                else ~1
+                elsif hit isnot negate then
+                    j + 1
+                else
+                    ~1
                 end
             elsif p is c then pi + 1
             else ~1
@@ -386,5 +387,4 @@ export
                 not(failed) andif {pi is pn}
             end
         end
-
 end

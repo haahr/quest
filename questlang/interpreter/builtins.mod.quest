@@ -2,34 +2,36 @@
 
 module builtins : Builtins
 import
-    questlang/interpreter/literals : questlang/interpreter/Literals
+    arrayOp : ArrayOp
+    ascii : Ascii
+    conv : Conv
+    intOp = int : IntOp
+    reader : Reader
+    realOp = real : RealOp
+    stringOp = string : StringOp
+    system : System
+    word : Word
+    writer : Writer
+
+    collections/hashMap : collections/HashMap
+    io/readline : io/Readline
+    os/fileStats : os/FileStats
+    os/process : os/Process
+    os/time : os/Time
+    util/hash : util/Hash
+    util/json : util/Json
+    util/maybe : util/Maybe
+    util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+
     questlang/interpreter/fileCalls : questlang/interpreter/FileCalls
-    questlang/values/model : questlang/values/Model
-    questlang/values/dynamicReader : questlang/values/DynamicReader
-    questlang/values/dynamicWriter : questlang/values/DynamicWriter
+    questlang/interpreter/literals : questlang/interpreter/Literals
     questlang/interpreter/primitives : questlang/interpreter/Primitives
     tm = questlang/types/model : questlang/types/Model
     questlang/types/reduce : questlang/types/Reduce
-    collections/hashMap : collections/HashMap
-    util/hash : util/Hash
-    util/maybe : util/Maybe
-    util/strutil : util/Strutil
-    util/stringBuilder : util/StringBuilder
-    util/json : util/Json
-    arrayOp : ArrayOp
-    stringOp = string : StringOp
-    intOp = int : IntOp
-    realOp = real : RealOp
-    ascii : Ascii
-    conv : Conv
-    word : Word
-    reader : Reader
-    writer : Writer
-    system : System
-    io/readline : io/Readline
-    os/fileStats : os/FileStats
-    os/time : os/Time
-    os/process : os/Process
+    questlang/values/dynamicReader : questlang/values/DynamicReader
+    questlang/values/dynamicWriter : questlang/values/DynamicWriter
+    questlang/values/model : questlang/values/Model
 export
     Let Value = model.Value
     Let Args = Array(Value)
@@ -52,8 +54,7 @@ export
     let wd(v: Value): word.T = case v when vWord with x then x.w else wrong("QWord" v) end
     let wr(v: Value): writer.T = case v when vWriter with x then x.w else wrong("QWriter" v) end
     let rd(v: Value): reader.T = case v when vReader with x then x.rd else wrong("QReader" v) end
-    let sb(v: Value): stringBuilder.T =
-        case v when vStringBuilder with x then x.sb else wrong("QStringBuilder" v) end
+    let sb(v: Value): stringBuilder.T = case v when vStringBuilder with x then x.sb else wrong("QStringBuilder" v) end
     let proc(v: Value): process.T = case v when vProcess with x then x.p else wrong("QProcess" v) end
     let arr(v: Value): Array(Value) = case v when vArray with x then x.a else wrong("QArray" v) end
 
@@ -68,8 +69,7 @@ export
     let vReader(r: reader.T): Value = option vReader of Value with let rd = r end
     let vException(e: model.ExceptionValue): Value = option vException of Value with let e = e end
     let vProcess(p: process.T): Value = option vProcess of Value with let p = p end
-    let raisedError(v: Value): model.RunError =
-        case v when vRaised with x then x.e else wrong("QRaised" v) end
+    let raisedError(v: Value): model.RunError = case v when vRaised with x then x.e else wrong("QRaised" v) end
 
     let strings(xs: Array(String)): Value =
         begin
@@ -83,7 +83,7 @@ export
         begin
             let label(name: String): maybe.T(String) = maybe.some(name)
             model.tupleValue(array of vInt(r.code) vString(r.stdout) vString(r.stderr) end
-                maybe.some(array of label("code") label("stdout") label("stderr") end))
+                    maybe.some(array of label("code") label("stdout") label("stderr") end))
         end
 
     let texts(xs: Array(Value)): Array(String) =
@@ -103,16 +103,18 @@ export
             let label(name: String): maybe.T(String) = maybe.some(name)
             let labels = maybe.some(array of label("kind") label("size") label("mode")
                 label("accessTime") label("modifiedTime") label("changeTime") label("accessNs") label("modifiedNs")
-                label("changeNs") end)
+                label("changeNs")
+            end)
             if maybe.isNone(found) then
                 model.tupleValue(array of vInt(~1) vInt(0) vInt(0) vReal(0.0) vReal(0.0) vReal(0.0) vInt(0) vInt(0)
-                    vInt(0) end labels)
+                    vInt(0)
+                end labels)
             else
                 let s = maybe.unwrap(found)
                 let kind = if s.kind?file then 0 elsif s.kind?directory then 1 elsif s.kind?symlink then 2 else 3 end
                 model.tupleValue(array of vInt(kind) vInt(s.size) vInt(s.mode) vReal(s.accessTime)
                     vReal(s.modifiedTime) vReal(s.changeTime) vInt(s.accessNs) vInt(s.modifiedNs) vInt(s.changeNs)
-                    end labels)
+                end labels)
             end
         end
 
@@ -160,14 +162,17 @@ export
     (* The type of t's variant case tag, if t is known to be a variant type
      * with that case and the case has a value *)
     let variantCaseType(t: maybe.T(tm.Type) tag: String): maybe.T(tm.Type) =
-        if maybe.isNone(t) then maybe.none()
+        if maybe.isNone(t) then
+            maybe.none()
         else
             let cases = reduce.variantCases(maybe.unwrap(t))
-            if maybe.isNone(cases) then maybe.none()
+            if maybe.isNone(cases) then
+                maybe.none()
             else
                 let f = tm.variantGetField(maybe.unwrap(cases) tag)
                 if maybe.isSome(f) then maybe.unwrap(f).type
-                else maybe.none() end
+                else maybe.none()
+                end
             end
         end
 
@@ -194,11 +199,13 @@ export
             when vTuple with x then hash.identityHash(x.t)
             when vArray with x then hash.identityHash(x.a)
             when vVariant with x then
-                if maybe.isNone(x.v.payload) then hash.string(x.v.tag)
+                if maybe.isNone(x.v.payload) then
+                    hash.string(x.v.tag)
                 else
                     let caseType = variantCaseType(t x.v.tag)
                     if maybe.isNone(caseType) then hash.identityHash(x.v)
-                    else hash.combine(hash.string(x.v.tag) identityHash(caseType maybe.unwrap(x.v.payload))) end
+                    else hash.combine(hash.string(x.v.tag) identityHash(caseType maybe.unwrap(x.v.payload)))
+                    end
                 end
             when vOption with x then
                 let rule = if maybe.isNone(t) then maybe.none(:reduce.OptionIdentity)
@@ -266,10 +273,10 @@ export
      * non-JSON input, a failed read, or a document that does not decode. *)
     let dynamicIntern(r: reader.T): Value =
         dynamicReader.decodeDocument(
-            try json.read(r json.parsingDynamic)
-            when reader.error then dynamicFailure()
-            when json.error then dynamicFailure()
-            end)
+                try json.read(r json.parsingDynamic)
+                when reader.error then dynamicFailure()
+                when json.error then dynamicFailure()
+                end)
 
     (* Populates table during module initialization with the externals the
      * interpreter provides, keyed by C symbol (all except quest_system_args,
@@ -350,7 +357,8 @@ export
             fn("quest_string_is_empty" fun(a: Args): Value vBool(stringOp.isEmpty(str(a[0]))))
             fn("quest_string_length" fun(a: Args): Value vInt(stringOp.length(str(a[0]))))
             fn("quest_string_get_char" fun(a: Args): Value vChar(stringOp.getChar(str(a[0]) int(a[1]))))
-            fn("quest_string_set_char" fun(a: Args): Value begin stringOp.setChar(str(a[0]) int(a[1]) chr(a[2])) unit end)
+            fn("quest_string_set_char" fun(a: Args): Value
+                begin stringOp.setChar(str(a[0]) int(a[1]) chr(a[2])) unit end)
             fn("quest_string_freeze" fun(a: Args): Value begin literals.freeze(str(a[0])) unit end)
             fn("quest_string_get_sub" fun(a: Args): Value vString(stringOp.getSub(str(a[0]) int(a[1]) int(a[2]))))
             fn("quest_string_set_sub" fun(a: Args): Value

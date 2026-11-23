@@ -2,21 +2,23 @@
 
 module tokenizer : Tokenizer
 import
-    questlang/common/pyRepr : questlang/common/PyRepr
-    location = questlang/common/location : questlang/common/Location
-    diagbag = questlang/common/diagbag : questlang/common/DiagBag
-    diagnostics = questlang/common/diagnostics : questlang/common/Diagnostics
-    tokens = questlang/syntax/tokens : questlang/syntax/Tokens
-    vector = collections/vector : collections/Vector
-    hashmap = collections/hashmap : collections/HashMap
-    hash = util/hash : util/Hash
-    maybe = util/maybe : util/Maybe
-    strutil = util/strutil : util/Strutil
-    sb = util/stringbuilder : util/StringBuilder
-    stringOp = string : StringOp
-    intOp = int : IntOp
     ascii : Ascii
     conv : Conv
+    intOp = int : IntOp
+    stringOp = string : StringOp
+
+    hashmap = collections/hashmap : collections/HashMap
+    vector = collections/vector : collections/Vector
+    hash = util/hash : util/Hash
+    maybe = util/maybe : util/Maybe
+    sb = util/stringbuilder : util/StringBuilder
+    strutil = util/strutil : util/Strutil
+
+    diagbag = questlang/common/diagbag : questlang/common/DiagBag
+    diagnostics = questlang/common/diagnostics : questlang/common/Diagnostics
+    location = questlang/common/location : questlang/common/Location
+    questlang/common/pyRepr : questlang/common/PyRepr
+    tokens = questlang/syntax/tokens : questlang/syntax/Tokens
 export
     Let K = tokens.TokenKind
     Let Table = hashmap.T(String K)
@@ -150,7 +152,11 @@ export
      * which no character test below accepts, so a loop over such a test stops
      * at the end without checking the cursor *)
     let peekChar(tok: T offset: Int): Char =
-        if {tok.cursor + offset} < tok.textLen then stringOp.getChar(tok.text {tok.cursor + offset}) else ascii.char(0) end
+        if {tok.cursor + offset} < tok.textLen then
+            stringOp.getChar(tok.text {tok.cursor + offset})
+        else
+            ascii.char(0)
+        end
 
     let currentChar(tok: T): Char = peekChar(tok 0)
 
@@ -161,8 +167,7 @@ export
             c
         end
 
-    let skipWhile(tok: T test: All(c: Char) Bool): Ok =
-        while test(currentChar(tok)) do tok.cursor := tok.cursor + 1 end
+    let skipWhile(tok: T test: All(c: Char) Bool): Ok = while test(currentChar(tok)) do tok.cursor := tok.cursor + 1 end
 
     let atEnd(tok: T): Bool = tok.cursor >= tok.textLen
 
@@ -176,7 +181,8 @@ export
             let hex = "0123456789abcdef"
             if {code < 32} orif {code >= 127} then
                 "'\\x" <> stringOp.getSub(hex {code / 16} 1) <> stringOp.getSub(hex {code % 16} 1) <> "'"
-            else "'" <> conv.char(c) <> "'"
+            else
+                "'" <> conv.char(c) <> "'"
             end
         end
 
@@ -190,13 +196,13 @@ export
     (* The token from start to the cursor *)
     let finish(tok: T kind: K start: Int value: tokens.TokenValue): tokens.Token =
         tokens.make(
-            kind stringOp.getSub(tok.text start {tok.cursor - start}) value location.span(tok.file start tok.cursor)
-        )
+                kind stringOp.getSub(tok.text start {tok.cursor - start}) value location.span(tok.file start tok.cursor)
+                )
 
     let skipWhitespaceAndComments(tok: T): Ok =
         loop
-            if strutil.isSpace(currentChar(tok)) orif {currentChar(tok) is ascii.char(11)} orif
-                {currentChar(tok) is ascii.char(12)} then
+            if strutil.isSpace(currentChar(tok)) orif {currentChar(tok) is ascii.char(11)}
+                    orif {currentChar(tok) is ascii.char(12)} then
                 tok.cursor := tok.cursor + 1
             elsif atCommentStart(tok) then
                 (* Nested comments (* ... *) *)
@@ -369,22 +375,23 @@ export
     let lexChar(tok: T): tokens.Token =
         begin
             let start = tok.cursor
-            tok.cursor := tok.cursor + 1 (* Opening quote *)
+            tok.cursor := tok.cursor + 1  (* Opening quote *)
             if atEnd(tok) orif {currentChar(tok) is '\''} then
                 error(tok start "Empty character literal")
                 if currentChar(tok) is '\'' then tok.cursor := tok.cursor + 1 end
                 finish(tok option charLit of K end start tokens.valChar(ascii.char(0)))
             else
-                let value = if currentChar(tok) is '\\' then
-                    tok.cursor := tok.cursor + 1
-                    lexEscapeSequence(tok)
-                else
-                    advanceChar(tok)
-                end
+                let value =
+                    if currentChar(tok) is '\\' then
+                        tok.cursor := tok.cursor + 1
+                        lexEscapeSequence(tok)
+                    else
+                        advanceChar(tok)
+                    end
                 if atEnd(tok) orif {currentChar(tok) isnot '\''} then
                     error(tok start "Unterminated character literal")
                 else
-                    tok.cursor := tok.cursor + 1 (* Closing quote *)
+                    tok.cursor := tok.cursor + 1  (* Closing quote *)
                 end
                 finish(tok option charLit of K end start tokens.valChar(value))
             end
@@ -393,7 +400,7 @@ export
     let lexString(tok: T): tokens.Token =
         begin
             let start = tok.cursor
-            tok.cursor := tok.cursor + 1 (* Opening quote *)
+            tok.cursor := tok.cursor + 1  (* Opening quote *)
             let b = sb.new()
             while not(atEnd(tok)) andif {currentChar(tok) isnot '"'} do
                 if currentChar(tok) is '\\' then
@@ -406,7 +413,7 @@ export
             if atEnd(tok) then
                 error(tok start "Unterminated string literal")
             else
-                tok.cursor := tok.cursor + 1 (* Closing quote *)
+                tok.cursor := tok.cursor + 1  (* Closing quote *)
             end
             finish(tok option stringLit of K end start tokens.valString(sb.toString(b)))
         end
@@ -515,15 +522,18 @@ export
                 (* A literal's value as Python's repr writes it, as the
                  * bootstrap's dump does *)
                 let number = pyRepr.number
-                let shown = if not(showValues) then maybe.none(:String) else
-                    case t.value
-                        when intVal with x then maybe.some(number(conv.int(x.val)))
-                        when realVal with x then maybe.some(number(conv.real(x.val)))
-                        when charVal with x then maybe.some(pyRepr.str(stringOp.new(1 x.val)))
-                        when stringVal with x then maybe.some(pyRepr.str(x.val))
-                        else maybe.none(:String)
+                let shown =
+                    if not(showValues) then
+                        maybe.none(:String)
+                    else
+                        case t.value
+                            when intVal with x then maybe.some(number(conv.int(x.val)))
+                            when realVal with x then maybe.some(number(conv.real(x.val)))
+                            when charVal with x then maybe.some(pyRepr.str(stringOp.new(1 x.val)))
+                            when stringVal with x then maybe.some(pyRepr.str(x.val))
+                            else maybe.none(:String)
+                        end
                     end
-                end
                 if maybe.isSome(shown) then
                     sb.str(b "\t(value=")
                     sb.str(b maybe.unwrap(shown))

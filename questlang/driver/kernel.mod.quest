@@ -2,29 +2,31 @@
 
 module kernel : Kernel
 import
-    questlang/common/location : questlang/common/Location
-    questlang/common/diagnostics : questlang/common/Diagnostics
+    reader : Reader
+    stringOp = string : StringOp
+    system : System
+    writer : Writer
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/json : util/Json
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    sb = util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+
+    questlang/codegen/native : questlang/codegen/Native
     questlang/common/diagbag : questlang/common/DiagBag
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/location : questlang/common/Location
+    questlang/driver/interrupts : questlang/driver/Interrupts
+    questlang/driver/repl : questlang/driver/Repl
+    questlang/interpreter/formatting : questlang/interpreter/Formatting
+    questlang/interpreter/treewalk : questlang/interpreter/Treewalk
     questlang/syntax/tokenizer : questlang/syntax/Tokenizer
     questlang/types/env : questlang/types/Env
     tm = questlang/types/model : questlang/types/Model
-    questlang/interpreter/formatting : questlang/interpreter/Formatting
     questlang/types/symbols : questlang/types/Symbols
-    questlang/interpreter/treewalk : questlang/interpreter/Treewalk
-    questlang/codegen/native : questlang/codegen/Native
-    questlang/driver/interrupts : questlang/driver/Interrupts
-    util/json : util/Json
-    collections/vector : collections/Vector
-    collections/hashMap : collections/HashMap
-    util/sort : util/Sort
-    util/maybe : util/Maybe
-    util/strutil : util/Strutil
-    sb = util/stringBuilder : util/StringBuilder
-    stringOp = string : StringOp
-    reader : Reader
-    writer : Writer
-    system : System
-    questlang/driver/repl : questlang/driver/Repl
 export
     (* A line of r, without its newline, if r has one before its end *)
     let readRequest(r: reader.T): maybe.T(String) =
@@ -137,12 +139,14 @@ export
             let q = nameStart(code {start - 1})
             let name = stringOp.getSub(code q {{start - 1} - q})
             let known = env.lookupModule(r.e name)
-            let scope = if maybe.isSome(known) orif maybe.isNone(r.e.registry) then
-                known
-            else
-                try maybe.unwrap(r.e.registry).ensureModule(name r.e)
-                when diagnostics.compilerError then maybe.none(:symbols.Scope) end
-            end
+            let scope =
+                if maybe.isSome(known) orif maybe.isNone(r.e.registry) then
+                    known
+                else
+                    try maybe.unwrap(r.e.registry).ensureModule(name r.e)
+                    when diagnostics.compilerError then maybe.none(:symbols.Scope)
+                    end
+                end
             if maybe.isSome(scope) then
                 maybe.some(tuple let name = name let scope = maybe.unwrap(scope) end)
             else
@@ -271,7 +275,7 @@ export
                 vector.append(matches json.string(found.matches[i]))
             end
             writeRecord(w array of "matches" "start" "end" end
-                array of json.arrayValue(matches) json.int(found.start) json.int(clamp(code cursor)) end)
+                    array of json.arrayValue(matches) json.int(found.start) json.int(clamp(code cursor)) end)
         end
 
     let inspectName(r: repl.T w: writer.T code: String cursor: Int): Ok =
@@ -279,7 +283,7 @@ export
             let shown = inspection(r code clamp(code cursor))
             if maybe.isSome(shown) then
                 writeRecord(w array of "found" "text" end
-                    array of json.bool(true) json.string(maybe.unwrap(shown)) end)
+                        array of json.bool(true) json.string(maybe.unwrap(shown)) end)
             else
                 writeRecord(w array of "found" end array of json.bool(false) end)
             end
@@ -307,7 +311,8 @@ export
                 case maybe.unwrap(v)
                     when jNumber with x then
                         if x.isInteger then maybe.unwrapOr(strutil.tryToInt(x.text) stringOp.length(code))
-                        else stringOp.length(code) end
+                        else stringOp.length(code)
+                        end
                     else stringOp.length(code)
                 end
             else
@@ -320,14 +325,15 @@ export
     let serve(r: repl.T w: writer.T line: String): Ok =
         if stringOp.length(strutil.strip(line)) > 0 then
             let request = try maybe.some(json.parse(line)) when json.error then maybe.none(:json.Value) end
-            let o = if maybe.isSome(request) then
-                case maybe.unwrap(request)
-                    when jObject with x then maybe.some(x.o)
-                    else maybe.none(:json.Object)
+            let o =
+                if maybe.isSome(request) then
+                    case maybe.unwrap(request)
+                        when jObject with x then maybe.some(x.o)
+                        else maybe.none(:json.Object)
+                    end
+                else
+                    maybe.none(:json.Object)
                 end
-            else
-                maybe.none(:json.Object)
-            end
             let has = fun(name: String): Bool
                 maybe.isSome(o) andif maybe.isSome(member(maybe.unwrap(o) name))
             let text = fun(name: String): String maybe.unwrap(member(maybe.unwrap(o) name))
@@ -347,7 +353,8 @@ export
                 writeRecord(w array of "done" end array of json.string("ok") end)
             else
                 writeRecord(w array of "error" "message" "rendered" end array of json.string("protocol")
-                    json.string("not a request: " <> line) json.string("not a request: " <> line <> "\n") end)
+                    json.string("not a request: " <> line) json.string("not a request: " <> line <> "\n")
+                end)
                 writeRecord(w array of "done" end array of json.string("error") end)
             end
         end
@@ -364,8 +371,10 @@ export
 
     let runKernel(r: repl.T): Int =
         begin
-            let requests = try reader.file("/dev/fd/3")
-                when reader.error then closed("reads requests from descriptor 3") reader.input end
+            let requests =
+                try reader.file("/dev/fd/3")
+                when reader.error then closed("reads requests from descriptor 3") reader.input
+                end
             let w = records()
             (* An interrupt raises `interrupted` in the cell running, in code
              * the JIT compiles from now on and in the interpreter *)
@@ -399,8 +408,10 @@ export
             0
         else
             let session = vector.get(held 0)
-            let requests = try reader.file("/dev/fd/3")
-                when reader.error then closed("reads requests from descriptor 3") reader.input end
+            let requests =
+                try reader.file("/dev/fd/3")
+                when reader.error then closed("reads requests from descriptor 3") reader.input
+                end
             let line = readRequest(requests)
             reader.close(requests)
             if maybe.isNone(line) then

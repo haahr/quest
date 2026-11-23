@@ -21,24 +21,25 @@
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
+    conv : Conv
+    stringOp = string : StringOp
+    writer : Writer
+
+    collections/vector : collections/Vector
+    util/strutil : util/Strutil
+
     questlang/codegen/machine/machine : questlang/codegen/machine/Machine
     questlang/codegen/machine/regalloc : questlang/codegen/machine/Regalloc
     targets = questlang/codegen/machine/target : questlang/codegen/machine/Target
-    collections/vector : collections/Vector
-    util/strutil : util/Strutil
-    writer : Writer
-    conv : Conv
-    stringOp = string : StringOp
-;
 
-let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end
 
 (* The toy target: a0, the argument and result register, and r1, which a
  * call clobbers, and s1, which it preserves; f1 and g1 likewise for reals; and
  * the scratch registers t1, t2, t3, u1, and u2 *)
-let intClass = option classInt of targets.Class end;
-let realClass = option classReal of targets.Class end;
-let register(name: String c: targets.Class): targets.Register = tuple let name = name let class = c end;
+let intClass = option classInt of targets.Class end
+let realClass = option classReal of targets.Class end
+let register(name: String c: targets.Class): targets.Register = tuple let name = name let class = c end
 let toy: targets.Target = tuple
     let registers = array of
         register("a0" intClass) register("r1" intClass) register("s1" intClass)
@@ -53,53 +54,54 @@ let toy: targets.Target = tuple
     let scratch = array of 5 6 7 8 9 end
     let stackAlign = 16
     let wordBytes = 8
-end;
-let a0 = 0;
-let f1 = 3;
+end
+let a0 = 0
+let f1 = 3
 
 (* Each instruction's operation is its text *)
-let ops = vector.new(:String);
+let ops = vector.new(:String)
 let name(f: machine.Function r: Int): String =
     if r is regalloc.memory then "memory"
     elsif machine.isVirtual(f r) then "%" <> conv.int(machine.index(f r))
-    else targets.name(toy r) end;
+    else targets.name(toy r)
+    end
 let make(kind: machine.Kind text: String operands: Array(machine.Operand) target: Int): machine.Inst =
     begin
         vector.append(:String ops text)
         machine.inst(kind operands vector.length(:String ops) - 1 target)
-    end;
+    end
 let put(f: machine.Function b: Int kind: machine.Kind text: String operands: Array(machine.Operand)): Ok =
-    machine.append(f b make(kind text operands ~1));
-let rd(r: Int): machine.Operand = machine.reads(r);
-let wr(r: Int): machine.Operand = machine.writes(r);
-let none = array of :machine.Operand end;
-let noArgs = array of :Int end;
-let ordinary = machine.kindOrdinary;
+    machine.append(f b make(kind text operands ~1))
+let rd(r: Int): machine.Operand = machine.reads(r)
+let wr(r: Int): machine.Operand = machine.writes(r)
+let none = array of :machine.Operand end
+let noArgs = array of :Int end
+let ordinary = machine.kindOrdinary
 
 let op(f: machine.Function b: Int text: String d: Int x: Int y: Int): Ok =
-    put(f b ordinary text array of wr(d) rd(x) rd(y) end);
-let add(f: machine.Function b: Int d: Int x: Int y: Int): Ok = op(f b "add" d x y);
+    put(f b ordinary text array of wr(d) rd(x) rd(y) end)
+let add(f: machine.Function b: Int d: Int x: Int y: Int): Ok = op(f b "add" d x y)
 let constant(f: machine.Function b: Int d: Int n: Int): Ok =
-    put(f b ordinary "const " <> conv.int(n) array of wr(d) end);
-let move(f: machine.Function b: Int d: Int s: Int): Ok = put(f b machine.kindMove "mov" array of wr(d) rd(s) end);
+    put(f b ordinary "const " <> conv.int(n) array of wr(d) end)
+let move(f: machine.Function b: Int d: Int s: Int): Ok = put(f b machine.kindMove "mov" array of wr(d) rd(s) end)
 (* A call of no arguments and no results; one of an argument and a result in
  * a0 *)
-let call(f: machine.Function b: Int): Ok = put(f b machine.kindCall "call g" none);
-let callOne(f: machine.Function b: Int): Ok = put(f b machine.kindCall "call h" array of rd(a0) wr(a0) end);
+let call(f: machine.Function b: Int): Ok = put(f b machine.kindCall "call g" none)
+let callOne(f: machine.Function b: Int): Ok = put(f b machine.kindCall "call h" array of rd(a0) wr(a0) end)
 let ret(f: machine.Function b: Int v: Int): Ok =
     begin
         move(f b a0 v)
         put(f b machine.kindReturn "ret" array of rd(a0) end)
-    end;
+    end
 let jump(f: machine.Function b: Int to: Int args: Array(Int)): Ok =
     begin
         let operands = array of(extent args rd(0))
         for k = 0 upto {extent args - 1} do operands[k] := rd(args[k]) end
         machine.append(f b make(machine.kindJump "b" operands to))
-    end;
+    end
 let branch(f: machine.Function b: Int c: Int to: Int): Ok =
-    machine.append(f b make(machine.kindBranch "cbnz" array of rd(c) end to));
-let fresh(f: machine.Function): Int = machine.newVirtual(f intClass);
+    machine.append(f b make(machine.kindBranch "cbnz" array of rd(c) end to))
+let fresh(f: machine.Function): Int = machine.newVirtual(f intClass)
 (* A function whose entry takes an Int argument in a0 *)
 let entry(f: machine.Function): Int =
     begin
@@ -107,7 +109,7 @@ let entry(f: machine.Function): Int =
         let v = fresh(f)
         move(f b v a0)
         v
-    end;
+    end
 
 let line(f: machine.Function i: machine.Inst): String =
     begin
@@ -117,9 +119,9 @@ let line(f: machine.Function i: machine.Inst): String =
             vector.append(:String texts {if i.operands[k].defines then "=" else "" end} <> name(f i.operands[k].reg))
         end
         strutil.join(" " texts)
-    end;
+    end
 
-let rematerializable(i: machine.Inst): Bool = strutil.startsWith(vector.get(:String ops i.op) "const");
+let rematerializable(i: machine.Inst): Bool = strutil.startsWith(vector.get(:String ops i.op) "const")
 
 (* A function's allocation, with the blocks cold says are cold *)
 let showCold(title: String f: machine.Function cold: All(b: Int) Bool): Ok =
@@ -170,206 +172,206 @@ let showCold(title: String f: machine.Function cold: All(b: Int) Bool): Ok =
         emit("rewritten:")
         writer.putString(writer.output machine.format(f fun(r: Int): String name(f r) fun(i: machine.Inst): String
             line(f i)))
-    end;
+    end
 
-let show(title: String f: machine.Function): Ok = showCold(title f fun(b: Int): Bool false);
+let show(title: String f: machine.Function): Ok = showCold(title f fun(b: Int): Bool false)
 
 (* 1. A chain: each result can take its operand's register, and the first and
  * the last the argument's and the result's *)
-let chain = machine.newFunction(extent toy.registers);
-let c0 = entry(chain);
-let c1 = fresh(chain);
-let c2 = fresh(chain);
-let c3 = fresh(chain);
-add(chain 0 c1 c0 c0);
-add(chain 0 c2 c1 c1);
-add(chain 0 c3 c2 c2);
-ret(chain 0 c3);
-show("a chain" chain);
+let chain = machine.newFunction(extent toy.registers)
+let c0 = entry(chain)
+let c1 = fresh(chain)
+let c2 = fresh(chain)
+let c3 = fresh(chain)
+add(chain 0 c1 c0 c0)
+add(chain 0 c2 c1 c1)
+add(chain 0 c3 c2 c2)
+ret(chain 0 c3)
+show("a chain" chain)
 
 (* 2. Across a call: what lives across it needs the callee-saved register; the
  * second such value is in memory across the call, and loaded at its use *)
-let across = machine.newFunction(extent toy.registers);
-let x0 = entry(across);
-let x1 = fresh(across);
-let x2 = fresh(across);
-add(across 0 x1 x0 x0);
-call(across 0);
-add(across 0 x2 x0 x1);
-ret(across 0 x2);
-show("two values across a call" across);
+let across = machine.newFunction(extent toy.registers)
+let x0 = entry(across)
+let x1 = fresh(across)
+let x2 = fresh(across)
+add(across 0 x1 x0 x0)
+call(across 0)
+add(across 0 x2 x0 x1)
+ret(across 0 x2)
+show("two values across a call" across)
 
 (* 3. Too many at once: four live together, three registers; the one used
  * furthest away is spilled until it is used *)
-let crowd = machine.newFunction(extent toy.registers);
-let k = array of(6 0);
-k[0] := entry(crowd);
-for j = 1 upto 5 do k[j] := fresh(crowd) end;
-add(crowd 0 k[1] k[0] k[0]);
-add(crowd 0 k[2] k[1] k[0]);
-add(crowd 0 k[3] k[2] k[1]);
-add(crowd 0 k[4] k[3] k[2]);
-add(crowd 0 k[5] k[4] k[1]);
-let k6 = fresh(crowd);
-add(crowd 0 k6 k[5] k[0]);
-ret(crowd 0 k6);
-show("more live values than registers" crowd);
+let crowd = machine.newFunction(extent toy.registers)
+let k = array of(6 0)
+k[0] := entry(crowd)
+for j = 1 upto 5 do k[j] := fresh(crowd) end
+add(crowd 0 k[1] k[0] k[0])
+add(crowd 0 k[2] k[1] k[0])
+add(crowd 0 k[3] k[2] k[1])
+add(crowd 0 k[4] k[3] k[2])
+add(crowd 0 k[5] k[4] k[1])
+let k6 = fresh(crowd)
+add(crowd 0 k6 k[5] k[0])
+ret(crowd 0 k6)
+show("more live values than registers" crowd)
 
 (* 4. A loop: its values stay in their registers through it, the jumps'
  * arguments sharing their parameters' *)
-let loopF = machine.newFunction(extent toy.registers);
-let n = entry(loopF);
-let head = machine.newBlock(loopF);
-let i = machine.addParam(loopF head intClass);
-let body = machine.newBlock(loopF);
-let edgeB = machine.newBlock(loopF);
-let exitB = machine.newBlock(loopF);
-let zero = fresh(loopF);
-constant(loopF 0 zero 0);
-jump(loopF 0 head array of zero end);
-let cond = fresh(loopF);
-op(loopF head "lt" cond i n);
-branch(loopF head cond edgeB);
-jump(loopF head exitB noArgs);
-jump(loopF edgeB body noArgs);
-let one = fresh(loopF);
-let next = fresh(loopF);
-constant(loopF body one 1);
-add(loopF body next i one);
-jump(loopF body head array of next end);
-ret(loopF exitB i);
-show("a loop" loopF);
+let loopF = machine.newFunction(extent toy.registers)
+let n = entry(loopF)
+let head = machine.newBlock(loopF)
+let i = machine.addParam(loopF head intClass)
+let body = machine.newBlock(loopF)
+let edgeB = machine.newBlock(loopF)
+let exitB = machine.newBlock(loopF)
+let zero = fresh(loopF)
+constant(loopF 0 zero 0)
+jump(loopF 0 head array of zero end)
+let cond = fresh(loopF)
+op(loopF head "lt" cond i n)
+branch(loopF head cond edgeB)
+jump(loopF head exitB noArgs)
+jump(loopF edgeB body noArgs)
+let one = fresh(loopF)
+let next = fresh(loopF)
+constant(loopF body one 1)
+add(loopF body next i one)
+jump(loopF body head array of next end)
+ret(loopF exitB i)
+show("a loop" loopF)
 
 (* 5. Reals: registers of their own class, a callee-saved one across a call *)
-let reals = machine.newFunction(extent toy.registers);
-let rb = machine.newBlock(reals);
-let r0 = machine.newVirtual(reals realClass);
-let r1 = machine.newVirtual(reals realClass);
-let r2 = machine.newVirtual(reals realClass);
-let r3 = machine.newVirtual(reals realClass);
-move(reals rb r0 f1);
-constant(reals rb r1 2);
-op(reals rb "fadd" r2 r0 r1);
-call(reals rb);
-op(reals rb "fmul" r3 r2 r0);
-move(reals rb f1 r3);
-put(reals rb machine.kindReturn "ret" array of rd(f1) end);
-show("reals across a call" reals);
+let reals = machine.newFunction(extent toy.registers)
+let rb = machine.newBlock(reals)
+let r0 = machine.newVirtual(reals realClass)
+let r1 = machine.newVirtual(reals realClass)
+let r2 = machine.newVirtual(reals realClass)
+let r3 = machine.newVirtual(reals realClass)
+move(reals rb r0 f1)
+constant(reals rb r1 2)
+op(reals rb "fadd" r2 r0 r1)
+call(reals rb)
+op(reals rb "fmul" r3 r2 r0)
+move(reals rb f1 r3)
+put(reals rb machine.kindReturn "ret" array of rd(f1) end)
+show("reals across a call" reals)
 
 (* 6. A call's argument and result in a0: what is live across the argument's
  * move is not in a0, and the result's register is taken from a0 *)
-let fixed = machine.newFunction(extent toy.registers);
-let p0 = entry(fixed);
-let p1 = fresh(fixed);
-let p2 = fresh(fixed);
-add(fixed 0 p1 p0 p0);
-move(fixed 0 a0 p1);
-callOne(fixed 0);
-move(fixed 0 p2 a0);
-let p3 = fresh(fixed);
-add(fixed 0 p3 p2 p0);
-ret(fixed 0 p3);
-show("an argument and a result in a fixed register" fixed);
+let fixed = machine.newFunction(extent toy.registers)
+let p0 = entry(fixed)
+let p1 = fresh(fixed)
+let p2 = fresh(fixed)
+add(fixed 0 p1 p0 p0)
+move(fixed 0 a0 p1)
+callOne(fixed 0)
+move(fixed 0 p2 a0)
+let p3 = fresh(fixed)
+add(fixed 0 p3 p2 p0)
+ret(fixed 0 p3)
+show("an argument and a result in a fixed register" fixed)
 
 (* 7. A raise enters a block: what it uses is in memory at its start, while
  * the block before it has it in a register *)
-let tried = machine.newFunction(extent toy.registers);
-let t0 = entry(tried);
-let t1 = fresh(tried);
-add(tried 0 t1 t0 t0);
-let tryBody = machine.newBlock(tried);
-let resume = machine.newBlock(tried);
-let handler = machine.newBlock(tried);
-machine.block(tried resume).raised := true;
-machine.append(tried 0 make(machine.kindBranch "adr" none resume));
-jump(tried 0 tryBody noArgs);
-let t2 = fresh(tried);
-add(tried tryBody t2 t1 t1);
-ret(tried tryBody t2);
-jump(tried resume handler noArgs);
-let t3 = fresh(tried);
-add(tried handler t3 t1 t0);
-ret(tried handler t3);
-show("a block a raise enters" tried);
+let tried = machine.newFunction(extent toy.registers)
+let t0 = entry(tried)
+let t1 = fresh(tried)
+add(tried 0 t1 t0 t0)
+let tryBody = machine.newBlock(tried)
+let resume = machine.newBlock(tried)
+let handler = machine.newBlock(tried)
+machine.block(tried resume).raised := true
+machine.append(tried 0 make(machine.kindBranch "adr" none resume))
+jump(tried 0 tryBody noArgs)
+let t2 = fresh(tried)
+add(tried tryBody t2 t1 t1)
+ret(tried tryBody t2)
+jump(tried resume handler noArgs)
+let t3 = fresh(tried)
+add(tried handler t3 t1 t0)
+ret(tried handler t3)
+show("a block a raise enters" tried)
 
 (* 8. Slots shared: a value in memory across one call, and another across a
  * second call, defined after the first is dead, which takes the first's
  * slot *)
-let shared = machine.newFunction(extent toy.registers);
-let e0 = entry(shared);
-let e = array of(6 0);
-for j = 0 upto 5 do e[j] := fresh(shared) end;
-add(shared 0 e[0] e0 e0);
-add(shared 0 e[1] e0 e0);
-call(shared 0);
-add(shared 0 e[2] e[0] e[1]);
-add(shared 0 e[3] e[2] e[2]);
-add(shared 0 e[4] e[2] e[2]);
-call(shared 0);
-add(shared 0 e[5] e[3] e[4]);
-call(shared 0);
-ret(shared 0 e[5]);
-show("slots shared after their values die" shared);
+let shared = machine.newFunction(extent toy.registers)
+let e0 = entry(shared)
+let e = array of(6 0)
+for j = 0 upto 5 do e[j] := fresh(shared) end
+add(shared 0 e[0] e0 e0)
+add(shared 0 e[1] e0 e0)
+call(shared 0)
+add(shared 0 e[2] e[0] e[1])
+add(shared 0 e[3] e[2] e[2])
+add(shared 0 e[4] e[2] e[2])
+call(shared 0)
+add(shared 0 e[5] e[3] e[4])
+call(shared 0)
+ret(shared 0 e[5])
+show("slots shared after their values die" shared)
 
 (* 9. Values that die at a jump: two values live across a call, one in
  * memory, are passed to a block that calls again, whose parameters are
  * stored on the jump into it; and a loop's parameter in memory, passed back
  * to its header unchanged, which the back edge stores again *)
-let jumped = machine.newFunction(extent toy.registers);
-let j0 = entry(jumped);
-let jNext = machine.newBlock(jumped);
-let jp = machine.addParam(jumped jNext intClass);
-let jq = machine.addParam(jumped jNext intClass);
-let j1 = fresh(jumped);
-add(jumped 0 j1 j0 j0);
-call(jumped 0);
-jump(jumped 0 jNext array of j1 j0 end);
-let jHead = machine.newBlock(jumped);
-let jk = machine.addParam(jumped jHead intClass);
-let ji = machine.addParam(jumped jHead intClass);
-let jBody = machine.newBlock(jumped);
-let jEdge = machine.newBlock(jumped);
-let jExit = machine.newBlock(jumped);
-let jr = fresh(jumped);
-add(jumped jNext jr jp jq);
-jump(jumped jNext jHead array of jr jq end);
-call(jumped jHead);
-branch(jumped jHead ji jEdge);
-jump(jumped jHead jExit noArgs);
-jump(jumped jEdge jBody noArgs);
-let jn = fresh(jumped);
-add(jumped jBody jn jk ji);
-jump(jumped jBody jHead array of jn ji end);
-ret(jumped jExit jk);
-show("values that die at a jump, and a loop's invariant that does not" jumped);
+let jumped = machine.newFunction(extent toy.registers)
+let j0 = entry(jumped)
+let jNext = machine.newBlock(jumped)
+let jp = machine.addParam(jumped jNext intClass)
+let jq = machine.addParam(jumped jNext intClass)
+let j1 = fresh(jumped)
+add(jumped 0 j1 j0 j0)
+call(jumped 0)
+jump(jumped 0 jNext array of j1 j0 end)
+let jHead = machine.newBlock(jumped)
+let jk = machine.addParam(jumped jHead intClass)
+let ji = machine.addParam(jumped jHead intClass)
+let jBody = machine.newBlock(jumped)
+let jEdge = machine.newBlock(jumped)
+let jExit = machine.newBlock(jumped)
+let jr = fresh(jumped)
+add(jumped jNext jr jp jq)
+jump(jumped jNext jHead array of jr jq end)
+call(jumped jHead)
+branch(jumped jHead ji jEdge)
+jump(jumped jHead jExit noArgs)
+jump(jumped jEdge jBody noArgs)
+let jn = fresh(jumped)
+add(jumped jBody jn jk ji)
+jump(jumped jBody jHead array of jn ji end)
+ret(jumped jExit jk)
+show("values that die at a jump, and a loop's invariant that does not" jumped)
 
 (* 10. A value never read: a loop's header has four parameters, more than
  * the registers, and one of them only the back edge defines, which nothing
  * reads. Its piece is in memory, but it is never stored *)
-let unread = machine.newFunction(extent toy.registers);
-let u0 = entry(unread);
-let uHead = machine.newBlock(unread);
-let ua = machine.addParam(unread uHead intClass);
-let ub = machine.addParam(unread uHead intClass);
-let uc = machine.addParam(unread uHead intClass);
-let ud = machine.addParam(unread uHead intClass);
-let uBody = machine.newBlock(unread);
-let uEdge = machine.newBlock(unread);
-let uExit = machine.newBlock(unread);
-jump(unread 0 uHead array of u0 u0 u0 u0 end);
-let ue = fresh(unread);
-let uf = fresh(unread);
-add(unread uHead ue ua ub);
-add(unread uHead uf ue uc);
-branch(unread uHead uf uEdge);
-jump(unread uHead uExit noArgs);
-jump(unread uEdge uBody noArgs);
-let ug = fresh(unread);
-add(unread uBody ug uf uf);
-call(unread uBody);
-jump(unread uBody uHead array of uf ub uc ug end);
-ret(unread uExit ua);
-show("a value never read, in memory but never stored" unread);
+let unread = machine.newFunction(extent toy.registers)
+let u0 = entry(unread)
+let uHead = machine.newBlock(unread)
+let ua = machine.addParam(unread uHead intClass)
+let ub = machine.addParam(unread uHead intClass)
+let uc = machine.addParam(unread uHead intClass)
+let ud = machine.addParam(unread uHead intClass)
+let uBody = machine.newBlock(unread)
+let uEdge = machine.newBlock(unread)
+let uExit = machine.newBlock(unread)
+jump(unread 0 uHead array of u0 u0 u0 u0 end)
+let ue = fresh(unread)
+let uf = fresh(unread)
+add(unread uHead ue ua ub)
+add(unread uHead uf ue uc)
+branch(unread uHead uf uEdge)
+jump(unread uHead uExit noArgs)
+jump(unread uEdge uBody noArgs)
+let ug = fresh(unread)
+add(unread uBody ug uf uf)
+call(unread uBody)
+jump(unread uBody uHead array of uf ub uc ug end)
+ret(unread uExit ua)
+show("a value never read, in memory but never stored" unread)
 (* 11. Spill weights: in a loop, a value live across the call in its body
  * needs the callee-saved register, which a value read only after the loop
  * holds. The loop's reads weigh more, so the loop's value takes the register,
@@ -377,60 +379,60 @@ show("a value never read, in memory but never stored" unread);
  * loop's header, so the jump back loads it: one load an iteration, rather
  * than a store and a load of the loop's value around the call. Splitting it
  * before the loop instead would take that load out of the loop too. *)
-let weighed = machine.newFunction(extent toy.registers);
-let w0 = entry(weighed);
-let wHead = machine.newBlock(weighed);
-let wi = machine.addParam(weighed wHead intClass);
-let wBody = machine.newBlock(weighed);
-let wEdge = machine.newBlock(weighed);
-let wExit = machine.newBlock(weighed);
-let wOuter = fresh(weighed);
-add(weighed 0 wOuter w0 w0);
-jump(weighed 0 wHead array of w0 end);
-branch(weighed wHead wi wEdge);
-jump(weighed wHead wExit noArgs);
-jump(weighed wEdge wBody noArgs);
-let wx = fresh(weighed);
-let wy = fresh(weighed);
-add(weighed wBody wx wi wi);
-call(weighed wBody);
-add(weighed wBody wy wx wx);
-jump(weighed wBody wHead array of wy end);
-let wr = fresh(weighed);
-add(weighed wExit wr wOuter wi);
-ret(weighed wExit wr);
-show("a loop's value kept in a register over one read after the loop" weighed);
+let weighed = machine.newFunction(extent toy.registers)
+let w0 = entry(weighed)
+let wHead = machine.newBlock(weighed)
+let wi = machine.addParam(weighed wHead intClass)
+let wBody = machine.newBlock(weighed)
+let wEdge = machine.newBlock(weighed)
+let wExit = machine.newBlock(weighed)
+let wOuter = fresh(weighed)
+add(weighed 0 wOuter w0 w0)
+jump(weighed 0 wHead array of w0 end)
+branch(weighed wHead wi wEdge)
+jump(weighed wHead wExit noArgs)
+jump(weighed wEdge wBody noArgs)
+let wx = fresh(weighed)
+let wy = fresh(weighed)
+add(weighed wBody wx wi wi)
+call(weighed wBody)
+add(weighed wBody wy wx wx)
+jump(weighed wBody wHead array of wy end)
+let wr = fresh(weighed)
+add(weighed wExit wr wOuter wi)
+ret(weighed wExit wr)
+show("a loop's value kept in a register over one read after the loop" weighed)
 
 (* 12. A cold block, from which every path raises: its frequency is 1, the
  * least, so that its reads weigh least in choosing what to spill; the same
  * block not cold has its predecessor's *)
-let raising = machine.newFunction(extent toy.registers);
-let k0 = entry(raising);
-let kRaise = machine.newBlock(raising);
-let kOn = machine.newBlock(raising);
-let k1 = fresh(raising);
-let k2 = fresh(raising);
-add(raising 0 k1 k0 k0);
-call(raising 0);
-branch(raising 0 k1 kRaise);
-jump(raising 0 kOn noArgs);
-add(raising kRaise k2 k1 k0);
-call(raising kRaise);
-put(raising kRaise machine.kindReturn "brk" none);
-ret(raising kOn k0);
-show("a block that raises, not cold" raising);
-let raisingCold = machine.newFunction(extent toy.registers);
-let c0 = entry(raisingCold);
-let cRaise = machine.newBlock(raisingCold);
-let cOn = machine.newBlock(raisingCold);
-let c1 = fresh(raisingCold);
-let c2 = fresh(raisingCold);
-add(raisingCold 0 c1 c0 c0);
-call(raisingCold 0);
-branch(raisingCold 0 c1 cRaise);
-jump(raisingCold 0 cOn noArgs);
-add(raisingCold cRaise c2 c1 c0);
-call(raisingCold cRaise);
-put(raisingCold cRaise machine.kindReturn "brk" none);
-ret(raisingCold cOn c0);
-showCold("the same block, cold" raisingCold fun(b: Int): Bool b is cRaise);
+let raising = machine.newFunction(extent toy.registers)
+let k0 = entry(raising)
+let kRaise = machine.newBlock(raising)
+let kOn = machine.newBlock(raising)
+let k1 = fresh(raising)
+let k2 = fresh(raising)
+add(raising 0 k1 k0 k0)
+call(raising 0)
+branch(raising 0 k1 kRaise)
+jump(raising 0 kOn noArgs)
+add(raising kRaise k2 k1 k0)
+call(raising kRaise)
+put(raising kRaise machine.kindReturn "brk" none)
+ret(raising kOn k0)
+show("a block that raises, not cold" raising)
+let raisingCold = machine.newFunction(extent toy.registers)
+let c0 = entry(raisingCold)
+let cRaise = machine.newBlock(raisingCold)
+let cOn = machine.newBlock(raisingCold)
+let c1 = fresh(raisingCold)
+let c2 = fresh(raisingCold)
+add(raisingCold 0 c1 c0 c0)
+call(raisingCold 0)
+branch(raisingCold 0 c1 cRaise)
+jump(raisingCold 0 cOn noArgs)
+add(raisingCold cRaise c2 c1 c0)
+call(raisingCold cRaise)
+put(raisingCold cRaise machine.kindReturn "brk" none)
+ret(raisingCold cOn c0)
+showCold("the same block, cold" raisingCold fun(b: Int): Bool b is cRaise)

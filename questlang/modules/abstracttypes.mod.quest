@@ -2,15 +2,17 @@
 
 module abstractTypes : AbstractTypes
 import
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/strutil : util/Strutil
-    stringOp = string : StringOp
+
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let Instance = Tuple args: Array(model.Type) rep: model.Type end
     Let ModuleAbstractType = Tuple
@@ -56,29 +58,33 @@ export
     let recordType(globalName: String typeVar: model.Type linked: Bool): ModuleAbstractType =
         begin
             let found = hashMap.get(byName globalName)
-            let entry = if maybe.isSome(found) andif
-                    model.same(maybe.unwrap(found).typeVar typeVar) andif
-                    {maybe.unwrap(found).linked is linked} then
-                maybe.unwrap(found)
-            else
-                (* Elaborating the module's interface again (for another
-                 * importer) keeps the representation its source gave the same
-                 * symbol *)
-                let kept = if maybe.isSome(found)
-                    andif {maybe.unwrap(found).linked is linked}
-                    andif {symbolOf(maybe.unwrap(found).typeVar) is symbolOf(typeVar)} then
-                    maybe.unwrap(found).rep
+            let entry =
+                if maybe.isSome(found)
+                        andif model.same(maybe.unwrap(found).typeVar typeVar)
+                        andif {maybe.unwrap(found).linked is linked} then
+                    maybe.unwrap(found)
                 else
-                    maybe.none(:model.Type)
+                    (* Elaborating the module's interface again (for another
+                     * importer) keeps the representation its source gave the same
+                     * symbol *)
+                    let kept =
+                        if maybe.isSome(found)
+                                andif {maybe.unwrap(found).linked is linked}
+                                andif {symbolOf(maybe.unwrap(found).typeVar) is symbolOf(typeVar)} then
+                            maybe.unwrap(found).rep
+                        else
+                            maybe.none(:model.Type)
+                        end
+                    let e: ModuleAbstractType = tuple
+                        let globalName = globalName
+                        let typeVar = typeVar
+                        let linked = linked
+                        let var rep = kept
+                        let instances = vector.new()
+                    end
+                    hashMap.insert(byName globalName e)
+                    e
                 end
-                let e: ModuleAbstractType = tuple
-                    let globalName = globalName let typeVar = typeVar let linked = linked
-                    let var rep = kept
-                    let instances = vector.new()
-                end
-                hashMap.insert(byName globalName e)
-                e
-            end
             let symbolId = symbolOf(typeVar)
             hashMap.insert(bySymbol symbolId entry)
             entry
@@ -117,7 +123,7 @@ export
             let s = model.newSubst()
             hashMap.forEach(bySymbol fun(k: Int e: ModuleAbstractType): Ok
                 if maybe.isSome(e.rep) andif unbounded(e)
-                    andif not(hashMap.contains(apartNames e.globalName)) then
+                        andif not(hashMap.contains(apartNames e.globalName)) then
                     begin hashMap.insert(s k maybe.unwrap(e.rep)) ok end
                 end)
             s
@@ -126,10 +132,8 @@ export
     let registerUnlinkedAbstractType(globalName: String typeVar: model.Type): ModuleAbstractType =
         recordType(globalName typeVar false)
 
-    let abstractTypeBySymbol(symbolId: Int): maybe.T(ModuleAbstractType) =
-        hashMap.get(bySymbol symbolId)
-    let abstractTypeByName(globalName: String): maybe.T(ModuleAbstractType) =
-        hashMap.get(byName globalName)
+    let abstractTypeBySymbol(symbolId: Int): maybe.T(ModuleAbstractType) = hashMap.get(bySymbol symbolId)
+    let abstractTypeByName(globalName: String): maybe.T(ModuleAbstractType) = hashMap.get(byName globalName)
 
     let moduleAbstractTypes(canon: String): Array(ModuleAbstractType) =
         begin
@@ -137,10 +141,13 @@ export
             let found = vector.new(:ModuleAbstractType)
             hashMap.forEach(byName fun(name: String e: ModuleAbstractType): Ok
                 if e.linked andif maybe.isSome(e.rep) andif strutil.startsWith(name prefix)
-                    andif not(strutil.contains(stringOp.getSub(name stringOp.length(prefix) {stringOp.length(name) - stringOp.length(prefix)}) ".")) then
+                        andif not(strutil.contains(stringOp.getSub(name stringOp.length(prefix)
+                                {stringOp.length(name) - stringOp.length(prefix)})
+                                ".")) then
                     vector.append(found e)
                 end)
             vector.toArray(sort.sortedVector(found
-                fun(a: ModuleAbstractType b: ModuleAbstractType): Int sort.stringCompare(a.globalName b.globalName)))
+                    fun(a: ModuleAbstractType b: ModuleAbstractType): Int
+                        sort.stringCompare(a.globalName b.globalName)))
         end
 end

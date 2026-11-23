@@ -2,16 +2,18 @@
 
 module valueNumbers : ValueNumbers
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/cfg : questlang/ssa/Cfg
-    questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    conv : Conv
-    stringOp = string : StringOp
+
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
 export
     Let Function = ssa.Function
     (* An address as its base and index, as text, and a constant offset *)
@@ -22,10 +24,11 @@ export
     let numbered(i: ssa.Inst): Bool =
         case i.op
             when opConst, opRealConst, opSymbol, opNull, opSlot, opThreadLocal, opPtrAdd, opAdd, opSub, opMul,
-                opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe,
-                opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN,
-                opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opToVal, opFromVal, opSelect,
-                opUnproxy then
+                    opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt,
+                    opGe,
+                    opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN,
+                    opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opToVal, opFromVal, opSelect,
+                    opUnproxy then
                 true
             when opLoad then true
             when opStore, opCall, opCallIndirect, opCopy then false
@@ -42,7 +45,7 @@ export
     let local(op: ssa.Opcode): Bool =
         case op
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN,
-                opAnd, opMul, opPtrAdd, opConst, opRealConst, opSymbol, opNull then
+                    opAnd, opMul, opPtrAdd, opConst, opRealConst, opSymbol, opNull then
                 true
             else false
         end
@@ -75,7 +78,9 @@ export
             let constantOf(v: Int): maybe.T(Int) =
                 if maybe.isSome(defs[v]) andif ssa.isOp(maybe.unwrap(defs[v]) ssa.opConst) then
                     maybe.some(maybe.unwrap(defs[v]).imm)
-                else maybe.none() end
+                else
+                    maybe.none()
+                end
 
             (* Collect incoming jumps to each block and collapse trivial block
              * parameters (ones every jump binds to the same value or to the
@@ -157,7 +162,8 @@ export
                     if ssa.isOp(i ssa.opLoad) andif i.invariant then
                         "invariant load" <> conv.int(i.width) <> if i.signed then "s " else " " end <> t <> " "
                             <> addressKey(i.args[0] i.imm)
-                    elsif ssa.isOp(i ssa.opLoad) then loadKey(i.width i.signed t i.args[0] i.imm memory)
+                    elsif ssa.isOp(i ssa.opLoad) then
+                        loadKey(i.width i.signed t i.args[0] i.imm memory)
                     else
                         (* Format each operand by its value number — or by its
                          * constant value, since constants are only numbered
@@ -226,9 +232,12 @@ export
                         let a = address(i.args[0] i.imm)
                         hashMap.contains(words a.base <> " " <> conv.int(a.offset + 8))
                             orif hashMap.contains(words a.base <> " " <> conv.int(a.offset - 8))
-                    else false end
+                    else
+                        false
+                    end
                 let var memory = 0
-                if {extent g.preds[b] is 1} andif not(handler[b]) then memory := memoryAtEnd[g.preds[b][0]]
+                if {extent g.preds[b] is 1} andif not(handler[b]) then
+                    memory := memoryAtEnd[g.preds[b][0]]
                 else
                     generations := generations + 1
                     memory := generations
@@ -263,7 +272,8 @@ export
                             generations := generations + 1
                             memory := generations
                         end
-                    else vector.append(kept i) end
+                    else vector.append(kept i)
+                    end
                 end
                 memoryAtEnd[b] := memory
                 vector.clear(blk.insts)
@@ -330,7 +340,9 @@ export
                         if unused(i) then
                             for a = 0 upto {extent i.args - 1} do uses[i.args[a]] := uses[i.args[a]] - 1 end
                             changed := true
-                        else vector.append(kept i) end
+                        else
+                            vector.append(kept i)
+                        end
                     end
                     vector.clear(insts)
                     for k = 0 upto {vector.length(kept) - 1} do

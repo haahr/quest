@@ -1,52 +1,50 @@
 import
-    util/argParse : util/ArgParse
-    util/strutil : util/Strutil
+    conv : Conv
+    writer : Writer
+
     collections/vector : collections/Vector
+    util/argParse : util/ArgParse
     util/maybe : util/Maybe
-    writer: Writer
-    conv: Conv
-;
+    util/strutil : util/Strutil
 
 let printStr(s: String): Ok =
     begin
         writer.putString(writer.output s)
         writer.putString(writer.output "\n")
-    end;
+    end
 
-let printBool(b: Bool): Ok =
-    printStr(conv.bool(b));
+let printBool(b: Bool): Ok = printStr(conv.bool(b))
 
-let printInt(n: Int): Ok =
-    printStr(conv.int(n));
+let printInt(n: Int): Ok = printStr(conv.int(n))
 
 (* 1. Basic parser setup *)
-let p = argParse.new("questc" "Quest Compiler Driver");
-argParse.addFlag(p "echo" "-e --echo" "Echo compilation steps");
-argParse.addString(p "output" "-o --output" "a.out" "Output file path");
-let phases = array of "parse" "typecheck" "codegen" end;
-argParse.addChoice(p "phase" "-p --phase" phases "codegen" "Stop after phase");
-argParse.addInt(p "optLevel" "-O" 2 "Optimization level");
-argParse.addMulti(p "include" "-I --include" "Search path directory");
-argParse.addPositional(p "source" "Source file to compile");
+let p = argParse.new("questc" "Quest Compiler Driver")
+argParse.addFlag(p "echo" "-e --echo" "Echo compilation steps")
+argParse.addString(p "output" "-o --output" "a.out" "Output file path")
+let phases = array of "parse" "typecheck" "codegen" end
+argParse.addChoice(p "phase" "-p --phase" phases "codegen" "Stop after phase")
+argParse.addInt(p "optLevel" "-O" 2 "Optimization level")
+argParse.addMulti(p "include" "-I --include" "Search path directory")
+argParse.addPositional(p "source" "Source file to compile")
 
 (* 2. Test Help message formatting *)
-let helpText = argParse.formatHelp(p);
-printBool(strutil.contains(helpText "Usage: questc [options] source"));
-printBool(strutil.contains(helpText "Echo compilation steps"));
-printBool(strutil.contains(helpText "choices: parse, typecheck, codegen"));
+let helpText = argParse.formatHelp(p)
+printBool(strutil.contains(helpText "Usage: questc [options] source"))
+printBool(strutil.contains(helpText "Echo compilation steps"))
+printBool(strutil.contains(helpText "choices: parse, typecheck, codegen"))
 
 (* 3. Parsing standard arguments with defaults *)
-let args1 = array of "main.quest" end;
-let r1 = argParse.parse(p args1);
-printBool(argParse.getBool(r1 "echo"));
-printStr(argParse.getStringOr(r1 "output" ""));
-printStr(argParse.getStringOr(r1 "phase" ""));
-printInt(argParse.getIntOr(r1 "optLevel" 0));
-printInt(vector.length(:String argParse.getMulti(r1 "include")));
+let args1 = array of "main.quest" end
+let r1 = argParse.parse(p args1)
+printBool(argParse.getBool(r1 "echo"))
+printStr(argParse.getStringOr(r1 "output" ""))
+printStr(argParse.getStringOr(r1 "phase" ""))
+printInt(argParse.getIntOr(r1 "optLevel" 0))
+printInt(vector.length(:String argParse.getMulti(r1 "include")))
 
-let pos1 = argParse.positionals(r1);
-printInt(vector.length(:String pos1));
-printStr(vector.get(:String pos1 0));
+let pos1 = argParse.positionals(r1)
+printInt(vector.length(:String pos1))
+printStr(vector.get(:String pos1 0))
 
 (* 4. Parsing flags, options, attached options, choices, and multi *)
 let args2 = array of
@@ -61,27 +59,27 @@ let args2 = array of
     "--"
     "target_arg1"
     "target_arg2"
-end;
-let r2 = argParse.parse(p args2);
-printBool(argParse.getBool(r2 "echo"));
-printStr(argParse.getStringOr(r2 "output" ""));
-printStr(argParse.getStringOr(r2 "phase" ""));
-printInt(argParse.getIntOr(r2 "optLevel" 0));
+end
+let r2 = argParse.parse(p args2)
+printBool(argParse.getBool(r2 "echo"))
+printStr(argParse.getStringOr(r2 "output" ""))
+printStr(argParse.getStringOr(r2 "phase" ""))
+printInt(argParse.getIntOr(r2 "optLevel" 0))
 
-let inc2 = argParse.getMulti(r2 "include");
-printInt(vector.length(:String inc2));
-printStr(vector.get(:String inc2 0));
-printStr(vector.get(:String inc2 1));
+let inc2 = argParse.getMulti(r2 "include")
+printInt(vector.length(:String inc2))
+printStr(vector.get(:String inc2 0))
+printStr(vector.get(:String inc2 1))
 
-let pos2 = argParse.positionals(r2);
-printInt(vector.length(:String pos2));
-printStr(vector.get(:String pos2 0));
-printStr(vector.get(:String pos2 1));
+let pos2 = argParse.positionals(r2)
+printInt(vector.length(:String pos2))
+printStr(vector.get(:String pos2 0))
+printStr(vector.get(:String pos2 1))
 
-let target2 = argParse.targetArgs(r2);
-printInt(vector.length(:String target2));
-printStr(vector.get(:String target2 0));
-printStr(vector.get(:String target2 1));
+let target2 = argParse.targetArgs(r2)
+printInt(vector.length(:String target2))
+printStr(vector.get(:String target2 0))
+printStr(vector.get(:String target2 1))
 
 (* 5. Error handling: unrecognized option *)
 try
@@ -90,7 +88,7 @@ try
     printStr("FAILED: should have raised on --unknown")
 when argParse.error then
     printStr("CAUGHT: unrecognized option error")
-end;
+end
 
 (* 6. Error handling: invalid choice *)
 try
@@ -99,7 +97,7 @@ try
     printStr("FAILED: should have raised on invalid choice")
 when argParse.error then
     printStr("CAUGHT: invalid choice error")
-end;
+end
 
 (* 7. Error handling: missing argument for option *)
 try
@@ -108,7 +106,7 @@ try
     printStr("FAILED: should have raised on missing arg")
 when argParse.error then
     printStr("CAUGHT: missing argument error")
-end;
+end
 
 (* 8. Error handling: invalid integer *)
 try
@@ -117,8 +115,7 @@ try
     printStr("FAILED: should have raised on invalid int")
 when argParse.error then
     printStr("CAUGHT: invalid integer error")
-end;
-
+end
 
 (* 9. Error handling: a flag given a value *)
 try
@@ -127,10 +124,10 @@ try
     printStr("FAILED: should have raised on a flag's value")
 when argParse.error then
     printStr("CAUGHT: flag value error")
-end;
+end
 
 (* 10. An option of the program's named "help" is not the help option *)
-let q = argParse.new("tool" "A tool");
-argParse.addFlag(q "help" "--usage" "Print usage notes");
-let r3 = argParse.parse(q array of "--usage" end);
-printBool(argParse.getBool(r3 "help"));
+let q = argParse.new("tool" "A tool")
+argParse.addFlag(q "help" "--usage" "Print usage notes")
+let r3 = argParse.parse(q array of "--usage" end)
+printBool(argParse.getBool(r3 "help"))

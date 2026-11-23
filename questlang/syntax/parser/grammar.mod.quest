@@ -2,10 +2,10 @@
 
 module grammar : Grammar
 import
-    questlang/syntax/tokens : questlang/syntax/Tokens
     questlang/syntax/ast : questlang/syntax/Ast
-    questlang/syntax/parser/engine : questlang/syntax/parser/Engine
     questlang/syntax/parser/actions : questlang/syntax/parser/Actions
+    questlang/syntax/parser/engine : questlang/syntax/parser/Engine
+    questlang/syntax/tokens : questlang/syntax/Tokens
 export
     Let K = tokens.TokenKind
     Let C = engine.Construct
@@ -265,7 +265,11 @@ export
             (* { infix } *)
             rule(x.primaryType actions.typeName) of p(lbrace) t(symbolicInfix) p(rbrace) end
             (* infix ( TypeBinding ) *)
-            rule(x.primaryType actions.typeAppInfix) of t(symbolicInfix) p(lparen) opt of x.typeBinding end p(rparen) end
+            rule(x.primaryType actions.typeAppInfix) of t(symbolicInfix)
+                p(lparen)
+                opt of x.typeBinding end
+                p(rparen)
+            end
             (* { Type } *)
             rule(x.primaryType actions.first) of p(lbrace) x.type p(rbrace) end
             (* external "c_type" *)
@@ -283,7 +287,10 @@ export
             (* [var | out] IdeList {"(" Signature ")"} : Type (ValueFormals;
              * plain fields have no groups) *)
             rule(x.typeSignature actions.fieldSigs) of
-                opt of t(kwVar) end opt of t(kwOut) end x.ideList rep of p(lparen) x.signature p(rparen) end t(colon) x.type
+                opt of t(kwVar) end opt of t(kwOut) end x.ideList
+                rep of p(lparen) x.signature p(rparen) end
+                t(colon)
+                x.type
             end
             (* [IdeList] HasKind *)
             rule(x.typeSignature actions.first) of x.typeFormal end
@@ -379,7 +386,15 @@ export
                 t(kwOption) x.ide p(kwOf) x.type opt of p(kwWith) x.binding end p(kwEnd)
             end
             rule(x.primaryValue actions.exprOptionOrdinal) of
-                t(kwOption) p(kwOrdinal) p(lparen) x.value p(rparen) p(kwOf) x.type opt of p(kwWith) x.binding end p(kwEnd)
+                t(kwOption)
+                p(kwOrdinal)
+                p(lparen)
+                x.value
+                p(rparen)
+                p(kwOf)
+                x.type
+                opt of p(kwWith) x.binding end
+                p(kwEnd)
             end
             (* variant [var] ide of Type [with Value] end *)
             rule(x.primaryValue actions.exprVariant) of
@@ -395,7 +410,11 @@ export
             (* inspect Value InspectBranches end *)
             rule(x.primaryValue actions.exprInspect) of t(kwInspect) x.value x.inspectBranches p(kwEnd) end
             (* exception ide [: Type] end *)
-            rule(x.primaryValue actions.exprException) of t(kwException) t(ident) opt of p(colon) x.type end p(kwEnd) end
+            rule(x.primaryValue actions.exprException) of t(kwException)
+                t(ident)
+                opt of p(colon) x.type end
+                p(kwEnd)
+            end
             (* raise Value [with Value] [as Type] end *)
             rule(x.primaryValue actions.exprRaise) of
                 t(kwRaise) x.value opt of p(kwWith) x.value end opt of p(kwAs) x.type end p(kwEnd)
@@ -448,15 +467,30 @@ export
     let branchRules(x: Targets): Ok =
         begin
             rule(x.caseBranches actions.caseBranches) of
-                rep of t(kwWhen) x.ideList opt of p(kwWith) t(ident) opt of p(colon) x.type end end p(kwThen) x.binding end
+                rep of t(kwWhen)
+                    x.ideList
+                    opt of p(kwWith) t(ident) opt of p(colon) x.type end end
+                    p(kwThen)
+                    x.binding
+                end
                 opt of t(kwElse) x.binding end
             end
             rule(x.inspectBranches actions.inspectBranches) of
-                rep of t(kwWhen) x.type opt of p(kwWith) x.ideList opt of p(colon) x.type end end p(kwThen) x.binding end
+                rep of t(kwWhen)
+                    x.type
+                    opt of p(kwWith) x.ideList opt of p(colon) x.type end end
+                    p(kwThen)
+                    x.binding
+                end
                 opt of t(kwElse) x.binding end
             end
             rule(x.tryBranches actions.tryBranches) of
-                rep of t(kwWhen) x.value opt of p(kwWith) t(ident) opt of p(colon) x.type end end p(kwThen) x.binding end
+                rep of t(kwWhen)
+                    x.value
+                    opt of p(kwWith) t(ident) opt of p(colon) x.type end end
+                    p(kwThen)
+                    x.binding
+                end
                 opt of t(kwElse) opt of p(kwWith) t(ident) opt of p(colon) x.type end p(kwThen) end x.binding end
             end
         end

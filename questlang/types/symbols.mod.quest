@@ -2,12 +2,14 @@
 
 module symbols : Symbols
 import
-    questlang/types/model : questlang/types/Model
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    stringOp = string : StringOp
+
+    questlang/types/model : questlang/types/Model
 export
     let redefined: Exception(String) = exception redefined: String end
 
@@ -67,15 +69,16 @@ export
     let meaningGeneration(): Int = counters.generation
 
     let newValueSymbol(
-        name: String type: model.Type isVar: Bool isOut: Bool isParam: Bool functionDepth: Int symbolId: Int
-    ): ValueSymbol =
+            name: String type: model.Type isVar: Bool isOut: Bool isParam: Bool functionDepth: Int symbolId: Int
+            ): ValueSymbol =
         begin
-            let id = if symbolId is 0 then
-                counters.values := counters.values + 1
-                counters.values
-            else
-                symbolId
-            end
+            let id =
+                if symbolId is 0 then
+                    counters.values := counters.values + 1
+                    counters.values
+                else
+                    symbolId
+                end
             tuple
                 let name = name
                 let type = type
@@ -167,10 +170,10 @@ export
             hashMap.insert(s.types sym.name sym)
             hashMap.insert(s.typesById sym.symbolId sym)
             let previous = hashMap.get(typesById sym.symbolId)
-            if maybe.isSome(sym.definition) andif
-                {hashMap.contains(typeIdsSeenUndefined sym.symbolId) orif
-                    {maybe.isSome(previous) andif
-                        not(sameDefinition(maybe.unwrap(previous).definition sym.definition))}} then
+            if maybe.isSome(sym.definition)
+                    andif {hashMap.contains(typeIdsSeenUndefined sym.symbolId)
+                            orif {maybe.isSome(previous)
+                                    andif not(sameDefinition(maybe.unwrap(previous).definition sym.definition))}} then
                 meaningsChanged()
             end
             hashMap.insert(typesById sym.symbolId sym)
@@ -178,9 +181,8 @@ export
         end
 
     let declareTypeVariable(
-        s: Scope name: String symbolId: Int kind: model.Kind definition: maybe.T(model.Type)
-    ): TypeSymbol =
-        declareType(s newTypeSymbol(name symbolId kind definition))
+            s: Scope name: String symbolId: Int kind: model.Kind definition: maybe.T(model.Type)
+            ): TypeSymbol = declareType(s newTypeSymbol(name symbolId kind definition))
 
     let declareKind(s: Scope sym: KindSymbol): KindSymbol =
         begin
@@ -188,9 +190,9 @@ export
             hashMap.insert(s.kinds sym.name sym)
             hashMap.insert(s.kindsById sym.symbolId sym)
             let previous = hashMap.get(kindsById sym.symbolId)
-            if hashMap.contains(kindIdsSeenUndefined sym.symbolId) orif
-                {maybe.isSome(previous) andif
-                    not(model.sameKind(maybe.unwrap(previous).kind sym.kind))} then
+            if hashMap.contains(kindIdsSeenUndefined sym.symbolId)
+                    orif {maybe.isSome(previous)
+                            andif not(model.sameKind(maybe.unwrap(previous).kind sym.kind))} then
                 meaningsChanged()
             end
             hashMap.insert(kindsById sym.symbolId sym)
@@ -199,11 +201,9 @@ export
 
     let lookupValueLocal(s: Scope name: String): maybe.T(ValueSymbol) = hashMap.get(s.values name)
     let lookupTypeLocal(s: Scope name: String): maybe.T(TypeSymbol) = hashMap.get(s.types name)
-    let lookupTypeByIdLocal(s: Scope symbolId: Int): maybe.T(TypeSymbol) =
-        hashMap.get(s.typesById symbolId)
+    let lookupTypeByIdLocal(s: Scope symbolId: Int): maybe.T(TypeSymbol) = hashMap.get(s.typesById symbolId)
     let lookupKindLocal(s: Scope name: String): maybe.T(KindSymbol) = hashMap.get(s.kinds name)
-    let lookupKindByIdLocal(s: Scope symbolId: Int): maybe.T(KindSymbol) =
-        hashMap.get(s.kindsById symbolId)
+    let lookupKindByIdLocal(s: Scope symbolId: Int): maybe.T(KindSymbol) = hashMap.get(s.kindsById symbolId)
 
     (* A lookup through a scope and its parents *)
     let chain(A::TYPE K::TYPE)(local: All(s: Scope key: K) maybe.T(A)): All(s: Scope key: K) maybe.T(A) =
@@ -212,7 +212,8 @@ export
                 begin
                     let found = local(s key)
                     if maybe.isSome(found) orif maybe.isNone(s.parent) then found
-                    else find(maybe.unwrap(s.parent) key) end
+                    else find(maybe.unwrap(s.parent) key)
+                    end
                 end
             find
         end

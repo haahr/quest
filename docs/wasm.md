@@ -1105,6 +1105,5 @@ Found and not fixed, each small or rare; none is a difference §7 accepts.
   answers 200 for a missing file (an HTML error page) is taken at its word.
 - **The host's `open`** handles only the flags the core passes (read, a directory, or create with truncate): create
   without truncate would replace an existing file, and append and exclusive are ignored.
-- **Pending under the JIT:** `questlang/types_judgments` (an unbound type variable not reported), and the transcripts
-  whose output holds frames (§2.9).
+- **Pending under the JIT:** the transcripts whose output holds frames (§2.9).
 - **Shared faults** a review reported and no probe reproduced are in [tasklist.md](tasklist.md).

@@ -2,11 +2,12 @@
 
 module walk : Walk
 import
-    questlang/ir/nodes : questlang/ir/Nodes
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
+
+    questlang/ir/nodes : questlang/ir/Nodes
 export
     Let Variable = nodes.Variable
     Let Atom = nodes.Atom
@@ -119,7 +120,8 @@ export
         case s
             when sLet with x then opUses(x.value)
             when sDo with x then opUses(x.value)
-            when sVarDecl with x then if maybe.isSome(x.init) then array of maybe.unwrap(x.init) end else array of :Atom end end
+            when sVarDecl with x then
+                if maybe.isSome(x.init) then array of maybe.unwrap(x.init) end else array of :Atom end end
             when sAssign with x then array of nodes.atomOfVar(x.v) x.value end
             when sStoreAt with x then array of x.value x.address end
             when sStoreField with x then array of x.value x.base end
@@ -147,7 +149,8 @@ export
                     vector.append(found s)
                     if intoFunctions then
                         case s
-                            when sFuns with x then for j = 0 upto {extent x.functions - 1} do visit(x.functions[j].body) end
+                            when sFuns with x then
+                                for j = 0 upto {extent x.functions - 1} do visit(x.functions[j].body) end
                             else ok
                         end
                     end
@@ -265,7 +268,7 @@ export
                     for i = 0 upto {extent x.fields - 1} do
                         let fa = x.fields[i]
                         vector.append(fields
-                            tuple let name = fa.name let atom = g(fa.atom) let isVar = fa.isVar end)
+                                tuple let name = fa.name let atom = g(fa.atom) let isVar = fa.isVar end)
                     end
                     x.fields := vector.toArray(fields)
                     x.descriptor := optDescriptor(x.descriptor f)
@@ -411,7 +414,8 @@ export
                                 if maybe.isSome(p) then
                                     let dp = maybe.unwrap(p)
                                     arm.descriptors[j] := maybe.some(tuple
-                                        let source = descriptor(dp.source f) let target = descriptor(dp.target f)
+                                        let source = descriptor(dp.source f)
+                                        let target = descriptor(dp.target f)
                                     end)
                                 end
                             end
@@ -493,8 +497,7 @@ export
             end
             (* And a module's members, exports, and record, which other units
              * and the module's exported functions read *)
-            let member(v: Variable): Ok =
-                if hashMap.contains(bound v.id) then hashMap.insert(found v.id true) end
+            let member(v: Variable): Ok = if hashMap.contains(bound v.id) then hashMap.insert(found v.id true) end
             let members(ms: nodes.Members): Ok =
                 for j = 0 upto {vector.length(ms.names) - 1} do
                     member(hashMap.find(ms.vars vector.get(ms.names j)))
@@ -558,7 +561,7 @@ export
                             when opMakeClosure with c then
                                 if not(hashMap.contains(closuresOf c.code.id)) then
                                     hashMap.insert(closuresOf c.code.id
-                                        vector.new(:nodes.OpMakeClosure))
+                                            vector.new(:nodes.OpMakeClosure))
                                 end
                                 vector.append(hashMap.find(closuresOf c.code.id) c)
                             else ok
@@ -584,7 +587,9 @@ export
                                             when atomVar with e then
                                                 if e.v.id is env.id then
                                                     vector.append(reads tuple
-                                                        let v = x.v let function = fn.id let index = y.index
+                                                        let v = x.v
+                                                        let function = fn.id
+                                                        let index = y.index
                                                     end)
                                                 end
                                             when atomConst then ok
@@ -598,7 +603,8 @@ export
             end
             let note = fun(v: nodes.Variable c: nodes.OpMakeClosure): Bool
                 if hashMap.contains(known v.id) then false
-                else begin hashMap.insert(known v.id c) true end end
+                else begin hashMap.insert(known v.id c) true end
+                end
             let var changed = true
             while changed do
                 changed := false
@@ -627,7 +633,7 @@ export
                     let read = vector.get(reads r)
                     let cs = hashMap.get(closuresOf read.function)
                     if not(hashMap.contains(known read.v.id))
-                        andif maybe.isSome(cs) then
+                            andif maybe.isSome(cs) then
                         let closures = maybe.unwrap(cs)
                         (* The closure every one captures at the index, if all
                          * capture closures of one function *)
@@ -635,16 +641,19 @@ export
                         let var all = vector.length(closures) > 0
                         for k = 0 upto {vector.length(closures) - 1} do
                             let c = vector.get(closures k)
-                            let held = if read.index < extent c.captures then
-                                case c.captures[read.index]
-                                    when atomVar with y then hashMap.get(known y.v.id)
-                                    when atomConst then maybe.none(:nodes.OpMakeClosure)
+                            let held =
+                                if read.index < extent c.captures then
+                                    case c.captures[read.index]
+                                        when atomVar with y then hashMap.get(known y.v.id)
+                                        when atomConst then maybe.none(:nodes.OpMakeClosure)
+                                    end
+                                else
+                                    maybe.none(:nodes.OpMakeClosure)
                                 end
-                            else maybe.none(:nodes.OpMakeClosure) end
                             if maybe.isNone(held) then all := false
                             elsif maybe.isNone(agreed) then agreed := held
                             elsif maybe.unwrap(agreed).code.id
-                                isnot maybe.unwrap(held).code.id then
+                                    isnot maybe.unwrap(held).code.id then
                                 all := false
                             end
                         end

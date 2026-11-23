@@ -2,9 +2,10 @@
 
 module interrupts : Interrupts
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/cfg : questlang/ssa/Cfg
     collections/vector : collections/Vector
+
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let Function = ssa.Function
 
@@ -46,7 +47,7 @@ export
             let flag = ssa.newValue(f ssa.typePtr)
             let pending = ssa.newValue(f ssa.typeInt)
             let address = ssa.instruction(ssa.opSymbol array of :Int end array of flag end 0 "quest_interrupt_pending" 0
-                false ssa.emptySignature)
+                    false ssa.emptySignature)
             address.loc := at
             vector.append(blk.insts address)
             let load = ssa.instruction(ssa.opLoad array of flag end array of pending end 0 "" 8 true ssa.emptySignature)
@@ -65,7 +66,7 @@ export
             let head = heads(f)
             let raiser = ssa.newBlock(f)
             let call = ssa.instruction(ssa.opCall array of :Int end array of :Int end 0 "quest_interrupt_raise" 0 false
-                ssa.emptySignature)
+                    ssa.emptySignature)
             call.loc := ssa.block(f 0).termLoc
             vector.append(ssa.block(f raiser).insts call)
             ssa.block(f raiser).term := ssa.termUnreachable

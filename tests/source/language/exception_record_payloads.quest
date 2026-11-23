@@ -3,41 +3,42 @@
    was made in place, read from a var parameter (and so from its box), read from a tuple's var component, or returned
    from the handler. *)
 
-import conv: Conv;
-import writer: Writer;
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
-Let P = Record a: Int b: String end;
-Let V = Variant p: Int q: Bool end;
-exception E: P end;
-exception F: V end;
+import conv : Conv
+import writer : Writer
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+Let P = Record a: Int b: String end
+Let V = Variant p: Int q: Bool end
+exception E: P end
+exception F: V end
 
 (* Made in place *)
-print(conv.int(try raise E with record a = 3 b = "made" end end when E with q then q.a end));
+print(conv.int(try raise E with record a = 3 b = "made" end end when E with q then q.a end))
 print(try raise F with variant q of V with true end end when F with w then
-    case w when q with t then conv.bool(t) else "p" end end);
+    case w when q with t then conv.bool(t) else "p" end
+end)
 
 (* From a var parameter *)
-let f(var x: P): Int = raise E with x end;
-let h(var y: V): Int = raise F with y end;
+let f(var x: P): Int = raise E with x end
+let h(var y: V): Int = raise F with y end
 let g(): Int = begin
     let var p = record a = 4 b = "var" end
     try f(@p) when E with q then q.a end
-end;
+end
 let k(): Int = begin
     let var v = variant p of V with 9 end
     try h(@v) when F with w then case w when p with n then n else 0 end end
-end;
-print(conv.int(g()));
-print(conv.int(k()));
+end
+print(conv.int(g()))
+print(conv.int(k()))
 
 (* From a tuple's var component *)
-let t: Tuple var r: P end = tuple let var r = record a = 5 b = "slot" end end;
-print(conv.int(try f(@t.r) when E with q then q.a end));
+let t: Tuple var r: P end = tuple let var r = record a = 5 b = "slot" end end
+print(conv.int(try f(@t.r) when E with q then q.a end))
 
 (* Returned from the handler *)
-let mk(n: Int): P = record a = n b = "returned" end;
-let caught(n: Int): P = try raise E with mk(n) end when E with q then q end;
-let r = caught(6);
-print(conv.int(r.a) <> " " <> r.b);
-let caughtV(n: Int): V = try raise F with variant p of V with n end end when F with w then w end;
+let mk(n: Int): P = record a = n b = "returned" end
+let caught(n: Int): P = try raise E with mk(n) end when E with q then q end
+let r = caught(6)
+print(conv.int(r.a) <> " " <> r.b)
+let caughtV(n: Int): V = try raise F with variant p of V with n end end when F with w then w end
 print(case caughtV(7) when p with n then conv.int(n) else "q" end)

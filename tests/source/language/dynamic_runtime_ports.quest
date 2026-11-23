@@ -6,45 +6,46 @@
  * reader's literals and numbers, and intern of a closed reader
  *)
 
-import writer : Writer;
-import reader : Reader;
-import conv : Conv;
-import dynamic : Dynamic;
-import hashMap : HashMap = collections/hashmap : collections/HashMap;
+import conv : Conv
+import dynamic : Dynamic
+import reader : Reader
+import writer : Writer
 
-let show(s: String): Ok = writer.putString(writer.output s <> "\n");
+import hashMap : HashMap = collections/hashmap : collections/HashMap
+
+let show(s: String): Ok = writer.putString(writer.output s <> "\n")
 let attempt(name: String f: All() String): Ok =
-    show(name <> ": " <> try f() when dynamic.error then "dynamic.error" when reader.error then "reader.error" end);
+    show(name <> ": " <> try f() when dynamic.error then "dynamic.error" when reader.error then "reader.error" end)
 
 (* An auto value's variant component, renumbered at the supertype *)
-Def VS = Variant b: String c: Bool end;
-Def VB = Variant a: Int b: String c: Bool end;
-Let AS = Auto A::TYPE with x: A v: VS end;
-Let AB = Auto A::TYPE with x: A v: VB end;
-let vc: VS = variant c of VS with true end;
-let aS: AS = auto :Int with 1 vc end;
+Def VS = Variant b: String c: Bool end
+Def VB = Variant a: Int b: String c: Bool end
+Let AS = Auto A::TYPE with x: A v: VS end
+Let AB = Auto A::TYPE with x: A v: VB end
+let vc: VS = variant c of VS with true end
+let aS: AS = auto :Int with 1 vc end
 attempt("auto" fun(): String begin
     let ab = dynamic.be(:AB dynamic.new(:AS aS))
     inspect ab when Int with i then case i.v when a then "a" when b then "b" when c then "c" end else "?" end
-end);
+end)
 
 (* A key whose var component changes keeps its identity hash *)
-Def MV = Option none some with var v: Int end end;
-let m: MV = option some of MV with let var v = 1 end;
-let map = hashMap.newIdentityMap(:MV :Int);
-hashMap.insert(:MV :Int map m 5);
-case m when some with c then c.v := 2 when none then ok end;
-show("identity: " <> if hashMap.contains(:MV :Int map m) then "kept" else "lost" end);
+Def MV = Option none some with var v: Int end end
+let m: MV = option some of MV with let var v = 1 end
+let map = hashMap.newIdentityMap(:MV :Int)
+hashMap.insert(:MV :Int map m 5)
+case m when some with c then c.v := 2 when none then ok end
+show("identity: " <> if hashMap.contains(:MV :Int map m) then "kept" else "lost" end)
 
 (* A function whose quantifier's bound is wider than asked is taken, as a
  * static coercion takes it *)
-Def Small = Record y: Int end;
-Def Big = Record name: String y: Int end;
-let idS(A <: Small x: A): A = x;
+Def Small = Record y: Int end
+Def Big = Record name: String y: Int end
+let idS(A <: Small x: A): A = x
 attempt("bound" fun(): String begin
     let g = dynamic.be(:All(A <: Big x: A) A dynamic.new(:All(A <: Small x: A) A idS))
     "accepted"
-end);
+end)
 
 (* Documents with malformed scalars, a number past an Int's range, and a key
  * given twice *)
@@ -57,19 +58,19 @@ let interned(text: String): String =
         try conv.int(dynamic.be(:Int d)) when dynamic.error then
             try if dynamic.be(:Bool d) then "true" else "false" end when dynamic.error then "?" end
         end
-    end;
+    end
 let doc(type: String value: String): String =
-    "{\"quest\":1,\"types\":[],\"type\":\"" <> type <> "\",\"value\":" <> value <> "}";
-attempt("txxx" fun(): String interned(doc("Bool" "txxx")));
-attempt("true" fun(): String interned(doc("Bool" "true")));
-attempt("nul" fun(): String interned(doc("Ok" "nulx")));
-attempt("-" fun(): String interned(doc("Int" "-")));
-attempt("+1" fun(): String interned(doc("Int" "+1")));
-attempt("--1.5" fun(): String interned(doc("Real" "--1.5")));
-attempt("9223372036854775808" fun(): String interned(doc("Int" "9223372036854775808")));
-attempt("-9223372036854775809" fun(): String interned(doc("Int" "-9223372036854775809")));
+    "{\"quest\":1,\"types\":[],\"type\":\"" <> type <> "\",\"value\":" <> value <> "}"
+attempt("txxx" fun(): String interned(doc("Bool" "txxx")))
+attempt("true" fun(): String interned(doc("Bool" "true")))
+attempt("nul" fun(): String interned(doc("Ok" "nulx")))
+attempt("-" fun(): String interned(doc("Int" "-")))
+attempt("+1" fun(): String interned(doc("Int" "+1")))
+attempt("--1.5" fun(): String interned(doc("Real" "--1.5")))
+attempt("9223372036854775808" fun(): String interned(doc("Int" "9223372036854775808")))
+attempt("-9223372036854775809" fun(): String interned(doc("Int" "-9223372036854775809")))
 attempt("twice" fun(): String
-    interned("{\"quest\":1,\"types\":[],\"type\":\"Int\",\"value\":{\"@ref\":1},\"value\":2}"));
+    interned("{\"quest\":1,\"types\":[],\"type\":\"Int\",\"value\":{\"@ref\":1},\"value\":2}"))
 
 (* intern of a closed reader *)
 attempt("closed" fun(): String begin

@@ -5,8 +5,9 @@
 
 module lazy : Lazy
 import
+    raised : Raised
+
     util/maybe : util/Maybe
-    raised: Raised
 export
     (* The function goes when the value comes, so that what it captured can
      * be collected *)
@@ -30,10 +31,11 @@ export
                 when running then raise cycle end
                 when pending with p then
                     l.state := option running of State(A) end
-                    let a = try p.f() else with e then
-                        l.state := s
-                        raised.reraise(:A e)
-                    end
+                    let a =
+                        try p.f() else with e then
+                            l.state := s
+                            raised.reraise(:A e)
+                        end
                     l.state := option forced of State(A) with let value = a end
                     a
             end

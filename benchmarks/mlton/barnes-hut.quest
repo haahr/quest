@@ -5,10 +5,11 @@
  * benchmark does not use, is left out. *)
 
 import
-    support/bench : support/Bench
-    support/lists : support/Lists
     real : RealOp
     word : Word
+
+    support/bench : support/Bench
+    support/lists : support/Lists
 
 (* vector3.sml: 3 dimensional vector arithmetic *)
 
@@ -69,7 +70,7 @@ let notIntCoord: Exception = exception notIntCoord: Ok end
 (* Word.~>>, whose arguments here are never negative *)
 let rshift(n: Int k: Int): Int = word.toInt(word.shift(word.fromInt(n) 0 - k))
 
-let imax = 536870912 (* 2^29 *)
+let imax = 536870912  (* 2^29 *)
 let imaxrs1 = rshift(imax 1)
 let rImax = real.int(imax)
 
@@ -90,7 +91,8 @@ let subindex(iv: Vec(Int) l: Int): Int =
         let aux(v: Int ik: IK): IK =
             if word.toInt(word.andBits(word.fromInt(v) word.fromInt(l))) isnot 0 then
                 tuple let i = ik.i + rshift(nsub ik.k + 1) let k = ik.k + 1 end
-            else tuple let i = ik.i let k = ik.k + 1 end
+            else
+                tuple let i = ik.i let k = ik.k + 1 end
             end
         foldv(:Int :IK)(aux iv tuple let i = 0 let k = 0 end).i
     end
@@ -192,7 +194,8 @@ let makeTree(bodies: lists.T(Body) rmin: RVec rsize: Real): Space =
             case l
                 when nil then space
                 when cons with c then
-                    if c.hd.mass is 0.0 then build(c.tl space)
+                    if c.hd.mass is 0.0 then
+                        build(c.tl space)
                     else
                         begin
                             let box = expandBox(c.hd space)
@@ -225,14 +228,15 @@ let hackGrav(body: Body root: Node rsize: Real eps: Real tol: Real): Terms =
                 when node with n then
                     begin
                         Let DrDrsq = Tuple dr: RVec drsq: Real end
-                        let d: DrDrsq = case memo
-                            when none then
-                                begin
-                                    let dr = subv(n.n.pos pos0)
-                                    tuple let dr = dr let drsq = dotvp(dr dr) ++ {eps ** eps} end
-                                end
-                            when some with m then tuple let dr = m.dr let drsq = m.drsq ++ {eps ** eps} end
-                        end
+                        let d: DrDrsq =
+                            case memo
+                                when none then
+                                    begin
+                                        let dr = subv(n.n.pos pos0)
+                                        tuple let dr = dr let drsq = dotvp(dr dr) ++ {eps ** eps} end
+                                    end
+                                when some with m then tuple let dr = m.dr let drsq = m.drsq ++ {eps ** eps} end
+                            end
                         let phii = n.n.mass // real.sqrt(d.drsq)
                         case n.n.cell
                             when cell then counts.nbcterm := counts.nbcterm + 1
@@ -249,8 +253,10 @@ let hackGrav(body: Body root: Node rsize: Real eps: Real tol: Real): Terms =
                 when node with n then
                     case n.n.cell
                         when bodyCell with b then
-                            if eqBody(b.b pskip) then begin counts.skipSelf := true tuple let phi = phi0
-                                let acc = acc0 end end
+                            if eqBody(b.b pskip) then begin counts.skipSelf := true tuple
+                                let phi = phi0
+                                let acc = acc0
+                            end end
                             else gravsub(p phi0 acc0 option none of Memo end)
                             end
                         when cell with a then
@@ -266,11 +272,13 @@ let hackGrav(body: Body root: Node rsize: Real eps: Real tol: Real): Terms =
                                                     let r = walksub(a.a[i] dsq // 4.0 phi0 acc0)
                                                     loop1(i + 1 r.phi r.acc)
                                                 end
-                                            else tuple let phi = phi0 let acc = acc0 end
+                                            else
+                                                tuple let phi = phi0 let acc = acc0 end
                                             end
                                         loop1(0 phi0 acc0)
                                     end
-                                else gravsub(p phi0 acc0 option some of Memo with dr drsq end)
+                                else
+                                    gravsub(p phi0 acc0 option some of Memo with dr drsq end)
                                 end
                             end
                     end
@@ -329,7 +337,7 @@ let neg(x: Real): Real = ~1.0 ** x
  * & Wielen, R (1974) Astr & Ap, 37, 183. *)
 let testdata(n: Int): lists.T(Body) =
     begin
-        let mfrac = 0.999 (* mass cut off at mfrac of total *)
+        let mfrac = 0.999  (* mass cut off at mfrac of total *)
         let rn = real.int(n)
         let rsc = {3.0 ** pi} // 16.0
         let vsc = real.sqrt(1.0 // rsc)
@@ -384,7 +392,7 @@ Let Step = Tuple nstep: Int tnow: Real end
 
 (* Advance N-body system one time-step *)
 let stepSystem(output: All(o: Output) Ok plist: lists.T(Body) dtime: Real eps: Real nstep: Int rmin0: RVec rsize0: Real
-    tnow: Real tol: Real): Step =
+        tnow: Real tol: Real): Step =
     begin
         let dthf = 0.5 ** dtime
         let space = makeTree(plist rmin0 rsize0)
@@ -418,15 +426,20 @@ let stepSystem(output: All(o: Output) Ok plist: lists.T(Body) dtime: Real eps: R
                 p.vel := addv(vel1 dvel)
             end
         let calc = recalc(plist 0 0 0)
-        output(tuple let nstep = nstep let tnow = tnow let n2bcalc = calc.n2bcalc let nbccalc = calc.nbccalc
-            let selfint = calc.selfint end)
+        output(tuple
+            let nstep = nstep
+            let tnow = tnow
+            let n2bcalc = calc.n2bcalc
+            let nbccalc = calc.nbccalc
+            let selfint = calc.selfint
+        end)
         lists.app(:Body)(advance plist)
         tuple let nstep = nstep + 1 let tnow = tnow ++ dtime end
     end
 
 (* Given an initial configuration, run the simulation *)
 let go(output: All(o: Output) Ok bodies: lists.T(Body) tnow: Real tstop: Real dtime: Real eps: Real tol: Real
-    rmin: RVec rsize: Real): Ok =
+        rmin: RVec rsize: Real): Ok =
     begin
         let rec loop1(s: Step): Ok =
             if s.tnow << {tstop ++ {0.1 ** dtime}} then

@@ -2,25 +2,27 @@
 
 module bindings : Bindings
 import
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/syntax/ast : questlang/syntax/Ast
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/types/reduce : questlang/types/Reduce
-    questlang/types/env : questlang/types/Env
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
-    questlang/typechecker/checker : questlang/typechecker/Checker
-    questlang/typechecker/checks : questlang/typechecker/Checks
-    questlang/typechecker/escape : questlang/typechecker/Escape
-    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
-    questlang/typechecker/exceptions : questlang/typechecker/Exceptions
+    conv : Conv
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/iter : util/Iter
     util/hash : util/Hash
+    util/iter : util/Iter
     util/maybe : util/Maybe
-    conv : Conv
+
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/typechecker/checker : questlang/typechecker/Checker
+    questlang/typechecker/checks : questlang/typechecker/Checks
+    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
+    questlang/typechecker/escape : questlang/typechecker/Escape
+    questlang/typechecker/exceptions : questlang/typechecker/Exceptions
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/model : questlang/types/Model
+    questlang/types/reduce : questlang/types/Reduce
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let Type = model.Type
 
@@ -51,8 +53,13 @@ export
         case d.form
             when declTypeBinding with x then
                 tuple
-                    let offset = d.span.startOffset let name = x.name let typeVal = x.typeVal let params = x.params
-                    let bound = x.bound let isRec = x.isRec let isDef = x.isDef
+                    let offset = d.span.startOffset
+                    let name = x.name
+                    let typeVal = x.typeVal
+                    let params = x.params
+                    let bound = x.bound
+                    let isRec = x.isRec
+                    let isDef = x.isDef
                 end
             else internal("a type binding" d.span.startOffset)
         end
@@ -79,18 +86,21 @@ export
     let requireParamType(p: ast.FormalParam written: Type expected: model.Param e: env.T): Ok =
         begin
             let lookup = env.lookupOf(e)
-            let good = if expected.isVar then
-                subtyping.isTypeEqual(written expected.type lookup)
-            elsif expected.isOut then
-                subtyping.isSubtype(written expected.type lookup)
-            else
-                subtyping.isSubtype(expected.type written lookup)
-            end
-            let relation = if expected.isVar then "equal to" elsif expected.isOut then "a subtype of" else "a supertype of" end
+            let good =
+                if expected.isVar then
+                    subtyping.isTypeEqual(written expected.type lookup)
+                elsif expected.isOut then
+                    subtyping.isSubtype(written expected.type lookup)
+                else
+                    subtyping.isSubtype(expected.type written lookup)
+                end
+            let relation =
+                if expected.isVar then "equal to" elsif expected.isOut then "a subtype of" else "a supertype of" end
             if not(good) then
-                diagnostics.fail(:Ok "Parameter '" <> p.name <> "' declared type '" <> model.show(written) <> "' is not " <>
-                    relation <> " expected parameter type '" <> model.show(expected.type) <> "'"
-                    maybe.unwrap(p.typeAnnot).span.startOffset)
+                diagnostics.fail(:Ok "Parameter '" <> p.name <> "' declared type '" <> model.show(written)
+                    <> "' is not "
+                    <> relation <> " expected parameter type '" <> model.show(expected.type) <> "'"
+                        maybe.unwrap(p.typeAnnot).span.startOffset)
             end
         end
 
@@ -98,8 +108,8 @@ export
 
     (* Declares function parameters in the current scope *)
     let declareFunParams(
-        c: checker.T params: vector.T(ast.FormalParam) expectedParams: maybe.T(Array(model.Param)) e: env.T
-    ): Params =
+            c: checker.T params: vector.T(ast.FormalParam) expectedParams: maybe.T(Array(model.Param)) e: env.T
+            ): Params =
         begin
             let typed = vector.new(:typedAst.Param)
             let formals = vector.new(:model.Param)
@@ -107,40 +117,51 @@ export
                 let p = vector.get(params i)
                 let isVar = isVarMode(p.mode)
                 let isOut = isOutMode(p.mode)
-                let expectedParam = if maybe.isSome(expectedParams) then
-                    maybe.some(maybe.unwrap(expectedParams)[i])
-                else
-                    maybe.none(:model.Param)
-                end
+                let expectedParam =
+                    if maybe.isSome(expectedParams) then
+                        maybe.some(maybe.unwrap(expectedParams)[i])
+                    else
+                        maybe.none(:model.Param)
+                    end
                 if maybe.isSome(expectedParam) then
                     let ep = maybe.unwrap(expectedParam)
                     if {isVar isnot ep.isVar} orif {isOut isnot ep.isOut} then
-                        diagnostics.fail(:Ok "Parameter '" <> p.name <> "' is declared " <> paramMode(isVar isOut) <>
-                            ", but the expected parameter '" <> showParam(ep) <> "' is " <> paramMode(ep.isVar ep.isOut)
-                            p.offset)
+                        diagnostics.fail(:Ok "Parameter '" <> p.name <> "' is declared " <> paramMode(isVar isOut)
+                            <> ", but the expected parameter '" <> showParam(ep) <> "' is "
+                            <> paramMode(ep.isVar ep.isOut)
+                                p.offset)
                     end
                 end
-                let pType = if maybe.isSome(p.typeAnnot) then
-                    let t = elaborateTypes.elaborateType(maybe.unwrap(p.typeAnnot) e)
-                    if maybe.isSome(expectedParam) then
-                        requireParamType(p t maybe.unwrap(expectedParam) e)
+                let pType =
+                    if maybe.isSome(p.typeAnnot) then
+                        let t = elaborateTypes.elaborateType(maybe.unwrap(p.typeAnnot) e)
+                        if maybe.isSome(expectedParam) then
+                            requireParamType(p t maybe.unwrap(expectedParam) e)
+                        end
+                        t
+                    elsif maybe.isSome(expectedParam) then
+                        maybe.unwrap(expectedParam).type
+                    else
+                        diagnostics.fail(:Type "Parameter '" <> p.name
+                            <> "' requires a type annotation in synthesis mode"
+                                p.offset)
                     end
-                    t
-                elsif maybe.isSome(expectedParam) then
-                    maybe.unwrap(expectedParam).type
-                else
-                    diagnostics.fail(:Type "Parameter '" <> p.name <> "' requires a type annotation in synthesis mode"
-                        p.offset)
-                end
                 checks.checkBinder(p.name p.offset)
                 let sym = symbols.newValueSymbol(p.name pType isVar isOut true {c.functionDepth + 1} 0)
                 symbols.declareValue(e.currentScope sym)
                 vector.append(typed tuple
-                    let offset = p.offset let name = p.name let symbol = sym let type = pType let isVar = isVar
+                    let offset = p.offset
+                    let name = p.name
+                    let symbol = sym
+                    let type = pType
+                    let isVar = isVar
                     let isOut = isOut
                 end)
                 vector.append(formals tuple
-                    let name = p.name let type = pType let isVar = isVar let isOut = isOut
+                    let name = p.name
+                    let type = pType
+                    let isVar = isVar
+                    let isOut = isOut
                 end)
             end
             tuple
@@ -157,10 +178,13 @@ export
         end
 
     let funForm(
-        params: Array(typedAst.Param) body: typedAst.Expr quants: Array(model.Quantifier) typeOnly: Bool
-    ): typedAst.ExprForm =
+            params: Array(typedAst.Param) body: typedAst.Expr quants: Array(model.Quantifier) typeOnly: Bool
+            ): typedAst.ExprForm =
         option exprFun of typedAst.ExprForm with
-            let params = params let body = body let typeParamIds = typeParamIds(quants) let typeOnly = typeOnly
+            let params = params
+            let body = body
+            let typeParamIds = typeParamIds(quants)
+            let typeOnly = typeOnly
         end
 
     (* Rewrites a type-only function whose result is a function or polymorphic
@@ -191,39 +215,62 @@ export
                                     let bound = model.substituteInKind(q.bound subst)
                                     let v = model.typeVariable(q.name id maybe.some(bound))
                                     hashMap.insert(subst q.symbolId v)
-                                    vector.append(quants tuple let name = q.name let symbolId = id let bound = bound end)
+                                    vector.append(quants tuple
+                                        let name = q.name
+                                        let symbolId = id
+                                        let bound = bound
+                                    end)
                                     vector.append(typeArgs v)
                                 end
-                                let inner = if extent rest > 0 then model.substitute(collected.body subst) else collected.body end
+                                let inner =
+                                    if extent rest > 0 then
+                                        model.substitute(collected.body subst)
+                                    else
+                                        collected.body
+                                    end
                                 let var body = x.body
                                 if extent rest > 0 then
                                     body := typedAst.expr(fun0.offset inner option exprTypeApp of typedAst.ExprForm with
-                                        let func = body let typeArgs = vector.toArray(typeArgs)
+                                        let func = body
+                                        let typeArgs = vector.toArray(typeArgs)
                                     end)
                                 end
                                 let params = vector.new(:typedAst.Param)
-                                let isFun = case inner.form
-                                    when typeFun with f then
-                                        let args = vector.new(:typedAst.Expr)
-                                        for i = 0 upto {extent f.params - 1} do
-                                            let p = f.params[i]
-                                            let sym = symbols.newValueSymbol(p.name p.type p.isVar p.isOut true {c.functionDepth + 1} 0)
-                                            vector.append(params tuple
-                                                let offset = fun0.offset let name = p.name let symbol = sym let type = p.type
-                                                let isVar = p.isVar let isOut = p.isOut
-                                            end)
-                                            vector.append(args typedAst.expr(fun0.offset p.type
-                                                option exprVar of typedAst.ExprForm with let name = p.name let symbol = sym end))
-                                        end
-                                        body := typedAst.expr(fun0.offset f.result option exprApp of typedAst.ExprForm with
-                                            let func = body let args = vector.toArray(args)
-                                        end)
-                                        true
-                                    else false
-                                end
+                                let isFun =
+                                    case inner.form
+                                        when typeFun with f then
+                                            let args = vector.new(:typedAst.Expr)
+                                            for i = 0 upto {extent f.params - 1} do
+                                                let p = f.params[i]
+                                                let sym =
+                                                    symbols.newValueSymbol(p.name p.type p.isVar p.isOut
+                                                            true {c.functionDepth + 1} 0)
+                                                vector.append(params tuple
+                                                    let offset = fun0.offset
+                                                    let name = p.name
+                                                    let symbol = sym
+                                                    let type = p.type
+                                                    let isVar = p.isVar
+                                                    let isOut = p.isOut
+                                                end)
+                                                vector.append(args typedAst.expr(fun0.offset p.type
+                                                        option exprVar of typedAst.ExprForm with
+                                                            let name = p.name
+                                                            let symbol = sym
+                                                        end))
+                                            end
+                                            body :=
+                                                    typedAst.expr(fun0.offset f.result
+                                                            option exprApp of typedAst.ExprForm with
+                                                                let func = body
+                                                                let args = vector.toArray(args)
+                                                            end)
+                                            true
+                                        else false
+                                    end
                                 let quantArray = vector.toArray(quants)
                                 typedAst.expr(fun0.offset model.allType(quantArray inner)
-                                    funForm(vector.toArray(params) body quantArray not(isFun)))
+                                        funForm(vector.toArray(params) body quantArray not(isFun)))
                             end
                         end
                     else fun0
@@ -245,8 +292,8 @@ export
      * The function's type is the renamed one, All(A::TYPE) Fun(x: A): A, so
      * that its parameters and body refer to its own type parameters. *)
     let rec checkPolymorphicFun(
-        c: checker.T expr: ast.Expr expectedType: Type expectedLazy: Type e: env.T loopDepth: Int
-    ): typedAst.Expr =
+            c: checker.T expr: ast.Expr expectedType: Type expectedLazy: Type e: env.T loopDepth: Int
+            ): typedAst.Expr =
         case expr.form
             when exprFun with x then
                 case expectedLazy.form
@@ -255,9 +302,10 @@ export
                             let written = x.typeParams
                             let nWritten = vector.length(written)
                             if {nWritten > 0} andif {nWritten isnot extent all.quantifiers} then
-                                diagnostics.fail(:Ok "Function has " <> conv.int(nWritten) <>
-                                    " type parameters, but its expected type '" <> model.show(expectedType) <> "' has " <>
-                                    conv.int(extent all.quantifiers) expr.span.startOffset)
+                                diagnostics.fail(:Ok "Function has " <> conv.int(nWritten)
+                                    <> " type parameters, but its expected type '" <> model.show(expectedType)
+                                    <> "' has "
+                                    <> conv.int(extent all.quantifiers) expr.span.startOffset)
                             end
                             env.localScoped(e "poly_fun" fun(s: symbols.Scope): typedAst.Expr
                                 begin
@@ -271,35 +319,50 @@ export
                                             let w = vector.get(written idx)
                                             let writtenBound = elaborateTypes.elaborateKind(w.bound e)
                                             if not(subtyping.isSubkind(bound writtenBound env.lookupOf(e))) then
-                                                diagnostics.fail(:Ok "Type parameter '" <> name <> "' is declared '" <>
-                                                    model.showQuantifier(tuple let name = name let symbolId = 0 let bound = writtenBound end) <>
-                                                    "', which does not include the expected '" <>
-                                                    model.showQuantifier(tuple let name = name let symbolId = 0 let bound = bound end) <> "'"
-                                                    w.offset)
+                                                diagnostics.fail(:Ok "Type parameter '" <> name <> "' is declared '"
+                                                    <> model.showQuantifier(tuple
+                                                        let name = name
+                                                        let symbolId = 0
+                                                        let bound = writtenBound
+                                                    end)
+                                                    <> "', which does not include the expected '"
+                                                    <> model.showQuantifier(tuple
+                                                        let name = name
+                                                        let symbolId = 0
+                                                        let bound = bound
+                                                    end)
+                                                    <> "'"
+                                                        w.offset)
                                             end
                                         end
                                         let symId = env.freshSymbolId(e)
-                                        symbols.declareType(e.currentScope symbols.newTypeSymbol(name symId bound maybe.none(:Type)))
+                                        symbols.declareType(e.currentScope
+                                                symbols.newTypeSymbol(name symId bound maybe.none(:Type)))
                                         hashMap.insert(renaming q.symbolId
-                                            model.typeVariable(name symId maybe.some(bound)))
+                                                model.typeVariable(name symId maybe.some(bound)))
                                         vector.append(quants tuple
-                                            let name = name let symbolId = symId let bound = bound
+                                            let name = name
+                                            let symbolId = symId
+                                            let bound = bound
                                         end)
                                     end
                                     let innerExp = model.substitute(all.body renaming)
                                     let hasParams = not(vector.empty(x.params))
-                                    let innerExpr = if nWritten > 0 then
-                                        if hasParams then
-                                            ast.makeExpr(expr.span option exprFun of ast.ExprForm with
-                                                let params = x.params let returnType = x.returnType let body = x.body
-                                                let typeParams = vector.new(:ast.TypeFormal)
-                                            end)
+                                    let innerExpr =
+                                        if nWritten > 0 then
+                                            if hasParams then
+                                                ast.makeExpr(expr.span option exprFun of ast.ExprForm with
+                                                    let params = x.params
+                                                    let returnType = x.returnType
+                                                    let body = x.body
+                                                    let typeParams = vector.new(:ast.TypeFormal)
+                                                end)
+                                            else
+                                                x.body
+                                            end
                                         else
-                                            x.body
+                                            expr
                                         end
-                                    else
-                                        expr
-                                    end
                                     let var bodyExp = innerExp
                                     if {nWritten > 0} andif not(hasParams) andif maybe.isSome(x.returnType) then
                                         (* Without value parameters, the body is
@@ -309,9 +372,11 @@ export
                                         let rt = maybe.unwrap(x.returnType)
                                         bodyExp := elaborateTypes.elaborateType(rt e)
                                         if not(subtyping.isSubtype(bodyExp innerExp env.lookupOf(e))) then
-                                            diagnostics.fail(:Ok "Function declared result type '" <> model.show(bodyExp) <>
-                                                "' is not a subtype of expected result type '" <> model.show(innerExp) <> "'"
-                                                rt.span.startOffset)
+                                            diagnostics.fail(:Ok "Function declared result type '"
+                                                <> model.show(bodyExp)
+                                                <> "' is not a subtype of expected result type '"
+                                                <> model.show(innerExp) <> "'"
+                                                    rt.span.startOffset)
                                         end
                                     end
                                     let innerTyped = checker.checkExpr(c innerExpr bodyExp e loopDepth)
@@ -326,13 +391,17 @@ export
                                      * and mergeTypeOnlyFun wraps any returned
                                      * function. *)
                                     let typeOnly(): typedAst.Expr =
-                                        mergeTypeOnlyFun(c typedAst.expr(expr.span.startOffset model.allType(quantArray innerExp)
-                                            funForm(array of :typedAst.Param end innerTyped quantArray true)) e)
+                                        mergeTypeOnlyFun(c
+                                                typedAst.expr(expr.span.startOffset model.allType(quantArray innerExp)
+                                                        funForm(array of :typedAst.Param end innerTyped quantArray
+                                                                true))
+                                                e)
                                     case innerTyped.form
                                         when exprFun with f then
                                             if hasParams orif {extent f.typeParamIds is 0} then
                                                 let t = model.allType(quantArray innerTyped.type)
-                                                typedAst.expr(expr.span.startOffset t funForm(f.params f.body quantArray false))
+                                                typedAst.expr(expr.span.startOffset t
+                                                        funForm(f.params f.body quantArray false))
                                             else
                                                 typeOnly()
                                             end
@@ -393,18 +462,19 @@ export
                                  * other type of another form *)
                                 if hasTypeParams then
                                     early := maybe.some(checker.checkSubsumption(c expr expectedType e
-                                        loopDepth maybe.some("Function")))
+                                            loopDepth maybe.some("Function")))
                                 else
                                     let n = vector.length(x.params)
                                     if n isnot extent f.params then
-                                        diagnostics.fail(:Ok "Function arity mismatch: expected " <> conv.int(extent f.params) <>
-                                            " parameters, got " <> conv.int(n) expr.span.startOffset)
+                                        diagnostics.fail(:Ok "Function arity mismatch: expected "
+                                            <> conv.int(extent f.params)
+                                            <> " parameters, got " <> conv.int(n) expr.span.startOffset)
                                     end
                                     expectedFun := maybe.some(expectedLazy)
                                 end
                             else
                                 early := maybe.some(checker.checkSubsumption(c expr expectedType e loopDepth
-                                    maybe.some("Function")))
+                                        maybe.some("Function")))
                         end
                     end
                     if maybe.isSome(early) then
@@ -417,28 +487,30 @@ export
         end
 
     and elaborateFunBody(
-        c: checker.T expr: ast.Expr params: vector.T(ast.FormalParam) returnType: maybe.T(ast.TypeExpr)
-        body: ast.Expr typeParams: vector.T(ast.TypeFormal) expectedFun: maybe.T(Type) e: env.T
-    ): typedAst.Expr =
+            c: checker.T expr: ast.Expr params: vector.T(ast.FormalParam) returnType: maybe.T(ast.TypeExpr)
+            body: ast.Expr typeParams: vector.T(ast.TypeFormal) expectedFun: maybe.T(Type) e: env.T
+            ): typedAst.Expr =
         begin
             let expectedParams = maybe.none(:Array(model.Param))
             let expectedResult = maybe.none(:Type)
-            let fParams = if maybe.isSome(expectedFun) then
-                case maybe.unwrap(expectedFun).form
-                    when typeFun with f then maybe.some(f.params)
-                    else expectedParams
+            let fParams =
+                if maybe.isSome(expectedFun) then
+                    case maybe.unwrap(expectedFun).form
+                        when typeFun with f then maybe.some(f.params)
+                        else expectedParams
+                    end
+                else
+                    expectedParams
                 end
-            else
-                expectedParams
-            end
-            let fResult = if maybe.isSome(expectedFun) then
-                case maybe.unwrap(expectedFun).form
-                    when typeFun with f then maybe.some(f.result)
-                    else expectedResult
+            let fResult =
+                if maybe.isSome(expectedFun) then
+                    case maybe.unwrap(expectedFun).form
+                        when typeFun with f then maybe.some(f.result)
+                        else expectedResult
+                    end
+                else
+                    expectedResult
                 end
-            else
-                expectedResult
-            end
             env.localScoped(e "fun" fun(s: symbols.Scope): typedAst.Expr
                 begin
                     let quants = vector.new(:model.Quantifier)
@@ -456,43 +528,47 @@ export
                             (* The type the body is checked against: the result
                              * type annotation, or else the expected result
                              * type *)
-                            let bodyExpected = if maybe.isSome(returnType) then
-                                let rt = maybe.unwrap(returnType)
-                                let t = elaborateTypes.elaborateType(rt e)
-                                if maybe.isSome(fResult) andif
-                                        not(subtyping.isSubtype(t maybe.unwrap(fResult) env.lookupOf(e))) then
-                                    diagnostics.fail(:Ok "Function declared result type '" <> model.show(t) <>
-                                        "' is not a subtype of expected result type '" <>
-                                        model.show(maybe.unwrap(fResult)) <> "'" rt.span.startOffset)
+                            let bodyExpected =
+                                if maybe.isSome(returnType) then
+                                    let rt = maybe.unwrap(returnType)
+                                    let t = elaborateTypes.elaborateType(rt e)
+                                    if maybe.isSome(fResult)
+                                            andif not(subtyping.isSubtype(t maybe.unwrap(fResult) env.lookupOf(e))) then
+                                        diagnostics.fail(:Ok "Function declared result type '" <> model.show(t)
+                                            <> "' is not a subtype of expected result type '"
+                                            <> model.show(maybe.unwrap(fResult)) <> "'" rt.span.startOffset)
+                                    end
+                                    maybe.some(t)
+                                else
+                                    fResult
                                 end
-                                maybe.some(t)
-                            else
-                                fResult
-                            end
                             let typed = checker.elaborateSubexpr(c body bodyExpected e c.loopDepth)
-                            let ret = if maybe.isSome(fResult) then
-                                maybe.unwrap(fResult)
-                            else
-                                maybe.unwrapOr(bodyExpected typed.type)
-                            end
+                            let ret =
+                                if maybe.isSome(fResult) then
+                                    maybe.unwrap(fResult)
+                                else
+                                    maybe.unwrapOr(bodyExpected typed.type)
+                                end
                             tuple let typed = typed let expected = bodyExpected let ret = ret end
                         end)
                     (* The result type may not mention the function's
                      * parameters *)
                     escape.checkNoEscapingPathTypes(maybe.unwrapOr(b.expected b.ret) valueIds(e.currentScope)
-                        "function scope" expr.span.startOffset)
+                            "function scope" expr.span.startOffset)
                     let quantArray = vector.toArray(quants)
-                    let funType = if extent quantArray > 0 then
-                        if extent declared.formals > 0 then
-                            model.allType(quantArray model.funType(declared.formals b.ret))
+                    let funType =
+                        if extent quantArray > 0 then
+                            if extent declared.formals > 0 then
+                                model.allType(quantArray model.funType(declared.formals b.ret))
+                            else
+                                model.allType(quantArray b.ret)
+                            end
                         else
-                            model.allType(quantArray b.ret)
+                            model.funType(declared.formals b.ret)
                         end
-                    else
-                        model.funType(declared.formals b.ret)
-                    end
                     let typeOnly = {extent quantArray > 0} andif {extent declared.formals is 0}
-                    let typedFun = typedAst.expr(expr.span.startOffset funType funForm(declared.typed b.typed quantArray typeOnly))
+                    let typedFun =
+                        typedAst.expr(expr.span.startOffset funType funForm(declared.typed b.typed quantArray typeOnly))
                     if typeOnly then mergeTypeOnlyFun(c typedFun e) else typedFun end
                 end)
         end
@@ -505,8 +581,10 @@ export
             for i = 0 upto {vector.length(params) - 1} do
                 let p = vector.get(params i)
                 vector.append(formals tuple
-                    let name = p.name let type = elaborateTypes.elaborateType(maybe.unwrap(p.typeAnnot) e)
-                    let isVar = isVarMode(p.mode) let isOut = isOutMode(p.mode)
+                    let name = p.name
+                    let type = elaborateTypes.elaborateType(maybe.unwrap(p.typeAnnot) e)
+                    let isVar = isVarMode(p.mode)
+                    let isOut = isOutMode(p.mode)
                 end)
             end
             vector.toArray(formals)
@@ -524,8 +602,8 @@ export
             if e.interactive andif {c.functionDepth is 0} andif {e.currentScope is e.globalScope} then
                 let var slot = sym.symbolId
                 let earlier = symbols.lookupValueLocal(e.currentScope sym.name)
-                if maybe.isSome(earlier) andif
-                    hashMap.contains(e.slots maybe.unwrap(earlier).symbolId) then
+                if maybe.isSome(earlier)
+                        andif hashMap.contains(e.slots maybe.unwrap(earlier).symbolId) then
                     let old = maybe.unwrap(earlier)
                     if {old.isVar is sym.isVar} andif subtyping.isTypeEqual(old.type sym.type env.lookupOf(e)) then
                         slot := maybe.unwrap(hashMap.get(e.slots old.symbolId))
@@ -565,30 +643,34 @@ export
             when declLetVal with x then
                 begin
                     let offset = b.span.startOffset
-                    let sym = if not(vector.empty(x.params)) then
-                        if maybe.isNone(x.typeAnnot) then
-                            diagnostics.fail(:Ok "Recursive function '" <> x.name <> "' requires an explicit return type annotation"
-                                offset)
-                        end
-                        for i = 0 upto {vector.length(x.params) - 1} do
-                            let p = vector.get(x.params i)
-                            if maybe.isNone(p.typeAnnot) then
-                                diagnostics.fail(:Ok "Parameter '" <> p.name <> "' in recursive function '" <> x.name <>
-                                    "' requires an explicit type annotation" p.offset)
+                    let sym =
+                        if not(vector.empty(x.params)) then
+                            if maybe.isNone(x.typeAnnot) then
+                                diagnostics.fail(:Ok "Recursive function '" <> x.name
+                                    <> "' requires an explicit return type annotation"
+                                        offset)
                             end
+                            for i = 0 upto {vector.length(x.params) - 1} do
+                                let p = vector.get(x.params i)
+                                if maybe.isNone(p.typeAnnot) then
+                                    diagnostics.fail(:Ok "Parameter '" <> p.name <> "' in recursive function '"
+                                        <> x.name
+                                        <> "' requires an explicit type annotation" p.offset)
+                                end
+                            end
+                            let formals = annotatedParams(x.params e)
+                            let recType = model.funType(formals
+                                    elaborateTypes.elaborateType(maybe.unwrap(x.typeAnnot) e))
+                            symbols.newValueSymbol(x.name recType false false false c.functionDepth 0)
+                        else
+                            if maybe.isNone(x.typeAnnot) then
+                                diagnostics.fail(:Ok "Recursive definition '" <> x.name
+                                    <> "' requires an explicit type annotation"
+                                        offset)
+                            end
+                            symbols.newValueSymbol(x.name elaborateTypes.elaborateType(maybe.unwrap(x.typeAnnot) e)
+                                    x.isVar false false c.functionDepth 0)
                         end
-                        let formals = annotatedParams(x.params e)
-                        let recType = model.funType(formals
-                            elaborateTypes.elaborateType(maybe.unwrap(x.typeAnnot) e))
-                        symbols.newValueSymbol(x.name recType false false false c.functionDepth 0)
-                    else
-                        if maybe.isNone(x.typeAnnot) then
-                            diagnostics.fail(:Ok "Recursive definition '" <> x.name <> "' requires an explicit type annotation"
-                                offset)
-                        end
-                        symbols.newValueSymbol(x.name elaborateTypes.elaborateType(maybe.unwrap(x.typeAnnot) e)
-                            x.isVar false false c.functionDepth 0)
-                    end
                     declareLet(c sym offset e)
                 end
             else internal("a let declaration" b.span.startOffset)
@@ -598,18 +680,25 @@ export
         case b.form
             when declLetVal with x then
                 begin
-                    let typedVal = if not(vector.empty(x.params)) then
-                        let fnExpr = ast.makeExpr(b.span option exprFun of ast.ExprForm with
-                            let params = x.params let returnType = x.typeAnnot let body = x.value
-                            let typeParams = vector.new()
-                        end)
-                        checker.checkExpr(c fnExpr sym.type e 0)
-                    else
-                        checker.checkExpr(c x.value sym.type e loopDepth)
-                    end
+                    let typedVal =
+                        if not(vector.empty(x.params)) then
+                            let fnExpr = ast.makeExpr(b.span option exprFun of ast.ExprForm with
+                                let params = x.params
+                                let returnType = x.typeAnnot
+                                let body = x.value
+                                let typeParams = vector.new()
+                            end)
+                            checker.checkExpr(c fnExpr sym.type e 0)
+                        else
+                            checker.checkExpr(c x.value sym.type e loopDepth)
+                        end
                     tuple
-                        let offset = b.span.startOffset let name = x.name let value = typedVal let symbol = sym
-                        let isRec = true let redefines = env.redefines(e sym)
+                        let offset = b.span.startOffset
+                        let name = x.name
+                        let value = typedVal
+                        let symbol = sym
+                        let isRec = true
+                        let redefines = env.redefines(e sym)
                     end
                 end
             else internal("a let declaration" b.span.startOffset)
@@ -684,18 +773,26 @@ export
                             diagnostics.raiseError(checks.notDesugared("LetValueBinding" offset))
                         else
                             Let Valued = Tuple typed: typedAst.Expr type: Type end
-                            let valued: Valued = if maybe.isSome(x.typeAnnot) then
-                                let expected = elaborateTypes.elaborateType(maybe.unwrap(x.typeAnnot) e)
-                                tuple let typed = checker.checkExpr(c x.value expected e loopDepth) let type = expected end
-                            else
-                                let typed = checker.synthExpr(c x.value e loopDepth)
-                                tuple let typed = typed let type = typed.type end
-                            end
+                            let valued: Valued =
+                                if maybe.isSome(x.typeAnnot) then
+                                    let expected = elaborateTypes.elaborateType(maybe.unwrap(x.typeAnnot) e)
+                                    tuple
+                                        let typed = checker.checkExpr(c x.value expected e loopDepth)
+                                        let type = expected
+                                    end
+                                else
+                                    let typed = checker.synthExpr(c x.value e loopDepth)
+                                    tuple let typed = typed let type = typed.type end
+                                end
                             let sym = symbols.newValueSymbol(x.name valued.type x.isVar false false c.functionDepth 0)
                             declareLet(c sym offset e)
                             letValueBinding(tuple
-                                let offset = offset let name = x.name let value = valued.typed let symbol = sym
-                                let isRec = x.isRec let redefines = env.redefines(e sym)
+                                let offset = offset
+                                let name = x.name
+                                let value = valued.typed
+                                let symbol = sym
+                                let isRec = x.isRec
+                                let redefines = env.redefines(e sym)
                             end)
                         end
                     end
@@ -714,7 +811,8 @@ export
                         let typed = vector.new(:typedAst.LetType)
                         for i = 0 upto {extent syms - 1} do
                             vector.append(typed tuple
-                                let offset = vector.get(members i).offset let name = syms[i].name
+                                let offset = vector.get(members i).offset
+                                let name = syms[i].name
                                 let symbol = syms[i]
                             end)
                         end
@@ -726,7 +824,8 @@ export
                     begin
                         let sym = elaborateTypes.elaborateKindBinding(x.name x.kindVal e)
                         typedAst.binding(offset option bindDefKind of typedAst.BindingForm with
-                            let name = x.name let symbol = sym
+                            let name = x.name
+                            let symbol = sym
                         end)
                     end
                 else diagnostics.fail("Unsupported binding" offset)
@@ -742,14 +841,15 @@ export
                     let offset = b.span.startOffset
                     elaborateTypes.requireUnsoundModule(e x.value.span.startOffset)
                     if maybe.isNone(x.typeAnnot) then
-                        diagnostics.fail(:Ok "External function '" <> x.name <> "' requires an explicit return type annotation"
-                            offset)
+                        diagnostics.fail(:Ok "External function '" <> x.name
+                            <> "' requires an explicit return type annotation"
+                                offset)
                     end
                     for i = 0 upto {vector.length(x.params) - 1} do
                         let p = vector.get(x.params i)
                         if maybe.isNone(p.typeAnnot) then
-                            diagnostics.fail(:Ok "Parameter '" <> p.name <> "' in external function '" <> x.name <>
-                                "' requires an explicit type annotation" p.offset)
+                            diagnostics.fail(:Ok "Parameter '" <> p.name <> "' in external function '" <> x.name
+                                <> "' requires an explicit type annotation" p.offset)
                         end
                     end
                     let formals = annotatedParams(x.params e)
@@ -757,11 +857,16 @@ export
                     let sym = symbols.newValueSymbol(x.name fnType x.isVar false false c.functionDepth 0)
                     declareLet(c sym offset e)
                     let symbol = case x.value.form when exprExternal with v then v.symbol else "" end
-                    let typedExt = typedAst.expr(x.value.span.startOffset fnType option exprExternal of typedAst.ExprForm with
-                        let symbol = symbol
-                    end)
+                    let typedExt =
+                        typedAst.expr(x.value.span.startOffset fnType option exprExternal of typedAst.ExprForm with
+                            let symbol = symbol
+                        end)
                     letValueBinding(tuple
-                        let offset = offset let name = x.name let value = typedExt let symbol = sym let isRec = false
+                        let offset = offset
+                        let name = x.name
+                        let value = typedExt
+                        let symbol = sym
+                        let isRec = false
                         let redefines = env.redefines(e sym)
                     end)
                 end
@@ -771,7 +876,8 @@ export
     (* let [rec] x = ... and y = ...: with rec, every member is declared before
      * any value is checked; without, each member is elaborated in a scope of
      * its own, and all are declared once every member has been elaborated *)
-    and elaborateValueGroup(c: checker.T b: ast.Decl members: vector.T(ast.Decl) e: env.T loopDepth: Int): typedAst.Binding =
+    and elaborateValueGroup(c: checker.T b: ast.Decl members: vector.T(ast.Decl) e: env.T
+            loopDepth: Int): typedAst.Binding =
         begin
             checks.checkDistinctNames(vector.toArray(vector.map(members named)))
             let n = vector.length(members)
@@ -791,8 +897,12 @@ export
                     let v = vector.get(typed i)
                     declareLet(c v.symbol v.offset e)
                     vector.set(typed i tuple
-                        let offset = v.offset let name = v.name let value = v.value let symbol = v.symbol
-                        let isRec = v.isRec let redefines = env.redefines(e v.symbol)
+                        let offset = v.offset
+                        let name = v.name
+                        let value = v.value
+                        let symbol = v.symbol
+                        let isRec = v.isRec
+                        let redefines = env.redefines(e v.symbol)
                     end)
                 end
             else
@@ -800,7 +910,7 @@ export
                 for i = 0 upto {n - 1} do vector.append(syms declareRecValue(c vector.get(members i) e)) end
                 for i = 0 upto {n - 1} do
                     vector.append(typed
-                        checkRecValue(c vector.get(members i) vector.get(syms i) e loopDepth))
+                            checkRecValue(c vector.get(members i) vector.get(syms i) e loopDepth))
                 end
             end
             typedAst.binding(b.span.startOffset option bindLetValueGroup of typedAst.BindingForm with
@@ -829,7 +939,7 @@ export
                         end
                         if annotated then
                             maybe.some(model.funType(annotatedParams(x.params e)
-                                elaborateTypes.elaborateType(maybe.unwrap(x.typeAnnot) e)))
+                                    elaborateTypes.elaborateType(maybe.unwrap(x.typeAnnot) e)))
                         else
                             maybe.none()
                         end
@@ -839,8 +949,8 @@ export
                         case x.value.form
                             when exprFun with f then
                                 begin
-                                    let var annotated = vector.empty(f.typeParams) andif
-                                        maybe.isSome(f.returnType)
+                                    let var annotated = vector.empty(f.typeParams)
+                                        andif maybe.isSome(f.returnType)
                                     for i = 0 upto {vector.length(f.params) - 1} do
                                         if maybe.isNone(vector.get(f.params i).typeAnnot) then
                                             annotated := false
@@ -848,7 +958,7 @@ export
                                     end
                                     if annotated then
                                         maybe.some(model.funType(annotatedParams(f.params e)
-                                            elaborateTypes.elaborateType(maybe.unwrap(f.returnType) e)))
+                                                elaborateTypes.elaborateType(maybe.unwrap(f.returnType) e)))
                                     else
                                         maybe.none()
                                     end

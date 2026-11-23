@@ -2,25 +2,27 @@
 
 module fingerprint : Fingerprint
 import
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/types/env : questlang/types/Env
-    questlang/common/files : questlang/common/Files
-    questlang/modules/graph : questlang/modules/Graph
-    questlang/modules/loader : questlang/modules/Loader
-    questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
-    values = questlang/values/model : questlang/values/Model
-    questlang/config/abi : questlang/config/Abi
-    questlang/common/sha256 : questlang/common/Sha256
+    conv : Conv
+    raised : Raised
+    stringOp = string : StringOp
+    system : System
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
-    raised : Raised
-    system : System
+
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/files : questlang/common/Files
+    questlang/common/sha256 : questlang/common/Sha256
+    questlang/config/abi : questlang/config/Abi
+    questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/loader : questlang/modules/Loader
+    questlang/types/env : questlang/types/Env
+    values = questlang/values/model : questlang/values/Model
 export
     Let Value = values.Value
 
@@ -74,17 +76,23 @@ export
             let types = interfaceCompiler.itemsOf(interfaceCompiler.fieldOf(r "types"))
             for i = 0 upto {extent types - 1} do
                 let t = types[i]
-                let manifest = if interfaceCompiler.boolOf(interfaceCompiler.fieldOf(t "isManifest")) then " = " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(t "manifestType"))
-                    else "" end
+                let manifest =
+                    if interfaceCompiler.boolOf(interfaceCompiler.fieldOf(t "isManifest")) then
+                        " = " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(t "manifestType"))
+                    else
+                        ""
+                    end
                 vector.append(typeLines
-                    "type " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(t "name")) <> " " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(t "kind")) <> manifest <> "\n")
+                        "type " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(t "name")) <> " "
+                    <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(t "kind")) <> manifest <> "\n")
             end
             let valueLines = vector.new(:String)
             let vals = interfaceCompiler.itemsOf(interfaceCompiler.fieldOf(r "values"))
             for i = 0 upto {extent vals - 1} do
                 let v = vals[i]
                 vector.append(valueLines
-                    "value " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(v "name")) <> ": " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(v "typeSig")) <> "\n")
+                        "value " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(v "name")) <> ": "
+                    <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(v "typeSig")) <> "\n")
             end
             sha256.hexDigest("abi " <> conv.int(abi.abiVersion) <> "\ninterface " <> canonical <> "\n"
                 <> sorted(importLines) <> sorted(typeLines) <> sorted(valueLines) <> sorted(useLines))
@@ -100,14 +108,15 @@ export
             let resolved = env.resolveInterface(e name)
             let canonical = graph.interfaceName(resolved)
             let root = loader.resolvedArtifactRoot(e resolved)
-            let qi = if maybe.isSome(root) then
-                maybe.some(interfaceCompiler.ensureResolvedInterfaceArtifacts(resolved
-                    maybe.unwrap(root) maybe.none(:interfaceCompiler.OnCompiled) e.units.resolver).qiFile)
-            else
-                graph.freshInterfaceQi(resolved)
-            end
+            let qi =
+                if maybe.isSome(root) then
+                    maybe.some(interfaceCompiler.ensureResolvedInterfaceArtifacts(resolved
+                            maybe.unwrap(root) maybe.none(:interfaceCompiler.OnCompiled) e.units.resolver).qiFile)
+                else
+                    graph.freshInterfaceQi(resolved)
+                end
             if maybe.isNone(qi) orif not(strutil.endsWith(maybe.unwrap(qi) ".qi"))
-                orif not(files.isFile(maybe.unwrap(qi))) then
+                    orif not(files.isFile(maybe.unwrap(qi))) then
                 (* A builtin interface, which changes only with the ABI *)
                 sha256.hexDigest("abi " <> conv.int(abi.abiVersion) <> "\ninterface " <> canonical <> "\nbuiltin\n")
             else
@@ -125,10 +134,11 @@ export
                     let importedFingerprint(path: String): String =
                         begin
                             e.currentDir := maybe.some(dir)
-                            let result = try ofInterface(path e) else with r then
-                                e.currentDir := saved
-                                raised.reraise(:String r)
-                            end
+                            let result =
+                                try ofInterface(path e) else with r then
+                                    e.currentDir := saved
+                                    raised.reraise(:String r)
+                                end
                             e.currentDir := saved
                             result
                         end

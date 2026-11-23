@@ -4,12 +4,13 @@
  * Laboratories) *)
 
 import
-    support/bench : support/Bench
-    support/reals : support/Reals
-    real : RealOp
     conv : Conv
+    real : RealOp
     word : Word
     writer : Writer
+
+    support/bench : support/Bench
+    support/reals : support/Reals
 
 (* tree.sml: Trees for the TSP program. A node's prev and next fields are the
  * original's refs; two nodes have the same refs exactly when they are the
@@ -22,8 +23,15 @@ let null = option null of Tree end
 
 let mkNode(l: Tree r: Tree x: Real y: Real sz: Int): Tree =
     begin
-        let node: Node = tuple let left = l let right = r let x = x let y = y let sz = sz let var prev = null
-            let var next = null end
+        let node: Node = tuple
+            let left = l
+            let right = r
+            let x = x
+            let y = y
+            let sz = sz
+            let var prev = null
+            let var next = null
+        end
         option nd of Tree with node end
     end
 
@@ -117,7 +125,8 @@ let conquer(t: Tree): Tree =
                             begin
                                 let doNext = x.node.next
                                 let rec findMinDist(min: Tree minDist: Real tmp: Tree): Tree =
-                                    if sameNd(cycle tmp) then min
+                                    if sameNd(cycle tmp) then
+                                        min
                                     else
                                         begin
                                             let test = distance(t tmp)
@@ -161,7 +170,8 @@ let merge(a: Tree b: Tree t: Tree): Tree =
             begin
                 Let Found = Tuple min: Tree minDist: Real end
                 let rec findMin(min: Tree minDist: Real tmp: Tree): Found =
-                    if sameNd(start tmp) then tuple let min = min let minDist = minDist end
+                    if sameNd(start tmp) then
+                        tuple let min = min let minDist = minDist end
                     else
                         begin
                             let test = distance(t tmp)
@@ -221,7 +231,8 @@ let merge(a: Tree b: Tree t: Tree): Tree =
         elsif choice is 4 then
             (* 4:n1,t t,n2 p2,p1 -- reverse 1! *)
             begin reverse(n1) link(n1 t) link(t n2) link(p2 p1) end
-        else raise match end
+        else
+            raise match end
         end
         t
     end
@@ -289,7 +300,7 @@ let buildTree(arg: Arg): Tree =
         let drand48(): Real = norm(rand())
         let median(min: Real max: Real n: Int): Real =
             begin
-                let t = drand48() (* in [0.0..1.0) *)
+                let t = drand48()  (* in [0.0..1.0) *)
                 let retval =
                     if t >> 0.5 then real.log(1.0 -- {{{2.0 ** {mE12 -- 1.0}} ** {t -- 0.5}} // mE12}) // 12.0
                     else neg(real.log(1.0 -- {{{2.0 ** {mE12 -- 1.0}} ** t} // mE12}) // 12.0)
@@ -298,7 +309,8 @@ let buildTree(arg: Arg): Tree =
             end
         let uniform(min: Real max: Real): Real = min ++ {drand48() ** {max -- min}}
         let rec build(arg: Arg): Tree =
-            if arg.n is 0 then null
+            if arg.n is 0 then
+                null
             else
                 case arg.dir
                     when xAxis then
@@ -306,8 +318,12 @@ let buildTree(arg: Arg): Tree =
                             let med = median(arg.minY arg.maxY arg.n)
                             let mkTree(min: Real max: Real): Tree =
                                 build(tuple
-                                    let n = arg.n / 2 let dir = option yAxis of Axis end
-                                    let minX = arg.minX let minY = min let maxX = arg.maxX let maxY = max
+                                    let n = arg.n / 2
+                                    let dir = option yAxis of Axis end
+                                    let minX = arg.minX
+                                    let minY = min
+                                    let maxX = arg.maxX
+                                    let maxY = max
                                 end)
                             let l = mkTree(arg.minY med)
                             let r = mkTree(med arg.maxY)
@@ -318,8 +334,12 @@ let buildTree(arg: Arg): Tree =
                             let med = median(arg.minX arg.maxX arg.n)
                             let mkTree(min: Real max: Real): Tree =
                                 build(tuple
-                                    let n = arg.n / 2 let dir = option xAxis of Axis end
-                                    let minX = min let minY = arg.minY let maxX = max let maxY = arg.maxY
+                                    let n = arg.n / 2
+                                    let dir = option xAxis of Axis end
+                                    let minX = min
+                                    let minY = arg.minY
+                                    let maxX = max
+                                    let maxY = arg.maxY
                                 end)
                             let l = mkTree(arg.minX med)
                             let r = mkTree(med arg.maxX)
@@ -357,7 +377,8 @@ let printLength(outS: writer.T t: Tree): Ok =
                             else length(u.node.next u.node.x u.node.y n + 1 len ++ distance(px py u.node.x u.node.y))
                             end
                     end
-                if cycle(start.node.next) then writer.putString(outS "(* 1 point *)\n")
+                if cycle(start.node.next) then
+                    writer.putString(outS "(* 1 point *)\n")
                 else
                     begin
                         let result = length(start.node.next x y 1 0.0)
@@ -369,8 +390,14 @@ let printLength(outS: writer.T t: Tree): Ok =
     end
 
 let mkTree(n: Int): Tree =
-    buildTree(tuple let n = n let dir = option xAxis of Axis end let minX = 0.0 let minY = 0.0 let maxX = 1.0
-        let maxY = 1.0 end)
+    buildTree(tuple
+        let n = n
+        let dir = option xAxis of Axis end
+        let minX = 0.0
+        let minY = 0.0
+        let maxX = 1.0
+        let maxY = 1.0
+    end)
 
 let doit1(n: Int): Tree = tsp(mkTree(n) state.divideSz)
 

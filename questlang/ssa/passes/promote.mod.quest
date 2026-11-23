@@ -2,9 +2,10 @@
 
 module promote : Promote
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/cfg : questlang/ssa/Cfg
     collections/vector : collections/Vector
+
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let Function = ssa.Function
 
@@ -104,7 +105,8 @@ export
                         let s = slotOf[i.args[0]]
                         if {s >= 0} andif promoted[s] then
                             let v = variableOf(f vs i)
-                            if v < 0 then promoted[s] := false
+                            if v < 0 then
+                                promoted[s] := false
                             else
                                 note(v ssa.typeOf(f i.results[0]))
                                 if i.width is 8 then loadedWhole[v] := true end
@@ -114,11 +116,13 @@ export
                         let s = slotOf[i.args[0]]
                         if {s >= 0} andif promoted[s] then
                             let v = variableOf(f vs i)
-                            if v < 0 then promoted[s] := false
+                            if v < 0 then
+                                promoted[s] := false
                             else
                                 note(v ssa.typeOf(f i.args[1]))
                                 if stored[v] is 0 then stored[v] := i.width
-                                elsif stored[v] isnot i.width then stored[v] := ~1 end
+                                elsif stored[v] isnot i.width then stored[v] := ~1
+                                end
                             end
                         end
                         escape(i.args[1])
@@ -150,7 +154,9 @@ export
         end
 
     let promoteFunction(f: Function): Int =
-        if vector.length(f.slots) is 0 then 0 else
+        if vector.length(f.slots) is 0 then
+            0
+        else
             begin
                 let nBlocks = vector.length(f.blocks)
                 let nSlots = vector.length(f.slots)
@@ -272,7 +278,9 @@ export
                                 end
                             end
                             zeros[v]
-                        else current[v] end
+                        else
+                            current[v]
+                        end
                     end
                 let children = g.children
                 (* Rename each block before its dominator-tree children using
@@ -303,7 +311,8 @@ export
                                 if not(promoted[slotOf[i.results[0]]]) then vector.append(kept i) end
                             elsif ssa.isOp(i ssa.opLoad) andif {variableAt(i) >= 0} then
                                 let v = variableAt(i)
-                                if i.width is 8 then replaced[i.results[0]] := valueOf(v)
+                                if i.width is 8 then
+                                    replaced[i.results[0]] := valueOf(v)
                                 else
                                     (* Extract the low byte from the promoted
                                      * word via sign or zero extension *)
@@ -349,7 +358,8 @@ export
                 let left = vector.new(:ssa.Slot)
                 let var count = 0
                 for s = 0 upto {nSlots - 1} do
-                    if promoted[s] then count := count + 1
+                    if promoted[s] then
+                        count := count + 1
                     else
                         renumbered[s] := vector.length(left)
                         vector.append(left vector.get(f.slots s))
@@ -379,9 +389,12 @@ export
                     case blk.term
                         when termTry with x then
                             blk.term := option termTry of ssa.Terminator with
-                                let slot = renumbered[x.slot] let body = x.body let handler = x.handler
+                                let slot = renumbered[x.slot]
+                                let body = x.body
+                                let handler = x.handler
                             end
-                        when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then ok
+                        when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then
+                            ok
                     end
                 end
                 ssa.replaceUses(f resolve)

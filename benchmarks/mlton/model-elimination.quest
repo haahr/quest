@@ -12,14 +12,15 @@
  * transliterated by tools/metis_problems.py. *)
 
 import
-    support/bench : support/Bench
-    support/lists : support/Lists
-    support/reals : support/Reals
-    stringOp = string : StringOp
     ascii : Ascii
     conv : Conv
     raised : Raised
+    stringOp = string : StringOp
     writer : Writer
+
+    support/bench : support/Bench
+    support/lists : support/Lists
+    support/reals : support/Reals
 
 (* raise e, as any type *)
 let throw(A::TYPE)(e: Exception): A = raise e end
@@ -84,7 +85,7 @@ let explode(s: String): Chars =
 (* List.concat *)
 let flatten(A::TYPE)(l: lists.T(lists.T(A))): lists.T(A) =
     lists.foldr(:lists.T(A) :lists.T(A))(fun(a: lists.T(A) r: lists.T(A)): lists.T(A) lists.append(:A)(a r)
-        lists.nil(:A) l)
+            lists.nil(:A) l)
 
 (* List.find *)
 let rec listFind(A::TYPE)(f: All(a: A) Bool l: lists.T(A)): Opt(A) =
@@ -108,7 +109,8 @@ let partition(A::TYPE)(f: All(a: A) Bool l: lists.T(A)): P2(lists.T(A) lists.T(A
             case l
                 when cons with c then
                     if f(c.hd) then part(c.tl lists.cons(:A)(c.hd pos) neg)
-                        else part(c.tl pos lists.cons(:A)(c.hd neg)) end
+                    else part(c.tl pos lists.cons(:A)(c.hd neg))
+                    end
                 else p2(:lists.T(A) :lists.T(A))(lists.rev(:A)(pos) lists.rev(:A)(neg))
             end
         part(l lists.nil(:A) lists.nil(:A))
@@ -138,9 +140,9 @@ let assertBug(b: Bool f: String s: String): Ok = if not(b) then raise bugExn wit
 (* try, which prints the errors that pass through it *)
 let tryPrint(A::TYPE B::TYPE)(f: All(a: A) B a: A): B =
     try f(a)
-        when errExn with h then begin print(errToString(h)) raise errExn with h end end
-        when bugExn with b then begin print(bugToString(b)) raise bugExn with b end end
-        else with e then begin print("\ntry: strange exception raised\n") raised.reraise(:B e) end
+    when errExn with h then begin print(errToString(h)) raise errExn with h end end
+    when bugExn with b then begin print(bugToString(b)) raise bugExn with b end end
+    else with e then begin print("\ntry: strange exception raised\n") raised.reraise(:B e) end
     end
 
 let total(A::TYPE B::TYPE)(f: All(a: A) B x: A): Opt(B) = try some(:B)(f(x)) when errExn then none(:B)() end
@@ -167,22 +169,25 @@ let insert(A::TYPE)(eq: All(a: A b: A) Bool x: A s: lists.T(A)): lists.T(A) =
 let setify(A::TYPE)(eq: All(a: A b: A) Bool s: lists.T(A)): lists.T(A) =
     lists.foldl(:A :lists.T(A))(fun(v: A x: lists.T(A)): lists.T(A) if mem(:A)(eq v x) then x
         else lists.cons(:A)(v x) end
-        lists.nil(:A) s)
+            lists.nil(:A) s)
 
 let union(A::TYPE)(eq: All(a: A b: A) Bool s: lists.T(A) t: lists.T(A)): lists.T(A) =
     lists.foldl(:A :lists.T(A))(fun(v: A x: lists.T(A)): lists.T(A) if mem(:A)(eq v x) then x
         else lists.cons(:A)(v x) end
-        s t)
+            s t)
 
 let intersect(A::TYPE)(eq: All(a: A b: A) Bool s: lists.T(A) t: lists.T(A)): lists.T(A) =
-    lists.foldl(:A :lists.T(A))(fun(v: A x: lists.T(A)): lists.T(A) if mem(:A)(eq v t)
-        then lists.cons(:A)(v x) else x end
-        lists.nil(:A) s)
+    lists.foldl(:A :lists.T(A))(fun(v: A x: lists.T(A)): lists.T(A) if mem(:A)(eq v t) then
+        lists.cons(:A)(v x)
+    else
+        x
+    end
+            lists.nil(:A) s)
 
 let subtract(A::TYPE)(eq: All(a: A b: A) Bool s: lists.T(A) t: lists.T(A)): lists.T(A) =
     lists.foldl(:A :lists.T(A))(fun(v: A x: lists.T(A)): lists.T(A) if mem(:A)(eq v t) then x
         else lists.cons(:A)(v x) end
-        lists.nil(:A) s)
+            lists.nil(:A) s)
 
 let unwrap(A::TYPE)(l: lists.T(A)): A =
     case l
@@ -371,7 +376,7 @@ let treePartialFoldl(A::TYPE B::TYPE C::TYPE D::TYPE)(fB: All(a: A c: C) Opt(C) 
                         when oSome with s then
                             lists.foldl(:Tree(A B) :lists.T(D))(fun(t: Tree(A B) res: lists.T(D)): lists.T(D)
                                 fold(s.x t res)
-                                res b.s)
+                                    res b.s)
                         else res
                     end
             end
@@ -466,7 +471,8 @@ let bT1(V::TYPE)(k: String v: V l: BTree(V) r: BTree(V)): BTree(V) =
                             if treeSize(:V)(ln.right) < treeSize(:V)(ln.left) then singleR(:V)(k v l r)
                             else doubleR(:V)(k v l r)
                             end
-                        else bT(:V)(k v ln.cnt + rn.cnt + 1 l r)
+                        else
+                            bT(:V)(k v ln.cnt + rn.cnt + 1 l r)
                         end
                 end
         end
@@ -518,7 +524,8 @@ let dictPeek(V::TYPE)(t: BTree(V) x: String): Opt(V) =
         let rec mem(t: BTree(V)): V =
             case t
                 when bT with n then
-                    begin let c = strCompare(x n.key) if c > 0 then mem(n.right) elsif c < 0 then mem(n.left)
+                    begin let c = strCompare(x n.key) if c > 0 then mem(n.right)
+                        elsif c < 0 then mem(n.left)
                         else n.value end end
                 else throw(:V)(notFound)
             end
@@ -536,7 +543,8 @@ let dictRemove(V::TYPE)(t: BTree(V) x: String): P2(BTree(V) V) =
                             begin let lv = rm(n.left) p2(:BTree(V) :V)(bT1(:V)(n.key n.value lv.a n.right) lv.b) end
                         elsif c < 0 then
                             begin let rv = rm(n.right) p2(:BTree(V) :V)(bT1(:V)(n.key n.value n.left rv.a) rv.b) end
-                        else p2(:BTree(V) :V)(bDelete(:V)(n.left n.right) n.value)
+                        else
+                            p2(:BTree(V) :V)(bDelete(:V)(n.left n.right) n.value)
                         end
                     end
                 else throw(:P2(BTree(V) V))(notFound)
@@ -548,8 +556,8 @@ let dictListItems(V::TYPE)(t: BTree(V)): lists.T(P2(String V)) =
     begin
         let rec d2l(t: BTree(V) res: lists.T(P2(String V))): lists.T(P2(String V)) =
             case t
-                when bT with n
-                    then d2l(n.left lists.cons(:P2(String V))(p2(:String :V)(n.key n.value) d2l(n.right res)))
+                when bT with n then
+                    d2l(n.left lists.cons(:P2(String V))(p2(:String :V)(n.key n.value) d2l(n.right res)))
                 else res
             end
         d2l(t lists.nil(:P2(String V)))
@@ -582,8 +590,10 @@ let sFold(A::TYPE B::TYPE)(b: All(x: A xs: All() B) B c: B): All(s: Stream(A)) B
 
 let sMap(A::TYPE B::TYPE)(f: All(a: A) B): All(s: Stream(A)) Stream(B) =
     begin
-        let rec m(s: Stream(A)): Stream(B) = case s when sCons with x then sCons(:B)(f(x.h) fun(): Stream(B) m(x.t()))
-            else sNil(:B)() end
+        let rec m(s: Stream(A)): Stream(B) =
+            case s when sCons with x then sCons(:B)(f(x.h) fun(): Stream(B) m(x.t()))
+                else sNil(:B)()
+            end
         m
     end
 
@@ -674,7 +684,7 @@ let pMany(A::TYPE B::TYPE)(parser: Parser(A B)): Parser(A lists.T(B)) =
 
 let pAtleastone(A::TYPE B::TYPE)(p: Parser(A B)): Parser(A lists.T(B)) =
     pMap(:A :P2(B lists.T(B)) :lists.T(B))(pSeq(:A :B :lists.T(B))(p pMany(:A :B)(p))
-        fun(x: P2(B lists.T(B))): lists.T(B) lists.cons(:B)(x.a x.b))
+            fun(x: P2(B lists.T(B))): lists.T(B) lists.cons(:B)(x.a x.b))
 
 let pMaybe(A::TYPE B::TYPE)(p: All(a: A) Opt(B)): Parser(A B) =
     fun(input: Stream(A)): Parse(A B)
@@ -698,8 +708,11 @@ Let Infix = Tuple tok: String prec: Int leftAssoc: Bool end
 Let Infixes = lists.T(Infix)
 Let Layer = Tuple leftAssoc: Bool toks: Strings end
 
-let infix(tok: String prec: Int leftAssoc: Bool): Infix = tuple let tok = tok let prec = prec
-    let leftAssoc = leftAssoc end
+let infix(tok: String prec: Int leftAssoc: Bool): Infix = tuple
+    let tok = tok
+    let prec = prec
+    let leftAssoc = leftAssoc
+end
 
 let layerops(ops: Infixes): lists.T(Layer) =
     begin
@@ -714,22 +727,22 @@ let layerops(ops: Infixes): lists.T(Layer) =
                             assertBug(o.leftAssoc is c.hd.leftAssoc "infix parser/printer" "mixed assocs")
                             tuple
                                 let dealt = lists.cons(:Layer)(layer(c.hd.leftAssoc
-                                    lists.cons(:String)(o.tok c.hd.toks)) c.tl)
+                                        lists.cons(:String)(o.tok c.hd.toks)) c.tl)
                                 let p = acc.p
                             end
                         end
                     else
                         tuple
                             let dealt = lists.cons(:Layer)(layer(o.leftAssoc
-                                lists.cons(:String)(o.tok lists.nil(:String)))
-                                acc.dealt)
+                                    lists.cons(:String)(o.tok lists.nil(:String)))
+                                    acc.dealt)
                             let p = o.prec
                         end
                     end
                 else
                     tuple
                         let dealt = lists.cons(:Layer)(layer(o.leftAssoc lists.cons(:String)(o.tok lists.nil(:String)))
-                            lists.nil(:Layer))
+                                lists.nil(:Layer))
                         let p = o.prec
                     end
             end
@@ -739,8 +752,10 @@ let layerops(ops: Infixes): lists.T(Layer) =
 (* the token without its surrounding spaces *)
 let opClean(tok: String): String =
     begin
-        let rec chop(chs: Chars): Chars = case chs when cons with c then if c.hd is ' ' then chop(c.tl) else chs end
-            else chs end
+        let rec chop(chs: Chars): Chars =
+            case chs when cons with c then if c.hd is ' ' then chop(c.tl) else chs end
+                else chs
+            end
         let chs = chop(lists.rev(:Char)(explode(tok)))
         implode(chop(lists.rev(:Char)(chs)))
     end
@@ -749,15 +764,15 @@ let optoks(ops: Infixes): Strings = lists.map(:Infix :String)(fun(o: Infix): Str
 
 (* Lexing *)
 
-let isSpace(c: Char): Bool =
-    begin let n = ascii.val(c) {n is 32} orif {{n >= 9} andif {n <= 13}} end
+let isSpace(c: Char): Bool = begin let n = ascii.val(c) {n is 32} orif {{n >= 9} andif {n <= 13}} end
 let isDigit(c: Char): Bool = {ascii.val(c) >= ascii.val('0')} andif {ascii.val(c) <= ascii.val('9')}
 let isLower(c: Char): Bool = {ascii.val(c) >= ascii.val('a')} andif {ascii.val(c) <= ascii.val('z')}
 let isUpper(c: Char): Bool = {ascii.val(c) >= ascii.val('A')} andif {ascii.val(c) <= ascii.val('Z')}
 let isAlpha(c: Char): Bool = isLower(c) orif isUpper(c)
 let contains(s: String c: Char): Bool =
     begin
-        let rec f(i: Int): Bool = if i is stringOp.length(s) then false elsif stringOp.getChar(s i) is c then true
+        let rec f(i: Int): Bool = if i is stringOp.length(s) then false
+            elsif stringOp.getChar(s i) is c then true
             else f(i + 1) end
         f(0)
     end
@@ -905,19 +920,19 @@ let lexer: Parser(Char Strings) =
         let word = pAtleastone(:Char :Char)(pSome(:Char)(alphanum))
         let symbolic =
             pMap(:Char :P2(Char Chars) :Chars)(
-                pSeq(:Char :Char :Chars)(pSome(:Char)(fun(c: Char): Bool symbol(c) andif {c isnot '~'})
-                    pMany(:Char :Char)(pSome(:Char)(symbol)))
-                fun(x: P2(Char Chars)): Chars lists.cons(:Char)(x.a x.b))
+                    pSeq(:Char :Char :Chars)(pSome(:Char)(fun(c: Char): Bool symbol(c) andif {c isnot '~'})
+                            pMany(:Char :Char)(pSome(:Char)(symbol)))
+                    fun(x: P2(Char Chars)): Chars lists.cons(:Char)(x.a x.b))
         let token =
             pAlt(:Char :String)(
-                pMap(:Char :Chars :String)(pAlt(:Char :Chars)(word symbolic) implode)
-                pMap(:Char :Char :String)(pSome(:Char)(fun(c: Char): Bool if c is '~' then true else punct(c) end)
-                    fun(c: Char): String stringOp.new(1 c)))
+                    pMap(:Char :Chars :String)(pAlt(:Char :Chars)(word symbolic) implode)
+                    pMap(:Char :Char :String)(pSome(:Char)(fun(c: Char): Bool if c is '~' then true else punct(c) end)
+                            fun(c: Char): String stringOp.new(1 c)))
         let spaces = pMany(:Char :Char)(pSome(:Char)(isSpace))
         let tokens =
             pMany(:Char :String)(
-                pMap(:Char :P2(String Chars) :String)(pSeq(:Char :String :Chars)(token spaces)
-                    fun(x: P2(String Chars)): String x.a))
+                    pMap(:Char :P2(String Chars) :String)(pSeq(:Char :String :Chars)(token spaces)
+                            fun(x: P2(String Chars)): String x.a))
         let whole = pSeq(:Char :Chars :P2(Strings Int))(spaces pSeq(:Char :Strings :Int)(tokens pFinished(:Char)))
         pMap(:Char :P2(Chars P2(Strings Int)) :Strings)(whole fun(x: P2(Chars P2(Strings Int))): Strings x.b.a)
     end
@@ -950,21 +965,23 @@ let parseGenInfix(left: Bool con: All(t: String a: Term b: Term) Term toks: Stri
     end
 
 let parseInfixes(ops: Infixes): All(con: All(t: String a: Term b: Term) Term sub: Parser(String Term))
-    Parser(String Term) =
+        Parser(String Term) =
     begin
         let layeredops = lists.map(:Layer :Layer)(
-            fun(l: Layer): Layer tuple let leftAssoc = l.leftAssoc
-                let toks = lists.map(:String :String)(opClean l.toks) end
-            layerops(ops))
+                fun(l: Layer): Layer tuple
+                    let leftAssoc = l.leftAssoc
+                    let toks = lists.map(:String :String)(opClean l.toks)
+                end
+                layerops(ops))
         Let IParser = All(con: All(t: String a: Term b: Term) Term sub: Parser(String Term)) Parser(String Term)
         let iparsers = lists.map(:Layer :IParser)(
-            fun(l: Layer): IParser
-                fun(con: All(t: String a: Term b: Term) Term sub: Parser(String Term)): Parser(String Term)
-                    parseGenInfix(l.leftAssoc con l.toks sub)
-            layeredops)
+                fun(l: Layer): IParser
+                    fun(con: All(t: String a: Term b: Term) Term sub: Parser(String Term)): Parser(String Term)
+                        parseGenInfix(l.leftAssoc con l.toks sub)
+                layeredops)
         fun(con: All(t: String a: Term b: Term) Term sub: Parser(String Term)): Parser(String Term)
             lists.foldl(:IParser :Parser(String Term))(
-                fun(p: IParser sp: Parser(String Term)): Parser(String Term) p(con sp) sub iparsers)
+                    fun(p: IParser sp: Parser(String Term)): Parser(String Term) p(con sp) sub iparsers)
     end
 
 let termParser(ops0: Infixes): Parser(String Term) =
@@ -977,9 +994,9 @@ let termParser(ops0: Infixes): Parser(String Term) =
         let uninfix(tok: String): Bool = mem(:String)(strEq tok itoks)
         let uninfixParser =
             pMap(:String :P2(String P2(String String)) :String)(
-                pSeq(:String :String :P2(String String))(pExact("(")
-                    pSeq(:String :String :String)(pSome(:String)(uninfix) pExact(")")))
-                fun(x: P2(String P2(String String))): String x.b.a)
+                    pSeq(:String :String :P2(String String))(pExact("(")
+                            pSeq(:String :String :String)(pSome(:String)(uninfix) pExact(")")))
+                    fun(x: P2(String P2(String String))): String x.b.a)
         let fnameParser = pAlt(:String :String)(pSome(:String)(fname) uninfixParser)
         let bind(s: String): All(v: String t: Term) Term =
             fun(v: String t: Term): Term mkFn(s lists.fromArray(:Term)(array of mkVar(v) t end))
@@ -987,38 +1004,39 @@ let termParser(ops0: Infixes): Parser(String Term) =
             begin
                 let quant(q: String): Parser(String Term) =
                     pMap(:String :P2(String P2(Strings P2(String Term))) :Term)(
-                        pSeq(:String :String :P2(Strings P2(String Term)))(pExact(q)
-                            pSeq(:String :Strings :P2(String Term))(pAtleastone(:String :String)(vnameParser)
-                                pSeq(:String :String :Term)(pExact(".") tmParser)))
-                        fun(x: P2(String P2(Strings P2(String Term)))): Term
-                            lists.foldr(:String :Term)(bind(q) x.b.b.b x.b.a))
+                            pSeq(:String :String :P2(Strings P2(String Term)))(pExact(q)
+                                    pSeq(:String :Strings :P2(String Term))(pAtleastone(:String :String)(vnameParser)
+                                            pSeq(:String :String :Term)(pExact(".") tmParser)))
+                            fun(x: P2(String P2(Strings P2(String Term)))): Term
+                                lists.foldr(:String :Term)(bind(q) x.b.b.b x.b.a))
                 let bracketed =
                     pMap(:String :P2(String P2(Term String)) :Term)(
-                        pSeq(:String :String :P2(Term String))(pExact("(")
-                            pSeq(:String :Term :String)(tmParser pExact(")")))
-                        fun(x: P2(String P2(Term String))): Term x.b.a)
+                            pSeq(:String :String :P2(Term String))(pExact("(")
+                                    pSeq(:String :Term :String)(tmParser pExact(")")))
+                            fun(x: P2(String P2(Term String))): Term x.b.a)
                 pAlt(:String :Term)(bracketed
-                    pAlt(:String :Term)(quant("!")
-                        pAlt(:String :Term)(quant("?")
-                            pAlt(:String :Term)(
-                                pMap(:String :String :Term)(fnameParser fun(f: String): Term mkFn(f lists.nil(:Term)))
-                                pMap(:String :String :Term)(vnameParser mkVar)))))(inp)
+                        pAlt(:String :Term)(quant("!")
+                                pAlt(:String :Term)(quant("?")
+                                        pAlt(:String :Term)(
+                                                pMap(:String :String :Term)(fnameParser fun(f: String): Term
+                                                    mkFn(f lists.nil(:Term)))
+                                                pMap(:String :String :Term)(vnameParser mkVar)))))(inp)
             end
         and molecule(inp: Stream(String)): Parse(String Term) =
             begin
                 let application =
                     pMap(:String :P2(String Terms) :Term)(pSeq(:String :String :Terms)(fnameParser
-                        pMany(:String :Term)(basic))
-                        fun(x: P2(String Terms)): Term mkFn(x.a x.b))
+                            pMany(:String :Term)(basic))
+                            fun(x: P2(String Terms)): Term mkFn(x.a x.b))
                 pMap(:String :P2(Strings Term) :Term)(
-                    pSeq(:String :Strings :Term)(pMany(:String :String)(pExact("~"))
-                        pAlt(:String :Term)(application basic))
-                    fun(x: P2(Strings Term)): Term
-                        begin
-                            let rec n(k: Int t: Term): Term =
-                                if k is 0 then t else n(k - 1 mkFn("~" lists.cons(:Term)(t lists.nil(:Term)))) end
-                            n(lists.length(:String)(x.a) x.b)
-                        end)(inp)
+                        pSeq(:String :Strings :Term)(pMany(:String :String)(pExact("~"))
+                                pAlt(:String :Term)(application basic))
+                        fun(x: P2(Strings Term)): Term
+                            begin
+                                let rec n(k: Int t: Term): Term =
+                                    if k is 0 then t else n(k - 1 mkFn("~" lists.cons(:Term)(t lists.nil(:Term)))) end
+                                n(lists.length(:String)(x.a) x.b)
+                            end)(inp)
             end
         and tmParser(inp: Stream(String)): Parse(String Term) =
             iparser(fun(f: String a: Term b: Term): Term mkFn(f lists.fromArray(:Term)(array of a b end)) molecule)(inp)
@@ -1052,7 +1070,7 @@ let formulaParser(ops: Infixes): Parser(String Formula) = pMap(:String :Term :Fo
 
 let stringToFormula(ops: Infixes s: String): Formula =
     pMap(:String :P2(Formula Int) :Formula)(pSeq(:String :Formula :Int)(formulaParser(ops) pFinished(:String))
-        fun(x: P2(Formula Int)): Formula x.a)(sFromList(:String)(lexStr(s))).r
+            fun(x: P2(Formula Int)): Formula x.a)(sFromList(:String)(lexStr(s))).r
 
 (* parse_formula, of a quotation of one string *)
 let parseFormula(q: String): Formula = stringToFormula(infixes "" <> q)
@@ -1067,8 +1085,9 @@ let formulaSize(fm: Formula): Int =
         let rec szt(n: Int tms: Terms): Int =
             case tms
                 when cons with c then
-                    case c.hd when tVar then szt(n + 1 c.tl) when tFn with f
-                        then szt(n + 1 lists.append(:Term)(f.args c.tl)) end
+                    case c.hd when tVar then szt(n + 1 c.tl) when tFn with f then
+                        szt(n + 1 lists.append(:Term)(f.args c.tl))
+                    end
                 else n
             end
         let rec sz(n: Int fms: Formulas): Int =
@@ -1077,7 +1096,7 @@ let formulaSize(fm: Formula): Int =
                     begin
                         let fms1 = c.tl
                         let cons2(p: Formula q: Formula): Formulas = lists.cons(:Formula)(p
-                            lists.cons(:Formula)(q fms1))
+                                lists.cons(:Formula)(q fms1))
                         case c.hd
                             when fTrue then sz(n + 1 fms1)
                             when fFalse then sz(n + 1 fms1)
@@ -1130,7 +1149,7 @@ let functions(fm: Formula): Functions =
                         when tVar then fnc(fs c.tl)
                         when tFn with f then
                             fnc(insert(:Function)(functionEq function(f.f lists.length(:Term)(f.args)) fs)
-                                lists.append(:Term)(f.args c.tl))
+                                    lists.append(:Term)(f.args c.tl))
                     end
                 else fs
             end
@@ -1140,7 +1159,7 @@ let functions(fm: Formula): Functions =
                     begin
                         let fms1 = c.tl
                         let cons2(p: Formula q: Formula): Formulas = lists.cons(:Formula)(p
-                            lists.cons(:Formula)(q fms1))
+                                lists.cons(:Formula)(q fms1))
                         case c.hd
                             when fAtom with a then case a.t when tFn with f then func(fnc(fs f.args) fms1)
                                 else func(fs fms1) end
@@ -1169,13 +1188,13 @@ let relations(fm: Formula): Functions =
                     begin
                         let fms1 = c.tl
                         let cons2(p: Formula q: Formula): Formulas = lists.cons(:Formula)(p
-                            lists.cons(:Formula)(q fms1))
+                                lists.cons(:Formula)(q fms1))
                         case c.hd
                             when fAtom with a then
                                 case a.t
                                     when tFn with f then
                                         rel(insert(:Function)(functionEq
-                                            function(f.f lists.length(:Term)(f.args)) rs) fms1)
+                                                function(f.f lists.length(:Term)(f.args)) rs) fms1)
                                     else rel(rs fms1)
                                 end
                             when fNot with x then rel(rs lists.cons(:Formula)(x.p fms1))
@@ -1205,7 +1224,8 @@ let destEq(fm: Formula): P2(Term Term) =
                     when tFn with f then
                         if strEq(f.f "=") andif {lists.length(:Term)(f.args) is 2} then
                             p2(:Term :Term)(lists.nth(:Term)(f.args 0) lists.nth(:Term)(f.args 1))
-                        else fail()
+                        else
+                            fail()
                         end
                     else fail()
                 end
@@ -1244,8 +1264,10 @@ let rec fv(vs: Strings fms: lists.T(AvFm)): Strings =
                 let fms1 = c.tl
                 let one(p: Formula): lists.T(AvFm) = lists.cons(:AvFm)(tuple let av = av let fm = p end fms1)
                 let two(p: Formula q: Formula): lists.T(AvFm) =
-                    lists.cons(:AvFm)(tuple let av = av
-                        let fm = p end lists.cons(:AvFm)(tuple let av = av let fm = q end fms1))
+                    lists.cons(:AvFm)(tuple
+                        let av = av
+                        let fm = p
+                    end lists.cons(:AvFm)(tuple let av = av let fm = q end fms1))
                 case c.hd.fm
                     when fTrue then fv(vs fms1)
                     when fFalse then fv(vs fms1)
@@ -1268,10 +1290,10 @@ let fvTerm(tm: Term): Strings =
     lists.rev(:String)(fvt(lists.nil(:String) lists.nil(:String) lists.cons(:Term)(tm lists.nil(:Term))))
 let fvFormula(fm: Formula): Strings =
     lists.rev(:String)(fv(lists.nil(:String) lists.cons(:AvFm)(tuple let av = lists.nil(:String) let fm = fm end
-        lists.nil(:AvFm))))
+            lists.nil(:AvFm))))
 let fvl(fms: Formulas): Strings =
     lists.rev(:String)(fv(lists.nil(:String)
-        lists.map(:Formula :AvFm)(fun(fm: Formula): AvFm tuple let av = lists.nil(:String) let fm = fm end fms)))
+            lists.map(:Formula :AvFm)(fun(fm: Formula): AvFm tuple let av = lists.nil(:String) let fm = fm end fms)))
 
 let generalize(fm: Formula): Formula = listMkForall(fvFormula(fm) fm)
 
@@ -1282,8 +1304,10 @@ let rec subterm(p: Ints tm: Term): Term =
             case tm
                 when tFn with f then
                     begin
-                        let arg = try lists.nth(:Term)(f.args c.hd) when lists.subscript
-                            then err(:Term)("subterm" "bad path") end
+                        let arg =
+                            try lists.nth(:Term)(f.args c.hd) when lists.subscript then
+                                err(:Term)("subterm" "bad path")
+                            end
                         subterm(c.tl arg)
                     end
                 else err(:Term)("subterm" "Var")
@@ -1399,8 +1423,7 @@ let norm(sub: Subst): Subst =
     end
 
 let toMaplets(s: Subst): Maplets = dictListItems(:Term)(s)
-let fromMaplets(ms: Maplets): Subst =
-    lists.foldl(:Maplet :Subst)(substAdd emptySubst lists.rev(:Maplet)(ms))
+let fromMaplets(ms: Maplets): Subst = lists.foldl(:Maplet :Subst)(substAdd emptySubst lists.rev(:Maplet)(ms))
 
 (* Note: this just doesn't work with cyclic substitutions! *)
 let refine(sub1: Subst sub2: Subst): Subst =
@@ -1446,20 +1469,22 @@ let axiom(cl: Formulas): Thm =
     end
 
 let refl(tm: Term): Thm = thm(lists.cons(:Formula)(mkEq(tm tm) lists.nil(:Formula)) option iRefl
-    of Inference end noThms)
+        of Inference end noThms)
 
 let assume(fm: Formula): Thm =
     if isLiteral(fm) then
         thm(lists.cons(:Formula)(fm lists.cons(:Formula)(negate(fm) lists.nil(:Formula))) option iAssume
-            of Inference end
-            noThms)
-    else err(:Thm)("ASSUME" "argument not a literal")
+                of Inference end
+                noThms)
+    else
+        err(:Thm)("ASSUME" "argument not a literal")
     end
 
 let inst(env: Subst th: Thm): Thm =
     begin
         let cl1 = lists.map(:Formula :Formula)(fun(fm: Formula): Formula formulaSubst(env fm) th.cl)
-        if formulasEq(cl1 th.cl) then th
+        if formulasEq(cl1 th.cl) then
+            th
         else
             begin
                 let instOf(t: Thm): Thm = thm(cl1 option iInst of Inference end oneThm(t))
@@ -1493,7 +1518,7 @@ let resolve(fm: Formula th1: Thm th2: Thm): Thm =
         let nfm = negate(fm)
         let cl21 = lists.filter(:Formula)(fun(l: Formula): Bool not(formulaEq(nfm l)) cl2)
         assertErr(not(formulasEq(cl1 cl11)) orif not(formulasEq(cl2 cl21)) "RESOLVE"
-            "resolvant does not feature in either clause")
+                "resolvant does not feature in either clause")
         thm(lists.append(:Formula)(cl11 cl21) option iResolve of Inference end lists.cons(:Thm)(th1 oneThm(th2)))
     end
 
@@ -1549,7 +1574,8 @@ let rec matchl(env: Subst l: TermPairs): Subst =
                         when tFn with g then
                             if strEq(f.f g.f) andif {lists.length(:Term)(f.args) is lists.length(:Term)(g.args)} then
                                 matchl(env lists.append(:TermPair)(zip(:Term :Term)(f.args g.args) c.tl))
-                            else err(:Subst)("match" "can't match two different functions")
+                            else
+                                err(:Subst)("match" "can't match two different functions")
                             end
                         else err(:Subst)("match" "different structure")
                     end
@@ -1608,7 +1634,8 @@ and solve1(env: Subst tm1: Term tm2: Term rest: TermPairs): Subst =
                 when tFn with g then
                     if strEq(f.f g.f) andif {lists.length(:Term)(f.args) is lists.length(:Term)(g.args)} then
                         solve(env lists.append(:TermPair)(zip(:Term :Term)(f.args g.args) rest))
-                    else err(:Subst)("unify" "different structure")
+                    else
+                        err(:Subst)("unify" "different structure")
                     end
             end
     end
@@ -1646,7 +1673,7 @@ let reflexivity = refl(mkVar("x"))
 let symmetry = equality(mkEq(mkVar("x") mkVar("x")) lists.cons(:Int)(0 lists.nil(:Int)) mkVar("y") true reflexivity)
 let transitivity =
     equality(mkEq(mkVar("y") mkVar("z")) lists.cons(:Int)(0 lists.nil(:Int)) mkVar("x") false
-        assume(mkNot(mkEq(mkVar("y") mkVar("z")))))
+            assume(mkNot(mkEq(mkVar("y") mkVar("z")))))
 
 let funCongruence(fa: Function): Thm =
     begin
@@ -1655,8 +1682,8 @@ let funCongruence(fa: Function): Thm =
         let ys = lists.tabulate(:Term)(arity fun(i: Int): Term mkVar("y" <> intToString(i)))
         let f(i: Int th: Thm): Thm =
             equality(last(:Formula)(clause(th)) lists.cons(:Int)(1 lists.cons(:Int)(i lists.nil(:Int)))
-                lists.nth(:Term)(ys i)
-                true th)
+                    lists.nth(:Term)(ys i)
+                    true th)
         let reflx = inst(substAdd(maplet("x" mkFn(fa.name xs)) emptySubst) reflexivity)
         lists.foldl(:Int :Thm)(f reflx lists.rev(:Int)(interval(0 arity)))
     end
@@ -1677,7 +1704,7 @@ let relCongruence(fa: Function): Thm =
 
 let restoreFifoOrder(A::TYPE)(l: lists.T(P2(Int A))): lists.T(A) =
     lists.map(:P2(Int A) :A)(fun(x: P2(Int A)): A x.b
-        sort(:P2(Int A))(fun(m: P2(Int A) n: P2(Int A)): Bool m.a <= n.a l))
+            sort(:P2(Int A))(fun(m: P2(Int A) n: P2(Int A)): Bool m.a <= n.a l))
 
 let partitionFind(A::TYPE)(f: All(a: A) Bool l: lists.T(A)): P2(Opt(A) lists.T(A)) =
     begin
@@ -1706,11 +1733,11 @@ let termMapEmpty(A::TYPE)(): TermMap(A) = tuple let size = 0 let n = lists.nil(:
 
 let termMapToList(A::TYPE)(m: TermMap(A)): lists.T(A) =
     restoreFifoOrder(:A)(flatten(:P2(Int A))(lists.map(:NetTree(A) :lists.T(P2(Int A)))(
-        fun(t: NetTree(A)): lists.T(P2(Int A))
-            treeFoldr(:Pattern :P2(Int A) :lists.T(P2(Int A)))(
-                fun(p: Pattern l: lists.T(lists.T(P2(Int A)))): lists.T(P2(Int A)) flatten(:P2(Int A))(l)
-                fun(x: P2(Int A)): lists.T(P2(Int A)) lists.cons(:P2(Int A))(x lists.nil(:P2(Int A))) t)
-        m.n)))
+            fun(t: NetTree(A)): lists.T(P2(Int A))
+                treeFoldr(:Pattern :P2(Int A) :lists.T(P2(Int A)))(
+                        fun(p: Pattern l: lists.T(lists.T(P2(Int A)))): lists.T(P2(Int A)) flatten(:P2(Int A))(l)
+                        fun(x: P2(Int A)): lists.T(P2(Int A)) lists.cons(:P2(Int A))(x lists.nil(:P2(Int A))) t)
+            m.n)))
 
 let termMapInsert(A::TYPE)(tm: Term a: A m: TermMap(A)): TermMap(A) =
     begin
@@ -1722,18 +1749,20 @@ let termMapInsert(A::TYPE)(tm: Term a: A m: TermMap(A)): TermMap(A) =
                 when cons with c then
                     begin
                         Let PR = P2(Pattern Terms)
-                        let pr = case c.hd
-                            when tVar then p2(:Pattern :Terms)(option pVar of Pattern end c.tl)
-                            when tFn with fx then
-                                p2(:Pattern :Terms)(option pFn of Pattern with fx.f lists.length(:Term)(fx.args) end
-                                    lists.append(:Term)(fx.args c.tl))
-                        end
+                        let pr =
+                            case c.hd
+                                when tVar then p2(:Pattern :Terms)(option pVar of Pattern end c.tl)
+                                when tFn with fx then
+                                    p2(:Pattern :Terms)(option pFn of Pattern with fx.f lists.length(:Term)(fx.args) end
+                                            lists.append(:Term)(fx.args c.tl))
+                            end
                         let to = partitionFind(:NetTree(A))(findPat(pr.a) l)
                         let next =
                             case to.a
                                 when oSome with t then
                                     case t.x when branch with b then b.s
-                                        else bug(:lists.T(NetTree(A)))("add" "misplaced LEAF") end
+                                        else bug(:lists.T(NetTree(A)))("add" "misplaced LEAF")
+                                    end
                                 else lists.nil(:NetTree(A))
                             end
                         lists.cons(:NetTree(A))(option branch of NetTree(A) with pr.a add(a pr.b next) end to.b)
@@ -1763,7 +1792,8 @@ let termMapMatch(A::TYPE)(m: TermMap(A) tm: Term): lists.T(A) =
                                 when tFn with g then
                                     if strEq(f.f g.f) andif {f.n is lists.length(:Term)(g.args)} then
                                         some(:Terms)(lists.append(:Term)(g.args c.tl))
-                                    else none(:Terms)()
+                                    else
+                                        none(:Terms)()
                                     end
                                 else none(:Terms)()
                             end
@@ -1774,10 +1804,10 @@ let termMapMatch(A::TYPE)(m: TermMap(A) tm: Term): lists.T(A) =
             case l when nil then some(:P2(Int A))(a) else bug(:Opt(P2(Int A)))("match" "too many subterms") end
         try
             restoreFifoOrder(:A)(flatten(:P2(Int A))(lists.map(:NetTree(A) :lists.T(P2(Int A)))(
-                fun(t: NetTree(A)): lists.T(P2(Int A))
-                    treePartialFoldl(:Pattern :P2(Int A) :Terms :P2(Int A))(mat final
-                        lists.cons(:Term)(tm lists.nil(:Term)) t)
-                m.n)))
+                    fun(t: NetTree(A)): lists.T(P2(Int A))
+                        treePartialFoldl(:Pattern :P2(Int A) :Terms :P2(Int A))(mat final
+                                lists.cons(:Term)(tm lists.nil(:Term)) t)
+                    m.n)))
         when errExn then bug(:lists.T(A))("match" "should never fail")
         end
     end
@@ -1800,25 +1830,28 @@ let termMapSkipping(A::TYPE)(name: String unify: Bool m: TermMap(A) tm: Term): l
                                     when pFn with f then
                                         if strEq(f.f g.f) andif {f.n is lists.length(:Term)(g.args)} then
                                             some(:Skip)(p2(:Int :Terms)(0 lists.append(:Term)(g.args c.tl)))
-                                        else none(:Skip)()
+                                        else
+                                            none(:Skip)()
                                         end
                                 end
                         end
                     else bug(:Opt(Skip))(name "ran out of subterms")
                 end
-            else some(:Skip)(p2(:Int :Terms)({more(p) + s.a} - 1 s.b))
+            else
+                some(:Skip)(p2(:Int :Terms)({more(p) + s.a} - 1 s.b))
             end
         let final(a: P2(Int A) s: Skip): Opt(P2(Int A)) =
             if s.a is 0 then
                 case s.b when nil then some(:P2(Int A))(a) else bug(:Opt(P2(Int A)))(name "too many subterms") end
-            else bug(:Opt(P2(Int A)))(name "still skipping")
+            else
+                bug(:Opt(P2(Int A)))(name "still skipping")
             end
         try
             restoreFifoOrder(:A)(flatten(:P2(Int A))(lists.map(:NetTree(A) :lists.T(P2(Int A)))(
-                fun(t: NetTree(A)): lists.T(P2(Int A))
-                    treePartialFoldl(:Pattern :P2(Int A) :Skip :P2(Int A))(mat final
-                        p2(:Int :Terms)(0 lists.cons(:Term)(tm lists.nil(:Term))) t)
-                m.n)))
+                    fun(t: NetTree(A)): lists.T(P2(Int A))
+                        treePartialFoldl(:Pattern :P2(Int A) :Skip :P2(Int A))(mat final
+                                p2(:Int :Terms)(0 lists.cons(:Term)(tm lists.nil(:Term))) t)
+                    m.n)))
         when errExn then bug(:lists.T(A))(name "should never fail")
         end
     end
@@ -1830,16 +1863,22 @@ Let LiteralMap(A::TYPE) = Tuple pos: TermMap(A) neg: TermMap(A) t: LitList(A) f:
 
 let literalMapEmpty(A::TYPE)(): LiteralMap(A) =
     tuple
-        let pos = termMapEmpty(:A)() let neg = termMapEmpty(:A)()
-        let t = tuple let n = 0 let l = lists.nil(:A) end let f = tuple let n = 0 let l = lists.nil(:A) end
+        let pos = termMapEmpty(:A)()
+        let neg = termMapEmpty(:A)()
+        let t = tuple let n = 0 let l = lists.nil(:A) end
+        let f = tuple let n = 0 let l = lists.nil(:A) end
     end
 
 let literalMapInsert(A::TYPE)(fm: Formula b: A m: LiteralMap(A)): LiteralMap(A) =
     begin
         let notLit(): LiteralMap(A) = bug(:LiteralMap(A))("insert" "not a lit")
         case fm
-            when fAtom with a then tuple let pos = termMapInsert(:A)(a.t b m.pos) let neg = m.neg let t = m.t
-                let f = m.f end
+            when fAtom with a then tuple
+                let pos = termMapInsert(:A)(a.t b m.pos)
+                let neg = m.neg
+                let t = m.t
+                let f = m.f
+            end
             when fNot with x then
                 case x.p
                     when fAtom with a then
@@ -1847,11 +1886,25 @@ let literalMapInsert(A::TYPE)(fm: Formula b: A m: LiteralMap(A)): LiteralMap(A) 
                     else notLit()
                 end
             when fTrue then
-                tuple let pos = m.pos let neg = m.neg let t = tuple let n = m.t.n + 1
-                    let l = lists.cons(:A)(b m.t.l) end let f = m.f end
+                tuple
+                    let pos = m.pos
+                    let neg = m.neg
+                    let t = tuple
+                        let n = m.t.n + 1
+                        let l = lists.cons(:A)(b m.t.l)
+                    end
+                    let f = m.f
+                end
             when fFalse then
-                tuple let pos = m.pos let neg = m.neg let t = m.t let f = tuple let n = m.f.n + 1
-                    let l = lists.cons(:A)(b m.f.l) end end
+                tuple
+                    let pos = m.pos
+                    let neg = m.neg
+                    let t = m.t
+                    let f = tuple
+                        let n = m.f.n + 1
+                        let l = lists.cons(:A)(b m.f.l)
+                    end
+                end
             else notLit()
         end
     end
@@ -1889,10 +1942,11 @@ let destFrozen(t: Term): String =
             if lists.null(:Term)(f.args) then
                 begin
                     assertErr(isPrefix(frozenPrefix f.f) "dest_frozen" "not a frozen var")
-                    stringOp.getSub(f.f stringOp.length(frozenPrefix) stringOp.length(f.f) -
-                        stringOp.length(frozenPrefix))
+                    stringOp.getSub(f.f stringOp.length(frozenPrefix) stringOp.length(f.f)
+                        - stringOp.length(frozenPrefix))
                 end
-            else err(:String)("dest_frozen" "bad structure")
+            else
+                err(:String)("dest_frozen" "bad structure")
             end
         else err(:String)("dest_frozen" "bad structure")
     end
@@ -1902,19 +1956,19 @@ let freezeVars(fms: Formulas): Formulas =
     begin
         let vars = fvFormula(listMkDisj(fms))
         let sub = lists.foldl(:String :Subst)(fun(v: String s: Subst): Subst substAdd(maplet(v mkFrozen(v)) s)
-            emptySubst vars)
+                emptySubst vars)
         lists.map(:Formula :Formula)(fun(fm: Formula): Formula formulaSubst(sub fm) fms)
     end
 
 let defrostVars(s: Subst): Subst =
     fromMaplets(lists.map(:Maplet :Maplet)(
-        fun(m: Maplet): Maplet maplet(m.a if isFrozen(m.b) then mkVar(destFrozen(m.b)) else m.b end) toMaplets(s)))
+            fun(m: Maplet): Maplet maplet(m.a if isFrozen(m.b) then mkVar(destFrozen(m.b)) else m.b end) toMaplets(s)))
 
 let sortLiteralsBySize(l: Formulas): Formulas =
     lists.map(:P2(Int Formula) :Formula)(fun(x: P2(Int Formula)): Formula x.b
-        sort(:P2(Int Formula))(fun(m: P2(Int Formula) n: P2(Int Formula)): Bool m.a <= n.a
-            lists.map(:Formula :P2(Int Formula))(fun(lit: Formula): P2(Int Formula)
-                p2(:Int :Formula)(formulaSize(literalAtom(lit)) lit) l)))
+            sort(:P2(Int Formula))(fun(m: P2(Int Formula) n: P2(Int Formula)): Bool m.a <= n.a
+                    lists.map(:Formula :P2(Int Formula))(fun(lit: Formula): P2(Int Formula)
+                        p2(:Int :Formula)(formulaSize(literalAtom(lit)) lit) l)))
 
 Let SInfo(A::TYPE) = Tuple sub: Subst hd: Formula tl: Formulas fin: A end
 Let Subs(A::TYPE) = LiteralMap(SInfo(A))
@@ -1931,12 +1985,13 @@ let subsumes(A::TYPE)(strict: Bool net0: Subs(A) lits0: Formulas): lists.T(SubFi
                 if strict then if isRenaming(d) then none(:Subst)() else some(:Subst)(d) end else some(:Subst)(d) end
             end
         let litNet = lists.foldl(:Formula :LiteralMap(Int))(
-            fun(l: Formula n: LiteralMap(Int)): LiteralMap(Int) literalMapInsert(:Int)(l 0 n)
+                fun(l: Formula n: LiteralMap(Int)): LiteralMap(Int) literalMapInsert(:Int)(l 0 n)
                 literalMapEmpty(:Int)() lits)
         let impossible(ls: Formulas): Bool =
             lists.exists(:Formula)(fun(l: Formula): Bool lists.null(:Int)(literalMapMatched(:Int)(litNet l)) ls)
         let extend(sub: Subst ls: Formulas fin: A net: Subs(A)): Subs(A) =
-            if impossible(ls) then net
+            if impossible(ls) then
+                net
             else
                 case sortLiteralsBySize(ls)
                     when cons with c then
@@ -1948,19 +2003,21 @@ let subsumes(A::TYPE)(strict: Bool net0: Subs(A) lits0: Formulas): lists.T(SubFi
         let examine(lit: Formula): All(i: SInfo(A) s: State) State =
             fun(i: SInfo(A) s: State): State
                 case total(:FormulaPairs :Subst)(fun(l: FormulaPairs): Subst matchlLiterals(i.sub l)
-                    lists.cons(:FormulaPair)(p2(:Formula :Formula)(i.hd lit) lists.nil(:FormulaPair)))
+                        lists.cons(:FormulaPair)(p2(:Formula :Formula)(i.hd lit) lists.nil(:FormulaPair)))
                     when oSome with sub then
                         if lists.null(:Formula)(i.tl) then
                             case accept(sub.x)
                                 when oSome with sub1 then
-                                    tuple let net = s.net
-                                        let res = lists.cons(:SubFin(A))(p2(:Subst :A)(sub1.x i.fin) s.res) end
+                                    tuple
+                                        let net = s.net
+                                        let res = lists.cons(:SubFin(A))(p2(:Subst :A)(sub1.x i.fin) s.res)
+                                    end
                                 else s
                             end
                         else
                             tuple
                                 let net = extend(sub.x lists.map(:Formula :Formula)(
-                                    fun(fm: Formula): Formula formulaSubst(sub.x fm) i.tl) i.fin s.net)
+                                        fun(fm: Formula): Formula formulaSubst(sub.x fm) i.tl) i.fin s.net)
                                 let res = s.res
                             end
                         end
@@ -1970,16 +2027,18 @@ let subsumes(A::TYPE)(strict: Bool net0: Subs(A) lits0: Formulas): lists.T(SubFi
             fun(lit: Formula s: State): State
                 lists.foldl(:SInfo(A) :State)(examine(lit) s literalMapMatch(:SInfo(A))(net lit))
         let rec narrow(net: Subs(A) res: lists.T(SubFin(A))): lists.T(SubFin(A)) =
-            if literalMapSize(:SInfo(A))(net) is 0 then res
+            if literalMapSize(:SInfo(A))(net) is 0 then
+                res
             else
                 begin
                     let s = lists.foldl(:Formula :State)(narrow1(net)
-                        tuple let net = literalMapEmpty(:SInfo(A))() let res = res end lits)
+                            tuple let net = literalMapEmpty(:SInfo(A))() let res = res end lits)
                     narrow(s.net s.res)
                 end
             end
-        try narrow(net0 lists.nil(:SubFin(A))) when errExn
-            then bug(:lists.T(SubFin(A)))("subsumes" "shouldn't fail") end
+        try narrow(net0 lists.nil(:SubFin(A))) when errExn then
+            bug(:lists.T(SubFin(A)))("subsumes" "shouldn't fail")
+        end
     end
 
 (* The user interface: INL fin, or INR net *)
@@ -2130,8 +2189,9 @@ let rec pullquants(fm: Formula): Formula =
                             else
                                 case x.p
                                     when fExists with a then pull(false true a.v a.p x.q true false)
-                                    else case x.q when fExists with b
-                                        then pull(false true b.v x.p b.p false true) else fm end
+                                    else case x.q when fExists with b then
+                                        pull(false true b.v x.p b.p false true) else fm
+                                    end
                                 end
                         end
                 end
@@ -2175,7 +2235,7 @@ let rec skolem(avoid: Strings fm: Formula): Formula =
                 let xs = subtract(:String)(strEq fvFormula(x.p) lists.cons(:String)(x.v lists.nil(:String)))
                 let f = variantOf(if lists.null(:String)(xs) then "c_" <> x.v else "f_" <> x.v end avoid)
                 skolem(avoid
-                    formulaSubst(substAdd(maplet(x.v mkFn(f lists.map(:String :Term)(mkVar xs))) emptySubst) x.p))
+                        formulaSubst(substAdd(maplet(x.v mkFn(f lists.map(:String :Term)(mkVar xs))) emptySubst) x.p))
             end
         when fForall with x then mkForall(x.v skolem(avoid x.p))
         when fAnd with x then skolem2(avoid true x.p x.q)
@@ -2207,7 +2267,7 @@ let rec purecnf(fm: Formula): Clauses =
         when fOr with x then
             cartwith(:Formulas :Formulas :Formulas)(fun(s1: Formulas s2: Formulas): Formulas
                 union(:Formula)(formulaEq s1 s2)
-                purecnf(x.p) purecnf(x.q))
+                    purecnf(x.p) purecnf(x.q))
         when fAnd with x then union(:Formulas)(clausesEq purecnf(x.p) purecnf(x.q))
         else lists.cons(:Formulas)(lists.cons(:Formula)(fm lists.nil(:Formula)) lists.nil(:Formulas))
     end
@@ -2221,7 +2281,7 @@ let simpcnf(fm: Formula): Clauses =
 
 let clausal(fm: Formula): Clauses =
     flatten(:Formulas)(lists.map(:Formula :Clauses)(fun(f: Formula): Clauses simpcnf(specialize(prenex(f)))
-        flattenConj(skolemize(nnf(simplify(fm))))))
+            flattenConj(skolemize(nnf(simplify(fm))))))
 
 let axiomatize(fm: Formula): Thms = lists.map(:Formulas :Thm)(axiom clausal(fm))
 
@@ -2254,7 +2314,7 @@ let uadd(th: Thm uns: Uns): Uns = literalMapInsert(:Thm)(destUnit(th) th uns)
 
 let usubsumes(uns: Uns lit: Formula): Opt(Thm) =
     listFind(:Thm)(fun(th: Thm): Bool can(:Formula :Subst)(fun(l: Formula): Subst matchLiterals(l lit) destUnit(th))
-        lists.rev(:Thm)(literalMapMatch(:Thm)(uns lit)))
+            lists.rev(:Thm)(literalMapMatch(:Thm)(uns lit)))
 
 let uprove(uns: Uns lits: Formulas): Opt(Thms) =
     begin
@@ -2290,22 +2350,26 @@ let unitsProve(u: Units lits: Formulas): Opt(Thms) =
     case u
         when uInl with x then
             some(:Thms)(lists.map(:Formula :Thm)(
-                fun(lit: Formula): Thm case lit when fFalse then x.th else contr(lit x.th) end lits))
+                    fun(lit: Formula): Thm case lit when fFalse then x.th else contr(lit x.th) end lits))
         when uInr with x then uprove(x.uns lits)
     end
 
-let unitsInfo(u: Units): String = case u when uInl then "*" when uInr with x
-    then intToString(literalMapSize(:Thm)(x.uns)) end
+let unitsInfo(u: Units): String =
+    case u when uInl then "*" when uInr with x then
+        intToString(literalMapSize(:Thm)(x.uns))
+    end
 
 (* Adding a theorem involves squashing it to a unit, if possible *)
 let unitsAdd(th0: Thm u: Units): Units =
     case u
         when uInr with x then
-            if lists.exists(:Formula)(fun(l: Formula): Bool isSome(:Thm)(usubsumes(x.uns l)) clause(th0)) then u
+            if lists.exists(:Formula)(fun(l: Formula): Bool isSome(:Thm)(usubsumes(x.uns l)) clause(th0)) then
+                u
             else
                 begin
                     let th = udemod(x.uns th0)
-                    if isContradiction(th) then option uInl of Units with th end
+                    if isContradiction(th) then
+                        option uInl of Units with th end
                     else
                         case total(:Thm :Thm)(unitSquash th)
                             when oSome with t then option uInr of Units with uadd(t.x x.uns) end
@@ -2327,8 +2391,8 @@ let unlimited: Limit = tuple let time = none(:Real)() let infs = none(:Int)() en
 let expired: Limit = tuple let time = some(:Real)(0.0) let infs = some(:Int)(0) end
 
 let limitToString(l: Limit): String =
-    "{time = " <> case l.time when oSome with r then reals.fmtFix(r.x 3) <> "s" else "unlimited" end <> ", infs = " <>
-        case l.infs when oSome with i then intToString(i.x) else "unlimited" end <> "}"
+    "{time = " <> case l.time when oSome with r then reals.fmtFix(r.x 3) <> "s" else "unlimited" end <> ", infs = "
+        <> case l.infs when oSome with i then intToString(i.x) else "unlimited" end <> "}"
 
 let reading(time: Real infs: Int): Reading = tuple let time = time let infs = infs end
 let zeroReading = reading(0.0 0)
@@ -2377,8 +2441,8 @@ let chatSolver(l: Int m: String): Ok = trace("Solver1" m l)
 
 let dropAfter(A::TYPE)(f: All(a: A) Bool s: Stream(A)): Stream(A) =
     sFold(:A :Stream(A))(
-        fun(x: A xs: All() Stream(A)): Stream(A) sCons(:A)(x if f(x) then fun(): Stream(A) sNil(:A)() else xs end)
-        sNil(:A)())(s)
+            fun(x: A xs: All() Stream(A)): Stream(A) sCons(:A)(x if f(x) then fun(): Stream(A) sNil(:A)() else xs end)
+            sNil(:A)())(s)
 
 let timeToString(t: Real): String =
     begin
@@ -2425,11 +2489,11 @@ let solvedFilter(solver: Solver): Solver =
                 end
             let solves(goals1: Formulas): Bool =
                 can(:FormulaPairs :Subst)(fun(l: FormulaPairs): Subst matchlLiterals(emptySubst l)
-                    zip(:Formula :Formula)(goals1 goals))
+                        zip(:Formula :Formula)(goals1 goals))
             let final(a: Answer): Bool =
                 case a
-                    when oSome with ths
-                        then solves(lists.map(:Thm :Formula)(fun(th: Thm): Formula concl(clause(th)) ths.x))
+                    when oSome with ths then
+                        solves(lists.map(:Thm :Formula)(fun(th: Thm): Formula concl(clause(th)) ths.x))
                     else false
                 end
             dropAfter(:Answer)(final solver(goals))
@@ -2463,10 +2527,11 @@ let advance(a: Answer s: Seen): P2(Opt(Answer) Seen) =
                 begin
                     let fms = distinctivize(mapPartial(:Thm :Formula)(fun(th: Thm): Opt(Formula)
                         total(:Thm :Formula)(destUnit th)
-                        ths.x))
-                    if not(lists.null(:SubFin(Int))(subsumed(:Int)(s fms)))
-                        then p2(:Opt(Answer) :Seen)(none(:Answer)() s)
-                    else p2(:Opt(Answer) :Seen)(some(:Answer)(a) subsumeAdd(:Int)(fms 0 s))
+                            ths.x))
+                    if not(lists.null(:SubFin(Int))(subsumed(:Int)(s fms))) then
+                        p2(:Opt(Answer) :Seen)(none(:Answer)() s)
+                    else
+                        p2(:Opt(Answer) :Seen)(some(:Answer)(a) subsumeAdd(:Int)(fms 0 s))
                     end
                 end
             when errExn then bug(:P2(Opt(Answer) Seen))("advance" "shouldn't fail")
@@ -2485,8 +2550,8 @@ let find(s: Solver goals: Formulas): Opt(Thms) =
     case rawSolve(s goals) when sCons with x then some(:Thms)(x.h) else none(:Thms)() end
 
 let refute(s: Solver): Opt(Thm) =
-    case find(s lists.cons(:Formula)(fFalse lists.nil(:Formula))) when oSome with ths
-        then some(:Thm)(unwrap(:Thm)(ths.x))
+    case find(s lists.cons(:Formula)(fFalse lists.nil(:Formula))) when oSome with ths then
+        some(:Thm)(unwrap(:Thm)(ths.x))
         else none(:Thm)()
     end
 
@@ -2504,8 +2569,12 @@ let mkSolverNode(name: String solverCon: SolverCon): SolverNode =
     tuple let name = name let initial = nameToString(name) let solverCon = solverCon end
 
 (* At each step we schedule a time slice to the least cost solver node *)
-let slice: Tuple var lim: Limit end = tuple let var lim = tuple let time = some(:Real)(1.0 // 3.0)
-    let infs = none(:Int)() end end
+let slice: Tuple var lim: Limit end = tuple
+    let var lim = tuple
+        let time = some(:Real)(1.0 // 3.0)
+        let infs = none(:Int)()
+    end
+end
 
 Let CostFn = All(r: Reading) Real
 let time1(r: Reading): Real = r.time
@@ -2544,19 +2613,19 @@ let subnode(name: String used: Reading cost: CostFn solns: Opt(All() Stream(Answ
 let chooseSubnode(nodes: lists.T(Subnode)): Opt(Int) =
     begin
         let l = lists.filter(:P2(Int Subnode))(fun(x: P2(Int Subnode)): Bool isSome(:All() Stream(Answer))(x.b.solns)
-            enumerate(:Subnode)(0 nodes))
+                enumerate(:Subnode)(0 nodes))
         case l
             when nil then none(:Int)()
             else
                 some(:Int)(minimum(:P2(Real Int))(fun(r: P2(Real Int) s: P2(Real Int)): Bool r.a <<= s.a
-                    lists.map(:P2(Int Subnode) :P2(Real Int))(fun(x: P2(Int Subnode)): P2(Real Int)
-                        p2(:Real :Int)(x.b.cost(x.b.used) x.a) l)).b)
+                        lists.map(:P2(Int Subnode) :P2(Real Int))(fun(x: P2(Int Subnode)): P2(Real Int)
+                            p2(:Real :Int)(x.b.cost(x.b.used) x.a) l)).b)
         end
     end
 
 let subnodeInfo(n: Subnode): String =
-    nameToString(n.name) <> "(" <> timeToString(n.used.time) <> "," <> infsToString(n.used.infs) <> ")" <>
-        case n.solns when oNone then "*" else "" end
+    nameToString(n.name) <> "(" <> timeToString(n.used.time) <> "," <> infsToString(n.used.infs) <> ")"
+        <> case n.solns when oNone then "*" else "" end
 
 let statusInfo(subnodes: lists.T(Subnode) units: Units): String =
     begin
@@ -2564,7 +2633,7 @@ let statusInfo(subnodes: lists.T(Subnode) units: Units): String =
             case l
                 when cons with c then
                     lists.foldl(:Subnode :String)(fun(n: Subnode s: String): String s <> "--" <> subnodeInfo(n)
-                        subnodeInfo(c.hd) c.tl)
+                            subnodeInfo(c.hd) c.tl)
                 else ""
             end
         "[" <> seq(subnodes) <> "]--u=" <> unitsInfo(units) <> "--"
@@ -2596,8 +2665,9 @@ let schedule(check: All() Bool read: All() Reading stat: All(s: lists.T(Subnode)
                                     end
                                 let node = subnode(node0.name used node0.cost solns)
                                 let nodes1 = updateNth(:Subnode)(fun(x: Subnode): Subnode node n.x nodes)
-                                case res when oSome
-                                    then begin chatSolver(2 stat(nodes1)) chatSolver(1 "$\n") end else ok end
+                                case res when oSome then
+                                    begin chatSolver(2 stat(nodes1)) chatSolver(1 "$\n") end else ok
+                                end
                                 sCons(:Answer)(res fun(): Stream(Answer) sched(nodes1))
                             end
                         else begin chatSolver(1 "!\n") sNil(:Answer)() end
@@ -2610,27 +2680,27 @@ let schedule(check: All() Bool read: All() Reading stat: All(s: lists.T(Subnode)
 let combineSolvers(n: String i: String csolvers: lists.T(CostNode)): SolverCon =
     fun(f: Form): Solver
         begin
-            chatSolver(2 n <> "--initializing--#thms=" <> intToString(lists.length(:Thm)(f.thms)) <> "--#hyps=" <>
-                intToString(lists.length(:Thm)(f.hyps)) <> ".\n")
+            chatSolver(2 n <> "--initializing--#thms=" <> intToString(lists.length(:Thm)(f.thms)) <> "--#hyps="
+                <> intToString(lists.length(:Thm)(f.hyps)) <> ".\n")
             let meter: MeterRef = tuple let var m = newMeter(expired) end
             Let CNode = Tuple cost: CostFn initial: String solver: Solver end
             let cnodes = lists.map(:CostNode :CNode)(
-                fun(c: CostNode): CNode
-                    begin
-                        let initial = c.b.initial
-                        let solver = c.b.solverCon(form(meter f.units f.thms f.hyps))
-                        tuple let cost = c.a let initial = initial let solver = solver end
-                    end
-                csolvers)
+                    fun(c: CostNode): CNode
+                        begin
+                            let initial = c.b.initial
+                            let solver = c.b.solverCon(form(meter f.units f.thms f.hyps))
+                            tuple let cost = c.a let initial = initial let solver = solver end
+                        end
+                    csolvers)
             let check(): Bool = checkMeter(f.slice.m) andif begin meter.m := subMeter(f.slice.m slice.lim) true end
             let read(): Reading = readMeter(meter.m)
             let stat(s: lists.T(Subnode)): String = statusInfo(s f.units.u)
             fun(goal: Formulas): Stream(Answer)
                 schedule(check read stat)(lists.map(:CNode :Subnode)(
-                    fun(c: CNode): Subnode
-                        subnode(c.initial zeroReading c.cost
-                            some(:All() Stream(Answer))(fun(): Stream(Answer) c.solver(goal)))
-                    cnodes))
+                        fun(c: CNode): Subnode
+                            subnode(c.initial zeroReading c.cost
+                                    some(:All() Stream(Answer))(fun(): Stream(Answer) c.solver(goal)))
+                        cnodes))
         end
 
 let combine(csolvers: lists.T(CostNode)): SolverNode =
@@ -2647,8 +2717,8 @@ let setOfSupport(filt: All(th: Thm) Bool node: SolverNode): SolverNode =
         let con(f: Form): Solver =
             begin
                 chatSolver(2 name1 <> "--initializing--#thms=" <> intToString(lists.length(:Thm)(f.thms))
-                    <> "--#hyps=" <>
-                    intToString(lists.length(:Thm)(f.hyps)) <> ".\n")
+                    <> "--#hyps="
+                    <> intToString(lists.length(:Thm)(f.hyps)) <> ".\n")
                 let hypsThms = partition(:Thm)(filt lists.append(:Thm)(f.thms f.hyps))
                 node.solverCon(form(f.slice f.units hypsThms.b hypsThms.a))
             end
@@ -2689,8 +2759,12 @@ end
 
 let mesonDefaults: Parameters =
     tuple
-        let ancestorPruning = true let ancestorCutting = true let stateSimplify = true let cacheCutting = true
-        let divideConquer = true let unitLemmaizing = true
+        let ancestorPruning = true
+        let ancestorCutting = true
+        let stateSimplify = true
+        let cacheCutting = true
+        let divideConquer = true
+        let unitLemmaizing = true
     end
 
 Let Halves = P2(Int Int)
@@ -2759,17 +2833,21 @@ let addContrapositives(sos: Bool th0: Thm ruls: Rules): Rules =
         let lits1 = lists.map(:Formula :Formula)(negate lits)
         Let AC = P2(Formulas Formula)
         let base = lists.map(:Formula :AC)(
-            fun(l: Formula): AC
-                p2(:Formulas :Formula)(subtract(:Formula)(formulaEq lits1
-                    lists.cons(:Formula)(negate(l) lists.nil(:Formula))) l)
-            lits)
+                fun(l: Formula): AC
+                    p2(:Formulas :Formula)(subtract(:Formula)(formulaEq lits1
+                            lists.cons(:Formula)(negate(l) lists.nil(:Formula))) l)
+                lits)
         let contrs = if sos then lists.cons(:AC)(p2(:Formulas :Formula)(lits1 fFalse) base) else base end
         lists.foldl(:AC :Rules)(
-            fun(h: AC t: Rules): Rules
-                literalMapInsert(:Rule)(h.b tuple let asms = h.a let c = h.b let thm = th
-                    let asmn = lists.length(:Formula)(h.a) end
-                    t)
-            ruls contrs)
+                fun(h: AC t: Rules): Rules
+                    literalMapInsert(:Rule)(h.b tuple
+                        let asms = h.a
+                        let c = h.b
+                        let thm = th
+                        let asmn = lists.length(:Formula)(h.a)
+                    end
+                            t)
+                ruls contrs)
     end
 
 let mesonRules(thms: Thms hyps: Thms): Rules =
@@ -2794,7 +2872,8 @@ let ancestorPrune(on: Bool env: Subst g: Formula ancestors: Formulas): Bool =
             let g1 = formulaSubst(env g)
             lists.exists(:Formula)(fun(a: Formula): Bool formulaEq(formulaSubst(env a) g1) ancestors)
         end
-    else false
+    else
+        false
     end
 
 let ancestorCut(on: Bool env: Subst g: Formula ancestors: Formulas): Bool =
@@ -2803,7 +2882,8 @@ let ancestorCut(on: Bool env: Subst g: Formula ancestors: Formulas): Bool =
             let g1 = negate(formulaSubst(env g))
             lists.exists(:Formula)(fun(a: Formula): Bool formulaEq(formulaSubst(env a) g1) ancestors)
         end
-    else false
+    else
+        false
     end
 
 Let Cont = All(s: State) ChoiceRes
@@ -2826,14 +2906,15 @@ let cacheCont(c: Cont s0: State): Cont =
         let f(v: String): Bool = case total(:String :Int)(destMvar v) when oSome with n then n.x < offset else true end
         let listify(env: Subst): Maplets =
             substFoldr(:Maplets)(fun(m: Maplet l: Maplets): Maplets if f(m.a) then lists.cons(:Maplet)(m l) else l end
-                lists.nil(:Maplet) env)
+                    lists.nil(:Maplet) env)
         let mem = tuple let var l = lists.nil(:P2(Int Maplets)) end
         let purify(s: State): State =
             begin
                 let l = listify(s.env)
                 let n = s.depth
                 let p(x: P2(Int Maplets)): Bool = {n <= x.a} andif mapletsEq(l x.b)
-                if lists.exists(:P2(Int Maplets))(p mem.l) then err(:State)("cache_cut" "repetition")
+                if lists.exists(:P2(Int Maplets))(p mem.l) then
+                    err(:State)("cache_cut" "repetition")
                 else
                     begin
                         mem.l := lists.cons(:P2(Int Maplets))(p2(:Int :Maplets)(n l) mem.l)
@@ -2860,7 +2941,7 @@ let useUnit(units: UnitsRef g: Formula c: Cont s: State): ChoiceRes =
         let prove(l: Formulas): Thms =
             case unitsProve(u l) when oSome with y then y.x else err(:Thms)("use_unit" "NONE") end
         c(updateProof(fun(p: Thms): Thms lists.cons(:Thm)(unwrap(:Thm)(prove(lists.cons(:Formula)(formulaSubst(s.env g)
-            lists.nil(:Formula)))) p) s))
+                lists.nil(:Formula)))) p) s))
     end
 
 let unitCut(on: Bool units: UnitsRef f: Expand): Expand =
@@ -2869,7 +2950,8 @@ let unitCut(on: Bool units: UnitsRef f: Expand): Expand =
             try useUnit(units g c s)
             when errExn then f(a g fun(s: State): ChoiceRes c(grabUnit(units s)) s)
             end
-    else f
+    else
+        f
     end
 
 (* The core of meson: ancestor unification or Prolog-style extension *)
@@ -2882,12 +2964,12 @@ let freshenRule(r: Rule i: Int): P2(FreshRule Int) =
         let mvs = mkMvars(i fvn)
         let sub = fromMaplets(zipwith(:String :Term :Maplet)(maplet fvs mvs))
         p2(:FreshRule :Int)(
-            tuple
-                let th = inst(sub r.thm)
-                let asms = lists.map(:Formula :Formula)(fun(fm: Formula): Formula formulaSubst(sub fm) r.asms)
-                let c = formulaSubst(sub r.c)
-            end
-            i + fvn)
+                tuple
+                    let th = inst(sub r.thm)
+                    let asms = lists.map(:Formula :Formula)(fun(fm: Formula): Formula formulaSubst(sub fm) r.asms)
+                    let c = formulaSubst(sub r.c)
+                end
+                i + fvn)
     end
 
 let reward(r: Int s: State): State = updateDepth(fun(n: Int): Int n + r s)
@@ -2918,7 +3000,8 @@ let nextState(simplify: Bool env: Subst r: FreshRule g: Formula): NextState =
                 end
             when errExn then unify()
             end
-        else unify()
+        else
+            unify()
         end
     end
 
@@ -2949,8 +3032,8 @@ let mesonExpand(system: System): Expand =
             begin
                 let env = s.env
                 if not(checkMeter(meter.m)) then choiceRes(none(:Thms)() fun(): ChoiceRes expand(ancestors g cont s))
-                elsif ancestorPrune(parm.ancestorPruning env g ancestors)
-                    then err(:ChoiceRes)("meson" "ancestor pruning")
+                elsif ancestorPrune(parm.ancestorPruning env g ancestors) then
+                    err(:ChoiceRes)("meson" "ancestor pruning")
                 elsif ancestorCut(parm.ancestorCutting env g ancestors) then
                     begin
                         recordInfs(meter.m 1)
@@ -2968,8 +3051,8 @@ let mesonExpand(system: System): Expand =
                                 end
                         let expansion(r: Rule): Choice = fun(): ChoiceRes expandRule(ancestors g cont s r)
                         firstChoice(lists.append(:Choice)(lists.map(:Formula :Choice)(reduction ancestors)
-                            lists.map(:Rule :Choice)(expansion
-                                literalMapUnify(:Rule)(system.rules formulaSubst(env g)))))()
+                                lists.map(:Rule :Choice)(expansion
+                                        literalMapUnify(:Rule)(system.rules formulaSubst(env g)))))()
                     end
                 end
             end
@@ -2982,7 +3065,7 @@ let mesonExpand(system: System): Expand =
                 recordInfs(meter.m 1)
                 expands(lists.cons(:Formula)(g ancestors) ns.asms fun(s1: State): ChoiceRes
                     cont(modusPonens(ns.th ns.asms s1))
-                    state(ns.env depth s.proof ro.b))
+                        state(ns.env depth s.proof ro.b))
             end
         and expands(ancestors: Formulas g: Formulas c: Cont s: State): ChoiceRes =
             if parm.divideConquer andif splittable(g) then
@@ -2994,18 +3077,18 @@ let mesonExpand(system: System): Expand =
                     let n = halves(s.depth)
                     let s1 = updateDepth(fun(d: Int): Int n.a s)
                     binaryChoice(
-                        fun(): ChoiceRes f1(fun(s2: State): ChoiceRes f2(c reward(n.b s2)) s1)
-                        fun(): ChoiceRes
-                            f2(fun(s2: State): ChoiceRes
-                                spend(n.a + 1 f1 fun(s3: State): ChoiceRes
-                                    c(updateProof(fun(p: Thms): Thms swivel(l.a l.b p) s3))
-                                    reward(n.b s2))
-                                s1))()
+                            fun(): ChoiceRes f1(fun(s2: State): ChoiceRes f2(c reward(n.b s2)) s1)
+                            fun(): ChoiceRes
+                                f2(fun(s2: State): ChoiceRes
+                                    spend(n.a + 1 f1 fun(s3: State): ChoiceRes
+                                        c(updateProof(fun(p: Thms): Thms swivel(l.a l.b p) s3))
+                                            reward(n.b s2))
+                                        s1))()
                 end
             else
                 lists.foldl(:Formula :Cont)(
-                    fun(goal: Formula k: Cont): Cont fun(s: State): ChoiceRes cut(expand)(ancestors goal k s)
-                    c lists.rev(:Formula)(g))(s)
+                        fun(goal: Formula k: Cont): Cont fun(s: State): ChoiceRes cut(expand)(ancestors goal k s)
+                        c lists.rev(:Formula)(g))(s)
             end
         fun(ancestors: Formulas g: Formula cont: Cont s: State): ChoiceRes cut(expand)(lists.nil(:Formula) g cont s)
     end
@@ -3017,21 +3100,22 @@ let mesonFinally(g: Formulas s: State): ChoiceRes =
         let g1 = lists.map(:Formula :Formula)(fun(fm: Formula): Formula formulaSubst(s.env fm) g)
         let proof1 = lists.map(:Thm :Thm)(fun(th: Thm): Thm inst(s.env th) lists.rev(:Thm)(s.proof))
         assertBug(lists.all(:P2(Thm Formula))(fun(x: P2(Thm Formula)): Bool thmProves(x.a x.b)
-            zip(:Thm :Formula)(proof1 g1))
-            "meson" "did not prove goal list")
+                zip(:Thm :Formula)(proof1 g1))
+                "meson" "did not prove goal list")
         choiceRes(some(:Thms)(freshVarsl(proof1)) noChoice)
     end
 
 let rawMeson(system: System goals: Formulas depth: Int): Stream(Answer) =
     choiceStream(
-        fun(): ChoiceRes
-            begin
-            let expand = mesonExpand(system)
-            lists.foldl(:Formula :Cont)(
-                fun(goal: Formula k: Cont): Cont fun(s: State): ChoiceRes expand(lists.nil(:Formula) goal k s)
-                fun(s: State): ChoiceRes mesonFinally(goals s) lists.rev(:Formula)(goals))(
-                state(emptySubst depth lists.nil(:Thm) 0))
-            end)
+            fun(): ChoiceRes
+                begin
+                    let expand = mesonExpand(system)
+                    lists.foldl(:Formula :Cont)(
+                            fun(goal: Formula k: Cont): Cont
+                                fun(s: State): ChoiceRes expand(lists.nil(:Formula) goal k s)
+                            fun(s: State): ChoiceRes mesonFinally(goals s) lists.rev(:Formula)(goals))(
+                                    state(emptySubst depth lists.nil(:Thm) 0))
+                end)
 
 let mkSystem(parm: Parameters units: UnitsRef meter: MeterRef rules: Rules): System =
     tuple
@@ -3044,35 +3128,40 @@ let mkSystem(parm: Parameters units: UnitsRef meter: MeterRef rules: Rules): Sys
 
 let meson1(parm: Parameters): SolverNode =
     mkSolverNode("meson"
-        fun(f: Form): Solver
-            begin
-                let ruls = mesonRules(f.thms f.hyps)
-                chatMeson(2 "meson--initializing--#thms=" <> intToString(lists.length(:Thm)(f.thms)) <> "--#hyps=" <>
-                    intToString(lists.length(:Thm)(f.hyps)) <> "--#rules=" <> intToString(numRules(ruls)) <>
-                    "--#initial_rules=" <> intToString(numInitialRules(ruls)) <> ".\n")
-                let system = mkSystem(parm f.units f.slice ruls)
-                let b = system.saturated
-                let rec d(n: Int): Stream(Int) =
-                    if b.b then sNil(:Int)() else begin b.b := true sCons(:Int)(n fun(): Stream(Int) d(n + 1)) end end
-                let fq(q: Formulas): All(d: Int) Stream(Answer) =
-                    fun(d: Int): Stream(Answer) begin chatMeson(1 "-" <> intToString(d)) rawMeson(system q d) end
-                let unitCheck(goals: Formulas): All(a: Answer) Answer =
-                    fun(a: Answer): Answer case a when oNone then unitsProve(f.units.u goals) else a end
-                fun(goals: Formulas): Stream(Answer)
-                    filterMeter(f.slice
-                        sMap(:Answer :Answer)(unitCheck(goals))(
-                            sFlatten(:Answer)(sMap(:Int :Stream(Answer))(fq(goals))(d(0)))))
-            end)
+            fun(f: Form): Solver
+                begin
+                    let ruls = mesonRules(f.thms f.hyps)
+                    chatMeson(2 "meson--initializing--#thms=" <> intToString(lists.length(:Thm)(f.thms)) <> "--#hyps="
+                        <> intToString(lists.length(:Thm)(f.hyps)) <> "--#rules=" <> intToString(numRules(ruls))
+                        <> "--#initial_rules=" <> intToString(numInitialRules(ruls)) <> ".\n")
+                    let system = mkSystem(parm f.units f.slice ruls)
+                    let b = system.saturated
+                    let rec d(n: Int): Stream(Int) =
+                        if b.b then
+                            sNil(:Int)()
+                        else
+                            begin b.b := true sCons(:Int)(n fun(): Stream(Int) d(n + 1)) end
+                        end
+                    let fq(q: Formulas): All(d: Int) Stream(Answer) =
+                        fun(d: Int): Stream(Answer) begin chatMeson(1 "-" <> intToString(d)) rawMeson(system q d) end
+                    let unitCheck(goals: Formulas): All(a: Answer) Answer =
+                        fun(a: Answer): Answer case a when oNone then unitsProve(f.units.u goals) else a end
+                    fun(goals: Formulas): Stream(Answer)
+                        filterMeter(f.slice
+                                sMap(:Answer :Answer)(unitCheck(goals))(
+                                        sFlatten(:Answer)(sMap(:Int :Stream(Answer))(fq(goals))(d(0)))))
+                end)
 
 (* structure Metis1 *)
 
 Let Settings = Tuple meson: Bool delta: Bool resolution: Bool mesonParm: Parameters end
 
 let metis1(s: Settings): SolverNode =
-    combine(if s.meson
-        then lists.cons(:CostNode)(p2(:CostFn :SolverNode)(time1 meson1(s.mesonParm)) lists.nil(:CostNode))
-        else lists.nil(:CostNode)
-        end)
+    combine(if s.meson then
+        lists.cons(:CostNode)(p2(:CostFn :SolverNode)(time1 meson1(s.mesonParm)) lists.nil(:CostNode))
+    else
+        lists.nil(:CostNode)
+    end)
 
 let settings = tuple
     let var s = tuple let meson = true let delta = true let resolution = true let mesonParm = mesonDefaults end
@@ -3218,26 +3307,26 @@ let b2s(b: Bool): String = if b then "on" else "off" end
 
 (* the resolution parameters are the original's defaults *)
 let show(s: Settings): String =
-    "resolution             = " <> b2s(s.resolution) <> "\n" <>
-    "meson                  = " <> b2s(s.meson) <> "\n" <>
-    "delta                  = " <> b2s(s.delta) <> "\n" <>
-    "\n" <>
-    "resolution_parm:\n" <>
-    "  subsumption_checking = " <> intToString(1) <> "\n" <>
-    "  positive_refinement  = " <> b2s(true) <> "\n" <>
-    "  theap_parm:\n" <>
-    "    fifo_skew          = " <> intToString(3) <> "\n" <>
-    "    theap_cleaning     = " <> intToString(1000) <> "\n" <>
-    "\n" <>
-    "meson_parm:\n" <>
-    "  ancestor_pruning     = " <> b2s(s.mesonParm.ancestorPruning) <> "\n" <>
-    "  ancestor_cutting     = " <> b2s(s.mesonParm.ancestorCutting) <> "\n" <>
-    "  state_simplify       = " <> b2s(s.mesonParm.stateSimplify) <> "\n" <>
-    "  cache_cutting        = " <> b2s(s.mesonParm.cacheCutting) <> "\n" <>
-    "  divide_conquer       = " <> b2s(s.mesonParm.divideConquer) <> "\n" <>
-    "  unit_lemmaizing      = " <> b2s(s.mesonParm.unitLemmaizing) <> "\n" <>
-    "\n" <>
-    "limit                  = " <> limitToString(limit.l) <> "\n\n"
+    "resolution             = " <> b2s(s.resolution) <> "\n"
+        <> "meson                  = " <> b2s(s.meson) <> "\n"
+        <> "delta                  = " <> b2s(s.delta) <> "\n"
+        <> "\n"
+        <> "resolution_parm:\n"
+        <> "  subsumption_checking = " <> intToString(1) <> "\n"
+        <> "  positive_refinement  = " <> b2s(true) <> "\n"
+        <> "  theap_parm:\n"
+        <> "    fifo_skew          = " <> intToString(3) <> "\n"
+        <> "    theap_cleaning     = " <> intToString(1000) <> "\n"
+        <> "\n"
+        <> "meson_parm:\n"
+        <> "  ancestor_pruning     = " <> b2s(s.mesonParm.ancestorPruning) <> "\n"
+        <> "  ancestor_cutting     = " <> b2s(s.mesonParm.ancestorCutting) <> "\n"
+        <> "  state_simplify       = " <> b2s(s.mesonParm.stateSimplify) <> "\n"
+        <> "  cache_cutting        = " <> b2s(s.mesonParm.cacheCutting) <> "\n"
+        <> "  divide_conquer       = " <> b2s(s.mesonParm.divideConquer) <> "\n"
+        <> "  unit_lemmaizing      = " <> b2s(s.mesonParm.unitLemmaizing) <> "\n"
+        <> "\n"
+        <> "limit                  = " <> limitToString(limit.l) <> "\n\n"
 
 (* Milton.time: the times are 0, since Quest cannot read the clock *)
 let time(f: All(fm: Formula) Ok x: Formula): Ok =
@@ -3270,8 +3359,8 @@ let processSet(n: String s: lists.T(Problem)): Ok =
     begin
         advertize(n)
         let f(p: Problem): Ok = process(p.name parseFormula(p.goal))
-        case s when cons with c
-            then begin f(c.hd) lists.app(:Problem)(fun(x: Problem): Ok begin separator() f(x) end c.tl) end
+        case s when cons with c then
+            begin f(c.hd) lists.app(:Problem)(fun(x: Problem): Ok begin separator() f(x) end c.tl) end
             else ok
         end
     end
@@ -3289,8 +3378,12 @@ let main(): Ok =
     begin
         (* options, with no command line arguments *)
         let updateSettings(meson: Bool delta: Bool resolution: Bool): Ok =
-            settings.s := tuple let meson = meson let delta = delta let resolution = resolution
-                let mesonParm = settings.s.mesonParm end
+            settings.s := tuple
+                let meson = meson
+                let delta = delta
+                let resolution = resolution
+                let mesonParm = settings.s.mesonParm
+            end
         updateSettings(settings.s.meson settings.s.delta false)
         updateSettings(false settings.s.delta settings.s.resolution)
         updateSettings(settings.s.meson false settings.s.resolution)
@@ -3299,14 +3392,16 @@ let main(): Ok =
         let extract(p: lists.T(Problem) n: String): Problem =
             listFind(:Problem)(fun(x: Problem): Bool strEq(x.name n) p)!oSome.x
         let mesonPrune = lists.fromArray(:String)(
-            if pure then array of "P29" "LDA007-3" "GRP010-4" "GEO002-4" end else array of "GEO002-4" end end)
+                if pure then array of "P29" "LDA007-3" "GRP010-4" "GEO002-4" end else array of "GEO002-4" end end)
         let prune(l: Strings): Strings =
             if settings.s.meson andif not(settings.s.resolution) then
                 lists.filter(:String)(fun(x: String): Bool not(mem(:String)(strEq x mesonPrune)) l)
-            elsif settings.s.meson then l
+            elsif settings.s.meson then
+                l
             elsif settings.s.resolution then
                 lists.filter(:String)(fun(x: String): Bool not(strEq(x "COL060-3")) l)
-            else lists.nil(:String)
+            else
+                lists.nil(:String)
             end
         let src0 = lists.fromArray(:String)(array of "P26" "P29" "P46" "GILMORE_1" "LOS" "STEAM_ROLLER" end)
         let src1 = lists.fromArray(:String)(array of "P48" "P49" "AGATHA" end)

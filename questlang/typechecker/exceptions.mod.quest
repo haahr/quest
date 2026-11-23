@@ -2,18 +2,19 @@
 
 module exceptions : Exceptions
 import
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/syntax/ast : questlang/syntax/Ast
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/types/env : questlang/types/Env
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/typechecker/checker : questlang/typechecker/Checker
     questlang/typechecker/checks : questlang/typechecker/Checks
     questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
-    collections/vector : collections/Vector
-    util/maybe : util/Maybe
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let Type = model.Type
 
@@ -32,19 +33,21 @@ export
         case expr.form
             when exprException with x then
                 begin
-                    let payloadType = if maybe.isSome(x.typeAnnot) then
-                        elaborateTypes.elaborateType(maybe.unwrap(x.typeAnnot) e)
-                    else
-                        model.okType
-                    end
+                    let payloadType =
+                        if maybe.isSome(x.typeAnnot) then
+                            elaborateTypes.elaborateType(maybe.unwrap(x.typeAnnot) e)
+                        else
+                            model.okType
+                        end
                     let excType = model.exceptionOf(payloadType)
-                    let sym = if declares then
-                        let s = symbols.newValueSymbol(x.name excType false false false c.functionDepth 0)
-                        symbols.declareValue(e.currentScope s)
-                        maybe.some(s)
-                    else
-                        maybe.none(:symbols.ValueSymbol)
-                    end
+                    let sym =
+                        if declares then
+                            let s = symbols.newValueSymbol(x.name excType false false false c.functionDepth 0)
+                            symbols.declareValue(e.currentScope s)
+                            maybe.some(s)
+                        else
+                            maybe.none(:symbols.ValueSymbol)
+                        end
                     typedAst.expr(expr.span.startOffset excType option exprException of typedAst.ExprForm with
                         let name = x.name
                         let payloadType = maybe.some(payloadType)
@@ -58,35 +61,40 @@ export
         case expr.form
             when exprRaise with x then
                 begin
-                    let asType = if maybe.isSome(x.asType) then
-                        maybe.some(elaborateTypes.elaborateType(maybe.unwrap(x.asType) e))
-                    else
-                        maybe.none(:Type)
-                    end
-                    let resType = if maybe.isSome(expected) then
-                        maybe.unwrap(expected)
-                    else
-                        maybe.unwrapOr(asType model.okType)
-                    end
+                    let asType =
+                        if maybe.isSome(x.asType) then
+                            maybe.some(elaborateTypes.elaborateType(maybe.unwrap(x.asType) e))
+                        else
+                            maybe.none(:Type)
+                        end
+                    let resType =
+                        if maybe.isSome(expected) then
+                            maybe.unwrap(expected)
+                        else
+                            maybe.unwrapOr(asType model.okType)
+                        end
                     let excTyped = checker.synthExpr(c x.exc e loopDepth)
                     let excType = model.evaluateLazily(excTyped.type symbols.lookup)
                     let payloadType = exceptionPayload(excType)
                     if maybe.isNone(payloadType) then
                         diagnostics.fail(:Ok "Cannot raise non-exception type '" <> model.show(excType) <> "'"
-                            x.exc.span.startOffset)
+                                x.exc.span.startOffset)
                     end
                     let pt = maybe.unwrap(payloadType)
-                    let payloadTyped = if maybe.isSome(x.payload) then
-                        maybe.some(checker.checkExpr(c maybe.unwrap(x.payload) pt e loopDepth))
-                    else
-                        if not(model.same(pt model.okType)) then
-                            diagnostics.fail(:Ok "Exception '" <> model.show(excType) <> "' requires a payload of type '" <>
-                                model.show(pt) <> "'" expr.span.startOffset)
+                    let payloadTyped =
+                        if maybe.isSome(x.payload) then
+                            maybe.some(checker.checkExpr(c maybe.unwrap(x.payload) pt e loopDepth))
+                        else
+                            if not(model.same(pt model.okType)) then
+                                diagnostics.fail(:Ok "Exception '" <> model.show(excType)
+                                    <> "' requires a payload of type '"
+                                    <> model.show(pt) <> "'" expr.span.startOffset)
+                            end
+                            maybe.none(:typedAst.Expr)
                         end
-                        maybe.none(:typedAst.Expr)
-                    end
                     typedAst.expr(expr.span.startOffset resType option exprRaise of typedAst.ExprForm with
-                        let exc = excTyped let payload = payloadTyped
+                        let exc = excTyped
+                        let payload = payloadTyped
                     end)
                 end
             else internal("a raise" expr)
@@ -105,8 +113,8 @@ export
                         let excType = model.evaluateLazily(excTyped.type symbols.lookup)
                         let payloadType = exceptionPayload(excType)
                         if maybe.isNone(payloadType) then
-                            diagnostics.fail(:Ok "Pattern in when branch must be an exception, got '" <>
-                                model.show(excType) <> "'" branch.offset)
+                            diagnostics.fail(:Ok "Pattern in when branch must be an exception, got '"
+                                <> model.show(excType) <> "'" branch.offset)
                         end
                         Let Handled = Tuple body: typedAst.Expr binder: maybe.T(symbols.ValueSymbol) end
                         let handled: Handled =
@@ -115,7 +123,7 @@ export
                                 env.localScoped(e "try_" <> name fun(s: symbols.Scope): Handled
                                     begin
                                         let binderSym = symbols.newValueSymbol(name maybe.unwrap(payloadType)
-                                            false false false c.functionDepth 0)
+                                                false false false c.functionDepth 0)
                                         symbols.declareValue(e.currentScope binderSym)
                                         tuple
                                             let body = checker.elaborateSubexpr(c branch.body expected e loopDepth)
@@ -129,48 +137,54 @@ export
                                 end
                             end
                         vector.append(branches tuple
-                            let offset = branch.offset let excPattern = excTyped let body = handled.body
+                            let offset = branch.offset
+                            let excPattern = excTyped
+                            let body = handled.body
                             let binder = handled.binder
                         end)
                         vector.append(bodies handled.body)
                     end
                     (* An else branch that names the caught exception binds it
                      * as a raised.T (docs/raised.md section 3) *)
-                    let elseBinder = if maybe.isSome(x.elseBinder) then
-                        let name = maybe.unwrap(x.elseBinder)
-                        if maybe.isSome(x.elseBinderType) then
-                            let annot = maybe.unwrap(x.elseBinderType)
-                            let annotated = elaborateTypes.elaborateType(annot e)
-                            if not(subtyping.isTypeEqual(annotated model.raisedType env.lookupOf(e))) then
-                                diagnostics.fail(:Ok "The else branch's binder '" <> name <> "' has type '" <>
-                                    model.show(model.raisedType) <> "', not '" <> model.show(annotated) <> "'"
-                                    annot.span.startOffset)
+                    let elseBinder =
+                        if maybe.isSome(x.elseBinder) then
+                            let name = maybe.unwrap(x.elseBinder)
+                            if maybe.isSome(x.elseBinderType) then
+                                let annot = maybe.unwrap(x.elseBinderType)
+                                let annotated = elaborateTypes.elaborateType(annot e)
+                                if not(subtyping.isTypeEqual(annotated model.raisedType env.lookupOf(e))) then
+                                    diagnostics.fail(:Ok "The else branch's binder '" <> name <> "' has type '"
+                                        <> model.show(model.raisedType) <> "', not '" <> model.show(annotated) <> "'"
+                                            annot.span.startOffset)
+                                end
                             end
+                            maybe.some(symbols.newValueSymbol(name model.raisedType false false false c.functionDepth
+                                    0))
+                        else
+                            maybe.none(:symbols.ValueSymbol)
                         end
-                        maybe.some(symbols.newValueSymbol(name model.raisedType false false false c.functionDepth 0))
-                    else
-                        maybe.none(:symbols.ValueSymbol)
-                    end
-                    let elseTyped = if maybe.isSome(elseBinder) then
-                        let binderSym = maybe.unwrap(elseBinder)
-                        env.localScoped(e "try_" <> binderSym.name
-                            fun(s: symbols.Scope): maybe.T(typedAst.Expr)
-                                begin
-                                    symbols.declareValue(e.currentScope binderSym)
-                                    checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
-                                end)
-                    else
-                        checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
-                    end
-                    let resultType = if maybe.isSome(expected) then
-                        maybe.unwrap(expected)
-                    else
-                        checks.joinTypes(
-                            checker.branchTypes(maybe.some(bodyTyped.type) vector.toArray(bodies)
-                                elseTyped)
-                            e expr.span.startOffset
-                            maybe.some("Cannot find common supertype join for try expression branch types '{t1}' and '{t2}'"))
-                    end
+                    let elseTyped =
+                        if maybe.isSome(elseBinder) then
+                            let binderSym = maybe.unwrap(elseBinder)
+                            env.localScoped(e "try_" <> binderSym.name
+                                    fun(s: symbols.Scope): maybe.T(typedAst.Expr)
+                                        begin
+                                            symbols.declareValue(e.currentScope binderSym)
+                                            checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
+                                        end)
+                        else
+                            checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
+                        end
+                    let resultType =
+                        if maybe.isSome(expected) then
+                            maybe.unwrap(expected)
+                        else
+                            checks.joinTypes(
+                                    checker.branchTypes(maybe.some(bodyTyped.type) vector.toArray(bodies)
+                                            elseTyped)
+                                    e expr.span.startOffset
+                                    maybe.some("Cannot find common supertype join for try expression branch types '{t1}' and '{t2}'"))
+                        end
                     typedAst.expr(expr.span.startOffset resultType option exprTry of typedAst.ExprForm with
                         let body = bodyTyped
                         let branches = vector.toArray(branches)

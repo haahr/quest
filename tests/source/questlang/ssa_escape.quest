@@ -22,19 +22,20 @@
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
+    conv : Conv
+    writer : Writer
+
+    collections/vector : collections/Vector
+    util/strutil : util/Strutil
+
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/parser : questlang/ssa/Parser
-    questlang/ssa/printer : questlang/ssa/Printer
     questlang/ssa/passes/escape : questlang/ssa/passes/Escape
     questlang/ssa/passes/promote : questlang/ssa/passes/Promote
+    questlang/ssa/printer : questlang/ssa/Printer
     questlang/ssa/verify : questlang/ssa/Verify
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    util/strutil : util/Strutil
-    collections/vector : collections/Vector
-    writer : Writer
-    conv : Conv
-;
 
-let emit(s: String): Ok = writer.putString(writer.output s);
+let emit(s: String): Ok = writer.putString(writer.output s)
 
 let show(title: String lines: Array(String)): Ok =
     begin
@@ -65,7 +66,7 @@ let show(title: String lines: Array(String)): Ok =
                 check()
             end
         end
-    end;
+    end
 
 show("loaded and stored, through a derived pointer" array of
     "function pair(%0: int, %1: int): int {"
@@ -82,7 +83,7 @@ show("loaded and stored, through a derived pointer" array of
     "  %8: int = add %6, %7"
     "  return %8"
     "}"
-end);
+end)
 
 show("escaping: stored, passed, returned, compared" array of
     "function stored(%0: ptr): int {"
@@ -118,7 +119,7 @@ show("escaping: stored, passed, returned, compared" array of
     "  %3: int = peq %2, %0"
     "  return %3"
     "}"
-end);
+end)
 
 show("stored into another" array of
     "function nested(%0: int): int {"
@@ -134,7 +135,7 @@ show("stored into another" array of
     "  %5: int = load8 %4 + 0"
     "  return %5"
     "}"
-end);
+end)
 
 show("bound to a parameter, alone and with another value" array of
     "function alone(%0: int): int {"
@@ -158,7 +159,7 @@ show("bound to a parameter, alone and with another value" array of
     "  %5: int = load8 %4 + 0"
     "  return %5"
     "}"
-end);
+end)
 
 show("made in a loop" array of
     "function loop(%0: int): int {"
@@ -180,7 +181,7 @@ show("made in a loop" array of
     "b3():"
     "  return %2"
     "}"
-end);
+end)
 
 show("a tuple holding a pointer to its fields, read behind proxy tests" array of
     "function fields(%0: int, %1: int): int {"
@@ -207,7 +208,7 @@ show("a tuple holding a pointer to its fields, read behind proxy tests" array of
     "  %12: int = load8 %11 + 8"
     "  return %12"
     "}"
-end);
+end)
 
 show("accessed outside it" array of
     "function outside(): int {"
@@ -218,7 +219,7 @@ show("accessed outside it" array of
     "  %2: int = load8 %1 + 8"
     "  return %2"
     "}"
-end);
+end)
 
 show("in a function that enters a try" array of
     "function tries(%0: int): int slots [240:16] {"
@@ -235,7 +236,7 @@ show("in a function that enters a try" array of
     "  %4: int = load8 %2 + 0"
     "  return %4"
     "}"
-end);
+end)
 
 show("followed by write barriers" array of
     "function logged(%0: ptr): ptr {"
@@ -252,7 +253,7 @@ show("followed by write barriers" array of
     "  %5: ptr = load8 %4 + 0"
     "  return %5"
     "}"
-end);
+end)
 
 (* A unit's functions, before and after escapeUnit *)
 let showUnit(title: String lines: Array(String)): Ok =
@@ -267,7 +268,7 @@ let showUnit(title: String lines: Array(String)): Ok =
             let problems = verify.functionProblems(f)
             for j = 0 upto {extent problems - 1} do emit("!! " <> problems[j] <> "\n") end
         end
-    end;
+    end
 
 showUnit("closures passed to their own code" array of
     "function code(%0: ptr, %1: int): int {"
@@ -350,4 +351,4 @@ showUnit("closures passed to their own code" array of
     "  %5: int = add %4, %0"
     "  return %5"
     "}"
-end);
+end)

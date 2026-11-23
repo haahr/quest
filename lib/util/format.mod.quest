@@ -11,14 +11,15 @@
 
 module format : Format
 import
-    bignumLib = util/bignum : util/Bignum
-    util/rational : util/Rational
-    sb = util/stringBuilder : util/StringBuilder
-    conv : Conv
     ascii : Ascii
+    conv : Conv
     realOp = real : RealOp
     stringOp = string : StringOp
     wordLib = word : Word
+
+    bignumLib = util/bignum : util/Bignum
+    util/rational : util/Rational
+    sb = util/stringBuilder : util/StringBuilder
 export
     let error: Exception = exception error: Ok end
 
@@ -150,9 +151,18 @@ export
                 end
             end
             tuple
-                let fill = fill let fillGiven = fillGiven let align = align let sign = sign let signGiven = signGiven
-                let z = z let alternate = alternate let zero = zero let width = width let grouping = grouping
-                let precision = precision let type = type
+                let fill = fill
+                let fillGiven = fillGiven
+                let align = align
+                let sign = sign
+                let signGiven = signGiven
+                let z = z
+                let alternate = alternate
+                let zero = zero
+                let width = width
+                let grouping = grouping
+                let precision = precision
+                let type = type
             end
         end
 
@@ -169,9 +179,18 @@ export
             end
             if align is ' ' then align := defaultAlign end
             tuple
-                let fill = fill let fillGiven = p.fillGiven let align = align let sign = p.sign
-                let signGiven = p.signGiven let z = p.z let alternate = p.alternate let zero = p.zero
-                let width = p.width let grouping = p.grouping let precision = p.precision let type = p.type
+                let fill = fill
+                let fillGiven = p.fillGiven
+                let align = align
+                let sign = p.sign
+                let signGiven = p.signGiven
+                let z = p.z
+                let alternate = p.alternate
+                let zero = p.zero
+                let width = p.width
+                let grouping = p.grouping
+                let precision = p.precision
+                let type = p.type
             end
         end
 
@@ -187,7 +206,8 @@ export
     let minimum(a: Int b: Int): Int = if a < b then a else b end
 
     let grouped(digits: String groupSize: Int separator: String minWidth: Int): String =
-        if stringOp.isEmpty(digits) then ""
+        if stringOp.isEmpty(digits) then
+            ""
         else
             let var count = 0
             let var remaining = stringOp.length(digits)
@@ -222,7 +242,8 @@ export
      * digits are grouped, groupSize of them a group; all of it for an
      * integer, whose digits may be hexadecimal), then suffix, padded to the
      * spec's width as it aligns, which it has resolved *)
-    let number(p: Spec negative: Bool prefix: String body: String allDigits: Bool groupSize: Int suffix: String): String =
+    let number(p: Spec negative: Bool prefix: String body: String allDigits: Bool groupSize: Int
+            suffix: String): String =
         begin
             let sign = if negative then "-" elsif p.sign is '+' then "+" elsif p.sign is ' ' then " " else "" end
             let var k = if allDigits then size(body) else 0 end
@@ -231,7 +252,11 @@ export
             let rest = sub(body k size(body) - k) <> suffix
             let separator = if p.grouping is ' ' then "" else stringOp.new(1 p.grouping) end
             let minWidth =
-                if {p.fill is '0'} /\ {p.align is '='} then p.width - {size(sign) + size(prefix) + size(rest)} else 0 end
+                if {p.fill is '0'} /\ {p.align is '='} then
+                    p.width - {size(sign) + size(prefix) + size(rest)}
+                else
+                    0
+                end
             let g = grouped(digits if p.grouping is ' ' then 0 else groupSize end separator minWidth)
             let pad = p.width - {size(sign) + size(prefix) + size(g) + size(rest)}
             if p.align is '=' then
@@ -243,7 +268,8 @@ export
 
     (* n's magnitude in base, 2 to 16, lower or upper case *)
     let magnitude(n: bignumLib.T base: Int upper: Bool): String =
-        if base is 10 then bignumLib.toString(bignumLib.abs(n))
+        if base is 10 then
+            bignumLib.toString(bignumLib.abs(n))
         else
             let digitChars = if upper then "0123456789ABCDEF" else "0123456789abcdef" end
             let b = bignumLib.fromInt(base)
@@ -262,10 +288,10 @@ export
     let bits(r: Real): wordLib.T = wordLib.fromReal(r)
     let isNan(r: Real): Bool =
         {wordLib.toInt(wordLib.extract(bits(r) 52 11)) is 2047}
-        /\ {wordLib.toInt(wordLib.extract(bits(r) 0 52)) isnot 0}
+            /\ {wordLib.toInt(wordLib.extract(bits(r) 0 52)) isnot 0}
     let isInfinite(r: Real): Bool =
         {wordLib.toInt(wordLib.extract(bits(r) 52 11)) is 2047}
-        /\ {wordLib.toInt(wordLib.extract(bits(r) 0 52)) is 0}
+            /\ {wordLib.toInt(wordLib.extract(bits(r) 0 52)) is 0}
     let signBit(r: Real): Bool = wordLib.getBit(bits(r) 63)
 
     (* e's exponent text: a sign and at least two digits *)
@@ -343,9 +369,11 @@ export
                         let var i = 0
                         while at(s i) isnot 'e' do i := i + 1 end
                         sub(s 0 i) <> "." <> sub(s i size(s) - i)
-                    else s <> "."
+                    else
+                        s <> "."
                     end
-                else s
+                else
+                    s
                 end
             let body =
                 if isNan(r) then if upper then "NAN" else "nan" end
@@ -355,7 +383,8 @@ export
                     else general(a {if p.precision is 0 then 1 else p.precision end} 'e' p.alternate true)
                     end
                 elsif {t is 'g'} \/ {t is 'G'} then
-                    general(a {if precision is 0 then 1 else precision end} {if upper then 'E' else 'e' end} p.alternate false)
+                    general(a {if precision is 0 then 1 else precision end} {if upper then 'E' else 'e' end} p.alternate
+                            false)
                 elsif {t is 'e'} \/ {t is 'E'} then
                     let s = withPoint(realOp.format(a 'e' precision))
                     if upper then upperExponent(s) else s end
@@ -388,7 +417,15 @@ export
                 if not(contains(" dboxX" p.type)) then raise error end end
                 if {p.precision >= 0} \/ p.z then raise error end end
                 let base =
-                    if p.type is 'b' then 2 elsif p.type is 'o' then 8 elsif {p.type is 'x'} \/ {p.type is 'X'} then 16 else 10 end
+                    if p.type is 'b' then
+                        2
+                    elsif p.type is 'o' then
+                        8
+                    elsif {p.type is 'x'} \/ {p.type is 'X'} then
+                        16
+                    else
+                        10
+                    end
                 let prefix =
                     if not(p.alternate) then ""
                     elsif p.type is 'b' then "0b"
@@ -472,7 +509,8 @@ export
                         let var colon = 0
                         while {colon < size(field)} andif {at(field colon) isnot ':'} do colon := colon + 1 end
                         let name = sub(field 0 colon)
-                        let spec = if colon < size(field) then sub(field colon + 1 size(field) - {colon + 1}) else "" end
+                        let spec =
+                            if colon < size(field) then sub(field colon + 1 size(field) - {colon + 1}) else "" end
                         let var index = 0
                         if stringOp.isEmpty(name) then
                             if mode is 2 then raise error end end

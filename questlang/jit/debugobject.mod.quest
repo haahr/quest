@@ -2,13 +2,15 @@
 
 module debugObject : DebugObject
 import
-    questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
-    collections/vector : collections/Vector
-    util/strutil : util/Strutil
-    util/stringBuilder : util/StringBuilder
-    words = word : Word
-    stringOp = string : StringOp
     ascii : Ascii
+    stringOp = string : StringOp
+    words = word : Word
+
+    collections/vector : collections/Vector
+    util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+
+    questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
 export
     Let Bytes = vector.T(Int)
 
@@ -68,8 +70,7 @@ export
             end
         end
 
-    let append(b: Bytes more: Bytes): Ok =
-        for i = 0 upto {vector.length(more) - 1} do byte(b vector.get(more i)) end
+    let append(b: Bytes more: Bytes): Ok = for i = 0 upto {vector.length(more) - 1} do byte(b vector.get(more i)) end
 
     let padTo(b: Bytes alignment: Int): Ok = while {vector.length(b) % alignment} isnot 0 do byte(b 0) end
 
@@ -196,7 +197,9 @@ export
                         end
                         first := false
                         if r.file isnot file then begin byte(program 4) uleb(program r.file) file := r.file end end
-                        if r.line isnot line then begin byte(program 3) sleb(program r.line - line) line := r.line end end
+                        if r.line isnot line then
+                            begin byte(program 3) sleb(program r.line - line) line := r.line end
+                        end
                         byte(program 5) uleb(program r.column)
                         byte(program 1)
                         next := next + 1

@@ -2,28 +2,29 @@
 
 module layout : Layout
 import
-    questlang/common/strings : questlang/common/Strings
-    questlang/types/model : questlang/types/Model
-    questlang/types/canonical : questlang/types/Canonical
-    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/repr/symbols : questlang/repr/Symbols
-    questlang/repr/syntax : questlang/repr/Syntax
-    questlang/common/sha256 : questlang/common/Sha256
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/strutil : util/Strutil
-    stringOp = string : StringOp
+
+    questlang/common/sha256 : questlang/common/Sha256
+    questlang/common/strings : questlang/common/Strings
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/repr/symbols : questlang/repr/Symbols
+    questlang/repr/syntax : questlang/repr/Syntax
+    questlang/types/canonical : questlang/types/Canonical
+    questlang/types/model : questlang/types/Model
 export
     Let Type = model.Type
     Let Shape = shapes.Shape
 
     let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
-
 
     let startsWith(s: String prefix: String): Bool = strutil.startsWith(s prefix)
     let endsWith(s: String suffix: String): Bool = strutil.endsWith(s suffix)
@@ -74,8 +75,8 @@ export
             let seen = hashMap.new(:Int :Bool intEqual hash.int)
             let var s = s0
             while {shapes.kindIs(s shapes.shapeTypevar) orif shapes.kindIs(s shapes.shapeAbstract)}
-                andif maybe.isSome(s.bound)
-                andif not(hashMap.contains(seen s.id)) do
+                    andif maybe.isSome(s.bound)
+                    andif not(hashMap.contains(seen s.id)) do
                 hashMap.insert(seen s.id true)
                 s := maybe.unwrap(s.bound)
             end
@@ -84,7 +85,7 @@ export
 
     let heldAtBound(s: Shape): Bool =
         if maybe.isNone(s.bound) orif not({shapes.kindIs(s shapes.shapeTypevar)
-            orif shapes.kindIs(s shapes.shapeAbstract)}) then
+                orif shapes.kindIs(s shapes.shapeAbstract)}) then
             false
         elsif shapes.kindIs(s shapes.shapeAbstract) then
             true
@@ -115,8 +116,8 @@ export
             when shapeTuple, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut, shapeAuto then
                 true
             when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
-                shapeException, shapeFun, shapeAll, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
-                shapePending then false
+                    shapeException, shapeFun, shapeAll, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
+                    shapePending then false
         end
     let aggregateTagPrefixes = array of "QTuple_" "QRecord_" "QVariant_" "QOption_" "Auto_" end
 
@@ -130,11 +131,12 @@ export
                 maybe.unwrap(l.tag)
             else
                 let raw = rawTag(s)
-                let tag = if stringOp.length(raw) > 64 then
-                    stringOp.getSub(raw 0 24) <> "_" <> stringOp.getSub(sha256.hexDigest(raw) 0 16)
-                else
-                    raw
-                end
+                let tag =
+                    if stringOp.length(raw) > 64 then
+                        stringOp.getSub(raw 0 24) <> "_" <> stringOp.getSub(sha256.hexDigest(raw) 0 16)
+                    else
+                        raw
+                    end
                 l.tag := maybe.some(tag)
                 tag
             end
@@ -164,7 +166,8 @@ export
                     for i = 0 upto {extent x.bindings - 1} do
                         vector.append(tags typeTag(model.substitute(x.bindings[i].body subst)))
                     end
-                    "RecGroup" <> syntax.cInt(level) <> "_" <> syntax.cInt(x.activeIndex) <> "_" <> syntax.joined("_" tags)
+                    "RecGroup" <> syntax.cInt(level) <> "_" <> syntax.cInt(x.activeIndex) <> "_"
+                        <> syntax.joined("_" tags)
                 else rawTagOf(s)
             end
         end
@@ -260,7 +263,8 @@ export
             when shapeTypevar then
                 if strings.isOneOf(s.name array of "Writer.T" "writer.T" end) then "QWriter"
                 elsif strings.isOneOf(s.name array of "Reader.T" "reader.T" end) then "QReader"
-                else "QVal" end
+                else "QVal"
+                end
             when shapeTuple then
                 let tags = vector.new(:String)
                 for i = 0 upto {extent s.components - 1} do
@@ -284,7 +288,11 @@ export
                     let c = s.cases[i]
                     let name = maybe.unwrapOr(c.name "")
                     vector.append(tags
-                        if maybe.isSome(c.shape) then name <> "_" <> elementTag(maybe.unwrap(c.shape)) else name end)
+                            if maybe.isSome(c.shape) then
+                                name <> "_" <> elementTag(maybe.unwrap(c.shape))
+                            else
+                                name
+                            end)
                 end
                 withEmpty(if shapes.kindIs(s shapes.shapeVariant) then "QVariant_" else "QOption_" end tags)
             when shapeException then "QException"
@@ -313,9 +321,10 @@ export
                 when shapeVariant then option repVariant of Representation end
                 when shapeTypevar then
                     if isWriter(s) orif isReader(s) then option repPointer of Representation end
-                    else option repQVal of Representation end end
+                    else option repQVal of Representation end
+                    end
                 when shapeString, shapeAuto, shapeExternal, shapeTuple, shapeOption, shapeFun, shapeAll, shapeArray,
-                    shapeException, shapeCell, shapeOut then
+                        shapeException, shapeCell, shapeOut then
                     option repPointer of Representation end
                 when shapeBottom, shapeAbstract, shapeOperator, shapePending then option repQVal of Representation end
             end
@@ -391,7 +400,7 @@ export
                         when shapeException then "const QException *"
                         when shapeCell, shapeOut then shapeLocationRepresentation(shapes.element(s)) <> " *"
                         when shapeInt, shapeReal, shapeBool, shapeChar, shapeOk, shapeWord, shapeBottom, shapeRecord,
-                            shapeVariant, shapeAbstract, shapeOperator, shapePending then
+                                shapeVariant, shapeAbstract, shapeOperator, shapePending then
                             "QVal"
                     end
             end
@@ -411,7 +420,8 @@ export
     let wordForm(s0: Shape): WordForm =
         begin
             let s = resolvedShape(s0)
-            if isQVal(s) then option wordItself of WordForm end
+            if isQVal(s) then
+                option wordItself of WordForm end
             else
                 case s.kind
                     when shapeOk then option wordOk of WordForm end
@@ -421,9 +431,9 @@ export
                     when shapeInt, shapeBool, shapeChar then option wordInteger of WordForm end
                     when shapeReal then option wordReal of WordForm end
                     when shapeString, shapeBottom, shapeTuple, shapeOption, shapeArray, shapeCell, shapeOut,
-                    shapeException,
-                        shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
-                        shapePending then
+                            shapeException,
+                            shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
+                            shapePending then
                         option wordPointer of WordForm end
                 end
             end
@@ -462,7 +472,7 @@ export
         begin
             let s = shapes.shape(payload)
             if shapes.kindIs(s shapes.shapeTuple)
-                orif shapes.kindIs(s shapes.shapeRecord) then extent s.components else 1 end
+                    orif shapes.kindIs(s shapes.shapeRecord) then extent s.components else 1 end
         end
 
     let optionBytes(t: Type): Int =
@@ -529,8 +539,8 @@ export
                     found
                 end
             when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom, shapeRecord,
-                shapeVariant, shapeArray, shapeCell, shapeOut, shapeException, shapeFun, shapeAll, shapeAuto,
-                shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then
+                    shapeVariant, shapeArray, shapeCell, shapeOut, shapeException, shapeFun, shapeAll, shapeAuto,
+                    shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then
                 false
         end
 
@@ -563,7 +573,7 @@ export
                     end
                 end
             when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom, shapeArray,
-                shapeCell, shapeOut, shapeException, shapeExternal, shapePending then false
+                    shapeCell, shapeOut, shapeException, shapeExternal, shapePending then false
         end
 
     (* Whether a value of shape s, a tuple or option, may be a proxy: a tuple
@@ -592,11 +602,12 @@ export
                         for i = 0 upto {extent s.cases - 1} do
                             let c = s.cases[i]
                             if maybe.isSome(c.shape)
-                                andif shapes.kindIs(maybe.unwrap(c.shape) shapes.shapeTuple) then
+                                    andif shapes.kindIs(maybe.unwrap(c.shape) shapes.shapeTuple) then
                                 let payload = maybe.unwrap(c.shape)
                                 for j = 0 upto {extent payload.components - 1} do
-                                    if not(found) andif
-                                        componentChangesView(shapes.componentShape(payload.components[j]) seen) then
+                                    if not(found)
+                                            andif componentChangesView(shapes.componentShape(payload.components[j])
+                                                    seen) then
                                         found := true
                                     end
                                 end
@@ -605,8 +616,8 @@ export
                         found
                     end
                 when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
-                    shapeRecord, shapeVariant, shapeArray, shapeCell, shapeOut, shapeException, shapeFun, shapeAll,
-                    shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then
+                        shapeRecord, shapeVariant, shapeArray, shapeCell, shapeOut, shapeException, shapeFun, shapeAll,
+                        shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then
                     false
             end
         end

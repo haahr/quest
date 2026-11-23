@@ -2,24 +2,26 @@
 
 module model : Model
 import
-    questlang/common/location : questlang/common/Location
-    tm = questlang/types/model : questlang/types/Model
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
-    questlang/modules/graph : questlang/modules/Graph
+    ascii : Ascii
+    conv : Conv
+    reader : Reader
+    stringOp = string : StringOp
+    word : Word
+    writer : Writer
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
+    os/process : os/Process
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/stringBuilder : util/StringBuilder
-    os/process : os/Process
-    stringOp = string : StringOp
-    ascii : Ascii
-    conv : Conv
-    word : Word
-    reader : Reader
-    writer : Writer
+
+    questlang/common/location : questlang/common/Location
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    tm = questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
 export
     Let Rec Value = Option
         vOk
@@ -195,7 +197,7 @@ export
         elsif isDigits(name) then
             t.elements[digitsValue(name)] := v
         elsif {stringOp.length(name) > 1} andif {stringOp.getChar(name 0) is '_'}
-            andif isDigits(stringOp.getSub(name 1 {stringOp.length(name) - 1})) then
+                andif isDigits(stringOp.getSub(name 1 {stringOp.length(name) - 1})) then
             t.elements[digitsValue(stringOp.getSub(name 1 {stringOp.length(name) - 1}))] := v
         else
             raise fieldMissing with "Tuple has no labeled component '" <> name <> "'" end
@@ -254,8 +256,7 @@ export
             when vTypeValue then "Type"
         end
 
-    let sameType(a: tm.Type b: tm.Type): Bool =
-        tm.same(a b) orif subtyping.isTypeEqual(a b maybe.none())
+    let sameType(a: tm.Type b: tm.Type): Bool = tm.same(a b) orif subtyping.isTypeEqual(a b maybe.none())
 
     let same(v1: Value v2: Value): Bool =
         case v1
@@ -386,7 +387,7 @@ export
                         for i = 0 upto {vector.length(names) - 1} do
                             let name = vector.get(names i)
                             vector.append(parts
-                                name <> "=" <> show(hashMap.find(x.r.fields name) visited))
+                                    name <> "=" <> show(hashMap.find(x.r.fields name) visited))
                         end
                         if vector.empty(parts) then "record end" else "record " <> joined(parts) <> " end" end
                     end)
@@ -398,7 +399,7 @@ export
                             let shown = show(x.t.elements[i] visited)
                             let label = labelAt(x.t i)
                             vector.append(parts
-                                if maybe.isSome(label) then maybe.unwrap(label) <> "=" <> shown else shown end)
+                                    if maybe.isSome(label) then maybe.unwrap(label) <> "=" <> shown else shown end)
                         end
                         if vector.empty(parts) then "tuple end" else "tuple " <> joined(parts) <> " end" end
                     end)
@@ -479,7 +480,9 @@ export
 
     let raiseException(A::TYPE exc: ExceptionValue offset: maybe.T(Int)): A =
         raiseError(option raised of Cause with
-            let exc = exc let payload = maybe.none() let payloadType = maybe.none()
+            let exc = exc
+            let payload = maybe.none()
+            let payloadType = maybe.none()
         end offset)
 
     let internalError(A::TYPE message: String offset: maybe.T(Int)): A =

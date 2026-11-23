@@ -2,12 +2,14 @@
 
 module concats : Concats
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
-    stringOp = string : StringOp
+
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
 export
     Let Function = ssa.Function
 
@@ -46,12 +48,13 @@ export
             let n = vector.length(parts)
             let count = ssa.newValue(f ssa.typeInt)
             let c = ssa.instruction(ssa.opConst array of :Int end array of count end n "" 0 false
-                ssa.signature(array of :ssa.Type end array of :ssa.Type end array of :Int end array of :Int end))
+                    ssa.signature(array of :ssa.Type end array of :ssa.Type end array of :Int end array of :Int end))
             c.loc := loc
             vector.append(emitted c)
             let args = array of({most + 1} count)
             for k = 0 upto {most - 1} do
-                if k < n then args[k + 1] := vector.get(parts k)
+                if k < n then
+                    args[k + 1] := vector.get(parts k)
                 else
                     let v = ssa.newValue(f ssa.typePtr)
                     let z = ssa.instruction(ssa.opNull array of :Int end array of v end 0 "" 0 false c.signature)
@@ -61,7 +64,7 @@ export
                 end
             end
             let i = ssa.instruction(ssa.opCall args array of result end 0 "quest_string_concat_n" 0 false
-                runtimeFunctions.signature(r))
+                    runtimeFunctions.signature(r))
             i.loc := loc
             i
         end
@@ -87,7 +90,7 @@ export
                     for j = 0 upto 1 do
                         let a = i.args[j]
                         if hashMap.contains(partsOf a) andif {counts[a] is 1}
-                            andif {hashMap.find(memoryOf a) is memory} then
+                                andif {hashMap.find(memoryOf a) is memory} then
                             let inner = hashMap.find(partsOf a)
                             for p = 0 upto {vector.length(inner) - 1} do vector.append(parts vector.get(inner p)) end
                             hashMap.insert(absorbed a true)
@@ -111,7 +114,8 @@ export
                     elsif hashMap.contains(absorbed i.results[0]) then ok
                     else
                         let var parts = hashMap.find(partsOf i.results[0])
-                        if vector.length(parts) is 2 then vector.append(emitted i)
+                        if vector.length(parts) is 2 then
+                            vector.append(emitted i)
                         else
                             (* Join seven parts at a time, passing each
                              * group's result as the first part of the next *)

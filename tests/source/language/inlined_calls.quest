@@ -7,42 +7,42 @@
  * and one that raises; and what it leaves: a recursive function, and a
  * polymorphic one calling an external function at its type parameter (whose
  * values the external takes as QVal words, as an argument's need not be). *)
-import writer: Writer;
-import word: Word;
-import conv: Conv;
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+import conv : Conv
+import word : Word
+import writer : Writer
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
 
-let once(n: Int): Int = {n * n} + 1;
-print("once: " <> conv.int(once(6)));
+let once(n: Int): Int = {n * n} + 1
+print("once: " <> conv.int(once(6)))
 
-let first(A::TYPE B::TYPE pair: Tuple a: A b: B end): A = pair.a;
-let swap(A::TYPE B::TYPE pair: Tuple a: A b: B end): Tuple a: B b: A end = tuple let a = pair.b let b = pair.a end;
-let p = swap(:Int :String tuple let a = 1 let b = "two" end);
-print("polymorphic: " <> first(:String :Int p) <> " " <> conv.int(p.b));
+let first(A::TYPE B::TYPE pair: Tuple a: A b: B end): A = pair.a
+let swap(A::TYPE B::TYPE pair: Tuple a: A b: B end): Tuple a: B b: A end = tuple let a = pair.b let b = pair.a end
+let p = swap(:Int :String tuple let a = 1 let b = "two" end)
+print("polymorphic: " <> first(:String :Int p) <> " " <> conv.int(p.b))
 
-let apply(f: All(n: Int) Int n: Int): Int = f(f(n));
-print("higher-order: " <> conv.int(apply(fun(n: Int): Int n + 3 4)));
+let apply(f: All(n: Int) Int n: Int): Int = f(f(n))
+print("higher-order: " <> conv.int(apply(fun(n: Int): Int n + 3 4)))
 
-let bump(var n: Int by: Int): Ok = n := n + by;
-let bumped(): Int = begin let var k = 1 bump(@k 41) k end;
-print("var parameter: " <> conv.int(bumped()));
+let bump(var n: Int by: Int): Ok = n := n + by
+let bumped(): Int = begin let var k = 1 bump(@k 41) k end
+print("var parameter: " <> conv.int(bumped()))
 
-let sign(n: Int): String = if n < 0 then "negative" elsif n is 0 then "zero" else "positive" end;
-print("returns: " <> sign(~3) <> " " <> sign(0) <> " " <> sign(3));
+let sign(n: Int): String = if n < 0 then "negative" elsif n is 0 then "zero" else "positive" end
+print("returns: " <> sign(~3) <> " " <> sign(0) <> " " <> sign(3))
 
-let negative: Exception = exception negative end;
-let checked(n: Int): Int = if n < 0 then raise negative end else n end;
-print("raises: " <> try conv.int(checked(~1)) when negative then "negative" end);
+let negative: Exception = exception negative end
+let checked(n: Int): Int = if n < 0 then raise negative end else n end
+print("raises: " <> try conv.int(checked(~1)) when negative then "negative" end)
 
-let rec fact(n: Int): Int = if n <= 1 then 1 else n * fact(n - 1) end;
-print("recursive: " <> conv.int(fact(10)));
+let rec fact(n: Int): Int = if n <= 1 then 1 else n * fact(n - 1) end
+print("recursive: " <> conv.int(fact(10)))
 
-interface Identity import word: Word export identity(A::TYPE x: A): word.T end;
-unsound module identities: Identity import word: Word export
+interface Identity import word : Word export identity(A::TYPE x: A): word.T end
+unsound module identities : Identity import word : Word export
     let identity(A::TYPE x: A): word.T = external "quest_identity_hash"
-end;
-let identity = identities.identity;
-let numbers = array of(3 1);
-let pair = tuple let a = 1 let b = "two" end;
+end
+let identity = identities.identity
+let numbers = array of(3 1)
+let pair = tuple let a = 1 let b = "two" end
 print("external: " <> conv.bool({identity(:Array(Int) numbers) is identity(:Array(Int) numbers)}
-    andif {identity(:Tuple a: Int b: String end pair) is identity(:Tuple a: Int b: String end pair)}));
+    andif {identity(:Tuple a: Int b: String end pair) is identity(:Tuple a: Int b: String end pair)}))

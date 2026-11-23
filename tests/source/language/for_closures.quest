@@ -4,10 +4,10 @@
  * nested closure, counting up and down, in nested loops, and in a loop left
  * early. *)
 
-import writer : Writer;
-import conv : Conv;
+import conv : Conv
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
 
 let show(fs: Array(All(x: Int) Int) x: Int): String =
     begin
@@ -17,43 +17,43 @@ let show(fs: Array(All(x: Int) Int) x: Int): String =
             s := s <> conv.int(fs[i](x))
         end
         s
-    end;
+    end
 
 (* Upward: stored, and called after the loop *)
-let adders = array of(5 fun(x: Int): Int x);
-for i = 0 upto 4 do adders[i] := fun(x: Int): Int x + i end;
-print("upto: " <> show(adders 100));
+let adders = array of(5 fun(x: Int): Int x)
+for i = 0 upto 4 do adders[i] := fun(x: Int): Int x + i end
+print("upto: " <> show(adders 100))
 
-let down = array of(5 fun(x: Int): Int x);
-for i = 4 downto 0 do down[4 - i] := fun(x: Int): Int x * i end;
-print("downto: " <> show(down 10));
+let down = array of(5 fun(x: Int): Int x)
+for i = 4 downto 0 do down[4 - i] := fun(x: Int): Int x * i end
+print("downto: " <> show(down 10))
 
 (* Downward: called in the iteration that made it *)
-let var sum = 0;
+let var sum = 0
 for i = 1 upto 4 do
     let twice = fun(): Int i + i
     sum := sum + twice()
-end;
-print("downward: " <> conv.int(sum));
+end
+print("downward: " <> conv.int(sum))
 
 (* Through a nested closure, which captures the outer closure's copy *)
-let makers = array of(3 fun(): All(x: Int) Int fun(x: Int): Int x);
-for i = 0 upto 2 do makers[i] := fun(): All(x: Int) Int fun(x: Int): Int x - i end;
-let made = array of(3 fun(x: Int): Int x);
-for k = 0 upto 2 do made[k] := makers[k]() end;
-print("nested: " <> show(made 50));
+let makers = array of(3 fun(): All(x: Int) Int fun(x: Int): Int x)
+for i = 0 upto 2 do makers[i] := fun(): All(x: Int) Int fun(x: Int): Int x - i end
+let made = array of(3 fun(x: Int): Int x)
+for k = 0 upto 2 do made[k] := makers[k]() end
+print("nested: " <> show(made 50))
 
 (* Nested loops: each closure keeps its pair *)
-let pairs = array of(6 fun(x: Int): Int x);
+let pairs = array of(6 fun(x: Int): Int x)
 for i = 0 upto 1 do
     for j = 0 upto 2 do pairs[{i * 3} + j] := fun(x: Int): Int {x * i} + j end
-end;
-print("pairs: " <> show(pairs 10));
+end
+print("pairs: " <> show(pairs 10))
 
 (* Left early: the closures made before the exit keep their values *)
-let early = array of(5 fun(x: Int): Int ~1);
+let early = array of(5 fun(x: Int): Int ~1)
 for i = 0 upto 4 do
     if i is 3 then exit end
     early[i] := fun(x: Int): Int i
-end;
-print("early: " <> show(early 0));
+end
+print("early: " <> show(early 0))

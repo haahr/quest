@@ -6,12 +6,13 @@
 
 module hashSet : HashSet
 import
+    word : Word
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
-    util/maybe : util/Maybe
     iterLib = util/iter : util/Iter
-    word: Word
+    util/maybe : util/Maybe
 export
     Let T = Fun(A::TYPE) Tuple
         map: hashMap.T(A Ok)
@@ -70,45 +71,45 @@ export
 
     let copy(A::TYPE)(s: T(A)): T(A) =
         fold(:A :T(A) s newWithCapacity(size(s) s.equal s.hash)
-            fun(acc: T(A) elem: A): T(A)
-                begin
-                    insert(acc elem)
-                    acc
-                end)
+                fun(acc: T(A) elem: A): T(A)
+                    begin
+                        insert(acc elem)
+                        acc
+                    end)
 
     let filter(A::TYPE)(s: T(A) pred: All(elem: A) Bool): T(A) =
         fold(:A :T(A) s newWithCapacity(size(s) s.equal s.hash)
-            fun(acc: T(A) elem: A): T(A)
-                begin
-                    if pred(elem) then
-                        insert(acc elem)
-                    end
-                    acc
-                end)
+                fun(acc: T(A) elem: A): T(A)
+                    begin
+                        if pred(elem) then
+                            insert(acc elem)
+                        end
+                        acc
+                    end)
 
     let map(A::TYPE B::TYPE)(s: T(A) equal: All(b1: B b2: B) Bool hash: All(b: B) word.T f: All(elem: A) B): T(B) =
         fold(:A :T(B) s newWithCapacity(:B size(s) equal hash)
-            fun(acc: T(B) elem: A): T(B)
-                begin
-                    insert(:B acc f(elem))
-                    acc
-                end)
+                fun(acc: T(B) elem: A): T(B)
+                    begin
+                        insert(:B acc f(elem))
+                        acc
+                    end)
 
     let filterMap(A::TYPE B::TYPE)(
-        s: T(A)
-        equal: All(b1: B b2: B) Bool
-        hash: All(b: B) word.T
-        f: All(elem: A) maybe.T(B)
-    ): T(B) =
+            s: T(A)
+            equal: All(b1: B b2: B) Bool
+            hash: All(b: B) word.T
+            f: All(elem: A) maybe.T(B)
+            ): T(B) =
         fold(:A :T(B) s newWithCapacity(:B size(s) equal hash)
-            fun(acc: T(B) elem: A): T(B)
-                begin
-                    let opt: maybe.T(B) = f(elem)
-                    if maybe.isSome(:B opt) then
-                        insert(:B acc maybe.unwrap(:B opt))
-                    end
-                    acc
-                end)
+                fun(acc: T(B) elem: A): T(B)
+                    begin
+                        let opt: maybe.T(B) = f(elem)
+                        if maybe.isSome(:B opt) then
+                            insert(:B acc maybe.unwrap(:B opt))
+                        end
+                        acc
+                    end)
 
     let union(A::TYPE)(s1: T(A) s2: T(A)): T(A) =
         begin

@@ -2,21 +2,24 @@
 
 module asm : Asm
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+    ascii : Ascii
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/vector : collections/Vector
     sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
-    ascii : Ascii
+
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     let symbol(name: String): String = "_" <> name
 
     let decimal(n: Int): String =
         if n >= 0 then conv.int(n)
         elsif n is {~9223372036854775807 - 1} then "-9223372036854775808"
-        else "-" <> conv.int(0 - n) end
+        else "-" <> conv.int(0 - n)
+        end
 
     let reference(name: String reloc: minst.Reloc pageOffset: Bool): String =
         symbol(name) <> case reloc
@@ -67,11 +70,12 @@ export
     let data(d: ssa.Data): Array(String) =
         begin
             let lines = vector.new(:String)
-            let section = case d.contents
-                when contentsText then "__TEXT,__const"
-                when contentsZero then "__DATA,__data"
-                when contentsWords then if d.writable then "__DATA,__data" else "__DATA,__const" end
-            end
+            let section =
+                case d.contents
+                    when contentsText then "__TEXT,__const"
+                    when contentsZero then "__DATA,__data"
+                    when contentsWords then if d.writable then "__DATA,__data" else "__DATA,__const" end
+                end
             vector.append(lines ".section " <> section)
             vector.append(lines ".p2align 3")
             if d.exported then vector.append(lines ".globl " <> symbol(d.symbol)) end
@@ -85,9 +89,11 @@ export
                         vector.append(lines ".quad " <> case x.words[i]
                             when wordInt with w then decimal(w.n)
                             when wordSymbol with w then
-                                symbol(w.symbol) <> if w.addend is 0 then ""
-                                    elsif w.addend > 0 then "+" <> conv.int(w.addend)
-                                    else "-" <> conv.int(0 - w.addend) end
+                                symbol(w.symbol)
+                                    <> if w.addend is 0 then ""
+                                        elsif w.addend > 0 then "+" <> conv.int(w.addend)
+                                        else "-" <> conv.int(0 - w.addend)
+                                        end
                         end)
                     end
                     if extent x.words is 0 then vector.append(lines ".quad 0") end
@@ -104,7 +110,7 @@ export
             vector.append(lines ".p2align 2")
             vector.append(lines symbol(name) <> ":")
             vector.append(lines
-                if n > 0 then ".long " <> symbol(first) <> "-" <> symbol(name) else ".long 0" end)
+                    if n > 0 then ".long " <> symbol(first) <> "-" <> symbol(name) else ".long 0" end)
             vector.append(lines ".long " <> conv.int(n))
             for k = 0 upto {n - 1} do
                 vector.append(lines ".long " <> symbol(listed[k].symbol) <> "-" <> symbol(first))
@@ -143,7 +149,7 @@ export
                 if stringOp.length(paths[k]) > 0 then
                     let s = split(paths[k])
                     vector.append(lines
-                        ".file " <> conv.int(k + 1) <> " " <> quoted(s.dir) <> " " <> quoted(s.name))
+                            ".file " <> conv.int(k + 1) <> " " <> quoted(s.dir) <> " " <> quoted(s.name))
                 end
             end
             vector.toArray(lines)

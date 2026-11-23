@@ -6,14 +6,16 @@
  * simulator applies unchanged. *)
 
 import
-    support/bench : support/Bench
-    support/lists : support/Lists
-    util/maybe : util/Maybe
-    util/strutil : util/Strutil
-    stringOp = string : StringOp
     conv : Conv
+    stringOp = string : StringOp
     word : Word
     writer : Writer
+
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+
+    support/bench : support/Bench
+    support/lists : support/Lists
 
 let print(s: String): Ok = writer.putString(writer.output s)
 
@@ -74,7 +76,8 @@ let map(A::TYPE B::TYPE)(f: All(a: A) B ia: ImmArray(A)): ImmArray(B) =
     begin
         let rec mapiAux(l: lists.T(A)): lists.T(B) =
             case l when cons with c then begin let y = f(c.hd) lists.cons(:B)(y mapiAux(c.tl)) end
-                else lists.nil(:B) end
+                else lists.nil(:B)
+            end
         mapiAux(lists.drop(:A)(ia 0))
     end
 
@@ -82,7 +85,7 @@ let map(A::TYPE B::TYPE)(f: All(a: A) B ia: ImmArray(A)): ImmArray(B) =
 Let RegisterFile = ImmArray(W)
 let initRegisterFile(): RegisterFile =
     update(:W)(update(:W)(update(:W)(update(:W)(immarray(:W)(32 w(0)) 0 w(0)) 28 w(0)) 29 w(262144)) 30
-        w(262144))
+            w(262144))
 let loadRegister(rf: RegisterFile reg: Int): W = sub(:W)(rf reg)
 let storeRegister(rf: RegisterFile reg: Int data: W): RegisterFile = update(:W)(rf reg data)
 
@@ -132,16 +135,26 @@ Let MemWord = Tuple mem: Memory w: W end
 let alignWAddress(address: W): W = shl(shr(address 2) 2)
 let alignHWAddress(address: W): W = shl(shr(address 1) 1)
 
-let memInit(): Memory = tuple let mem = immarray(:W)(toInt(w(65536)) w(0)) let counts = tuple let reads = 0
-    let writes = 0 end end
+let memInit(): Memory = tuple
+    let mem = immarray(:W)(toInt(w(65536)) w(0))
+    let counts = tuple
+        let reads = 0
+        let writes = 0
+    end
+end
 
 let memLoad(m: Memory address: W): MemWord =
     begin
         let alignedAddress = alignWAddress(address)
         let useAddress = shr(alignedAddress 2)
         tuple
-            let mem = tuple let mem = m.mem let counts = tuple let reads = m.counts.reads + 1
-                let writes = m.counts.writes end end
+            let mem = tuple
+                let mem = m.mem
+                let counts = tuple
+                    let reads = m.counts.reads + 1
+                    let writes = m.counts.writes
+                end
+            end
             let w = sub(:W)(m.mem toInt(useAddress))
         end
     end
@@ -225,11 +238,22 @@ let randEntry: All() Int =
  * 0wx00000000 tag, blocks initialized to 0wx00000000. *)
 let initCache(): Tuple cac: Cache counts: Counts4 end =
     begin
-        let cacheline: CacheLine = tuple let valid = false let dirty = false let tag = w(0)
-            let block = immarray(:W)(blockSize w(0)) end
+        let cacheline: CacheLine = tuple
+            let valid = false
+            let dirty = false
+            let tag = w(0)
+            let block = immarray(:W)(blockSize w(0))
+        end
         let cacheset = immarray(:CacheLine)(associativity cacheline)
-        tuple let cac = immarray(:CacheSet)(indexSize cacheset) let counts = tuple let rh = 0 let rm = 0 let wh = 0
-            let wm = 0 end end
+        tuple
+            let cac = immarray(:CacheSet)(indexSize cacheset)
+            let counts = tuple
+                let rh = 0
+                let rm = 0
+                let wh = 0
+                let wm = 0
+            end
+        end
     end
 
 (* The InitMemory function initializes the cache and the memory being cached *)
@@ -277,7 +301,9 @@ let writeCacheAuxEntry(e: CacheLine address: W data: W): CacheLine =
     begin
         let ndirty = case writeHit when writeThrough then false when writeBack then true end
         tuple
-            let valid = true let dirty = ndirty let tag = e.tag
+            let valid = true
+            let dirty = ndirty
+            let tag = e.tag
             let block = update(:W)(e.block toInt(shr(getBlockOffset(address) 2)) data)
         end
     end
@@ -301,8 +327,8 @@ let loadBlock(mem: Memory address: W): BlockMem =
             let r = memLoadWord(bm.mem laddress)
             tuple let block = update(:W)(bm.block offset r.w) let mem = r.mem end
         end
-        tuple let block = immarray(:W)(blockSize w(0)) let mem = mem end
-        tabulate(:Int)(blockSize fun(i: Int): Int i))
+            tuple let block = immarray(:W)(blockSize w(0)) let mem = mem end
+            tabulate(:Int)(blockSize fun(i: Int): Int i))
 
 (* The StoreBlock function returns the updated memory with block stored into
  * the block containing address. *)
@@ -312,8 +338,8 @@ let storeBlock(block: ImmArray(W) mem: Memory address: W): Memory =
             let saddress = add32(shl(shr(address blockOffsetBits) blockOffsetBits) shl(fromInt(offset) 2))
             memStoreWord(mem saddress sub(:W)(block offset))
         end
-        mem
-        tabulate(:Int)(blockSize fun(i: Int): Int i))
+            mem
+            tabulate(:Int)(blockSize fun(i: Int): Int i))
 
 (* The LoadCache* family of functions returns the updated cache and memory,
  * with the block containing address loaded into the cache at the appropriate
@@ -324,8 +350,10 @@ let loadCacheAuxEntry(e: CacheLine mem: Memory address: W): LineMem =
         let saddress = orb(shl(e.tag tagBits) shl(getIndex(address) indexBits))
         let nmem = if e.valid andif e.dirty then storeBlock(e.block mem saddress) else mem end
         let bm = loadBlock(nmem address)
-        tuple let line = tuple let valid = true let dirty = false let tag = getTag(address) let block = bm.block end
-            let mem = bm.mem end
+        tuple
+            let line = tuple let valid = true let dirty = false let tag = getTag(address) let block = bm.block end
+            let mem = bm.mem
+        end
     end
 Let SetMem = Tuple set: CacheSet mem: Memory end
 let loadCacheAuxSet(set: CacheSet mem: Memory address: W): SetMem =
@@ -353,13 +381,17 @@ let cLoad(m: CMemory address: W): CMemWord =
         let c = m.counts
         let alignedAddress = alignWAddress(address)
         if inCache(m.cac alignedAddress) then
-            tuple let mem = cmem(m.cac counts4(c.rh + 1 c.rm c.wh c.wm) m.mem)
-                let w = readCache(m.cac alignedAddress) end
+            tuple
+                let mem = cmem(m.cac counts4(c.rh + 1 c.rm c.wh c.wm) m.mem)
+                let w = readCache(m.cac alignedAddress)
+            end
         else
             begin
                 let cm = loadCache(m.cac m.mem alignedAddress)
-                tuple let mem = cmem(cm.cac counts4(c.rh c.rm + 1 c.wh c.wm) cm.mem)
-                    let w = readCache(cm.cac alignedAddress) end
+                tuple
+                    let mem = cmem(cm.cac counts4(c.rh c.rm + 1 c.wh c.wm) cm.mem)
+                    let w = readCache(cm.cac alignedAddress)
+                end
             end
         end
     end
@@ -372,8 +404,8 @@ let cStore(m: CMemory address: W data: W): CMemory =
             begin
                 let ncac = writeCache(m.cac alignedAddress data)
                 case writeHit
-                    when writeThrough
-                        then cmem(ncac counts4(c.rh c.rm c.wh + 1 c.wm) memStoreWord(m.mem alignedAddress data))
+                    when writeThrough then
+                        cmem(ncac counts4(c.rh c.rm c.wh + 1 c.wm) memStoreWord(m.mem alignedAddress data))
                     when writeBack then cmem(ncac counts4(c.rh c.rm c.wh + 1 c.wm) m.mem)
                 end
             end
@@ -384,14 +416,14 @@ let cStore(m: CMemory address: W data: W): CMemory =
                         let cm = loadCache(m.cac m.mem alignedAddress)
                         let nncac = writeCache(cm.cac alignedAddress data)
                         case writeHit
-                            when writeThrough
-                                then cmem(nncac counts4(c.rh c.rm c.wh c.wm + 1)
-                                    memStoreWord(cm.mem alignedAddress data))
+                            when writeThrough then
+                                cmem(nncac counts4(c.rh c.rm c.wh c.wm + 1)
+                                        memStoreWord(cm.mem alignedAddress data))
                             when writeBack then cmem(nncac counts4(c.rh c.rm c.wh c.wm + 1) cm.mem)
                         end
                     end
-                when writeNoAllocate
-                    then cmem(m.cac counts4(c.rh c.rm c.wh c.wm + 1) memStoreWord(m.mem alignedAddress data))
+                when writeNoAllocate then
+                    cmem(m.cac counts4(c.rh c.rm c.wh c.wm + 1) memStoreWord(m.mem alignedAddress data))
             end
         end
     end
@@ -447,7 +479,8 @@ let cLoadByte(m: CMemory address: W signed: Bool): CMemWord =
                 elsif weq(alignedAddress w(24)) then ext(shl(r.w 0) 24)
                 else begin
                     print(if signed then "Error LB: Memory returning 0\n"
-                        else "Error LBU: Memory returning 0\n" end) w(0) end
+                        else "Error LBU: Memory returning 0\n" end) w(0)
+                end
                 end
         end
     end
@@ -457,7 +490,7 @@ let cStoreByte(m: CMemory address: W data: W): CMemory =
         let alignedAddress = address
         let sWord = cLoad(m alignedAddress).w
         let put(keep: W shift: Int): CMemory = cStore(m alignedAddress
-            orb(andb(keep sWord) shl(andb(w(255) data) shift)))
+                orb(andb(keep sWord) shl(andb(w(255) data) shift)))
         if weq(alignedAddress w(0)) then put(w(4294967040) 0)
         elsif weq(alignedAddress w(8)) then put(w(4294902015) 8)
         elsif weq(alignedAddress w(16)) then put(w(4278255615) 16)
@@ -472,8 +505,10 @@ let cGetStatistics(m: CMemory): String =
         let th = c.rh + c.wh
         let tm = c.rm + c.wm
         let who = case writeHit when writeThrough then "Write Through" when writeBack then "Write Back" end
-        let wmo = case writeMiss when writeAllocate then "Write Allocate" when writeNoAllocate
-            then "Write No Allocate" end
+        let wmo =
+            case writeMiss when writeAllocate then "Write Allocate" when writeNoAllocate then
+                "Write No Allocate"
+            end
         stringOp.conc(array of
             cacheName " :\n" "CacheSize : " conv.int(cacheSize) "\n" "BlockSize : " conv.int(blockSize) "\n"
             "Associativity : " conv.int(associativity) "\n" "Write Hit : " who "\n" "Write Miss : " wmo "\n"
@@ -507,8 +542,12 @@ Let Trap = Tuple inputFn: All(state: State) Tuple input: Int state: State end
     outputFn: All(output: Int state: State) State state: State end
 Let Machine = Tuple pc: W rf: RegisterFile mem: CMemory trap: Trap end
 
-let machine(pc: W rf: RegisterFile mem: CMemory trap: Trap): Machine = tuple let pc = pc let rf = rf let mem = mem
-    let trap = trap end
+let machine(pc: W rf: RegisterFile mem: CMemory trap: Trap): Machine = tuple
+    let pc = pc
+    let rf = rf
+    let mem = mem
+    let trap = trap
+end
 let op(o: Opcode): Opcode = o
 let nonOp = option nonOp of Opcode end
 let isNonOp(o: Opcode): Bool = case o when nonOp then true else false end
@@ -521,19 +560,32 @@ let decodeIType(instr: W): Instruction =
     begin
         let opc = toInt(andb(shr(instr 26) w(63)))
         let opcode =
-            if opc is 4 then option beqz of Opcode end elsif opc is 5 then option bnez of Opcode end
-            elsif opc is 8 then option addi of Opcode end elsif opc is 9 then option addui of Opcode end
-            elsif opc is 10 then option subi of Opcode end elsif opc is 11 then option subui of Opcode end
-            elsif opc is 12 then option andi of Opcode end elsif opc is 13 then option ori of Opcode end
-            elsif opc is 14 then option xori of Opcode end elsif opc is 15 then option lhi of Opcode end
-            elsif opc is 20 then option slli of Opcode end elsif opc is 22 then option srli of Opcode end
-            elsif opc is 23 then option srai of Opcode end elsif opc is 24 then option seqi of Opcode end
-            elsif opc is 25 then option snei of Opcode end elsif opc is 26 then option slti of Opcode end
-            elsif opc is 27 then option sgti of Opcode end elsif opc is 28 then option slei of Opcode end
-            elsif opc is 29 then option sgei of Opcode end elsif opc is 32 then option lb of Opcode end
-            elsif opc is 36 then option lbu of Opcode end elsif opc is 40 then option sb of Opcode end
-            elsif opc is 33 then option lh of Opcode end elsif opc is 37 then option lhu of Opcode end
-            elsif opc is 41 then option sh of Opcode end elsif opc is 35 then option lw of Opcode end
+            if opc is 4 then option beqz of Opcode end
+            elsif opc is 5 then option bnez of Opcode end
+            elsif opc is 8 then option addi of Opcode end
+            elsif opc is 9 then option addui of Opcode end
+            elsif opc is 10 then option subi of Opcode end
+            elsif opc is 11 then option subui of Opcode end
+            elsif opc is 12 then option andi of Opcode end
+            elsif opc is 13 then option ori of Opcode end
+            elsif opc is 14 then option xori of Opcode end
+            elsif opc is 15 then option lhi of Opcode end
+            elsif opc is 20 then option slli of Opcode end
+            elsif opc is 22 then option srli of Opcode end
+            elsif opc is 23 then option srai of Opcode end
+            elsif opc is 24 then option seqi of Opcode end
+            elsif opc is 25 then option snei of Opcode end
+            elsif opc is 26 then option slti of Opcode end
+            elsif opc is 27 then option sgti of Opcode end
+            elsif opc is 28 then option slei of Opcode end
+            elsif opc is 29 then option sgei of Opcode end
+            elsif opc is 32 then option lb of Opcode end
+            elsif opc is 36 then option lbu of Opcode end
+            elsif opc is 40 then option sb of Opcode end
+            elsif opc is 33 then option lh of Opcode end
+            elsif opc is 37 then option lhu of Opcode end
+            elsif opc is 41 then option sh of Opcode end
+            elsif opc is 35 then option lw of Opcode end
             elsif opc is 43 then option sw of Opcode end
             else begin print("Error : Non I-Type opcode\n") nonOp end
             end
@@ -555,14 +607,22 @@ let decodeRType(instr: W): Instruction =
         let shamt = field(instr 6)
         let funct = toInt(andb(instr w(63)))
         let functcode =
-            if funct is 0 then option nop of RRFunctCode end elsif funct is 4 then option sllF of RRFunctCode end
-            elsif funct is 6 then option srlF of RRFunctCode end elsif funct is 7 then option sraF of RRFunctCode end
-            elsif funct is 32 then option addF of RRFunctCode end elsif funct is 33 then option adduF of RRFunctCode end
-            elsif funct is 34 then option subF of RRFunctCode end elsif funct is 35 then option subuF of RRFunctCode end
-            elsif funct is 36 then option andF of RRFunctCode end elsif funct is 37 then option orF of RRFunctCode end
-            elsif funct is 38 then option xorF of RRFunctCode end elsif funct is 40 then option seqF of RRFunctCode end
-            elsif funct is 41 then option sneF of RRFunctCode end elsif funct is 42 then option sltF of RRFunctCode end
-            elsif funct is 43 then option sgtF of RRFunctCode end elsif funct is 44 then option sleF of RRFunctCode end
+            if funct is 0 then option nop of RRFunctCode end
+            elsif funct is 4 then option sllF of RRFunctCode end
+            elsif funct is 6 then option srlF of RRFunctCode end
+            elsif funct is 7 then option sraF of RRFunctCode end
+            elsif funct is 32 then option addF of RRFunctCode end
+            elsif funct is 33 then option adduF of RRFunctCode end
+            elsif funct is 34 then option subF of RRFunctCode end
+            elsif funct is 35 then option subuF of RRFunctCode end
+            elsif funct is 36 then option andF of RRFunctCode end
+            elsif funct is 37 then option orF of RRFunctCode end
+            elsif funct is 38 then option xorF of RRFunctCode end
+            elsif funct is 40 then option seqF of RRFunctCode end
+            elsif funct is 41 then option sneF of RRFunctCode end
+            elsif funct is 42 then option sltF of RRFunctCode end
+            elsif funct is 43 then option sgtF of RRFunctCode end
+            elsif funct is 44 then option sleF of RRFunctCode end
             elsif funct is 45 then option sgeF of RRFunctCode end
             else begin print("Error : Non R-type funct\n") option nonFunct of RRFunctCode end end
             end
@@ -578,14 +638,17 @@ let decodeJType(instr: W): Instruction =
     begin
         let opc = toInt(andb(shr(instr 26) w(63)))
         let opcode =
-            if opc is 2 then option j of Opcode end elsif opc is 3 then option jal of Opcode end
-            elsif opc is 17 then option trap of Opcode end elsif opc is 18 then option jr of Opcode end
+            if opc is 2 then option j of Opcode end
+            elsif opc is 3 then option jal of Opcode end
+            elsif opc is 17 then option trap of Opcode end
+            elsif opc is 18 then option jr of Opcode end
             elsif opc is 19 then option jalr of Opcode end
             else begin print("Error : Non J-type opcode\n") nonOp end
             end
         let offset = sra(shl(instr 6) 6)
         if isNonOp(opcode) then option illegal of Instruction end
-            else option jtype of Instruction with opcode offset end end
+        else option jtype of Instruction with opcode offset end
+        end
     end
 
 (* The function DecodeInstr decodes a Word32.word into an instruction. It
@@ -595,12 +658,12 @@ let decodeInstr(instr: W): Instruction =
     begin
         let opcode = toInt(andb(shr(instr 26) w(63)))
         if opcode is 0 then decodeRType(instr)
-        elsif {opcode is 2} orif {opcode is 3} orif {opcode is 17} orif {opcode is 18} orif {opcode is 19}
-            then decodeJType(instr)
+        elsif {opcode is 2} orif {opcode is 3} orif {opcode is 17} orif {opcode is 18} orif {opcode is 19} then
+            decodeJType(instr)
         elsif {{opcode >= 4} andif {opcode <= 5}} orif {{opcode >= 8} andif {opcode <= 15}}
-            orif {{opcode >= 22} andif {opcode <= 29}} orif {opcode is 32} orif {opcode is 36} orif {opcode is 40}
-            orif {opcode is 33} orif {opcode is 37} orif {opcode is 41} orif {opcode is 35} orif {opcode is 43}
-        then decodeIType(instr)
+                orif {{opcode >= 22} andif {opcode <= 29}} orif {opcode is 32} orif {opcode is 36} orif {opcode is 40}
+                orif {opcode is 33} orif {opcode is 37} orif {opcode is 41} orif {opcode is 35} orif {opcode is 43} then
+            decodeIType(instr)
         else begin print("Error : Unrecognized opcode\n") option illegal of Instruction end end
         end
     end
@@ -617,10 +680,16 @@ let performIType(opcode: Opcode rs1: Int rd: Int immediate: W m: Machine): Machi
         let address = add32(loadRegister(m.rf rs1) immediate)
         let load(r: CMemWord): Machine = machine(m.pc storeRegister(m.rf rd r.w) r.mem m.trap)
         case opcode
-            when beqz then if weq(loadRegister(m.rf rs1) w(0))
-                then machine(branch(m.pc immediate) m.rf m.mem m.trap) else m end
-            when bnez then if not(weq(loadRegister(m.rf rs1) w(0)))
-                then machine(branch(m.pc immediate) m.rf m.mem m.trap) else m end
+            when beqz then if weq(loadRegister(m.rf rs1) w(0)) then
+                machine(branch(m.pc immediate) m.rf m.mem m.trap)
+            else
+                m
+            end
+            when bnez then if not(weq(loadRegister(m.rf rs1) w(0))) then
+                machine(branch(m.pc immediate) m.rf m.mem m.trap)
+            else
+                m
+            end
             when addi then alu(option add of ALUOp end)
             when addui then alu(option addu of ALUOp end)
             when subi then alu(option sub of ALUOp end)
@@ -629,12 +698,12 @@ let performIType(opcode: Opcode rs1: Int rd: Int immediate: W m: Machine): Machi
             when ori then alu(option or1 of ALUOp end)
             when xori then alu(option xor of ALUOp end)
             when lhi then machine(m.pc storeRegister(m.rf rd shl(immediate 16)) m.mem m.trap)
-            when slli
-                then machine(m.pc storeRegister(m.rf rd shl(loadRegister(m.rf rs1) shiftCount(immediate))) m.mem m.trap)
-            when srli
-                then machine(m.pc storeRegister(m.rf rd shr(loadRegister(m.rf rs1) shiftCount(immediate))) m.mem m.trap)
-            when srai
-                then machine(m.pc storeRegister(m.rf rd sra(loadRegister(m.rf rs1) shiftCount(immediate))) m.mem m.trap)
+            when slli then
+                machine(m.pc storeRegister(m.rf rd shl(loadRegister(m.rf rs1) shiftCount(immediate))) m.mem m.trap)
+            when srli then
+                machine(m.pc storeRegister(m.rf rd shr(loadRegister(m.rf rs1) shiftCount(immediate))) m.mem m.trap)
+            when srai then
+                machine(m.pc storeRegister(m.rf rd sra(loadRegister(m.rf rs1) shiftCount(immediate))) m.mem m.trap)
             when seqi then alu(option seq of ALUOp end)
             when snei then alu(option sne of ALUOp end)
             when slti then alu(option slt of ALUOp end)
@@ -700,19 +769,26 @@ let performJType(opcode: Opcode offset: W m: Machine): Machine =
             if weq(offset w(3)) then
                 begin
                     let r = m.trap.inputFn(m.trap.state)
-                    let t: Trap = tuple let inputFn = m.trap.inputFn let outputFn = m.trap.outputFn
-                        let state = r.state end
+                    let t: Trap = tuple
+                        let inputFn = m.trap.inputFn
+                        let outputFn = m.trap.outputFn
+                        let state = r.state
+                    end
                     machine(m.pc storeRegister(m.rf 14 fromInt(r.input)) m.mem t)
                 end
             elsif weq(offset w(4)) then
                 begin
                     let output = toIntX(loadRegister(m.rf 14))
                     let state = m.trap.outputFn(output m.trap.state)
-                    let t: Trap = tuple let inputFn = m.trap.inputFn let outputFn = m.trap.outputFn
-                        let state = state end
+                    let t: Trap = tuple
+                        let inputFn = m.trap.inputFn
+                        let outputFn = m.trap.outputFn
+                        let state = state
+                    end
                     machine(m.pc m.rf m.mem t)
                 end
-            else begin print("Error : Non J-Type opcode, performing NOP\n") m end
+            else
+                begin print("Error : Non J-Type opcode, performing NOP\n") m end
             end
         else begin print("Error : Non J-Type opcode, performing NOP\n") m end
     end
@@ -748,7 +824,8 @@ let rec cycleLoop(m: Machine): Result =
         let nPC = add32(m.pc w(4))
         if isHaltOrIllegal(instr) then
             tuple let statistics = fun(): String cGetStatistics(r.mem) let state = m.trap.state end
-        else cycleLoop(performInstr(instr machine(nPC m.rf r.mem m.trap)))
+        else
+            cycleLoop(performInstr(instr machine(nPC m.rf r.mem m.trap)))
         end
     end
 
@@ -780,10 +857,12 @@ let prog(a: Array(String)): lists.T(String) = lists.fromArray(:String)(a)
 let simple = prog(array of "200E002F" "44000004" "44000000" "00000000" end)
 let twos = prog(array of "44000003" "00000000" "3D00FFFF" "3508FFFF" "010E7026" "25CE0001" "44000004"
     "00000000" "44000000"
-    "00000000" end)
+    "00000000"
+end)
 let abs = prog(array of "44000003" "00000000" "01C0402A" "11000002" "00000000" "000E7022" "44000004"
     "00000000" "44000000"
-    "00000000" end)
+    "00000000"
+end)
 let fact = prog(array of
     "0C000002" "00000000" "44000000" "44000003" "000E2020" "2FBD0020" "AFBF0014" "AFBE0010" "27BE0020" "0C000009"
     "00000000" "8FBE0010" "8FBF0014" "27BD0020" "00027020" "44000004" "00001020" "4BE00000" "00000000" "20080001"
@@ -806,16 +885,30 @@ let doit1(last: Bool instructions: lists.T(String) inputs: lists.T(Int)): Ok =
     begin
         let inputFn(state: State): Tuple input: Int state: State end =
             case state.inputs
-                when nil then tuple let input = 0 let state = tuple let inputs = lists.nil(:Int)
-                    let outputs = state.outputs end end
-                when cons with c then tuple let input = c.hd let state = tuple let inputs = c.tl
-                    let outputs = state.outputs end end
+                when nil then tuple
+                    let input = 0
+                    let state = tuple
+                        let inputs = lists.nil(:Int)
+                        let outputs = state.outputs
+                    end
+                end
+                when cons with c then tuple
+                    let input = c.hd
+                    let state = tuple
+                        let inputs = c.tl
+                        let outputs = state.outputs
+                    end
+                end
             end
         let outputFn(output: Int state: State): State =
             tuple let inputs = state.inputs let outputs = lists.cons(:Int)(output state.outputs) end
         let trap: Trap = tuple
-            let inputFn = inputFn let outputFn = outputFn let state = tuple let inputs = inputs
-                let outputs = lists.nil(:Int) end
+            let inputFn = inputFn
+            let outputFn = outputFn
+            let state = tuple
+                let inputs = inputs
+                let outputs = lists.nil(:Int)
+            end
         end
         let r = runProg(instructions trap)
         if last then

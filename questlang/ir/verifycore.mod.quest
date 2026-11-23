@@ -2,19 +2,21 @@
 
 module verifyCore : VerifyCore
 import
-    questlang/types/model : questlang/types/Model
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/ir/nodes : questlang/ir/Nodes
-    questlang/ir/walk : questlang/ir/Walk
-    questlang/repr/layout : questlang/repr/Layout
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/types/model : questlang/types/Model
 export
     Let Variable = nodes.Variable
     Let Atom = nodes.Atom
@@ -118,10 +120,11 @@ export
     let useVar(v: Verifier x: Variable scope: Scope where: String): Ok = use(v nodes.atomOfVar(x) scope where)
     let moduleRef(v: Verifier r: maybe.T(nodes.ModuleRef) where: String): Ok =
         if maybe.isSome(r) then
-            let id = case maybe.unwrap(r)
-                when refModule with x then x.m.id
-                when refImport with x then x.i.id
-            end
+            let id =
+                case maybe.unwrap(r)
+                    when refModule with x then x.m.id
+                    when refImport with x then x.i.id
+                end
             if not(hashMap.contains(v.modules id)) then
                 problem(v where <> ": reference to a module that is not the unit's or imported by it")
             end
@@ -162,7 +165,8 @@ export
                 begin
                     let s = layout.resolvedShape(shapes.shape(t))
                     if shapes.kindIs(s shapes.shapeOption) then maybe.some(s)
-                        else maybe.none() end
+                    else maybe.none()
+                    end
                 end
             let check = fun(cases: Array(String) t: model.Type): Ok
                 begin
@@ -279,14 +283,18 @@ export
                 begin
                     if maybe.isSome(x.init) then use(v maybe.unwrap(x.init) scope where) end
                     bind(v x.v where)
-                    if not(x.v.isMutable) then problem(v where <> ": var declares immutable variable '" <> x.v.hint <> "'") end
+                    if not(x.v.isMutable) then
+                        problem(v where <> ": var declares immutable variable '" <> x.v.hint <> "'")
+                    end
                     withVar(scope x.v)
                 end
             when sAssign with x then
                 begin
                     useVar(v x.v scope where)
                     use(v x.value scope where)
-                    if not(x.v.isMutable) then problem(v where <> ": assignment to immutable variable '" <> x.v.hint <> "'") end
+                    if not(x.v.isMutable) then
+                        problem(v where <> ": assignment to immutable variable '" <> x.v.hint <> "'")
+                    end
                 end
             when sStoreAt then useAll(v walk.statementUses(s) scope where)
             when sStoreField then useAll(v walk.statementUses(s) scope where)
@@ -295,7 +303,9 @@ export
             when sDo with x then operation(v x.value scope where)
             when sFuns with x then
                 begin
-                    if maybe.isSome(v.functions) then problem(v where <> ": a funs statement after closure conversion") end
+                    if maybe.isSome(v.functions) then
+                        problem(v where <> ": a funs statement after closure conversion")
+                    end
                     if extent x.functions is 0 then problem(v where <> ": a funs statement binding no function") end
                     for i = 0 upto {extent x.functions - 1} do bind(v x.functions[i].v where) end
                     if x.recursive then
@@ -408,7 +418,8 @@ export
                     if arity < 0 then
                         problem(v where <> ": jump to '" <> x.label <> "', which is not an enclosing join point")
                     elsif arity isnot extent x.args then
-                        problem(v where <> ": jump to '" <> x.label <> "' passes " <> conv.int(extent x.args) <> " values for "
+                        problem(v where <> ": jump to '" <> x.label <> "' passes " <> conv.int(extent x.args)
+                            <> " values for "
                             <> conv.int(arity) <> " parameters")
                     end
                 end
@@ -430,6 +441,8 @@ export
             for i = 0 upto {vector.length(scope.loops) - 1} do
                 if eq(vector.get(scope.loops i) label) then found := true end
             end
-            if not(found) then problem(v where <> ": " <> kind <> " of '" <> label <> "', which is not an enclosing loop") end
+            if not(found) then
+                problem(v where <> ": " <> kind <> " of '" <> label <> "', which is not an enclosing loop")
+            end
         end
 end

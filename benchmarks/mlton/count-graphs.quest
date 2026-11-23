@@ -3,11 +3,13 @@
  * off subtrees (Henry Cejtin) *)
 
 import
-    support/bench : support/Bench
-    support/lists : support/Lists
+    conv : Conv
+
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    conv : Conv
+
+    support/bench : support/Bench
+    support/lists : support/Lists
 
 (* The original overrides print, so the benchmark is silent *)
 let print(s: String): Ok = ok
@@ -22,13 +24,16 @@ let match: Exception = exception match: Ok end
 (* My favorite high-order procedure *)
 let fold(A::TYPE B::TYPE)(lst: lists.T(A) folder: All(x: A state: B) B state: B): B =
     begin
-        let rec go(lst: lists.T(A) state: B): B = case lst when cons with c then go(c.tl folder(c.hd state))
-            else state end
+        let rec go(lst: lists.T(A) state: B): B =
+            case lst when cons with c then go(c.tl folder(c.hd state))
+                else state
+            end
         go(lst state)
     end
 
 let naturalFold(B::TYPE)(limit: Int folder: All(i: Int state: B) B state: B): B =
-    if limit < 0 then raise domain end
+    if limit < 0 then
+        raise domain end
     else
         begin
             let rec go(i: Int state: B): B = if i is limit then state else go(i + 1 folder(i state)) end
@@ -37,7 +42,8 @@ let naturalFold(B::TYPE)(limit: Int folder: All(i: Int state: B) B state: B): B 
     end
 
 let naturalAny(limit: Int pred: All(i: Int) Bool): Bool =
-    if limit < 0 then raise domain end
+    if limit < 0 then
+        raise domain end
     else
         begin
             let rec go(i: Int): Bool = {i isnot limit} andif {pred(i) orif go(i + 1)}
@@ -46,7 +52,8 @@ let naturalAny(limit: Int pred: All(i: Int) Bool): Bool =
     end
 
 let naturalAll(limit: Int pred: All(i: Int) Bool): Bool =
-    if limit < 0 then raise domain end
+    if limit < 0 then
+        raise domain end
     else
         begin
             let rec go(i: Int): Bool = {i is limit} orif {pred(i) andif go(i + 1)}
@@ -74,8 +81,8 @@ Let PStep(A::TYPE) = Tuple p: Int s: A end
  * folder (pState, state), where pState is the final pState and state is the
  * current state. It should return the new state. *)
 let foldOverBagPerms(A::TYPE)(universe: Classes
-    pFolder: All(next: Int pState: Int state: A accross: Exception(A)) PStep(A)
-    pState: Int folder: All(pState: Int state: A) A state: A): A =
+        pFolder: All(next: Int pState: Int state: A accross: Exception(A)) PStep(A)
+        pState: Int folder: All(pState: Int state: A) A state: A): A =
     begin
         let accross: Exception(A) = exception accross: A end
         let rec outer(universe: Classes pState: Int state: A): A =
@@ -86,7 +93,7 @@ let foldOverBagPerms(A::TYPE)(universe: Classes
                         when cons with fb then
                             begin
                                 let rec inner(fbag: Ints first: Int fclone: Ints rest: Classes revOut: Classes
-                                    state: A): A =
+                                        state: A): A =
                                     begin
                                         let state1 =
                                             try
@@ -94,8 +101,9 @@ let foldOverBagPerms(A::TYPE)(universe: Classes
                                                     let step = pFolder(first pState state accross)
                                                     outer(fold(:Ints :Classes)(revOut consClasses
                                                             case fclone when nil then rest
-                                                                else consClasses(fclone rest) end)
-                                                        step.p step.s)
+                                                                else consClasses(fclone rest)
+                                                            end)
+                                                            step.p step.s)
                                                 end
                                             when accross with s then s
                                             end
@@ -103,9 +111,9 @@ let foldOverBagPerms(A::TYPE)(universe: Classes
                                             when nil then state1
                                             when cons with r then
                                                 case r.hd
-                                                    when cons with sb
-                                                        then inner(r.hd sb.hd sb.tl r.tl
-                                                            consClasses(fbag revOut) state1)
+                                                    when cons with sb then
+                                                        inner(r.hd sb.hd sb.tl r.tl
+                                                                consClasses(fbag revOut) state1)
                                                     else raise match end
                                                 end
                                         end
@@ -134,8 +142,8 @@ Let EStep(E::TYPE A::TYPE) = Tuple e: E s: A end
  * folder (eState, state). It returns the new state. Note, the order in which
  * elements are folded (via eFolder) is the same as the order in universe. *)
 let foldOverSubsets(E::TYPE A::TYPE)(universe: Ints
-    eFolder: All(elem: Int isinc: Bool eState: E state: A fini: Exception(A)) EStep(E A)
-    eState: E folder: All(eState: E state: A) A state: A): A =
+        eFolder: All(elem: Int isinc: Bool eState: E state: A fini: Exception(A)) EStep(E A)
+        eState: E folder: All(eState: E state: A) A state: A): A =
     begin
         let fini: Exception(A) = exception fini: A end
         let rec f(first: Int rest: Ints eState: E): All(isinc: Bool state: A) A =
@@ -180,8 +188,11 @@ let refine(size: Int classes: Classes connected: Connected): Classes =
             naturalAll(size fun(y: Int): Bool connected(size y) is connected(x if y is x then size else y end))
         (* Add class into classes, testing if size should be merged *)
         let merge(class: Ints state: Merged): Merged =
-            if state.merged then tuple let merged = true
-                let classes = consClasses(lists.rev(:Int)(class) state.classes) end
+            if state.merged then
+                tuple
+                    let merged = true
+                    let classes = consClasses(lists.rev(:Int)(class) state.classes)
+                end
             else
                 begin
                     let first = lists.hd(:Int)(class)
@@ -189,10 +200,11 @@ let refine(size: Int classes: Classes connected: Connected): Classes =
                         tuple
                             let merged = true
                             let classes = consClasses(fold(:Int :Ints)(class consInts
-                                lists.cons(:Int)(size lists.nil(:Int)))
-                                state.classes)
+                                    lists.cons(:Int)(size lists.nil(:Int)))
+                                    state.classes)
                         end
-                    else tuple let merged = false let classes = consClasses(lists.rev(:Int)(class) state.classes) end
+                    else
+                        tuple let merged = false let classes = consClasses(lists.rev(:Int)(class) state.classes) end
                     end
                 end
             end
@@ -207,8 +219,10 @@ let refine(size: Int classes: Classes connected: Connected): Classes =
                         when nil then merge(class state)
                         else
                             begin
-                                let s = fold(:Int :Split)(class split tuple let yes = lists.nil(:Int)
-                                    let no = lists.nil(:Int) end)
+                                let s = fold(:Int :Split)(class split tuple
+                                    let yes = lists.nil(:Int)
+                                    let no = lists.nil(:Int)
+                                end)
                                 if lists.null(:Int)(s.yes) then merge(s.no state)
                                 elsif lists.null(:Int)(s.no) then merge(s.yes state)
                                 else merge(s.no merge(s.yes state))
@@ -217,8 +231,10 @@ let refine(size: Int classes: Classes connected: Connected): Classes =
                     end
                 else
                     begin
-                        let s = fold(:Int :Split)(class split tuple let yes = lists.nil(:Int)
-                            let no = lists.nil(:Int) end)
+                        let s = fold(:Int :Split)(class split tuple
+                            let yes = lists.nil(:Int)
+                            let no = lists.nil(:Int)
+                        end)
                         if lists.null(:Int)(s.yes) then merge(s.no state)
                         elsif lists.null(:Int)(s.no) then merge(s.yes state)
                         else merge(s.no merge(s.yes state))
@@ -228,7 +244,7 @@ let refine(size: Int classes: Classes connected: Connected): Classes =
         let result = fold(:Ints :Merged)(classes subdivide tuple let merged = false let classes = lists.nil(:Ints) end)
         if result.merged then lists.rev(:Ints)(result.classes)
         else fold(:Ints :Classes)(result.classes consClasses
-            consClasses(lists.cons(:Int)(size lists.nil(:Int)) lists.nil(:Ints)))
+                consClasses(lists.cons(:Int)(size lists.nil(:Int)) lists.nil(:Ints)))
         end
     end
 
@@ -248,7 +264,8 @@ let minimal(nverts: Int classes: Classes connected: Connected): maybe.T(Int) =
         let pFolder(new: Int old: Int state: Int accross: Exception(Int)): PStep(Int) =
             begin
                 let rec go(v: Int): PStep(Int) =
-                    if v is old then begin perm[old] := new tuple let p = old + 1 let s = state end end
+                    if v is old then
+                        begin perm[old] := new tuple let p = old + 1 let s = state end end
                     else
                         begin
                             let a = connected(old v)
@@ -279,8 +296,8 @@ let minimal(nverts: Int classes: Classes connected: Connected): maybe.T(Int) =
  * If extensions of this graph should be folded over, it should return the new
  * state. *)
 let foldOverGraphs(E::TYPE B::TYPE)(
-    eFolder: All(from: Int to: Int isinc: Bool eState: E state: B accross: Exception(B)) EStep(E B)
-    eState: E folder: All(size: Int eState: E state: B accross: Exception(B)) B state: B): B =
+        eFolder: All(from: Int to: Int isinc: Bool eState: E state: B accross: Exception(B)) EStep(E B)
+        eState: E folder: All(size: Int eState: E state: B accross: Exception(B)) B state: B): B =
     begin
         let noextend: Exception(B) = exception noextend: B end
         let makeVertss(limit: Int): Array(Ints) =
@@ -335,7 +352,8 @@ let okSoFar(size: Int verts: Ints connected: Connected): Bool =
                                 if connected(elem p) then ac - 2 else ac end eState.ac + 3)
                             let picked = consInts(elem eState.picked)
                         end
-                    else eState
+                    else
+                        eState
                     end
                 let s = ok
             end
@@ -343,8 +361,10 @@ let okSoFar(size: Int verts: Ints connected: Connected): Bool =
             if {eState.ac >= 0} orif short(eState.picked) then state else raise fini with ok end end
         try
             begin
-                foldOverSubsets(:Picked :Ok)(verts eFolder tuple let ac = ~4
-                    let picked = lists.nil(:Int) end folder ok)
+                foldOverSubsets(:Picked :Ok)(verts eFolder tuple
+                    let ac = ~4
+                    let picked = lists.nil(:Int)
+                end folder ok)
                 true
             end
         when fini then false
@@ -382,7 +402,7 @@ let h(maxSize: Int folder: All(size: Int connected: Connected state: Int) Int st
 let final(size: Int connected: Connected): Int =
     naturalFold(:Int)(size fun(from: Int ac: Int): Int
         naturalFold(:Int)(from fun(to: Int ac: Int): Int if connected(from to) then ac - 2 else ac end ac)
-        {3 * size} - 4)
+            {3 * size} - 4)
 
 let f(maxSize: Int): Int =
     h(maxSize fun(size: Int connected: Connected state: Int): Int if final(size connected) is 0 then state + 1

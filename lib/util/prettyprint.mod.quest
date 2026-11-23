@@ -13,10 +13,11 @@
 
 module prettyPrint : PrettyPrint
 import
-    collections/vector : collections/Vector
-    sb = util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
     writer : Writer
+
+    collections/vector : collections/Vector
+    sb = util/stringBuilder : util/StringBuilder
 export
     Let Rec T = Option
         dEmpty
@@ -71,10 +72,11 @@ export
     let sep(separator: String ds: Array(T)): T = group(joined(ds cat(text(separator) line)))
     let fill(separator: String ds: Array(T)): T = joined(ds cat(text(separator) group(line)))
     let bracket(open: String separator: String close: String i: Int ds: Array(T)): T =
-        if extent(ds) is 0 then text(open <> close)
+        if extent(ds) is 0 then
+            text(open <> close)
         else
             group(cat(text(open) cat(nest(i cat(softBreak joined(ds cat(text(separator) line))))
-                cat(softBreak text(close)))))
+                    cat(softBreak text(close)))))
         end
 
     (* =========================================================================
@@ -167,7 +169,7 @@ export
                     when dAlign with n then vector.append(stack entry(column + n.indent x.flat n.d))
                     when dGroup with g then
                         let flat = x.flat orif fits(width - column entry(x.indent true g.d) stack
-                            vector.length(stack) - 1)
+                                vector.length(stack) - 1)
                         vector.append(stack entry(x.indent flat g.d))
                 end
             end

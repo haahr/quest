@@ -5,70 +5,75 @@
  * tested by its round trip only, since it differs by machine;
  * tests/python/test_datetime.py compares the calendar with Python's. *)
 
-import datetime = util/datetime : util/DateTime;
-import util/maybe : util/Maybe;
-import writer: Writer;
-import conv: Conv;
+import conv : Conv
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
-let b(x: Bool): String = if x then "true" else "false" end;
+import datetime = util/datetime : util/DateTime
+import util/maybe : util/Maybe
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+let b(x: Bool): String = if x then "true" else "false" end
 let shown(d: datetime.Date): String =
     datetime.format(d "%Y-%m-%d %H:%M:%S.%f %z") <> " weekday " <> conv.int(datetime.weekday(d)) <> " day "
-        <> conv.int(datetime.yearDay(d));
-let at(ns: Int): datetime.Instant = datetime.fromNanoseconds(ns);
+        <> conv.int(datetime.yearDay(d))
+let at(ns: Int): datetime.Instant = datetime.fromNanoseconds(ns)
 
 (* 1. Durations *)
 print(conv.int(datetime.hour) <> " " <> conv.int(datetime.minute) <> " " <> conv.int(datetime.second) <> " "
-    <> conv.int(datetime.millisecond) <> " " <> conv.int(datetime.microsecond) <> " " <> conv.int(datetime.nanosecond));
+    <> conv.int(datetime.millisecond) <> " " <> conv.int(datetime.microsecond) <> " " <> conv.int(datetime.nanosecond))
 let durations = array of 0 1 999 1000 1500 999999 1000000 1250000 999999999 1000000000 1500000000 60000000000
-    3723500000000 3600000000000 ~2000000000 ~1 9223372036854775807 end;
+    3723500000000 3600000000000 ~2000000000 ~1 9223372036854775807
+end
 for i = 0 upto {extent durations - 1} do
     print(conv.int(durations[i]) <> " ns: " <> datetime.durationString(durations[i]))
-end;
-print(datetime.durationString(~9223372036854775807 - 1));
+end
+print(datetime.durationString(~9223372036854775807 - 1))
 print(conv.real(datetime.seconds(1500000000)) <> " " <> conv.int(datetime.fromSeconds(0.25))
-    <> " " <> conv.int(datetime.fromSeconds(~1.5)));
+    <> " " <> conv.int(datetime.fromSeconds(~1.5)))
 
 (* 2. Instants *)
-let i = at(1763444261123456789);
-print(datetime.iso8601(datetime.epoch) <> " " <> datetime.iso8601(i));
+let i = at(1763444261123456789)
+print(datetime.iso8601(datetime.epoch) <> " " <> datetime.iso8601(i))
 print(conv.int(datetime.toNanoseconds(datetime.add(i datetime.hour))) <> " "
     <> conv.int(datetime.diff(datetime.epoch i)) <> " " <> conv.int(datetime.compare(i datetime.epoch)) <> " "
-    <> conv.int(datetime.compare(i i)) <> " " <> b(datetime.before(datetime.epoch i)));
+    <> conv.int(datetime.compare(i i)) <> " " <> b(datetime.before(datetime.epoch i)))
 
 (* 3. Dates, in UTC and at offsets, and back *)
 let instants = array of 0 ~1 86399999999999 951782400000000000 951868800000000000 1763444261123456789
-    ~9223372036854775807 - 1 9223372036854775807 ~2208988800000000000 4102444800000000000 end;
+    ~9223372036854775807 - 1 9223372036854775807 ~2208988800000000000 4102444800000000000
+end
 for k = 0 upto {extent instants - 1} do
     let d = datetime.utc(at(instants[k]))
     print(conv.int(instants[k]) <> ": " <> shown(d) <> " back " <> b(datetime.toNanoseconds(datetime.instant(d))
         is instants[k]))
-end;
-let offsets = array of 0 3600 ~28800 19800 50400 ~43200 86399 ~86399 end;
+end
+let offsets = array of 0 3600 ~28800 19800 50400 ~43200 86399 ~86399 end
 for k = 0 upto {extent offsets - 1} do
     let d = datetime.atOffset(i offsets[k])
     print(conv.int(offsets[k]) <> ": " <> shown(d) <> " back " <> b(datetime.toNanoseconds(datetime.instant(d))
         is 1763444261123456789))
-end;
-let here = datetime.local(i);
-print("local back " <> b(datetime.toNanoseconds(datetime.instant(here)) is 1763444261123456789));
+end
+let here = datetime.local(i)
+print("local back " <> b(datetime.toNanoseconds(datetime.instant(here)) is 1763444261123456789))
 
 (* 4. Leap years and month lengths *)
-let years = array of 1600 1700 1900 2000 2023 2024 2100 2400 ~4 0 end;
-let var leaps = "";
-for k = 0 upto {extent years - 1} do leaps := leaps <> " " <> conv.int(years[k]) <> ":" <> b(datetime.isLeapYear(years[k])) end;
-print("leap" <> leaps);
-let var lengths = "";
-for m = 1 upto 12 do lengths := lengths <> " " <> conv.int(datetime.daysInMonth(2024 m)) end;
-print("2024 months" <> lengths <> ", February 2023 " <> conv.int(datetime.daysInMonth(2023 2)));
+let years = array of 1600 1700 1900 2000 2023 2024 2100 2400 ~4 0 end
+let var leaps = ""
+for k = 0 upto {extent years - 1} do
+    leaps := leaps <> " " <> conv.int(years[k]) <> ":" <> b(datetime.isLeapYear(years[k]))
+end
+print("leap" <> leaps)
+let var lengths = ""
+for m = 1 upto 12 do lengths := lengths <> " " <> conv.int(datetime.daysInMonth(2024 m)) end
+print("2024 months" <> lengths <> ", February 2023 " <> conv.int(datetime.daysInMonth(2023 2)))
 
 (* 5. format, every directive *)
-let morning = datetime.atOffset(at(1763444261123456789) ~28800);
-let evening = datetime.atOffset(at(1763444261123456789) 50400);
-print(datetime.format(morning "%Y|%m|%d|%H|%M|%S|%f|%j|%y|%I|%p|%a|%A|%b|%B|%z|%e|%u|%w|%%|text"));
-print(datetime.format(evening "%Y|%m|%d|%H|%M|%S|%f|%j|%y|%I|%p|%a|%A|%b|%B|%z|%e|%u|%w|%%|text"));
-let ancient = datetime.utc(at(~9223372036854775807 - 1));
-print(datetime.format(ancient "%Y-%m-%d %a %e %I%p"));
+let morning = datetime.atOffset(at(1763444261123456789) ~28800)
+let evening = datetime.atOffset(at(1763444261123456789) 50400)
+print(datetime.format(morning "%Y|%m|%d|%H|%M|%S|%f|%j|%y|%I|%p|%a|%A|%b|%B|%z|%e|%u|%w|%%|text"))
+print(datetime.format(evening "%Y|%m|%d|%H|%M|%S|%f|%j|%y|%I|%p|%a|%A|%b|%B|%z|%e|%u|%w|%%|text"))
+let ancient = datetime.utc(at(~9223372036854775807 - 1))
+print(datetime.format(ancient "%Y-%m-%d %a %e %I%p"))
 
 (* 6. parse *)
 let parsed(s: String pattern: String): Ok =
@@ -76,63 +81,88 @@ let parsed(s: String pattern: String): Ok =
         let d = datetime.parse(s pattern)
         print("parse \"" <> s <> "\" by \"" <> pattern <> "\": "
             <> if maybe.isSome(:datetime.Date d) then shown(maybe.unwrap(:datetime.Date d)) else "none" end)
-    end;
-parsed("2025-11-18 05:37:41" "%Y-%m-%d %H:%M:%S");
-parsed("2025-11-17 21:37:41.123456789 -0800" "%Y-%m-%d %H:%M:%S.%f %z");
-parsed("2025-11-17T21:37:41.25-08:00" "%Y-%m-%dT%H:%M:%S.%f%z");
-parsed("tuesday, NOV 18 2025 5:37 pm Z" "%A, %b %e %Y %I:%M %p %z");
-parsed("Tue Nov  8 25" "%a %b %e %y");
-parsed("Tue Nov  8 70" "%a %b %e %y");
-parsed("2024 060" "%Y %j");
-parsed("2023 365" "%Y %j");
-parsed("10%" "%d%%");
-parsed("7 1" "%u %w");
-parsed("2025-02-29" "%Y-%m-%d");
-parsed("2025-13-01" "%Y-%m-%d");
-parsed("2025-11-18 24:00:00" "%Y-%m-%d %H:%M:%S");
-parsed("2025-11-18 13:00 PM" "%Y-%m-%d %I:%M %p");
-parsed("2023 366" "%Y %j");
-parsed("2025-11-18x" "%Y-%m-%d");
-parsed("2025-11" "%Y-%m-%d");
-parsed("Smarch" "%B");
+    end
+parsed("2025-11-18 05:37:41" "%Y-%m-%d %H:%M:%S")
+parsed("2025-11-17 21:37:41.123456789 -0800" "%Y-%m-%d %H:%M:%S.%f %z")
+parsed("2025-11-17T21:37:41.25-08:00" "%Y-%m-%dT%H:%M:%S.%f%z")
+parsed("tuesday, NOV 18 2025 5:37 pm Z" "%A, %b %e %Y %I:%M %p %z")
+parsed("Tue Nov  8 25" "%a %b %e %y")
+parsed("Tue Nov  8 70" "%a %b %e %y")
+parsed("2024 060" "%Y %j")
+parsed("2023 365" "%Y %j")
+parsed("10%" "%d%%")
+parsed("7 1" "%u %w")
+parsed("2025-02-29" "%Y-%m-%d")
+parsed("2025-13-01" "%Y-%m-%d")
+parsed("2025-11-18 24:00:00" "%Y-%m-%d %H:%M:%S")
+parsed("2025-11-18 13:00 PM" "%Y-%m-%d %I:%M %p")
+parsed("2023 366" "%Y %j")
+parsed("2025-11-18x" "%Y-%m-%d")
+parsed("2025-11" "%Y-%m-%d")
+parsed("Smarch" "%B")
 
 (* 7. RFC 3339 *)
 let read(s: String): Ok =
     begin
         let r = datetime.parseIso8601(s)
         print("rfc3339 \"" <> s <> "\": "
-            <> if maybe.isSome(:datetime.Instant r) then datetime.iso8601(maybe.unwrap(:datetime.Instant r)) else "none" end)
-    end;
-read("2025-11-18T05:37:41Z");
-read("2025-11-17t21:37:41.123456789-08:00");
-read("2025-11-18 05:37:41.5+00:00");
-read("1970-01-01T00:00:00z");
-read("2262-04-11T23:47:16.854775807Z");
-read("2262-04-11T23:47:16.854775808Z");
-read("1677-09-21T00:12:43.145224192Z");
-read("2025-11-18T05:37:41");
-read("2025-11-18T05:37Z");
-read("2025-02-30T00:00:00Z");
-read("2025-11-18T05:37:41+0800");
+            <> if maybe.isSome(:datetime.Instant r) then
+                datetime.iso8601(maybe.unwrap(:datetime.Instant r))
+            else
+                "none"
+            end)
+    end
+read("2025-11-18T05:37:41Z")
+read("2025-11-17t21:37:41.123456789-08:00")
+read("2025-11-18 05:37:41.5+00:00")
+read("1970-01-01T00:00:00z")
+read("2262-04-11T23:47:16.854775807Z")
+read("2262-04-11T23:47:16.854775808Z")
+read("1677-09-21T00:12:43.145224192Z")
+read("2025-11-18T05:37:41")
+read("2025-11-18T05:37Z")
+read("2025-02-30T00:00:00Z")
+read("2025-11-18T05:37:41+0800")
 
 (* 8. The errors *)
 let check(what: String f: All() String): Ok =
-    print(what <> ": " <> try f() when datetime.error then "datetime.error" end);
-check("add past the end" fun(): String datetime.iso8601(datetime.add(at(9223372036854775807) 1)));
-check("add before the start" fun(): String datetime.iso8601(datetime.add(at(~9223372036854775807) ~2)));
-check("diff out of range" fun(): String conv.int(datetime.diff(at(9223372036854775807) at(~1))));
-check("offset of a day" fun(): String shown(datetime.atOffset(i 86400)));
+    print(what <> ": " <> try f() when datetime.error then "datetime.error" end)
+check("add past the end" fun(): String datetime.iso8601(datetime.add(at(9223372036854775807) 1)))
+check("add before the start" fun(): String datetime.iso8601(datetime.add(at(~9223372036854775807) ~2)))
+check("diff out of range" fun(): String conv.int(datetime.diff(at(9223372036854775807) at(~1))))
+check("offset of a day" fun(): String shown(datetime.atOffset(i 86400)))
 check("February 30th" fun(): String datetime.iso8601(datetime.instant(tuple
-    let year = 2025 let month = 2 let day = 30 let hour = 0 let minute = 0 let second = 0 let nanosecond = 0
-    let offset = 0 end)));
-check("month 0" fun(): String conv.int(datetime.daysInMonth(2025 0)));
+    let year = 2025
+    let month = 2
+    let day = 30
+    let hour = 0
+    let minute = 0
+    let second = 0
+    let nanosecond = 0
+    let offset = 0
+end)))
+check("month 0" fun(): String conv.int(datetime.daysInMonth(2025 0)))
 check("hour 24" fun(): String datetime.iso8601(datetime.instant(tuple
-    let year = 2025 let month = 2 let day = 1 let hour = 24 let minute = 0 let second = 0 let nanosecond = 0
-    let offset = 0 end)));
+    let year = 2025
+    let month = 2
+    let day = 1
+    let hour = 24
+    let minute = 0
+    let second = 0
+    let nanosecond = 0
+    let offset = 0
+end)))
 check("past 2262" fun(): String datetime.iso8601(datetime.instant(tuple
-    let year = 2263 let month = 1 let day = 1 let hour = 0 let minute = 0 let second = 0 let nanosecond = 0
-    let offset = 0 end)));
-check("unknown directive" fun(): String datetime.format(morning "%Q"));
-check("% at the end" fun(): String datetime.format(morning "100%"));
+    let year = 2263
+    let month = 1
+    let day = 1
+    let hour = 0
+    let minute = 0
+    let second = 0
+    let nanosecond = 0
+    let offset = 0
+end)))
+check("unknown directive" fun(): String datetime.format(morning "%Q"))
+check("% at the end" fun(): String datetime.format(morning "100%"))
 check("parse's unknown directive" fun(): String if maybe.isSome(:datetime.Date datetime.parse("x" "%Q")) then "some"
     else "none" end)

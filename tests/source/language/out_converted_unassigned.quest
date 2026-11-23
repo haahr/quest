@@ -4,38 +4,37 @@
  * may leave it unassigned: the location keeps its value then, and takes the
  * callee's otherwise. The callees call themselves, so that none is inlined. *)
 
-import writer : Writer;
-import conv : Conv;
+import conv : Conv
+import writer : Writer
 
-let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
 
 (* A record: the location sees fewer fields *)
 let rec setRecord(out x: Record p: Int q: Int end n: Int assign: Bool): Ok =
-    if n > 0 then setRecord(@x n - 1 assign) elsif assign then x := record p = 5 q = 6 end end;
-let var r: Record p: Int end = record p = 1 end;
-setRecord(@r 3 false);
-print("record kept: " <> conv.int(r.p));
-setRecord(@r 3 true);
-print("record set: " <> conv.int(r.p));
+    if n > 0 then setRecord(@x n - 1 assign) elsif assign then x := record p = 5 q = 6 end end
+let var r: Record p: Int end = record p = 1 end
+setRecord(@r 3 false)
+print("record kept: " <> conv.int(r.p))
+setRecord(@r 3 true)
+print("record set: " <> conv.int(r.p))
 
 (* A variant: the location has more tags *)
-Let Small = Variant b: Int end;
-Let Large = Variant a: String b: Int end;
+Let Small = Variant b: Int end
+Let Large = Variant a: String b: Int end
 let rec setVariant(out x: Small n: Int assign: Bool): Ok =
-    if n > 0 then setVariant(@x n - 1 assign) elsif assign then x := variant b of Small with 9 end end;
-let shown(v: Large): String =
-    case v when a with s then "a " <> s when b with n then "b " <> conv.int(n) end;
-let var v: Large = variant a of Large with "first" end;
-setVariant(@v 3 false);
-print("variant kept: " <> shown(v));
-setVariant(@v 3 true);
-print("variant set: " <> shown(v));
+    if n > 0 then setVariant(@x n - 1 assign) elsif assign then x := variant b of Small with 9 end end
+let shown(v: Large): String = case v when a with s then "a " <> s when b with n then "b " <> conv.int(n) end
+let var v: Large = variant a of Large with "first" end
+setVariant(@v 3 false)
+print("variant kept: " <> shown(v))
+setVariant(@v 3 true)
+print("variant set: " <> shown(v))
 
 (* A function: the location's takes a supertype of the parameter's argument *)
 let rec setFun(out g: All(x: Record p: Int end) Int n: Int assign: Bool): Ok =
-    if n > 0 then setFun(@g n - 1 assign) elsif assign then g := fun(x: Record p: Int end): Int x.p * 10 end;
-let var h: All(x: Record p: Int q: Int end) Int = fun(x: Record p: Int q: Int end): Int x.q;
-setFun(@h 3 false);
-print("function kept: " <> conv.int(h(record p = 3 q = 4 end)));
-setFun(@h 3 true);
-print("function set: " <> conv.int(h(record p = 3 q = 4 end)));
+    if n > 0 then setFun(@g n - 1 assign) elsif assign then g := fun(x: Record p: Int end): Int x.p * 10 end
+let var h: All(x: Record p: Int q: Int end) Int = fun(x: Record p: Int q: Int end): Int x.q
+setFun(@h 3 false)
+print("function kept: " <> conv.int(h(record p = 3 q = 4 end)))
+setFun(@h 3 true)
+print("function set: " <> conv.int(h(record p = 3 q = 4 end)))

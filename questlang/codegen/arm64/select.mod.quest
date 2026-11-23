@@ -2,21 +2,23 @@
 
 module select : Select
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/cfg : questlang/ssa/Cfg
-    questlang/codegen/machine/machine : questlang/codegen/machine/Machine
-    targets = questlang/codegen/machine/target : questlang/codegen/machine/Target
+    conv : Conv
+    stringOp = string : StringOp
+    word : Word
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+
     questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
     questlang/codegen/arm64/printer : questlang/codegen/arm64/Printer
     questlang/codegen/arm64/target : questlang/codegen/arm64/Target
+    questlang/codegen/machine/machine : questlang/codegen/machine/Machine
+    targets = questlang/codegen/machine/target : questlang/codegen/machine/Target
     questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
-    collections/vector : collections/Vector
-    collections/hashMap : collections/HashMap
-    util/maybe : util/Maybe
-    util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
-    word : Word
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Def Selection = Tuple
         f: machine.Function ops: vector.T(minst.Op) locs: vector.T(ssa.Loc) types: vector.T(ssa.Type)
@@ -74,11 +76,12 @@ export
              * 3.3). *)
             let stackAfter(at: Int k: Int): ArgumentPlace =
                 begin
-                    let bytes = case passed[k]
-                        when passByte then 1
-                        when passInt32 then 4
-                        when passWord, passReal, passPair, passPairRest, passMemory then 8
-                    end
+                    let bytes =
+                        case passed[k]
+                            when passByte then 1
+                            when passInt32 then 4
+                            when passWord, passReal, passPair, passPairRest, passMemory then 8
+                        end
                     tuple let reg = memory let offset = alignUp(at bytes) let bytes = bytes end
                 end
             let var k = first
@@ -105,7 +108,8 @@ export
                             nsaa := places[k].offset + places[k].bytes
                         end
                     else
-                        if ngrn < 8 then begin places[k] := x(ngrn) ngrn := ngrn + 1 end
+                        if ngrn < 8 then
+                            begin places[k] := x(ngrn) ngrn := ngrn + 1 end
                         else
                             places[k] := stackAfter(nsaa k)
                             nsaa := places[k].offset + places[k].bytes
@@ -231,17 +235,18 @@ export
 
     (* The constant a value is, if it is one: an Int's, or the null's 0 *)
     let constOf(s: S v: Int): maybe.T(Int) =
-        if maybe.isNone(s.defs[v]) then maybe.none()
+        if maybe.isNone(s.defs[v]) then
+            maybe.none()
         else
             let i = maybe.unwrap(s.defs[v])
             case i.op
                 when opConst then maybe.some(i.imm)
                 when opNull then maybe.some(0)
                 when opRealConst, opSymbol, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor,
-                    opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub,
-                    opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
-                    opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
-                    opThreadLocal, opToVal, opFromVal, opSelect, opUnproxy then
+                        opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub,
+                        opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
+                        opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
+                        opThreadLocal, opToVal, opFromVal, opSelect, opUnproxy then
                     maybe.none()
             end
         end
@@ -291,18 +296,22 @@ export
     let add(s: S d: Int x: Int y: Int): Ok =
         if immediate(s y) then addConst(s d r(s x) maybe.unwrap(constOf(s y)))
         elsif immediate(s x) then addConst(s d r(s y) maybe.unwrap(constOf(s x)))
-        else emit(s minst.arith(minst.arithAdd d r(s x) r(s y))) end
+        else emit(s minst.arith(minst.arithAdd d r(s x) r(s y)))
+        end
 
     let sub(s: S d: Int x: Int y: Int): Ok =
         if immediate(s y) then addConst(s d r(s x) 0 - maybe.unwrap(constOf(s y)))
-        else emit(s minst.arith(minst.arithSub d r(s x) r(s y))) end
+        else emit(s minst.arith(minst.arithSub d r(s x) r(s y)))
+        end
 
     let shift(s: S a: minst.Arith d: Int x: Int y: Int): Ok =
         begin
             let c = constOf(s y)
             if maybe.isSome(c) andif {maybe.unwrap(c) >= 0} andif {maybe.unwrap(c) < 64} then
                 emit(s minst.shiftImm(a d r(s x) maybe.unwrap(c)))
-            else emit(s minst.arith(a d r(s x) r(s y))) end
+            else
+                emit(s minst.arith(a d r(s x) r(s y)))
+            end
         end
 
     (* The condition a comparison sets the flags for, after its flags are
@@ -322,43 +331,51 @@ export
             when opFle then minst.condLs
             when opIsNaN then minst.condVs
             when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd,
-                opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits,
-                opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal,
-                opToVal, opFromVal, opSelect, opUnproxy then
+                    opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt,
+                    opRealBits,
+                    opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
+                    opThreadLocal,
+                    opToVal, opFromVal, opSelect, opUnproxy then
                 minst.condEq
         end
     let isComparison(op: ssa.Opcode): Bool =
         case op
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge,
-            opIsNaN then
+                    opIsNaN then
                 true
             when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd,
-                opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits,
-                opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal,
-                opToVal, opFromVal, opSelect, opUnproxy then
+                    opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt,
+                    opRealBits,
+                    opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
+                    opThreadLocal,
+                    opToVal, opFromVal, opSelect, opUnproxy then
                 false
         end
     let isRealComparison(op: ssa.Opcode): Bool =
         case op
             when opFeq, opFlt, opFle, opFgt, opFge, opIsNaN then true
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opConst, opRealConst, opSymbol, opNull,
-                opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opFadd,
-                opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opLoad,
-                opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal, opFromVal, opSelect,
-                opUnproxy then
+                    opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr,
+                    opFadd,
+                    opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opLoad,
+                    opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal, opFromVal, opSelect,
+                    opUnproxy then
                 false
         end
     (* The bit an and of a constant with one bit set tests, and the value it
      * tests it in, if v is one *)
     Let Bit = Tuple value: Int bit: Int end
     let bitOf(defs: Array(maybe.T(ssa.Inst)) v: Int): maybe.T(Bit) =
-        if maybe.isNone(defs[v]) then maybe.none()
+        if maybe.isNone(defs[v]) then
+            maybe.none()
         else
             let i = maybe.unwrap(defs[v])
             let constant(a: Int): maybe.T(Int) =
                 if maybe.isSome(defs[a]) andif ssa.isOp(maybe.unwrap(defs[a]) ssa.opConst) then
                     maybe.some(maybe.unwrap(defs[a]).imm)
-                else maybe.none() end
+                else
+                    maybe.none()
+                end
             let one(n: Int): Bool = word.popCount(word.fromInt(n)) is 1
             let at(n: Int): Int = word.countTrailingZeros(word.fromInt(n))
             (* A copy's source, through conversions between words *)
@@ -368,23 +385,29 @@ export
                     case d.op
                         when opIntToPtr, opPtrToInt, opCopy, opToVal, opFromVal then source(d.args[0])
                         when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv,
-                            opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe,
-                            opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge,
-                            opIsNaN, opRealBits, opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect,
-                            opPtrAdd, opThreadLocal, opSelect, opUnproxy then
+                                opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe,
+                                opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge,
+                                opIsNaN, opRealBits, opBitsReal, opSext8, opZext8, opLoad, opStore, opCall,
+                                opCallIndirect,
+                                opPtrAdd, opThreadLocal, opSelect, opUnproxy then
                             a
                     end
-                else a end
+                else
+                    a
+                end
             if not(ssa.isOp(i ssa.opAnd)) then maybe.none()
             elsif maybe.isSome(constant(i.args[1])) andif one(maybe.unwrap(constant(i.args[1]))) then
                 maybe.some(tuple
-                    let value = source(i.args[0]) let bit = at(maybe.unwrap(constant(i.args[1])))
+                    let value = source(i.args[0])
+                    let bit = at(maybe.unwrap(constant(i.args[1])))
                 end)
             elsif maybe.isSome(constant(i.args[0])) andif one(maybe.unwrap(constant(i.args[0]))) then
                 maybe.some(tuple
-                    let value = source(i.args[1]) let bit = at(maybe.unwrap(constant(i.args[0])))
+                    let value = source(i.args[1])
+                    let bit = at(maybe.unwrap(constant(i.args[0])))
                 end)
-            else maybe.none() end
+            else maybe.none()
+            end
         end
 
     (* The two comparisons of integers or pointers an and of v's joins, if it
@@ -399,7 +422,9 @@ export
                     andif not(isRealComparison(maybe.unwrap(defs[a]).op))
             if compares(i.args[0]) andif compares(i.args[1]) andif {i.args[0] isnot i.args[1]} then
                 maybe.some(i.args)
-            else maybe.none() end
+            else
+                maybe.none()
+            end
         end
 
     let setFlags(s: S i: ssa.Inst): Ok =
@@ -410,7 +435,9 @@ export
             (* cmp of an add's immediate, or cmn of its negation *)
             if maybe.isSome(c) andif {addable(maybe.unwrap(c)) orif addable(0 - maybe.unwrap(c))} then
                 emit(s minst.cmpImm(r(s i.args[0]) maybe.unwrap(c)))
-            else emit(s minst.cmp(r(s i.args[0]) r(s i.args[1]))) end
+            else
+                emit(s minst.cmp(r(s i.args[0]) r(s i.args[1])))
+            end
         end
 
     (* Selects an addressing mode for a load or store of width bytes at v +
@@ -432,8 +459,12 @@ export
             if ssa.isOp(p ssa.opSymbol) andif {{p.imm + imm} is 0}
                     andif hashMap.contains(s.defined p.symbol) then
                 maybe.some(p.symbol)
-            else maybe.none() end
-        else maybe.none() end
+            else
+                maybe.none()
+            end
+        else
+            maybe.none()
+        end
     let address(s: S v: Int imm: Int width: Int): Address =
         if maybe.isSome(localSymbol(s v imm)) then
             let symbol = maybe.unwrap(localSymbol(s v imm))
@@ -442,7 +473,8 @@ export
             tuple let base = t let mode = minst.pageOff(symbol minst.relocPage) let index = ~1 end
         elsif s.indexOf[v] >= 0 then
             tuple
-                let base = r(s maybe.unwrap(s.defs[v]).args[0]) let mode = minst.indexed(s.shiftOf[v])
+                let base = r(s maybe.unwrap(s.defs[v]).args[0])
+                let mode = minst.indexed(s.shiftOf[v])
                 let index = r(s s.indexOf[v])
             end
         else
@@ -456,7 +488,8 @@ export
                     offset := imm + maybe.unwrap(constOf(s p.args[1]))
                 end
             end
-            if fits(offset width) then tuple let base = r(s base) let mode = minst.offset(offset) let index = ~1 end
+            if fits(offset width) then
+                tuple let base = r(s base) let mode = minst.offset(offset) let index = ~1 end
             else
                 let t = temp(s ssa.typeInt)
                 let a = temp(s ssa.typePtr)
@@ -474,13 +507,16 @@ export
             let c = maybe.unwrap(s.defs[v])
             ssa.isOp(c ssa.opCall) andif maybe.isSome(hashMap.get(s.defined c.symbol))
                 andif maybe.unwrap(hashMap.get(s.defined c.symbol))
-        else false end
+        else
+            false
+        end
 
     (* The registers results come back in *)
     let resultRegisters(f: ssa.Function results: Array(Int)): Array(Int) =
         if extent results is 1 then array of if isReal(ssa.typeOf(f results[0])) then d0 else x0 end end
         elsif extent results is 2 then array of x0 x1 end
-        else none end
+        else none
+        end
 
     (* Moves a call's arguments into their ABI locations and returns the
      * argument registers used. Stack arguments are stored first so that fixed
@@ -491,7 +527,8 @@ export
             for k = first upto {extent i.args - 1} do
                 let p = placed.places[k]
                 if p.reg is memory then
-                    let width = if p.bytes is 1 then minst.store8 elsif p.bytes is 4 then minst.store32
+                    let width = if p.bytes is 1 then minst.store8
+                        elsif p.bytes is 4 then minst.store32
                         else minst.store64 end
                     emit(s minst.store(width zeroOr(s i.args[k]) sp minst.offset(p.offset)))
                 end
@@ -515,7 +552,8 @@ export
             let regs = arguments(s i placeCall(s.f i) if direct then 0 else 1 end)
             let results = resultRegisters(s.f i.results)
             if direct then emitFull(s machine.kindCall minst.bl(i.symbol) regs results ~1)
-            else emitFull(s machine.kindCall minst.blr(r(s i.args[0])) regs results ~1) end
+            else emitFull(s machine.kindCall minst.blr(r(s i.args[0])) regs results ~1)
+            end
             for k = 0 upto {extent i.results - 1} do emitMove(s r(s i.results[k]) results[k]) end
         end
 
@@ -532,13 +570,16 @@ export
                         emit(s minst.logicImm(op d a(0) maybe.unwrap(c1)))
                     elsif maybe.isSome(c0) andif minst.isLogical(maybe.unwrap(c0)) then
                         emit(s minst.logicImm(op d a(1) maybe.unwrap(c0)))
-                    else arith(op) end
+                    else
+                        arith(op)
+                    end
                 end
             case i.op
                 when opConst then emit(s minst.movConst(d i.imm))
                 (* A Real constant's bits are its word *)
                 when opRealConst then
-                    if i.imm is 0 then emitMove(s d xzr)
+                    if i.imm is 0 then
+                        emitMove(s d xzr)
                     else
                         let t = temp(s ssa.typeInt)
                         emit(s minst.movConst(t i.imm))
@@ -561,7 +602,8 @@ export
                  * comparison, or by comparing the condition against 0 *)
                 when opSelect then
                     let c = i.args[0]
-                    let cond = if s.fused[c] then
+                    let cond =
+                        if s.fused[c] then
                             let compare = maybe.unwrap(s.defs[c])
                             setFlags(s compare)
                             condition(compare.op)
@@ -572,7 +614,8 @@ export
                     if isConst(s i.args[1] 1) andif isConst(s i.args[2] 0) then emit(s minst.cset(cond d))
                     elsif isConst(s i.args[1] 0) andif isConst(s i.args[2] 1) then
                         emit(s minst.cset(minst.inverse(cond) d))
-                    else emit(s minst.csel(cond d zeroOr(s i.args[1]) zeroOr(s i.args[2]))) end
+                    else emit(s minst.csel(cond d zeroOr(s i.args[1]) zeroOr(s i.args[2])))
+                    end
                 when opDiv then arith(minst.arithSdiv)
                 (* Omitted when fused into a branch as a bit test or
                  * comparison conjunction; otherwise emitted with a logical
@@ -589,7 +632,7 @@ export
                     emit(s minst.arith(minst.arithSdiv q a(0) a(1)))
                     emit(s minst.msub(d q a(1) a(0)))
                 when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge,
-                opIsNaN then
+                        opIsNaN then
                     if not(s.fused[i.results[0]]) then
                         setFlags(s i)
                         emit(s minst.cset(condition(i.op) d))
@@ -610,18 +653,21 @@ export
                 when opZext8 then
                     if extended(s i.args[0]) then emitMove(s d a(0)) else emit(s minst.andImm(d a(0) 255)) end
                 when opLoad then
-                    let width = if i.width is 8 then minst.load64 elsif i.width is 4 then minst.loadS32
-                        elsif i.signed then minst.loadS8 else minst.loadU8 end
+                    let width = if i.width is 8 then minst.load64
+                        elsif i.width is 4 then minst.loadS32
+                        elsif i.signed then minst.loadS8
+                        else minst.loadU8 end
                     let at = address(s i.args[0] i.imm if i.width >= 4 then i.width else 1 end)
                     emit(s if at.index >= 0 then minst.loadIndex(width d at.base at.index s.shiftOf[i.args[0]])
                         else minst.load(width d at.base at.mode) end)
                 when opStore then
-                    let width = if i.width is 8 then minst.store64 elsif i.width is 4 then minst.store32
+                    let width = if i.width is 8 then minst.store64
+                        elsif i.width is 4 then minst.store32
                         else minst.store8 end
                     let at = address(s i.args[0] i.imm if i.width >= 4 then i.width else 1 end)
                     emit(s if at.index >= 0 then minst.storeIndex(width zeroOr(s i.args[1]) at.base at.index
-                        s.shiftOf[i.args[0]])
-                    else minst.store(width zeroOr(s i.args[1]) at.base at.mode) end)
+                            s.shiftOf[i.args[0]])
+                        else minst.store(width zeroOr(s i.args[1]) at.base at.mode) end)
                 when opCall, opCallIndirect then call(s i)
             end
         end
@@ -654,7 +700,8 @@ export
                 returnValues(s i.results)
             else
                 let regs = arguments(s i placed if direct then 0 else 1 end)
-                if direct then emitFull(s machine.kindReturn minst.bSymbol(i.symbol) regs none ~1)
+                if direct then
+                    emitFull(s machine.kindReturn minst.bSymbol(i.symbol) regs none ~1)
                 else
                     emitMove(s x9 r(s i.args[0]))
                     emitFull(s machine.kindReturn minst.br(x9) regs none ~1)
@@ -673,7 +720,8 @@ export
 
     (* The flags of v's comparison with the constant n *)
     let compareConst(s: S v: Int n: Int): Ok =
-        if {n > ~4096} andif {n < 4096} then emit(s minst.cmpImm(v n))
+        if {n > ~4096} andif {n < 4096} then
+            emit(s minst.cmpImm(v n))
         else
             let c = temp(s ssa.typeInt)
             emit(s minst.movConst(c n))
@@ -707,7 +755,9 @@ export
     let jumpTable(s: S v: Int least: Int size: Int cases: Array(Int) targets: Array(ssa.Target)
             default: ssa.Target): Ok =
         begin
-            let index = if least is 0 then v
+            let index =
+                if least is 0 then
+                    v
                 else
                     let i = temp(s ssa.typeInt)
                     if {least > 0} andif {least < 4096} then emit(s minst.subImm(i v least))
@@ -835,14 +885,14 @@ export
                     let zeroBit = if {extent i.args > 1} andif isConst(s i.args[1] 0) then bitOf(s.defs i.args[0])
                         else maybe.none(:Bit) end
                     let zeroTest = not(isRealComparison(i.op)) andif isConst(s i.args[1] 0) andif {ssa.isOp(i ssa.opEq)
-                            orif ssa.isOp(i ssa.opPeq) orif ssa.isOp(i ssa.opNe) orif ssa.isOp(i ssa.opPne)}
+                        orif ssa.isOp(i ssa.opPeq) orif ssa.isOp(i ssa.opNe) orif ssa.isOp(i ssa.opPne)}
                     let zero = ssa.isOp(i ssa.opEq) orif ssa.isOp(i ssa.opPeq)
                     (* A bit compared with 0: tbz or tbnz *)
                     if zeroTest andif maybe.isSome(zeroBit) andif s.fused[i.args[0]] then
                         let t = maybe.unwrap(zeroBit)
                         let v = r(s t.value)
                         emitFull(s machine.kindBranch if zero then minst.tbz(v t.bit l) else minst.tbnz(v t.bit l) end
-                            none none e)
+                                none none e)
                     elsif zeroTest then
                         let v = r(s i.args[0])
                         emitFull(s machine.kindBranch if zero then minst.cbz(v l) else minst.cbnz(v l) end none none e)
@@ -904,16 +954,18 @@ export
                 let p = placed.places[k]
                 let t = temp(s types[k])
                 args[k] := t
-                let isInt32 = case f.signature.params[k]
-                    when passInt32 then true
-                    when passWord, passReal, passPair, passPairRest, passByte, passMemory then false
-                end
+                let isInt32 =
+                    case f.signature.params[k]
+                        when passInt32 then true
+                        when passWord, passReal, passPair, passPairRest, passByte, passMemory then false
+                    end
                 if p.reg isnot memory then
                     if isInt32 then emit(s minst.sxtw(t p.reg)) else emitMove(s t p.reg) end
                 else
                     (* The caller's outgoing area, just above the saved fp and
                      * lr (16 bytes) that fp points to *)
-                    let width = if p.bytes is 1 then minst.loadU8 elsif p.bytes is 4 then minst.loadS32
+                    let width = if p.bytes is 1 then minst.loadU8
+                        elsif p.bytes is 4 then minst.loadS32
                         else minst.load64 end
                     emit(s minst.load(width t fp minst.offset(16 + p.offset)))
                 end
@@ -1017,7 +1069,9 @@ export
             let constAt(v: Int): maybe.T(Int) =
                 if maybe.isSome(defs[v]) andif ssa.isOp(maybe.unwrap(defs[v]) ssa.opConst) then
                     maybe.some(maybe.unwrap(defs[v]).imm)
-                else maybe.none() end
+                else
+                    maybe.none()
+                end
             for b = 0 upto {nBlocks - 1} do
                 let insts = ssa.block(f b).insts
                 let here(v: Int): Bool = {defBlock[v] is b} andif {uses[v] is 1} andif maybe.isSome(defs[v])
@@ -1031,9 +1085,12 @@ export
                         let width = if i.width >= 4 then i.width else 1 end
                         let log = if width is 8 then 3 elsif width is 4 then 2 else 0 end
                         folded[v] := true
-                        let scale = if here(x) andif ssa.isOp(maybe.unwrap(defs[x]) ssa.opMul) then
-                            constAt(maybe.unwrap(defs[x]).args[1])
-                        else maybe.none(:Int) end
+                        let scale =
+                            if here(x) andif ssa.isOp(maybe.unwrap(defs[x]) ssa.opMul) then
+                                constAt(maybe.unwrap(defs[x]).args[1])
+                            else
+                                maybe.none(:Int)
+                            end
                         if {log > 0} andif maybe.isSome(scale) andif {maybe.unwrap(scale) is width} then
                             indexOf[v] := maybe.unwrap(defs[x]).args[0]
                             shiftOf[v] := log
@@ -1059,12 +1116,25 @@ export
              * machine blocks only for reachable SSA blocks *)
             let m = machine.newFunction(extent target.description.registers)
             let s = tuple
-                let f = f let m = m let ops = vector.new(:minst.Op) let locs = vector.new(:ssa.Loc)
+                let f = f
+                let m = m
+                let ops = vector.new(:minst.Op)
+                let locs = vector.new(:ssa.Loc)
                 let types = vector.new(:ssa.Type)
-                let layout = vector.new(:Int) let prefix = prefix let defined = defined
-                let blockOf = array of(nBlocks ~1) let defs = defs let defBlock = defBlock let uses = uses
-                let fused = fused let indexOf = indexOf let shiftOf = shiftOf let folded = folded let slotAt = slotAt
-                let var b = 0 let var loc = ssa.noLoc
+                let layout = vector.new(:Int)
+                let prefix = prefix
+                let defined = defined
+                let blockOf = array of(nBlocks ~1)
+                let defs = defs
+                let defBlock = defBlock
+                let uses = uses
+                let fused = fused
+                let indexOf = indexOf
+                let shiftOf = shiftOf
+                let folded = folded
+                let slotAt = slotAt
+                let var b = 0
+                let var loc = ssa.noLoc
             end
             for v = 0 upto {nValues - 1} do
                 vector.append(s.types ssa.typeOf(f v))
@@ -1097,9 +1167,16 @@ export
                 end
             end
             let selection = tuple
-                let f = m let ops = s.ops let locs = s.locs let types = s.types let layout = s.layout
+                let f = m
+                let ops = s.ops
+                let locs = s.locs
+                let types = s.types
+                let layout = s.layout
                 let prefix = prefix
-                let outgoing = outgoing let slotAt = slotAt let slotsEnd = at let entersTry = entersTry
+                let outgoing = outgoing
+                let slotAt = slotAt
+                let slotsEnd = at
+                let entersTry = entersTry
             end
             machine.removeDead(m fun(i: machine.Inst): Bool pure(selection i))
             selection
@@ -1130,10 +1207,12 @@ export
                 when opMovConst, opSymbolAddress then true
                 when opAddImm then readsSp
                 when opMovImm, opMovz, opMovk, opTlvAddress, opMov, opArith, opSubImm, opLogicImm, opShiftImm, opMsub,
-                    opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore, opLdp,
-                    opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz,
-                    opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa,
-                    opCfiOffset, opLoc then
+                        opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore,
+                        opLdp,
+                        opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz,
+                        opTbz,
+                        opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa,
+                        opCfiOffset, opLoc then
                     false
             end
         end
@@ -1148,7 +1227,8 @@ export
                 let half = fun(r: Int): String if virtual(r) then name(r) else target.half(r) end
                 let real = fun(r: Int): Bool
                     if not(virtual(r)) then target.isReal(r)
-                    else case machine.virtualClass(m r) when classInt then false when classReal then true end end
+                    else case machine.virtualClass(m r) when classInt then false when classReal then true end
+                    end
             end
             machine.format(m name fun(i: machine.Inst): String
                 begin

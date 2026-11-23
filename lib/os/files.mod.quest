@@ -4,18 +4,19 @@
 
 unsound module files : Files
 import
+    conv : Conv
+    raised : Raised
+    reader : Reader
+    stringOp = string : StringOp
+    system : System
+    writer : Writer
+
     collections/vector : collections/Vector
     os/fileStats : os/FileStats
     util/maybe : util/Maybe
-    util/sort : util/Sort
     strings = util/path : util/Path
     random = util/random : util/Random
-    raised : Raised
-    stringOp = string : StringOp
-    reader : Reader
-    writer : Writer
-    system : System
-    conv : Conv
+    util/sort : util/Sort
 export
     Let Code = Option
         notFound
@@ -81,7 +82,10 @@ export
     (* Raises error for operation on path, with a status's code and message *)
     let failStatus(A::TYPE operation: String path: String status: Int): A =
         raise error with tuple
-            let operation = operation let path = path let code = codeOf(status) let message = messageOf(status)
+            let operation = operation
+            let path = path
+            let code = codeOf(status)
+            let message = messageOf(status)
         end end
 
     (* Raises error with a code and message of its own *)
@@ -209,7 +213,7 @@ export
                     elsif maybe.unwrap(:fileStats.T s).kind?symlink then
                         hops := hops + 1
                         if hops > 40 then fail(:Ok "realPath" path option other of Code end
-                            "Too many levels of symbolic links") end
+                                "Too many levels of symbolic links") end
                         let target = readLink(candidate)
                         if isAbsolute(target) then vector.clear(:String resolved) end
                         push(target)
@@ -253,14 +257,17 @@ export
             if maybe.isSome(:fileStats.T fileStats.find(to)) andif stringOp.equal(realPath(from) realPath(to)) then
                 fail(:Ok "copy" to option exists of Code end "Is the same file")
             end
-            let r = try reader.file(from) when reader.error then
-                fail(:reader.T "copy" from option other of Code end "Cannot be read") end
-            let w = try writer.file(to) when writer.error then
-                begin
-                    reader.close(r)
-                    fail(:writer.T "copy" to option other of Code end "Cannot be written")
+            let r =
+                try reader.file(from) when reader.error then
+                    fail(:reader.T "copy" from option other of Code end "Cannot be read")
                 end
-            end
+            let w =
+                try writer.file(to) when writer.error then
+                    begin
+                        reader.close(r)
+                        fail(:writer.T "copy" to option other of Code end "Cannot be written")
+                    end
+                end
             let var piece = reader.getString(r pieceSize)
             while not(stringOp.isEmpty(piece)) do
                 writer.putString(w piece)
@@ -442,7 +449,8 @@ export
             for i = 0 upto {vector.length(:String sorted) - 1} do
                 let p = vector.get(:String sorted i)
                 if {i is 0} orif not(stringOp.equal(p vector.get(:String sorted i - 1))) then
-                    if not(directories) then vector.append(:String result p)
+                    if not(directories) then
+                        vector.append(:String result p)
                     else
                         let full = if stringOp.isEmpty(root) then p else child(root p) end
                         if isDirectoryStats(fileStats.find(full)) then vector.append(:String result p <> "/") end
@@ -529,12 +537,13 @@ export
     let withTempDirectory(A::TYPE prefix: String action: All(dir: String) A): A =
         begin
             let dir = makeTempDirectory(prefix)
-            let result = try action(dir) else with e then
-                begin
-                    removeTree(dir)
-                    raised.reraise(:A e)
+            let result =
+                try action(dir) else with e then
+                    begin
+                        removeTree(dir)
+                        raised.reraise(:A e)
+                    end
                 end
-            end
             removeTree(dir)
             result
         end

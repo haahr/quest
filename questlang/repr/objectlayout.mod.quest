@@ -2,17 +2,19 @@
 
 module objectLayout : ObjectLayout
 import
-    questlang/types/model : questlang/types/Model
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/repr/layout : questlang/repr/Layout
-    questlang/repr/digests : questlang/repr/Digests
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/maybe : util/Maybe
     util/hash : util/Hash
+    util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/repr/digests : questlang/repr/Digests
+    questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/types/model : questlang/types/Model
 export
     Def Kind = Option kindScalar kindPointer kindAmbiguous end
     Def Form = Option formFixed formArray end
@@ -118,7 +120,7 @@ export
             if n is 0 then vector.append(words scalar) end
             let suffix = withBoxes(words boxes)
             fixed(layout.shapeTag(ts) <> suffix words layout.slotsBytes(n) + 16 * extent boxes
-                cSizeOf(struct extent boxes))
+                    cSizeOf(struct extent boxes))
         end
 
     let tuplePrefixLayout(ts: shapes.Shape n: Int): Layout =
@@ -148,7 +150,8 @@ export
             (* Name the layout after the C struct when one is given (two
              * aliases of the same record type produce distinct structs with
              * their own sizeof), and fall back to the type otherwise *)
-            let tag = if eq(struct "") then "record_" <> layout.typeTag(t) <> "_" <> digests.typeDigest(t) else struct end
+            let tag =
+                if eq(struct "") then "record_" <> layout.typeTag(t) <> "_" <> digests.typeDigest(t) else struct end
             fixed(tag <> suffix words 16 + layout.recordBytes(t) + 16 * extent boxes cSize)
         end
 

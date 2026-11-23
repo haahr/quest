@@ -5,11 +5,13 @@
 
 module desugar : Desugar
 import
-    questlang/common/location : questlang/common/Location
-    questlang/syntax/ast : questlang/syntax/Ast
+    stringOp = string : StringOp
+
     collections/vector : collections/Vector
     util/maybe : util/Maybe
-    stringOp = string : StringOp
+
+    questlang/common/location : questlang/common/Location
+    questlang/syntax/ast : questlang/syntax/Ast
 export
     Let ExprForm = ast.ExprForm
     Let PhraseForm = ast.PhraseForm
@@ -79,12 +81,12 @@ export
     (* elsifs become conditionals nested in the else branches, each at its
      * elsif's condition *)
     let nestElsifs(e: ast.Expr x: Tuple
-            cond: ast.Expr
-            thenBranch: ast.Expr
-            elsifs: vector.T(ast.ElsifBranch)
-            elseBranch: maybe.T(ast.Expr)
-            shortCircuit: Bool
-        end): ast.Expr =
+        cond: ast.Expr
+        thenBranch: ast.Expr
+        elsifs: vector.T(ast.ElsifBranch)
+        elseBranch: maybe.T(ast.Expr)
+        shortCircuit: Bool
+    end): ast.Expr =
         begin
             let var nested = maybe.unwrapOr(x.elseBranch ast.exprOk(e.span))
             for i = {vector.length(x.elsifs) - 1} downto 0 do
@@ -163,11 +165,11 @@ export
                     let cond = expr(x.cond)
                     let thenBranch = expr(x.thenBranch)
                     let elsifs = vector.map(x.elsifs
-                        fun(b: ast.ElsifBranch): ast.ElsifBranch
-                            tuple
-                                let cond = expr(b.cond)
-                                let thenBranch = expr(b.thenBranch)
-                            end)
+                            fun(b: ast.ElsifBranch): ast.ElsifBranch
+                                tuple
+                                    let cond = expr(b.cond)
+                                    let thenBranch = expr(b.thenBranch)
+                                end)
                     let elseBranch = optExpr(x.elseBranch)
                     let shortCircuit = x.shortCircuit
                 end
@@ -200,13 +202,13 @@ export
             when exprRecord with x then
                 option exprRecord of ExprForm with
                     let fields = vector.map(x.fields
-                        fun(b: ast.RecordBinding): ast.RecordBinding
-                            tuple
-                                let offset = b.offset
-                                let name = b.name
-                                let value = expr(b.value)
-                                let isVar = b.isVar
-                            end)
+                            fun(b: ast.RecordBinding): ast.RecordBinding
+                                tuple
+                                    let offset = b.offset
+                                    let name = b.name
+                                    let value = expr(b.value)
+                                    let isVar = b.isVar
+                                end)
                 end
             when exprArray with x then
                 option exprArray of ExprForm with let elements = exprs(x.elements) let elementType = x.elementType end
@@ -253,27 +255,27 @@ export
                 option exprCase of ExprForm with
                     let target = expr(x.target)
                     let branches = vector.map(x.branches
-                        fun(b: ast.CaseBranch): ast.CaseBranch
-                            tuple
-                                let offset = b.offset
-                                let tags = b.tags
-                                let binder = b.binder
-                                let binderType = b.binderType
-                                let body = expr(b.body)
-                            end)
+                            fun(b: ast.CaseBranch): ast.CaseBranch
+                                tuple
+                                    let offset = b.offset
+                                    let tags = b.tags
+                                    let binder = b.binder
+                                    let binderType = b.binderType
+                                    let body = expr(b.body)
+                                end)
                     let elseBranch = optExpr(x.elseBranch)
                 end
             when exprInspect with x then
                 option exprInspect of ExprForm with
                     let target = expr(x.target)
                     let branches = vector.map(x.branches
-                        fun(b: ast.InspectBranch): ast.InspectBranch
-                            tuple
-                                let offset = b.offset
-                                let matchType = b.matchType
-                                let binders = b.binders
-                                let body = expr(b.body)
-                            end)
+                            fun(b: ast.InspectBranch): ast.InspectBranch
+                                tuple
+                                    let offset = b.offset
+                                    let matchType = b.matchType
+                                    let binders = b.binders
+                                    let body = expr(b.body)
+                                end)
                     let elseBranch = optExpr(x.elseBranch)
                 end
             when exprRaise with x then
@@ -286,14 +288,14 @@ export
                 option exprTry of ExprForm with
                     let body = expr(x.body)
                     let branches = vector.map(x.branches
-                        fun(b: ast.TryBranch): ast.TryBranch
-                            tuple
-                                let offset = b.offset
-                                let excPattern = expr(b.excPattern)
-                                let binder = b.binder
-                                let binderType = b.binderType
-                                let body = expr(b.body)
-                            end)
+                            fun(b: ast.TryBranch): ast.TryBranch
+                                tuple
+                                    let offset = b.offset
+                                    let excPattern = expr(b.excPattern)
+                                    let binder = b.binder
+                                    let binderType = b.binderType
+                                    let body = expr(b.body)
+                                end)
                     let elseBranch = optExpr(x.elseBranch)
                     let elseBinder = x.elseBinder
                     let elseBinderType = x.elseBinderType
@@ -339,6 +341,5 @@ export
             else p
         end
 
-    let program(p: ast.Program): ast.Program =
-        ast.makeProgram(p.span vector.map(p.form.phrases phrase))
+    let program(p: ast.Program): ast.Program = ast.makeProgram(p.span vector.map(p.form.phrases phrase))
 end

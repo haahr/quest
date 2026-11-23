@@ -2,24 +2,26 @@
 
 module paths : Paths
 import
+    ascii : Ascii
+    stringOp = string : StringOp
+    system : System
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/json : util/Json
+    util/maybe : util/Maybe
+    sb = util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/files : questlang/common/Files
+    questlang/common/jsonCache : questlang/common/JsonCache
     questlang/common/location : questlang/common/Location
     questlang/config/abi : questlang/config/Abi
-    util/json : util/Json
-    questlang/common/jsonCache : questlang/common/JsonCache
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/common/diagbag : questlang/common/DiagBag
-    questlang/syntax/tokens : questlang/syntax/Tokens
     questlang/syntax/tokenizer : questlang/syntax/Tokenizer
-    collections/vector : collections/Vector
-    collections/hashMap : collections/HashMap
-    util/hash : util/Hash
-    util/maybe : util/Maybe
-    util/strutil : util/Strutil
-    sb = util/stringBuilder : util/StringBuilder
-    stringOp = string : StringOp
-    ascii : Ascii
-    system : System
-    questlang/common/files : questlang/common/Files
+    questlang/syntax/tokens : questlang/syntax/Tokens
 export
     (* ======================================================================
      * Paths
@@ -52,7 +54,7 @@ export
             let s = stringOp.length(suffix)
             let size = {n - p} - s
             if {size > 0} andif stringOp.equal(stringOp.getSub(full 0 p) prefix)
-                andif stringOp.equal(stringOp.getSub(full {n - s} s) suffix) then
+                    andif stringOp.equal(stringOp.getSub(full {n - s} s) suffix) then
                 (* a variant's file, NAME.VARIANT.mod.quest, is NAME's *)
                 let path = stringOp.getSub(full p size)
                 let dot = strutil.rfind(path ".")
@@ -94,7 +96,8 @@ export
             let chosen = dir <> stripUnitSuffix(base) <> "." <> name <> ".mod.quest"
             if {stringOp.length(name) > 0} andif system.isFile(chosen) then chosen
             elsif system.isFile(own) then own
-            else moduleFile end
+            else moduleFile
+            end
         end
 
     let lastSegment(name: String): String =
@@ -110,11 +113,12 @@ export
         begin
             let fallback = lastSegment(canonName)
             let text = if maybe.isSome(file) then files.readText(maybe.unwrap(file)) else maybe.none(:String) end
-            let known = if maybe.isSome(text) then
-                hashMap.get(declaredNames maybe.unwrap(text))
-            else
-                maybe.none(:String)
-            end
+            let known =
+                if maybe.isSome(text) then
+                    hashMap.get(declaredNames maybe.unwrap(text))
+                else
+                    maybe.none(:String)
+                end
             if maybe.isNone(text) then
                 fallback
             elsif maybe.isSome(known) then
@@ -171,7 +175,8 @@ export
             found
         end
 
-    let resolveInterfaceSourceFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String) =
+    let resolveInterfaceSourceFile(name: String currentDir: maybe.T(String)
+            includePaths: Array(String)): maybe.T(String) =
         findFile(lower(name) <> ".int.quest" currentDir includePaths)
     let resolveModuleFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String) =
         findFile(lower(name) <> ".mod.quest" currentDir includePaths)
@@ -204,7 +209,7 @@ export
                     let value = member(jsonCache.parseShared(maybe.unwrap(text)) "value")
                     let deps = if maybe.isSome(value) then member(maybe.unwrap(value) "deps")
                         else maybe.none(:json.Value)
-                    end
+                        end
                     if maybe.isNone(deps) then
                         none
                     else
@@ -218,9 +223,10 @@ export
                                     let dir = str(member(d "dir"))
                                     let source = str(member(d "source"))
                                     if maybe.isSome(path) andif maybe.isSome(dir)
-                                        andif maybe.isSome(source) then
+                                            andif maybe.isSome(source) then
                                         vector.append(result tuple
-                                            let path = maybe.unwrap(path) let dir = maybe.unwrap(dir)
+                                            let path = maybe.unwrap(path)
+                                            let dir = maybe.unwrap(dir)
                                             let source = maybe.unwrap(source)
                                         end)
                                     else
@@ -229,7 +235,8 @@ export
                                 end
                                 if valid then
                                     maybe.some(vector.toArray(result))
-                                else none
+                                else
+                                    none
                                 end
                             else none
                         end
@@ -241,22 +248,26 @@ export
         end
 
     let dependencyChange(deps: Array(InterfaceDependency) includePaths: Array(String) artifactTime: Int
-        resolveSource: All(path: String fromDir: maybe.T(String) includePaths: Array(String)) maybe.T(String))
-        : maybe.T(String) =
+            resolveSource: All(path: String fromDir: maybe.T(String) includePaths: Array(String)) maybe.T(String))
+            : maybe.T(String) =
         begin
             let var change = maybe.none(:String)
             for i = 0 upto {extent deps - 1} do
                 if maybe.isNone(change) then
                     let dep = deps[i]
-                    let fromDir = if stringOp.length(dep.dir) > 0 then
-                        maybe.some(dep.dir) else maybe.none(:String) end
+                    let fromDir =
+                        if stringOp.length(dep.dir) > 0 then
+                            maybe.some(dep.dir)
+                        else
+                            maybe.none(:String)
+                        end
                     let src = resolveSource(dep.path fromDir includePaths)
                     let shown(s: String): String = if stringOp.length(s) > 0 then s else "no source" end
                     if not(sameSource(src dep.source)) then
                         change := maybe.some("interface '" <> dep.path <> "' now resolves to "
                             <> shown(maybe.unwrapOr(src "")) <> ", not " <> shown(dep.source))
                     elsif maybe.isSome(src)
-                        andif {files.modifiedNs(maybe.unwrap(src)) > artifactTime} then
+                            andif {files.modifiedNs(maybe.unwrap(src)) > artifactTime} then
                         change := maybe.some("imported interface " <> maybe.unwrap(src) <> " is newer")
                     end
                 end
@@ -271,7 +282,7 @@ export
             let deps = recordedDependencies(qi)
             maybe.isSome(deps)
                 andif maybe.isNone(dependencyChange(maybe.unwrap(deps) includePaths
-                    files.modifiedNs(qi) resolveInterfaceSourceFile))
+                        files.modifiedNs(qi) resolveInterfaceSourceFile))
         end
 
     let resolveInterfaceFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String) =
@@ -288,8 +299,8 @@ export
                         else
                             let src = maybe.unwrap(source)
                             if abi.hasCurrentAbi(candidate)
-                                andif {files.modifiedNs(candidate) >= files.modifiedNs(src)}
-                                andif abi.builtFrom(candidate src)
+                                    andif {files.modifiedNs(candidate) >= files.modifiedNs(src)}
+                                    andif abi.builtFrom(candidate src)
                                     andif dependenciesUnchanged(candidate includePaths) then
                                 found := maybe.some(files.absolute(candidate))
                             end
@@ -315,8 +326,9 @@ export
             let n = vector.length(roots)
             for i = 1 upto {n - 1} do
                 let var j = i
-                while {j > 0} andif
-                        {extent files.parts(vector.get(:String roots {j - 1})) < extent files.parts(vector.get(:String roots j))} do
+                while {j > 0}
+                        andif {extent files.parts(vector.get(:String roots {j - 1}))
+                                < extent files.parts(vector.get(:String roots j))} do
                     let t = vector.get(roots j)
                     vector.set(roots j vector.get(roots {j - 1}))
                     vector.set(roots {j - 1} t)
@@ -374,16 +386,16 @@ export
             end
             let name = sb.toString(b)
             if maybe.isSome(bad) then
-                diagnostics.fail(:Ok "Invalid module path '" <> name <> "' for '" <> resolved <> "': '" <>
-                    maybe.unwrap(bad) <> "' contains characters other than letters and digits, which are the " <>
-                    "only ones allowed in the directory and file names of interfaces and modules" 0)
+                diagnostics.fail(:Ok "Invalid module path '" <> name <> "' for '" <> resolved <> "': '"
+                    <> maybe.unwrap(bad) <> "' contains characters other than letters and digits, which are the "
+                    <> "only ones allowed in the directory and file names of interfaces and modules" 0)
             end
             name
         end
 
     let canonicalizeInterfaceName(
-        file: maybe.T(String) includePaths: Array(String) declaredName: String programDir: maybe.T(String)
-    ): String =
+            file: maybe.T(String) includePaths: Array(String) declaredName: String programDir: maybe.T(String)
+            ): String =
         if maybe.isNone(file) then
             declaredName
         else
@@ -399,8 +411,8 @@ export
         end
 
     let canonicalizeModuleName(
-        file: maybe.T(String) includePaths: Array(String) rawName: String programDir: maybe.T(String)
-    ): String =
+            file: maybe.T(String) includePaths: Array(String) rawName: String programDir: maybe.T(String)
+            ): String =
         if maybe.isNone(file) then
             rawName
         else
@@ -408,7 +420,7 @@ export
         end
 
     let findCanonicalModuleSource(canonName: String includePaths: Array(String) programDir: maybe.T(String))
-        : maybe.T(String) =
+            : maybe.T(String) =
         begin
             let relative = lower(canonName) <> ".mod.quest"
             let roots = canonicalRoots(includePaths programDir)
@@ -416,7 +428,7 @@ export
             for i = 0 upto {extent roots - 1} do
                 let candidate = files.join(roots[i] relative)
                 if maybe.isNone(found) andif system.isFile(candidate)
-                    andif stringOp.equal(canonicalizeModulePath(candidate includePaths programDir) canonName) then
+                        andif stringOp.equal(canonicalizeModulePath(candidate includePaths programDir) canonName) then
                     found := maybe.some(files.absolute(candidate))
                 end
             end

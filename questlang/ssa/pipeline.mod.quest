@@ -2,33 +2,45 @@
 
 module pipeline : Pipeline
 import
-    ir = questlang/ir/nodes : questlang/ir/Nodes
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    ssaBuild = questlang/ssa/build : questlang/ssa/Build
+    stringOp = string : StringOp
+    system : System
+
     collections/vector : collections/Vector
-    questlang/ssa/verify : questlang/ssa/Verify
+    util/strutil : util/Strutil
+
+    ir = questlang/ir/nodes : questlang/ir/Nodes
     questlang/ssa/barriers : questlang/ssa/Barriers
-    questlang/ssa/scalars : questlang/ssa/Scalars
+    ssaBuild = questlang/ssa/build : questlang/ssa/Build
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/passes/accumulate : questlang/ssa/passes/Accumulate
+    questlang/ssa/passes/allocations : questlang/ssa/passes/Allocations
+    questlang/ssa/passes/concats : questlang/ssa/passes/Concats
+    questlang/ssa/passes/constants : questlang/ssa/passes/Constants
     questlang/ssa/passes/escape : questlang/ssa/passes/Escape
+    questlang/ssa/passes/interrupts : questlang/ssa/passes/Interrupts
     questlang/ssa/passes/promote : questlang/ssa/passes/Promote
+    questlang/ssa/passes/selects : questlang/ssa/passes/Selects
+    questlang/ssa/passes/tables : questlang/ssa/passes/Tables
     questlang/ssa/passes/tailCalls : questlang/ssa/passes/TailCalls
     questlang/ssa/passes/tailJumps : questlang/ssa/passes/TailJumps
     questlang/ssa/passes/trampolines : questlang/ssa/passes/Trampolines
     questlang/ssa/passes/unproxies : questlang/ssa/passes/Unproxies
-    questlang/ssa/passes/interrupts : questlang/ssa/passes/Interrupts
-    questlang/ssa/passes/allocations : questlang/ssa/passes/Allocations
     questlang/ssa/passes/valueNumbers : questlang/ssa/passes/ValueNumbers
-    questlang/ssa/passes/accumulate : questlang/ssa/passes/Accumulate
-    questlang/ssa/passes/selects : questlang/ssa/passes/Selects
-    questlang/ssa/passes/tables : questlang/ssa/passes/Tables
-    questlang/ssa/passes/constants : questlang/ssa/passes/Constants
-    questlang/ssa/passes/concats : questlang/ssa/passes/Concats
-    util/strutil : util/Strutil
-    stringOp = string : StringOp
-    system : System
+    questlang/ssa/scalars : questlang/ssa/Scalars
+    questlang/ssa/verify : questlang/ssa/Verify
 export
     let passes = array of
-        "escape" "promote" "scalars" "constants" "concats" "valueNumbers" "selects" "tables" "accumulate" "tailCalls" "tailJumps"
+        "escape"
+        "promote"
+        "scalars"
+        "constants"
+        "concats"
+        "valueNumbers"
+        "selects"
+        "tables"
+        "accumulate"
+        "tailCalls"
+        "tailJumps"
         "trampolines"
     end
 
@@ -50,7 +62,8 @@ export
         elsif stringOp.equal(name "tailCalls") then tailCalls.markUnit(u)
         elsif stringOp.equal(name "tailJumps") then tailJumps.jumpUnit(u)
         elsif stringOp.equal(name "trampolines") then trampolines.trampolineUnit(u)
-        else raise unknownPass with name end end
+        else raise unknownPass with name end
+        end
 
     let skipped(name: String): Bool =
         begin

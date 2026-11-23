@@ -39,10 +39,10 @@
 
 module realconv : RealConv
 import
-    word : Word
-    stringOp = string : StringOp
     ascii : Ascii
     real : RealOp
+    stringOp = string : StringOp
+    word : Word
 export
     Def Digits = Tuple digits: Array(Int) exponent: Int end
 
@@ -77,7 +77,8 @@ export
         begin
             let var n = k
             while {n > 1} andif {a[n - 1] is 0} do n := n - 1 end
-            if n is extent a then a
+            if n is extent a then
+                a
             else
                 let r = array of(n 0)
                 for i = 0 upto n - 1 do r[i] := a[i] end
@@ -121,7 +122,8 @@ export
         begin
             let whole = bits / 30
             let m = mulAdd(a pow2(bits % 30) 0)
-            if {whole is 0} orif isZero(m) then m
+            if {whole is 0} orif isZero(m) then
+                m
             else
                 let r = array of({extent m + whole} 0)
                 for i = 0 upto extent m - 1 do r[i + whole] := m[i] end
@@ -238,8 +240,10 @@ export
         begin
             let field = fieldOf(r)
             let fraction = fractionOf(r)
-            if field is 0 then tuple let m = fraction let e = ~1074 let narrow = false end
-            else tuple let m = fraction + twoTo52 let e = field - 1075 let narrow = {fraction is 0} andif {field > 1} end
+            if field is 0 then
+                tuple let m = fraction let e = ~1074 let narrow = false end
+            else
+                tuple let m = fraction + twoTo52 let e = field - 1075 let narrow = {fraction is 0} andif {field > 1} end
             end
         end
 
@@ -311,7 +315,8 @@ export
                     ds[i] := 0
                     i := i - 1
                 end
-                if i >= 0 then ds[i] := ds[i] + 1
+                if i >= 0 then
+                    ds[i] := ds[i] + 1
                 else
                     (* 9.99...9 rounds up to 10.0...0 *)
                     ds[0] := 1
@@ -476,14 +481,16 @@ export
                 if nd is 1 then cat(digitText(ds 0 1) e)
                 else cat(cat(cat(digitText(ds 0 1) ".") digitText(ds 1 nd)) e)
                 end
-            elsif point <= 0 then cat(cat("0." zeros(0 - point)) digitText(ds 0 nd))
-            elsif point >= nd then cat(cat(digitText(ds 0 nd) zeros(point - nd)) ".0")
-            else cat(cat(digitText(ds 0 point) ".") digitText(ds point nd))
+            elsif point <= 0 then
+                cat(cat("0." zeros(0 - point)) digitText(ds 0 nd))
+            elsif point >= nd then
+                cat(cat(digitText(ds 0 nd) zeros(point - nd)) ".0")
+            else
+                cat(cat(digitText(ds 0 point) ".") digitText(ds point nd))
             end
         end
 
-    let toString(r: Real): String =
-        if word.getBit(word.fromReal(r) 63) then cat("~" magnitude(r)) else magnitude(r) end
+    let toString(r: Real): String = if word.getBit(word.fromReal(r) 63) then cat("~" magnitude(r)) else magnitude(r) end
 
     (* printf's conversions (quest_real_format): %e and %f round the exact
      * digits at a place, the first by significant digits, the second by
@@ -497,7 +504,8 @@ export
     let fixedDigits(r: Real places: Int): Digits =
         begin
             let none = tuple let digits = array of :Int end let exponent = 0 end
-            if isZeroReal(r) then none
+            if isZeroReal(r) then
+                none
             else
                 let g = generate(r 1)
                 (* the digits that reach 10^-places *)
@@ -566,7 +574,8 @@ export
         begin
             let p = if digits is 0 then 1 else digits end
             let x = if isZeroReal(r) then 0 else rounded(r p).exponent end
-            if {p > x} andif {x >= ~4} then trimmed(fixedText(fixedDigits(r {p - 1} - x) {p - 1} - x))
+            if {p > x} andif {x >= ~4} then
+                trimmed(fixedText(fixedDigits(r {p - 1} - x) {p - 1} - x))
             else
                 let e = exponentText(r p - 1)
                 let var k = 0
@@ -646,7 +655,8 @@ export
             if {at(0) is '-'} orif {at(0) is '~'} then
                 negative := true
                 i := 1
-            elsif at(0) is '+' then i := 1
+            elsif at(0) is '+' then
+                i := 1
             end
             (* The digits, the fraction's included, as one integer m, with nd
              * of them significant (after the leading zeros) and fraction of
@@ -689,7 +699,8 @@ export
                         end
                     end
                     i := i + 1
-                else more := false
+                else
+                    more := false
                 end
             end
             m := mulAdd(m pow10(size9) chunk)
@@ -707,7 +718,8 @@ export
                 if {at(i) is '-'} orif {at(i) is '~'} then
                     expNegative := true
                     i := i + 1
-                elsif at(i) is '+' then i := i + 1
+                elsif at(i) is '+' then
+                    i := i + 1
                 end
                 while isDigit(at(i)) do
                     if exponent < 100000000000 then exponent := {exponent * 10} + {ascii.val(at(i)) - 48} end

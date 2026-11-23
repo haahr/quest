@@ -3,10 +3,11 @@
 
 module digest : Digest
 import
-    util/stringBuilder : util/StringBuilder
-    stringOp = string : StringOp
     ascii : Ascii
+    stringOp = string : StringOp
     word : Word
+
+    util/stringBuilder : util/StringBuilder
 export
     (* SHA-256 works on 32-bit words. Each is held in a word.T below 2^32,
      * masked after every operation that can carry above it *)
@@ -82,7 +83,7 @@ export
             for t = 0 upto 15 do
                 let k = at + {t * 4}
                 m[t] := word.orBits(word.orBits(word.shift(byte(source k) 24) word.shift(byte(source k + 1) 16))
-                    word.orBits(word.shift(byte(source k + 2) 8) byte(source k + 3)))
+                        word.orBits(word.shift(byte(source k + 2) 8) byte(source k + 3)))
             end
             for t = 16 upto 63 do
                 let x = m[t - 15]
@@ -160,7 +161,8 @@ export
         begin
             if {size < 0} \/ {{start < 0} \/ {start > {stringOp.length(text) - size}}} then
                 raise stringOp.error
-            end end
+                end
+            end
             addRange(d text start size)
         end
 
@@ -242,11 +244,12 @@ export
         for n = 0 upto 255 do
             let var c = w(n)
             for k = 0 upto 7 do
-                c := if word.toInt(word.andBits(c w(1))) is 1 then
-                    word.xorBits(crcPolynomial word.shift(c ~1))
-                else
-                    word.shift(c ~1)
-                end
+                c :=
+                    if word.toInt(word.andBits(c w(1))) is 1 then
+                        word.xorBits(crcPolynomial word.shift(c ~1))
+                    else
+                        word.shift(c ~1)
+                    end
             end
             table[n] := c
         end

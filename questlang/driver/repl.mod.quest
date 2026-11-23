@@ -2,28 +2,30 @@
 
 module repl : Repl
 import
-    questlang/common/location : questlang/common/Location
-    questlang/common/diagnostics : questlang/common/Diagnostics
+    stringOp = string : StringOp
+    system : System
+    writer : Writer
+
+    collections/vector : collections/Vector
+    io/readline : io/Readline
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+
     questlang/common/diagbag : questlang/common/DiagBag
-    questlang/syntax/tokens : questlang/syntax/Tokens
-    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
-    questlang/syntax/parser : questlang/syntax/Parser
-    questlang/syntax/desugar : questlang/syntax/Desugar
-    questlang/types/env : questlang/types/Env
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
-    questlang/typechecker/typecheck : questlang/typechecker/Typecheck
-    questlang/modules/graph : questlang/modules/Graph
-    questlang/values/model : questlang/values/Model
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/location : questlang/common/Location
     questlang/interpreter/formatting : questlang/interpreter/Formatting
     questlang/interpreter/treewalk : questlang/interpreter/Treewalk
     questlang/jit/session : questlang/jit/Session
-    io/readline : io/Readline
-    collections/vector : collections/Vector
-    util/maybe : util/Maybe
-    util/strutil : util/Strutil
-    stringOp = string : StringOp
-    writer : Writer
-    system : System
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/syntax/desugar : questlang/syntax/Desugar
+    questlang/syntax/parser : questlang/syntax/Parser
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    questlang/typechecker/typecheck : questlang/typechecker/Typecheck
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/values/model : questlang/values/Model
 export
     let promptMain = ">>  "
     let promptContinue = "    "
@@ -49,7 +51,8 @@ export
                 if diagbag.count(bag) > 0 then
                     (* More lines can close a comment or a string *)
                     let message = diagnostics.message(diagbag.get(bag 0))
-                    {strutil.find(message "Unclosed comment") >= 0} orif {strutil.find(message "Unterminated string") >= 0}
+                    {strutil.find(message "Unclosed comment") >= 0}
+                        orif {strutil.find(message "Unterminated string") >= 0}
                 else
                     let endOffset = vector.get(toks {vector.length(toks) - 1}).span.startOffset
                     try
@@ -72,16 +75,18 @@ export
 
     let runErrorDiagnostic(err: model.RunError mainFile: String): diagnostics.Diagnostic =
         begin
-            let file = if maybe.isSome(err.sourceMap) then
-                location.file(maybe.unwrap(err.sourceMap))
-            else
-                mainFile
-            end
-            let sp = if maybe.isSome(err.offset) then
-                location.span(file maybe.unwrap(err.offset) {maybe.unwrap(err.offset) + 1})
-            else
-                location.span("" ~1 ~1)
-            end
+            let file =
+                if maybe.isSome(err.sourceMap) then
+                    location.file(maybe.unwrap(err.sourceMap))
+                else
+                    mainFile
+                end
+            let sp =
+                if maybe.isSome(err.offset) then
+                    location.span(file maybe.unwrap(err.offset) {maybe.unwrap(err.offset) + 1})
+                else
+                    location.span("" ~1 ~1)
+                end
             let d = diagnostics.error(model.runErrorMessage(err) sp)
             if maybe.isSome(err.frames) then diagnostics.setTrace(d maybe.unwrap(err.frames)) end
             d
@@ -97,7 +102,10 @@ export
 
     let new(e: env.T f: model.Frame): T =
         tuple
-            let e = e let var frame = f let var errorSource = maybe.none() let var failure = ""
+            let e = e
+            let var frame = f
+            let var errorSource = maybe.none()
+            let var failure = ""
             let jit = maybe.none()
         end
 
@@ -110,7 +118,10 @@ export
                 system.sysexit(1)
             end
             tuple
-                let e = e let var frame = f let var errorSource = maybe.none() let var failure = ""
+                let e = e
+                let var frame = f
+                let var errorSource = maybe.none()
+                let var failure = ""
                 let jit = maybe.some(session.new(e args))
             end
         end
@@ -118,16 +129,23 @@ export
     (* An input run by the JIT: its phrases' results, or none, its error in
      * bag *)
     let runJit(r: T s: session.T program: typedAst.Program sm: location.SourceMap bag: diagbag.T echo: Bool
-        printResult: Bool capture: Bool): maybe.T(Array(String)) =
+            printResult: Bool capture: Bool): maybe.T(Array(String)) =
         try
             case session.run(s program sm echo printResult capture)
                 when ran with x then maybe.some(x.shown)
                 when raised with x then
-                    let file = if maybe.isSome(x.sourceMap) then
-                        location.file(maybe.unwrap(x.sourceMap)) else "" end
-                    let sp = if maybe.isSome(x.offset) then
-                        location.span(file maybe.unwrap(x.offset) maybe.unwrap(x.offset) + 1)
-                    else location.span("" ~1 ~1) end
+                    let file =
+                        if maybe.isSome(x.sourceMap) then
+                            location.file(maybe.unwrap(x.sourceMap))
+                        else
+                            ""
+                        end
+                    let sp =
+                        if maybe.isSome(x.offset) then
+                            location.span(file maybe.unwrap(x.offset) maybe.unwrap(x.offset) + 1)
+                        else
+                            location.span("" ~1 ~1)
+                        end
                     let d = diagnostics.error(if x.fatal then x.name else "Exception: " <> x.name end sp)
                     if extent x.frames > 0 then diagnostics.setTrace(d x.frames) end
                     r.errorSource := x.sourceMap
@@ -181,7 +199,7 @@ export
                         failed
                     elsif maybe.isSome(r.jit) then
                         runJit(r maybe.unwrap(r.jit) maybe.unwrap(result.program) sm bag
-                            true false true)
+                                true false true)
                     else
                         (* The input runs in a scope of its own, which holds its
                          * source, so that the functions earlier inputs made go
@@ -190,7 +208,7 @@ export
                         f.sourceMap := maybe.some(sm)
                         try
                             let ran = treewalk.evalProgramPhrasesIn(maybe.unwrap(result.program) f
-                                fun(p: treewalk.PhraseResult): Ok ok)
+                                    fun(p: treewalk.PhraseResult): Ok ok)
                             r.frame := ran.frame
                             let shown = array of(extent ran.results "")
                             for i = 0 upto {extent shown - 1} do

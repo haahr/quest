@@ -24,205 +24,217 @@
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
+    conv : Conv
+    stringOp = string : StringOp
+    writer : Writer
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+    questlang/codegen/arm64/select : questlang/codegen/arm64/Select
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/verify : questlang/ssa/Verify
-    questlang/codegen/arm64/select : questlang/codegen/arm64/Select
-    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
-    conv : Conv
-    collections/vector : collections/Vector
-    collections/hashMap : collections/HashMap
-    util/hash : util/Hash
-    writer : Writer
-    stringOp = string : StringOp
-;
 
-let tInt = ssa.typeInt;
-let tPtr = ssa.typePtr;
-let tReal = ssa.typeReal;
-let none = array of :Int end;
-let noTypes = array of :ssa.Type end;
-let params(f: ssa.Function): Array(Int) = vector.toArray(:Int ssa.block(f 0).params);
+let tInt = ssa.typeInt
+let tPtr = ssa.typePtr
+let tReal = ssa.typeReal
+let none = array of :Int end
+let noTypes = array of :ssa.Type end
+let params(f: ssa.Function): Array(Int) = vector.toArray(:Int ssa.block(f 0).params)
 let ret(f: ssa.Function b: Int vs: Array(Int)): Ok =
-    ssa.terminate(f b option termReturn of ssa.Terminator with let values = vs end);
+    ssa.terminate(f b option termReturn of ssa.Terminator with let values = vs end)
 let branch(f: ssa.Function b: Int c: Int t: Int e: Int): Ok =
     ssa.terminate(f b option termBranch of ssa.Terminator with
-        let cond = c let ifTrue = ssa.target(t none) let ifFalse = ssa.target(e none)
-    end);
+        let cond = c
+        let ifTrue = ssa.target(t none)
+        let ifFalse = ssa.target(e none)
+    end)
 let call(f: ssa.Function b: Int symbol: String args: Array(Int) results: Array(ssa.Type)): Array(Int) =
-    ssa.call(f b symbol args ssa.signature(ssa.valueTypes(f args) results none none) results);
-let defined = hashMap.new(:String :Bool stringOp.equal hash.string);
-hashMap.insert(:String :Bool defined "qf_local" true);
-hashMap.insert(:String :Bool defined "qd_global" false);
+    ssa.call(f b symbol args ssa.signature(ssa.valueTypes(f args) results none none) results)
+let defined = hashMap.new(:String :Bool stringOp.equal hash.string)
+hashMap.insert(:String :Bool defined "qf_local" true)
+hashMap.insert(:String :Bool defined "qd_global" false)
 let show(title: String f: ssa.Function): Ok =
     begin
         let problems = verify.functionProblems(f)
         for i = 0 upto {extent problems - 1} do writer.putString(writer.output "problem: " <> problems[i] <> "\n") end
         writer.putString(writer.output "== " <> title <> "\n")
         writer.putString(writer.output select.format(select.select(f "Lt" defined)))
-    end;
+    end
 
 (* 1. Immediates: an add, a sub (and an add of a negative), a large add, a
  * shift, a comparison, and a store of zero; the add of a constant too large
  * keeps it *)
-let imm = ssa.newFunction("qf_imm" false array of tInt tPtr end array of tInt end);
-let ip = params(imm);
-let a1 = ssa.binary(imm 0 ssa.opAdd ip[0] ssa.constant(imm 0 5));
-let a2 = ssa.binary(imm 0 ssa.opSub a1 ssa.constant(imm 0 7));
-let a3 = ssa.binary(imm 0 ssa.opAdd ssa.constant(imm 0 ~10) a2);
-let a4 = ssa.binary(imm 0 ssa.opAdd a3 ssa.constant(imm 0 12288));
-let a5 = ssa.binary(imm 0 ssa.opShl a4 ssa.constant(imm 0 3));
-let a6 = ssa.binary(imm 0 ssa.opAdd a5 ssa.constant(imm 0 1000000));
-let a7 = ssa.binary(imm 0 ssa.opLt a6 ssa.constant(imm 0 100));
-ssa.store(imm 0 ip[1] 8 8 ssa.constant(imm 0 0));
-ssa.store(imm 0 ip[1] 16 8 ssa.null(imm 0));
-ret(imm 0 array of a7 end);
-show("immediates" imm);
+let imm = ssa.newFunction("qf_imm" false array of tInt tPtr end array of tInt end)
+let ip = params(imm)
+let a1 = ssa.binary(imm 0 ssa.opAdd ip[0] ssa.constant(imm 0 5))
+let a2 = ssa.binary(imm 0 ssa.opSub a1 ssa.constant(imm 0 7))
+let a3 = ssa.binary(imm 0 ssa.opAdd ssa.constant(imm 0 ~10) a2)
+let a4 = ssa.binary(imm 0 ssa.opAdd a3 ssa.constant(imm 0 12288))
+let a5 = ssa.binary(imm 0 ssa.opShl a4 ssa.constant(imm 0 3))
+let a6 = ssa.binary(imm 0 ssa.opAdd a5 ssa.constant(imm 0 1000000))
+let a7 = ssa.binary(imm 0 ssa.opLt a6 ssa.constant(imm 0 100))
+ssa.store(imm 0 ip[1] 8 8 ssa.constant(imm 0 0))
+ssa.store(imm 0 ip[1] 16 8 ssa.null(imm 0))
+ret(imm 0 array of a7 end)
+show("immediates" imm)
 
 (* 2. Branches: on a comparison with an immediate, on a pointer's equality to
  * the null, on a Real comparison, on a Bool, and on a comparison used twice *)
-let br = ssa.newFunction("qf_branches" false array of tInt tPtr tReal tInt end array of tInt end);
-let bp = params(br);
-let b1 = ssa.newBlock(br);
-let b2 = ssa.newBlock(br);
-let b3 = ssa.newBlock(br);
-let b4 = ssa.newBlock(br);
-let b5 = ssa.newBlock(br);
-branch(br 0 ssa.binary(br 0 ssa.opLt bp[0] ssa.constant(br 0 10)) b1 b5);
-branch(br b1 ssa.binary(br b1 ssa.opPeq bp[1] ssa.null(br b1)) b2 b5);
-branch(br b2 ssa.binary(br b2 ssa.opFlt bp[2] bp[2]) b3 b5);
-branch(br b3 bp[3] b4 b5);
-let twice = ssa.binary(br b4 ssa.opGe bp[0] bp[3]);
-let b6 = ssa.newBlock(br);
-branch(br b4 twice b6 b5);
-ret(br b6 array of twice end);
-ret(br b5 array of ssa.constant(br b5 0) end);
-show("fused comparisons" br);
+let br = ssa.newFunction("qf_branches" false array of tInt tPtr tReal tInt end array of tInt end)
+let bp = params(br)
+let b1 = ssa.newBlock(br)
+let b2 = ssa.newBlock(br)
+let b3 = ssa.newBlock(br)
+let b4 = ssa.newBlock(br)
+let b5 = ssa.newBlock(br)
+branch(br 0 ssa.binary(br 0 ssa.opLt bp[0] ssa.constant(br 0 10)) b1 b5)
+branch(br b1 ssa.binary(br b1 ssa.opPeq bp[1] ssa.null(br b1)) b2 b5)
+branch(br b2 ssa.binary(br b2 ssa.opFlt bp[2] bp[2]) b3 b5)
+branch(br b3 bp[3] b4 b5)
+let twice = ssa.binary(br b4 ssa.opGe bp[0] bp[3])
+let b6 = ssa.newBlock(br)
+branch(br b4 twice b6 b5)
+ret(br b6 array of twice end)
+ret(br b5 array of ssa.constant(br b5 0) end)
+show("fused comparisons" br)
 
 (* 3. Addressing: a load and a store from a ptrAdd of a constant, its offset
  * folded in; one whose sum does not fit; and a ptrAdd used as a value *)
-let addr = ssa.newFunction("qf_addressing" false array of tPtr end array of tPtr end);
-let ap = params(addr);
-let field = ssa.ptrAdd(addr 0 ap[0] ssa.constant(addr 0 16));
-let loaded = ssa.load(addr 0 field 8 8 false tInt);
-ssa.store(addr 0 field 4 4 loaded);
-let far = ssa.ptrAdd(addr 0 ap[0] ssa.constant(addr 0 40000));
-ssa.store(addr 0 far 8 8 loaded);
-ret(addr 0 array of far end);
-show("addressing" addr);
+let addr = ssa.newFunction("qf_addressing" false array of tPtr end array of tPtr end)
+let ap = params(addr)
+let field = ssa.ptrAdd(addr 0 ap[0] ssa.constant(addr 0 16))
+let loaded = ssa.load(addr 0 field 8 8 false tInt)
+ssa.store(addr 0 field 4 4 loaded)
+let far = ssa.ptrAdd(addr 0 ap[0] ssa.constant(addr 0 40000))
+ssa.store(addr 0 far 8 8 loaded)
+ret(addr 0 array of far end)
+show("addressing" addr)
 
 (* 4. Calls: one of a local function, its Int and Real arguments in
  * registers and two past them on the stack, with a result; one through a
  * pointer; a thread-local's address *)
-let calls = ssa.newFunction("qf_calls" false array of tInt tReal end array of tReal end);
-let cp = params(calls);
-let cargs = array of(10 cp[0]);
-cargs[1] := cp[1];
-let cr = call(calls 0 "qf_local" cargs array of tReal end)[0];
-let fnAt = ssa.symbolAddress(calls 0 "qf_other");
-let ignored = call(calls 0 "" array of fnAt cp[0] end noTypes);
-let tl = ssa.threadLocal(calls 0 "quest_current_exception_handler");
-ssa.store(calls 0 tl 0 8 cp[0]);
-ret(calls 0 array of cr end);
-show("calls" calls);
+let calls = ssa.newFunction("qf_calls" false array of tInt tReal end array of tReal end)
+let cp = params(calls)
+let cargs = array of(10 cp[0])
+cargs[1] := cp[1]
+let cr = call(calls 0 "qf_local" cargs array of tReal end)[0]
+let fnAt = ssa.symbolAddress(calls 0 "qf_other")
+let ignored = call(calls 0 "" array of fnAt cp[0] end noTypes)
+let tl = ssa.threadLocal(calls 0 "quest_current_exception_handler")
+ssa.store(calls 0 tl 0 8 cp[0])
+ret(calls 0 array of cr end)
+show("calls" calls)
 
 (* 5. Tail calls: of itself, of another, and through a pointer *)
-let tails = ssa.newFunction("qf_tails" false array of tInt tPtr end array of tInt end);
-let tp = params(tails);
-let t1 = ssa.newBlock(tails);
-let t2 = ssa.newBlock(tails);
-let t3 = ssa.newBlock(tails);
-let t4 = ssa.newBlock(tails);
-branch(tails 0 tp[0] t1 t2);
-let sig = ssa.signature(array of tInt tPtr end array of tInt end none none);
+let tails = ssa.newFunction("qf_tails" false array of tInt tPtr end array of tInt end)
+let tp = params(tails)
+let t1 = ssa.newBlock(tails)
+let t2 = ssa.newBlock(tails)
+let t3 = ssa.newBlock(tails)
+let t4 = ssa.newBlock(tails)
+branch(tails 0 tp[0] t1 t2)
+let sig = ssa.signature(array of tInt tPtr end array of tInt end none none)
 ssa.tailCall(tails t1 "qf_tails" array of ssa.binary(tails t1 ssa.opSub tp[0] ssa.constant(tails t1 1)) tp[1] end sig
-    array of tInt end);
-branch(tails t2 ssa.binary(tails t2 ssa.opPne tp[1] ssa.null(tails t2)) t3 t4);
-ssa.tailCall(tails t3 "qf_other" array of tp[0] tp[1] end sig array of tInt end);
+        array of tInt end)
+branch(tails t2 ssa.binary(tails t2 ssa.opPne tp[1] ssa.null(tails t2)) t3 t4)
+ssa.tailCall(tails t3 "qf_other" array of tp[0] tp[1] end sig array of tInt end)
 ssa.tailCall(tails t4 "" array of tp[1] tp[0] end ssa.signature(array of tPtr tInt end array of tInt end none none)
-    array of tInt end);
-show("tail calls" tails);
+        array of tInt end)
+show("tail calls" tails)
 
 (* 6. A switch, a constant too large for cmp's immediate among its cases *)
-let sw = ssa.newFunction("qf_switch" false array of tInt end array of tInt end);
-let swp = params(sw);
-let s1 = ssa.newBlock(sw);
-let s2 = ssa.newBlock(sw);
-let s3 = ssa.newBlock(sw);
-let s4 = ssa.newBlock(sw);
+let sw = ssa.newFunction("qf_switch" false array of tInt end array of tInt end)
+let swp = params(sw)
+let s1 = ssa.newBlock(sw)
+let s2 = ssa.newBlock(sw)
+let s3 = ssa.newBlock(sw)
+let s4 = ssa.newBlock(sw)
 ssa.terminate(sw 0 option termSwitch of ssa.Terminator with
-    let value = swp[0] let cases = array of 0 1 5000 end
+    let value = swp[0]
+    let cases = array of 0 1 5000 end
     let targets = array of ssa.target(s1 none) ssa.target(s2 none) ssa.target(s3 none) end
     let default = ssa.target(s4 none)
-end);
-ret(sw s1 array of ssa.constant(sw s1 1) end);
-ret(sw s2 array of ssa.constant(sw s2 2) end);
-ret(sw s3 array of ssa.constant(sw s3 3) end);
-ret(sw s4 array of swp[0] end);
-show("a switch" sw);
+end)
+ret(sw s1 array of ssa.constant(sw s1 1) end)
+ret(sw s2 array of ssa.constant(sw s2 2) end)
+ret(sw s3 array of ssa.constant(sw s3 3) end)
+ret(sw s4 array of swp[0] end)
+show("a switch" sw)
 
 (* 7. A try *)
-let tries = ssa.newFunction("qf_try" false array of tInt end array of tInt end);
-let handlerSlot = ssa.newSlot(tries 240 16);
-let tryBody = ssa.newBlock(tries);
-let handler = ssa.newBlock(tries);
-let before = ssa.binary(tries 0 ssa.opMul params(tries)[0] params(tries)[0]);
+let tries = ssa.newFunction("qf_try" false array of tInt end array of tInt end)
+let handlerSlot = ssa.newSlot(tries 240 16)
+let tryBody = ssa.newBlock(tries)
+let handler = ssa.newBlock(tries)
+let before = ssa.binary(tries 0 ssa.opMul params(tries)[0] params(tries)[0])
 ssa.terminate(tries 0 option termTry of ssa.Terminator with
-    let slot = handlerSlot let body = ssa.target(tryBody none) let handler = handler
-end);
-call(tries tryBody "quest_pop_handler" none noTypes);
-ret(tries tryBody array of params(tries)[0] end);
-ret(tries handler array of before end);
-show("a try" tries);
+    let slot = handlerSlot
+    let body = ssa.target(tryBody none)
+    let handler = handler
+end)
+call(tries tryBody "quest_pop_handler" none noTypes)
+ret(tries tryBody array of params(tries)[0] end)
+ret(tries handler array of before end)
+show("a try" tries)
 
 (* 8. Logical immediates: and, orr, and eor of bitmasks; 0x1234 is not one *)
-let logic = ssa.newFunction("qf_logic" false array of tInt end array of tInt end);
-let lp = params(logic);
-let l1 = ssa.binary(logic 0 ssa.opAnd lp[0] ssa.constant(logic 0 65280));
-let l2 = ssa.binary(logic 0 ssa.opOr ssa.constant(logic 0 6148914691236517205) l1);
-let l3 = ssa.binary(logic 0 ssa.opXor l2 ssa.constant(logic 0 ~16));
-let l4 = ssa.binary(logic 0 ssa.opAnd l3 ssa.constant(logic 0 4660));
-ret(logic 0 array of l4 end);
-show("logical immediates" logic);
+let logic = ssa.newFunction("qf_logic" false array of tInt end array of tInt end)
+let lp = params(logic)
+let l1 = ssa.binary(logic 0 ssa.opAnd lp[0] ssa.constant(logic 0 65280))
+let l2 = ssa.binary(logic 0 ssa.opOr ssa.constant(logic 0 6148914691236517205) l1)
+let l3 = ssa.binary(logic 0 ssa.opXor l2 ssa.constant(logic 0 ~16))
+let l4 = ssa.binary(logic 0 ssa.opAnd l3 ssa.constant(logic 0 4660))
+ret(logic 0 array of l4 end)
+show("logical immediates" logic)
 
 (* 9. Branches on bits: on an and of one bit (seen through a conversion to an
  * int), and on one compared with 0 *)
-let bits = ssa.newFunction("qf_bits" false array of tPtr tInt end array of tInt end);
-let bp = params(bits);
-let bt1 = ssa.newBlock(bits);
-let bt2 = ssa.newBlock(bits);
-let bt3 = ssa.newBlock(bits);
-let tag = ssa.binary(bits 0 ssa.opAnd ssa.emit(bits 0 ssa.opPtrToInt array of bp[0] end tInt) ssa.constant(bits 0 1));
-branch(bits 0 tag bt1 bt2);
-ret(bits bt1 array of ssa.constant(bits bt1 1) end);
-let high = ssa.binary(bits bt2 ssa.opAnd bp[1] ssa.constant(bits bt2 1099511627776));
-branch(bits bt2 ssa.binary(bits bt2 ssa.opEq high ssa.constant(bits bt2 0)) bt3 bt1);
-ret(bits bt3 array of ssa.constant(bits bt3 3) end);
-show("branches on bits" bits);
+let bits = ssa.newFunction("qf_bits" false array of tPtr tInt end array of tInt end)
+let bp = params(bits)
+let bt1 = ssa.newBlock(bits)
+let bt2 = ssa.newBlock(bits)
+let bt3 = ssa.newBlock(bits)
+let tag = ssa.binary(bits 0 ssa.opAnd ssa.emit(bits 0 ssa.opPtrToInt array of bp[0] end tInt) ssa.constant(bits 0 1))
+branch(bits 0 tag bt1 bt2)
+ret(bits bt1 array of ssa.constant(bits bt1 1) end)
+let high = ssa.binary(bits bt2 ssa.opAnd bp[1] ssa.constant(bits bt2 1099511627776))
+branch(bits bt2 ssa.binary(bits bt2 ssa.opEq high ssa.constant(bits bt2 0)) bt3 bt1)
+ret(bits bt3 array of ssa.constant(bits bt3 3) end)
+show("branches on bits" bits)
 
 (* 10. A branch on a conjunction of comparisons, the second with a small
  * immediate *)
-let conj = ssa.newFunction("qf_conj" false array of tInt tInt end array of tInt end);
-let cp = params(conj);
-let cj1 = ssa.newBlock(conj);
-let cj2 = ssa.newBlock(conj);
+let conj = ssa.newFunction("qf_conj" false array of tInt tInt end array of tInt end)
+let cp = params(conj)
+let cj1 = ssa.newBlock(conj)
+let cj2 = ssa.newBlock(conj)
 let both = ssa.binary(conj 0 ssa.opAnd ssa.binary(conj 0 ssa.opEq cp[0] cp[1])
-    ssa.binary(conj 0 ssa.opLt cp[1] ssa.constant(conj 0 7)));
-branch(conj 0 both cj1 cj2);
-ret(conj cj1 array of cp[0] end);
-ret(conj cj2 array of cp[1] end);
-show("a conjunction" conj);
+        ssa.binary(conj 0 ssa.opLt cp[1] ssa.constant(conj 0 7)))
+branch(conj 0 both cj1 cj2)
+ret(conj cj1 array of cp[0] end)
+ret(conj cj2 array of cp[1] end)
+show("a conjunction" conj)
 
 (* 11. Logical immediates, and the flags that falsify each condition *)
-writer.putString(writer.output "== logical immediates and falsifying flags\n");
-let candidates = array of 0 ~1 1 255 65280 6148914691236517205 ~16 4660 5 ~9223372036854775807 end;
+writer.putString(writer.output "== logical immediates and falsifying flags\n")
+let candidates = array of 0 ~1 1 255 65280 6148914691236517205 ~16 4660 5 ~9223372036854775807 end
 for i = 0 upto {extent candidates - 1} do
     writer.putString(writer.output conv.int(candidates[i]) <> ": " <> conv.bool(minst.isLogical(candidates[i])) <> "\n")
-end;
+end
 let conds = array of minst.condEq minst.condNe minst.condLt minst.condGe minst.condGt minst.condLe minst.condLo
-    minst.condHs minst.condHi minst.condLs minst.condMi minst.condPl minst.condVs minst.condVc end;
+    minst.condHs minst.condHi minst.condLs minst.condMi minst.condPl minst.condVs minst.condVc
+end
 for i = 0 upto {extent conds - 1} do
-    writer.putString(writer.output conv.int(minst.falsifying(conds[i])) <> if i < extent conds - 1 then " " else "\n" end)
-end;
+    writer.putString(writer.output conv.int(minst.falsifying(conds[i]))
+        <> if i < extent conds - 1 then
+            " "
+        else
+            "\n"
+        end)
+end
 
 (* 12. Addresses and narrow results: a load and a store of a symbol the unit
  * defines, at its page offset, and a load of one it does not; an element of
@@ -230,41 +242,42 @@ end;
  * register, shifted, and a byte at a ptrAdd of an index, not; an element's
  * address used twice, computed; and a Bool from a function of the unit,
  * not extended, and from one outside it, extended *)
-let folds = ssa.newFunction("qf_folds" false array of tPtr tInt end array of tInt end);
-let fp = params(folds);
-let global = ssa.symbolAddress(folds 0 "qd_global");
-let gv = ssa.load(folds 0 global 0 8 false tInt);
-ssa.store(folds 0 ssa.symbolAddress(folds 0 "qd_global") 0 8 gv);
-let outside = ssa.load(folds 0 ssa.symbolAddress(folds 0 "qd_outside") 0 8 false tInt);
-let scaled = ssa.binary(folds 0 ssa.opMul fp[1] ssa.constant(folds 0 8));
-let element = ssa.load(folds 0 ssa.ptrAdd(folds 0 fp[0] scaled) 0 8 false tInt);
-let scaled2 = ssa.binary(folds 0 ssa.opMul fp[1] ssa.constant(folds 0 8));
-ssa.store(folds 0 ssa.ptrAdd(folds 0 fp[0] scaled2) 0 8 element);
-let byte = ssa.load(folds 0 ssa.ptrAdd(folds 0 fp[0] fp[1]) 0 1 false tInt);
-let twiceAt = ssa.ptrAdd(folds 0 fp[0] ssa.binary(folds 0 ssa.opMul gv ssa.constant(folds 0 8)));
-let twice1 = ssa.load(folds 0 twiceAt 0 8 false tInt);
-let twice2 = ssa.load(folds 0 twiceAt 0 8 false tInt);
-let boolSig = ssa.withResult(ssa.signature(array of tInt end array of tInt end none none) ssa.passByte);
+let folds = ssa.newFunction("qf_folds" false array of tPtr tInt end array of tInt end)
+let fp = params(folds)
+let global = ssa.symbolAddress(folds 0 "qd_global")
+let gv = ssa.load(folds 0 global 0 8 false tInt)
+ssa.store(folds 0 ssa.symbolAddress(folds 0 "qd_global") 0 8 gv)
+let outside = ssa.load(folds 0 ssa.symbolAddress(folds 0 "qd_outside") 0 8 false tInt)
+let scaled = ssa.binary(folds 0 ssa.opMul fp[1] ssa.constant(folds 0 8))
+let element = ssa.load(folds 0 ssa.ptrAdd(folds 0 fp[0] scaled) 0 8 false tInt)
+let scaled2 = ssa.binary(folds 0 ssa.opMul fp[1] ssa.constant(folds 0 8))
+ssa.store(folds 0 ssa.ptrAdd(folds 0 fp[0] scaled2) 0 8 element)
+let byte = ssa.load(folds 0 ssa.ptrAdd(folds 0 fp[0] fp[1]) 0 1 false tInt)
+let twiceAt = ssa.ptrAdd(folds 0 fp[0] ssa.binary(folds 0 ssa.opMul gv ssa.constant(folds 0 8)))
+let twice1 = ssa.load(folds 0 twiceAt 0 8 false tInt)
+let twice2 = ssa.load(folds 0 twiceAt 0 8 false tInt)
+let boolSig = ssa.withResult(ssa.signature(array of tInt end array of tInt end none none) ssa.passByte)
 let mine = ssa.emit(folds 0 ssa.opZext8 array of ssa.call(folds 0 "qf_local" array of byte end boolSig
-    array of tInt end)[0] end tInt);
+        array of tInt end)[0] end tInt)
 let theirs = ssa.emit(folds 0 ssa.opZext8 array of ssa.call(folds 0 "qf_other" array of byte end boolSig
-    array of tInt end)[0] end tInt);
+        array of tInt end)[0] end tInt)
 let sum = ssa.binary(folds 0 ssa.opAdd ssa.binary(folds 0 ssa.opAdd outside twice1)
-    ssa.binary(folds 0 ssa.opAdd twice2 ssa.binary(folds 0 ssa.opAdd mine theirs)));
-ret(folds 0 array of sum end);
-show("addresses and narrow results" folds);
+        ssa.binary(folds 0 ssa.opAdd twice2 ssa.binary(folds 0 ssa.opAdd mine theirs)))
+ret(folds 0 array of sum end)
+show("addresses and narrow results" folds)
 
 (* 13. Comparisons with a negative constant, as cmn of its negation, and with
  * an immediate shifted by 12, as cmp; one too large keeps its constant *)
-let cmns = ssa.newFunction("qf_cmns" false array of tInt end array of tInt end);
-let cp = params(cmns);
-let lt1 = ssa.binary(cmns 0 ssa.opLt cp[0] ssa.constant(cmns 0 ~1));
-let eq5 = ssa.binary(cmns 0 ssa.opEq cp[0] ssa.constant(cmns 0 ~5));
-let ge = ssa.binary(cmns 0 ssa.opGe cp[0] ssa.constant(cmns 0 8192));
-let big = ssa.binary(cmns 0 ssa.opUlt cp[0] ssa.constant(cmns 0 ~5000));
-ret(cmns 0 array of ssa.binary(cmns 0 ssa.opAdd ssa.binary(cmns 0 ssa.opAdd lt1 eq5) ssa.binary(cmns 0 ssa.opAdd ge big))
-    end);
-show("negative and shifted comparisons" cmns);
+let cmns = ssa.newFunction("qf_cmns" false array of tInt end array of tInt end)
+let cp = params(cmns)
+let lt1 = ssa.binary(cmns 0 ssa.opLt cp[0] ssa.constant(cmns 0 ~1))
+let eq5 = ssa.binary(cmns 0 ssa.opEq cp[0] ssa.constant(cmns 0 ~5))
+let ge = ssa.binary(cmns 0 ssa.opGe cp[0] ssa.constant(cmns 0 8192))
+let big = ssa.binary(cmns 0 ssa.opUlt cp[0] ssa.constant(cmns 0 ~5000))
+ret(cmns 0
+        array of ssa.binary(cmns 0 ssa.opAdd ssa.binary(cmns 0 ssa.opAdd lt1 eq5) ssa.binary(cmns 0 ssa.opAdd ge big))
+        end)
+show("negative and shifted comparisons" cmns)
 
 (* 14. Switches (docs/arm64.md section 3.11): 12 cases from -3 to 12 with gaps,
  * a jump table, the value less -3 checked against 16, each entry a block of
@@ -281,18 +294,21 @@ let switchTo(f: ssa.Function b: Int v: Int cases: Array(Int) default: Int): Ok =
             targets[k] := ssa.target(t none)
         end
         ssa.terminate(f b option termSwitch of ssa.Terminator with
-            let value = v let cases = cases let targets = targets let default = ssa.target(default none)
+            let value = v
+            let cases = cases
+            let targets = targets
+            let default = ssa.target(default none)
         end)
-    end;
-let switches = ssa.newFunction("qf_switches" false array of tInt end array of tInt end);
-let swp = params(switches);
-let sDefault = ssa.newBlock(switches);
-ret(switches sDefault array of swp[0] end);
-let sSparse = ssa.newBlock(switches);
-let sFew = ssa.newBlock(switches);
-let sTable = ssa.newBlock(switches);
-ssa.terminate(switches 0 option termJump of ssa.Terminator with let target = ssa.target(sTable none) end);
-switchTo(switches sTable swp[0] array of ~3 ~2 0 1 2 4 5 7 8 9 11 12 end sSparse);
-switchTo(switches sSparse swp[0] array of 900 ~40 7 ~1 30 5000 200 60 0 end sFew);
-switchTo(switches sFew swp[0] array of 3 0 1 2 end sDefault);
-show("switches" switches);
+    end
+let switches = ssa.newFunction("qf_switches" false array of tInt end array of tInt end)
+let swp = params(switches)
+let sDefault = ssa.newBlock(switches)
+ret(switches sDefault array of swp[0] end)
+let sSparse = ssa.newBlock(switches)
+let sFew = ssa.newBlock(switches)
+let sTable = ssa.newBlock(switches)
+ssa.terminate(switches 0 option termJump of ssa.Terminator with let target = ssa.target(sTable none) end)
+switchTo(switches sTable swp[0] array of ~3 ~2 0 1 2 4 5 7 8 9 11 12 end sSparse)
+switchTo(switches sSparse swp[0] array of 900 ~40 7 ~1 30 5000 200 60 0 end sFew)
+switchTo(switches sFew swp[0] array of 3 0 1 2 end sDefault)
+show("switches" switches)

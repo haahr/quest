@@ -22,12 +22,13 @@
 
 interface Nodes
 import
-    questlang/common/location : questlang/common/Location
-    questlang/types/model : questlang/types/Model
-    questlang/repr/shapes : questlang/repr/Shapes
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/maybe : util/Maybe
+
+    questlang/common/location : questlang/common/Location
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/types/model : questlang/types/Model
 export
     Def Type = model.Type
     Def Shape = shapes.Shape
@@ -768,7 +769,12 @@ export
         var witness: maybe.T(DescriptorParam)
     end
     and StmtLoop = Tuple label: String var body: Body end
-    and StmtTry = Tuple var body: Body var exc: Variable var handler: Body catching: Catching var catches: Array(Atom) end
+    and StmtTry = Tuple var body: Body
+        var exc: Variable
+        var handler: Body
+        catching: Catching
+        var catches: Array(Atom)
+    end
     and StmtJoin = Tuple label: String var params: Array(Variable) var continuation: Body var body: Body end
     and StmtEcho = Tuple var pos: Int var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
     and StmtEchoText = Tuple text: String end
@@ -864,13 +870,13 @@ export
     (* Whether plan p is of kind k *)
     planIs(p: Plan k: PlanKind): Bool
     newFunction(v: Variable typeParams: Array(TypeParam) params: Array(ParamEntry) resultType: Type body: Body
-        traceName: maybe.T(String)): Function
+            traceName: maybe.T(String)): Function
     newMembers(): Members
     addMember(m: Members name: String v: Variable): Ok
     member(m: Members name: String): maybe.T(Variable)
     newModule(name: String interfaceName: String init: Body members: Members): Module
     newImport(name: String modulePath: String canonicalPath: String interfacePath: String recordType: maybe.T(Type)
-        libPath: maybe.T(String)): Import
+            libPath: maybe.T(String)): Import
     newUnit(main: Body modules: vector.T(Module) imports: Array(Import) sourceMap: maybe.T(location.SourceMap)): Unit
 
     (* The offset in a unit of offset in its file numbered file: 0 for the
@@ -893,15 +899,15 @@ export
     (* Operations with their other fields at their defaults *)
     prim(op: Prim args: Array(Atom) offset: maybe.T(Int)): Op
     call(callee: maybe.T(Variable) typeArgs: Array(Type) args: Array(Atom) moduleRef: maybe.T(ModuleRef)
-        member: maybe.T(String) calleeType: maybe.T(Type)): Op
+            member: maybe.T(String) calleeType: maybe.T(Type)): Op
     typeApp(callee: maybe.T(Variable) typeArgs: Array(Type) moduleRef: maybe.T(ModuleRef) member: maybe.T(String)
-        calleeType: maybe.T(Type)): Op
+            calleeType: maybe.T(Type)): Op
     makeTuple(args: Array(Atom) typeComponents: Array(TypeComponent)): Op
     tupleField(tup: Atom index: Int): Op
     makeRecord(fields: Array(FieldAtom)): Op
     recordField(recordAtom: Atom name: String): Op
     makeOption(tag: maybe.T(String) payload: maybe.T(Atom) ordinalAtom: maybe.T(Atom) offset: maybe.T(Int)
-        cases: Array(String)): Op
+            cases: Array(String)): Op
     isTag(value: Atom tag: String): Op
     payload(value: Atom tag: String offset: maybe.T(Int) ordinalIndex: maybe.T(Int)): Op
     ordinalOf(value: Atom cases: Array(String)): Op
@@ -909,7 +915,7 @@ export
     (* Statements with their other fields at their defaults *)
     switchStmt(value: Atom cases: Array(Case) elseBody: maybe.T(Body)): Stmt
     inspectStmt(value: Atom cases: Array(InspectCase) elseBody: maybe.T(Body) autoType: maybe.T(Type)
-        offset: maybe.T(Int)): Stmt
+            offset: maybe.T(Int)): Stmt
     newCase(tags: Array(String) body: Body binder: maybe.T(Variable)): Case
     newInspectCase(matchType: Type binders: Array(Variable) body: Body exact: Bool): InspectCase
 

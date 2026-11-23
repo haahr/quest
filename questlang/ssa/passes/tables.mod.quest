@@ -2,11 +2,13 @@
 
 module tables : Tables
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/cfg : questlang/ssa/Cfg
+    conv : Conv
+
     collections/vector : collections/Vector
     util/maybe : util/Maybe
-    conv : Conv
+
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let Function = ssa.Function
     Let Defs = Array(maybe.T(ssa.Inst))
@@ -41,7 +43,8 @@ export
             let var going = true
             while going do
                 going := false
-                if extent at.args > 0 then result := maybe.some(at)
+                if extent at.args > 0 then
+                    result := maybe.some(at)
                 else
                     let blk = ssa.block(f at.block)
                     if {vector.length(blk.params) is 0} andif {steps < longest} andif onlyConstants(blk) then
@@ -50,7 +53,8 @@ export
                                 at := x.target
                                 steps := steps + 1
                                 going := true
-                            when termNone, termBranch, termSwitch, termReturn, termTailCall, termTry, termUnreachable then
+                            when termNone, termBranch, termSwitch, termReturn, termTailCall, termTry,
+                                    termUnreachable then
                                 ok
                         end
                     end
@@ -62,13 +66,15 @@ export
     (* The word of static data that is v, if an opConst or an opSymbol
      * defines it *)
     let wordOf(defs: Defs v: Int): maybe.T(ssa.Word) =
-        if maybe.isNone(defs[v]) then maybe.none()
+        if maybe.isNone(defs[v]) then
+            maybe.none()
         else
             let i = maybe.unwrap(defs[v])
             if ssa.isOp(i ssa.opConst) then maybe.some(option wordInt of ssa.Word with let n = i.imm end)
             elsif ssa.isOp(i ssa.opSymbol) then
                 maybe.some(option wordSymbol of ssa.Word with let symbol = i.symbol let addend = i.imm end)
-            else maybe.none() end
+            else maybe.none()
+            end
         end
 
     (* A switch's plan: the join, the least case and the range's size, and for
@@ -86,7 +92,8 @@ export
     (* The lookup-table plan for a switch over cases/targets with the given
      * default target, or none if the switch cannot be converted *)
     let plan(f: Function defs: Defs cases: Array(Int) targets: Array(ssa.Target) default: ssa.Target): maybe.T(Plan) =
-        if extent cases < fewest then maybe.none()
+        if extent cases < fewest then
+            maybe.none()
         else
             let var least = cases[0]
             let var most = cases[0]
@@ -106,7 +113,8 @@ export
                     if maybe.isNone(arms[k]) then fits := false end
                 end
             end
-            if not(fits) then maybe.none()
+            if not(fits) then
+                maybe.none()
             else
                 let size = spread + 1
                 let first = maybe.unwrap(arms[0])
@@ -147,13 +155,15 @@ export
                             (* The default's word fills the gaps *)
                             let filler = if gaps then wordOf(defs maybe.unwrap(other).args[p])
                                 else maybe.some(option wordInt of ssa.Word with let n = 0 end) end
-                            if maybe.isNone(filler) then fits := false
+                            if maybe.isNone(filler) then
+                                fits := false
                             else
                                 let ws = array of(size maybe.unwrap(filler))
                                 for k = 0 upto {extent cases - 1} do
                                     let w = wordOf(defs maybe.unwrap(arms[k]).args[p])
                                     if maybe.isNone(w) then fits := false
-                                    else ws[cases[k] - least] := maybe.unwrap(w) end
+                                    else ws[cases[k] - least] := maybe.unwrap(w)
+                                    end
                                 end
                                 words[p] := ws
                             end
@@ -162,10 +172,16 @@ export
                 end
                 if fits andif anyVaries then
                     maybe.some(tuple
-                        let join = join let least = least let size = size
-                        let varies = varies let same = same let words = words
+                        let join = join
+                        let least = least
+                        let size = size
+                        let varies = varies
+                        let same = same
+                        let words = words
                     end)
-                else maybe.none() end
+                else
+                    maybe.none()
+                end
             end
         end
 
@@ -183,7 +199,9 @@ export
             let load = ssa.newBlock(f)
             ssa.block(f load).termLoc := blk.termLoc
             blk.term := option termBranch of ssa.Terminator with
-                let cond = inRange let ifTrue = ssa.target(load array of :Int end) let ifFalse = default
+                let cond = inRange
+                let ifTrue = ssa.target(load array of :Int end)
+                let ifFalse = default
             end
             let params = ssa.block(f p.join).params
             let args = array of(extent p.same 0)
@@ -196,7 +214,9 @@ export
                     vector.append(u.data ssa.words(name false false p.words[k]))
                     let address = ssa.ptrAdd(f load ssa.symbolAddress(f load name) offset)
                     args[k] := ssa.invariantLoad(f load address 0 8 false ssa.typeOf(f vector.get(params k)))
-                else args[k] := p.same[k] end
+                else
+                    args[k] := p.same[k]
+                end
             end
             ssa.terminate(f load option termJump of ssa.Terminator with let target = ssa.target(p.join args) end)
         end
@@ -222,7 +242,7 @@ export
                             let p = plan(f defs x.cases x.targets x.default)
                             if maybe.isSome(p) then
                                 convert(u f b x.value x.default maybe.unwrap(p)
-                                    "qt_" <> f.symbol <> "_" <> conv.int(made))
+                                        "qt_" <> f.symbol <> "_" <> conv.int(made))
                                 made := made + 1
                             end
                         when termNone, termJump, termBranch, termReturn, termTailCall, termTry, termUnreachable then ok

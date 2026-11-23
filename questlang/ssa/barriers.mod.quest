@@ -2,17 +2,19 @@
 
 module barriers : Barriers
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/cfg : questlang/ssa/Cfg
-    questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/bitset : collections/Bitset
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
 export
     Let Function = ssa.Function
 
@@ -37,7 +39,8 @@ export
         m
     end
     let callKind(i: ssa.Inst): Int =
-        if ssa.isOp(i ssa.opCallIndirect) then callCollects
+        if ssa.isOp(i ssa.opCallIndirect) then
+            callCollects
         else
             let found = hashMap.get(kinds i.symbol)
             if maybe.isSome(found) then maybe.unwrap(found) else callCollects end
@@ -94,8 +97,7 @@ export
                     end
                 end
             end
-            let isDef(v: Int op: ssa.Opcode): Bool =
-                defined[v] andif ssa.isOp(vector.get(defs[v] defAt[v]) op)
+            let isDef(v: Int op: ssa.Opcode): Bool = defined[v] andif ssa.isOp(vector.get(defs[v] defAt[v]) op)
             let defOf(v: Int): ssa.Inst = vector.get(defs[v] defAt[v])
             (* Where an address comes from: the value its ptrAdds and copies
              * start at, and the bytes they add, if constants *)
@@ -109,10 +111,14 @@ export
                         if isDef(root ssa.opPtrAdd) then
                             let i = defOf(root)
                             if isDef(i.args[1] ssa.opConst) then offset := offset + defOf(i.args[1]).imm
-                            else exact := false end
+                            else exact := false
+                            end
                             root := i.args[0]
-                        elsif isDef(root ssa.opCopy) then root := defOf(root).args[0]
-                        else going := false end
+                        elsif isDef(root ssa.opCopy) then
+                            root := defOf(root).args[0]
+                        else
+                            going := false
+                        end
                     end
                     tuple let root = root let offset = offset let exact = exact end
                 end
@@ -158,8 +164,13 @@ export
                             let id = vector.length(stores)
                             let ignored = hashMap.insert(storeOf starts[b] + j id)
                             vector.append(stores tuple
-                                let root = root let offset = place.offset let exact = place.exact
-                                let address = i.args[0] let imm = i.imm let block = b let index = j
+                                let root = root
+                                let offset = place.offset
+                                let exact = place.exact
+                                let address = i.args[0]
+                                let imm = i.imm
+                                let block = b
+                                let index = j
                             end)
                         end
                     end
@@ -267,7 +278,8 @@ export
                                 let p = g.preds[b][k]
                                 if visited[p] then
                                     if first then bitset.assign(fresh freshOut[p])
-                                    else begin let ignored = bitset.intersectWith(fresh freshOut[p]) end end
+                                    else begin let ignored = bitset.intersectWith(fresh freshOut[p]) end
+                                    end
                                     first := false
                                     begin let ignored = bitset.unionWith(owed owedOut[p]) end
                                 end
@@ -284,7 +296,7 @@ export
                         enter(b fresh owed)
                         transfer(b fresh owed false)
                         if not(visited[b]) orif not(bitset.equal(fresh freshOut[b]))
-                            orif not(bitset.equal(owed owedOut[b])) then
+                                orif not(bitset.equal(owed owedOut[b])) then
                             visited[b] := true
                             bitset.assign(freshOut[b] fresh)
                             bitset.assign(owedOut[b] owed)

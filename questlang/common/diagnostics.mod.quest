@@ -2,13 +2,15 @@
 
 module diagnostics : Diagnostics
 import
-    questlang/common/location : questlang/common/Location
+    ascii : Ascii
+    stringOp = string : StringOp
+    writer : Writer
+
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/stringBuilder : util/StringBuilder
-    writer : Writer
-    stringOp = string : StringOp
-    ascii : Ascii
+
+    questlang/common/location : questlang/common/Location
 export
     Let Severity = Option
         fatal
@@ -46,17 +48,13 @@ export
             let var trace = array of :String end
         end
 
-    let fatal(msg: String sp: location.Span): Diagnostic =
-        make(option fatal of Severity end msg sp)
+    let fatal(msg: String sp: location.Span): Diagnostic = make(option fatal of Severity end msg sp)
 
-    let error(msg: String sp: location.Span): Diagnostic =
-        make(option error of Severity end msg sp)
+    let error(msg: String sp: location.Span): Diagnostic = make(option error of Severity end msg sp)
 
-    let warning(msg: String sp: location.Span): Diagnostic =
-        make(option warning of Severity end msg sp)
+    let warning(msg: String sp: location.Span): Diagnostic = make(option warning of Severity end msg sp)
 
-    let info(msg: String sp: location.Span): Diagnostic =
-        make(option info of Severity end msg sp)
+    let info(msg: String sp: location.Span): Diagnostic = make(option info of Severity end msg sp)
 
     let severity(d: Diagnostic): Severity = d.severity
     let message(d: Diagnostic): String = d.message
@@ -76,8 +74,7 @@ export
             vector.append(d.labels l)
         end
 
-    let addNote(d: Diagnostic note: String): Ok =
-        vector.append(d.notes note)
+    let addNote(d: Diagnostic note: String): Ok = vector.append(d.notes note)
 
     let setHelp(d: Diagnostic h: String): Ok =
         begin
@@ -234,7 +231,8 @@ export
                     for j = 0 upto {stringOp.length(note) - 1} do
                         let c = stringOp.getChar(note j)
                         if ascii.val(c) is 10 then stringBuilder.str(sb "\n          ")
-                        else stringBuilder.char(sb c) end
+                        else stringBuilder.char(sb c)
+                        end
                     end
                     stringBuilder.char(sb '\n')
                 end
@@ -250,8 +248,7 @@ export
             stringBuilder.toString(sb)
         end
 
-    let render(d: Diagnostic sm: location.SourceMap w: writer.T): Ok =
-        writer.putString(w format(d sm))
+    let render(d: Diagnostic sm: location.SourceMap w: writer.T): Ok = writer.putString(w format(d sm))
 
     (* ======================================================================
      * Errors raised where they are found
@@ -336,7 +333,8 @@ export
         else
             begin
                 vector.append(e.labels tuple
-                    let sp = location.span(file offset {offset + length}) let message = "imported here"
+                    let sp = location.span(file offset {offset + length})
+                    let message = "imported here"
                     let isPrimary = false
                 end)
                 e

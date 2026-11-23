@@ -3,17 +3,19 @@
  * SML/NJ benchmark suite; COPYRIGHT (c) 1992 AT&T Bell Laboratories) *)
 
 import
+    ascii : Ascii
+    reader : Reader
+    real : RealOp
+    stringOp = string : StringOp
+    system : System
+    writer : Writer
+
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+
     support/bench : support/Bench
     support/lists : support/Lists
     support/reals : support/Reals
-    util/maybe : util/Maybe
-    util/strutil : util/Strutil
-    stringOp = string : StringOp
-    real : RealOp
-    ascii : Ascii
-    reader : Reader
-    writer : Writer
-    system : System
 
 (* objects.sml: Type declarations for the various objects in the ray tracer *)
 
@@ -75,7 +77,8 @@ let dictInsert(key: Object value: Object): Ok =
                         when cons with c then
                             if stringOp.equal(k.s c.hd.key) then
                                 lists.cons(:Entry)(tuple let key = k.s let value = value end c.tl)
-                            else lists.cons(:Entry)(c.hd find(c.tl))
+                            else
+                                lists.cons(:Entry)(c.hd find(c.tl))
                             end
                     end
                 dict.entries := find(dict.entries)
@@ -199,10 +202,14 @@ let parse(inStrm: reader.T): Ok =
                                 end
                             lp(getCode(ins))
                         end
-                    elsif c is ascii.val('{') then tuple let obj = option mark of Object end
-                        let deferred = deferred + 1 end
-                    elsif c is ascii.val('}') then tuple let obj = option unmark of Object end
-                        let deferred = deferred - 1 end
+                    elsif c is ascii.val('{') then tuple
+                        let obj = option mark of Object end
+                        let deferred = deferred + 1
+                    end
+                    elsif c is ascii.val('}') then tuple
+                        let obj = option unmark of Object end
+                        let deferred = deferred - 1
+                    end
                     elsif isSpace(c) then doChar(getCode(ins))
                     else
                         begin
@@ -210,26 +217,29 @@ let parse(inStrm: reader.T): Ok =
                                 begin
                                     let p = peekCode(ins)
                                     if {p is ascii.val('{')} orif {p is ascii.val('}')} orif {p is ascii.val('%')}
-                                        orif isSpace(p) orif {p is ~1} then buf
+                                            orif isSpace(p) orif {p is ~1} then buf
                                     else begin getCode(ins) lp(lists.cons(:Char)(ascii.char(p) buf)) end
                                     end
                                 end
                             let chars = lists.rev(:Char)(lp(lists.cons(:Char)(ascii.char(c) lists.nil(:Char))))
                             let tok = stringOp.new(lists.length(:Char)(chars) ' ')
                             let rec fill(l: lists.T(Char) i: Int): Ok =
-                                case l when cons with x
-                                    then begin stringOp.setChar(tok i x.hd) fill(x.tl i + 1) end else ok end
+                                case l when cons with x then
+                                    begin stringOp.setChar(tok i x.hd) fill(x.tl i + 1) end else ok
+                                end
                             fill(chars 0)
                             let hd = ascii.val(stringOp.getChar(tok 0))
                             if hd is ascii.val('/') then
                                 tuple
                                     let obj = option literal of Object with
-                                        stringOp.getSub(tok 1 stringOp.length(tok) - 1) end
+                                        stringOp.getSub(tok 1 stringOp.length(tok) - 1)
+                                    end
                                     let deferred = deferred
                                 end
                             elsif isDigit(hd) orif {hd is ascii.val('-')} then
                                 tuple let obj = number(strToReal(tok)) let deferred = deferred end
-                            else tuple let obj = option name of Object with tok end let deferred = deferred end
+                            else
+                                tuple let obj = option name of Object with tok end let deferred = deferred end
                             end
                         end
                     end
@@ -259,7 +269,8 @@ let parse(inStrm: reader.T): Ok =
                                 case l when cons with c then begin exec(c.hd stk 0) execBody(c.tl stk) end else stk end
                             execBody(x.l stk)
                         end
-                    else push(obj stk)
+                    else
+                        push(obj stk)
                     end
                 when name with x then
                     if level is 0 then
@@ -272,7 +283,8 @@ let parse(inStrm: reader.T): Ok =
                                 end
                             exec(find(dict.entries) stk 0)
                         end
-                    else push(obj stk)
+                    else
+                        push(obj stk)
                     end
                 else push(obj stk)
             end
@@ -331,7 +343,8 @@ let intersectSphere(ray: Ray s: Sphere): Hit =
         let b = 2.0 ** dotProd(sdiffc ray.d)
         let c = dotProd(sdiffc sdiffc) -- {s.r ** s.r}
         let d = {b ** b} -- {{4.0 ** a} ** c}
-        if d <<= 0.0 then option miss of Hit end
+        if d <<= 0.0 then
+            option miss of Hit end
         else
             begin
                 let sd = real.sqrt(d)
@@ -438,34 +451,42 @@ let picture(picName: String objList: lists.T(Sphere)): Ok =
 let psColor(stk: Stack): Stack =
     case stk
         when cons with c1 then case c1.hd when number with blu then
-        case c1.tl when cons with c2 then case c2.hd when number with grn then
-        case c2.tl when cons with c3 then case c3.hd when number with red then
-            begin
-                let c: Color = tuple let red = red.n let grn = grn.n let blu = blu.n end
-                push(option color of Object with c end c3.tl)
-            end
-        else error("color" stk) end else error("color" stk) end
-        else error("color" stk) end else error("color" stk) end
-        else error("color" stk) end else error("color" stk) end
+            case c1.tl when cons with c2 then case c2.hd when number with grn then
+                case c2.tl when cons with c3 then case c3.hd when number with red then
+                    begin
+                        let c: Color = tuple let red = red.n let grn = grn.n let blu = blu.n end
+                        push(option color of Object with c end c3.tl)
+                    end
+                    else error("color" stk)
+                end else error("color" stk) end
+                else error("color" stk)
+            end else error("color" stk) end
+            else error("color" stk)
+        end else error("color" stk) end
 
 (* pop radius, coordinates of center, and a color and push a sphere
  * usage: radius x y z color-value sphere *)
 let psSphere(stk: Stack): Stack =
     case stk
         when cons with c1 then case c1.hd when color with col then
-        case c1.tl when cons with c2 then case c2.hd when number with z then
-        case c2.tl when cons with c3 then case c3.hd when number with y then
-        case c3.tl when cons with c4 then case c4.hd when number with x then
-        case c4.tl when cons with c5 then case c5.hd when number with rad then
-            begin
-                let s: Sphere = tuple let c = pt(x.n y.n z.n) let r = rad.n let color = col.c end
-                push(option sphere of Object with s end c5.tl)
-            end
-        else error("sphere" stk) end else error("sphere" stk) end
-        else error("sphere" stk) end else error("sphere" stk) end
-        else error("sphere" stk) end else error("sphere" stk) end
-        else error("sphere" stk) end else error("sphere" stk) end
-        else error("sphere" stk) end else error("sphere" stk) end
+            case c1.tl when cons with c2 then case c2.hd when number with z then
+                case c2.tl when cons with c3 then case c3.hd when number with y then
+                    case c3.tl when cons with c4 then case c4.hd when number with x then
+                        case c4.tl when cons with c5 then case c5.hd when number with rad then
+                            begin
+                                let s: Sphere = tuple let c = pt(x.n y.n z.n) let r = rad.n let color = col.c end
+                                push(option sphere of Object with s end c5.tl)
+                            end
+                            else error("sphere" stk)
+                        end else error("sphere" stk) end
+                        else error("sphere" stk)
+                    end else error("sphere" stk) end
+                    else error("sphere" stk)
+                end else error("sphere" stk) end
+                else error("sphere" stk)
+            end else error("sphere" stk) end
+            else error("sphere" stk)
+        end else error("sphere" stk) end
 
 (* Build an object list from solids on the stack, then invoke raytracer *)
 let psRaytrace(stk: Stack): Stack =

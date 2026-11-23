@@ -2,24 +2,26 @@
 
 module workers : Workers
 import
-    questlang/codegen/choice : questlang/codegen/Choice
-    questlang/common/location : questlang/common/Location
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    util/json : util/Json
-    questlang/common/files : questlang/common/Files
-    questlang/modules/graph : questlang/modules/Graph
-    questlang/modules/stdlib : questlang/modules/Stdlib
-    questlang/modules/artifacts/moduleCompiler : questlang/modules/artifacts/ModuleCompiler
-    questlang/typechecker/typecheck : questlang/typechecker/Typecheck
-    questlang/build/compilerRunner : questlang/build/CompilerRunner
+    conv : Conv
+    stringOp = string : StringOp
+    system : System
+    writer : Writer
+
     collections/vector : collections/Vector
+    os/process : os/Process
+    util/json : util/Json
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    os/process : os/Process
-    stringOp = string : StringOp
-    conv : Conv
-    writer : Writer
-    system : System
+
+    questlang/build/compilerRunner : questlang/build/CompilerRunner
+    questlang/codegen/choice : questlang/codegen/Choice
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/files : questlang/common/Files
+    questlang/common/location : questlang/common/Location
+    questlang/modules/artifacts/moduleCompiler : questlang/modules/artifacts/ModuleCompiler
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/stdlib : questlang/modules/Stdlib
+    questlang/typechecker/typecheck : questlang/typechecker/Typecheck
 export
     Let Job = Tuple
         source: String
@@ -90,8 +92,7 @@ export
         case v when jString with x then maybe.some(x.s) else maybe.none() end
     let number(v: json.Value): Int = case v when jNumber with x then strutil.toInt(x.text) else 0 end
     let flag(v: json.Value): Bool = case v when jBool with x then x.b else false end
-    let items(v: json.Value): vector.T(json.Value) =
-        case v when jArray with x then x.items else vector.new() end
+    let items(v: json.Value): vector.T(json.Value) = case v when jArray with x then x.items else vector.new() end
 
     (* Registers file's source map so the driver can display error lines from
      * it *)
@@ -143,14 +144,18 @@ export
     let raiseFailure(o: Outcome): Ok =
         if maybe.isSome(o.failure) then
             let failure = maybe.unwrap(o.failure)
-            let decoded = try maybe.some(json.parse(failure))
-                when json.error then maybe.none(:json.Value) end
-            let obj = if maybe.isSome(decoded) then
-                case maybe.unwrap(decoded) when jObject with x then maybe.some(x.o)
-                    else maybe.none(:json.Object) end
-            else
-                maybe.none(:json.Object)
-            end
+            let decoded =
+                try maybe.some(json.parse(failure))
+                when json.error then maybe.none(:json.Value)
+                end
+            let obj =
+                if maybe.isSome(decoded) then
+                    case maybe.unwrap(decoded) when jObject with x then maybe.some(x.o)
+                        else maybe.none(:json.Object)
+                    end
+                else
+                    maybe.none(:json.Object)
+                end
             if maybe.isNone(obj) then
                 raise compilerRunner.failure with failure end
             else
@@ -351,7 +356,8 @@ export
             stdlib.install()
             (* One resolver for the batch, as a serial build has one for all *)
             let backends = tuple
-                let default = backend let overrides = vector.toArray(overrides)
+                let default = backend
+                let overrides = vector.toArray(overrides)
                 let variants = vector.toArray(variants)
             end
             let resolver = graph.newResolver()
@@ -359,20 +365,21 @@ export
             let var failed = maybe.none(:String)
             for b = 0 upto {vector.length(sources) - 1} do
                 if maybe.isNone(failed) then
-                    let failure = try
-                        begin
-                            typecheck.install()
-                            moduleCompiler.compileModuleFile(vector.get(sources b)
-                                maybe.some(vector.get(targetDirs b)) vector.toArray(searchPaths)
-                                compiler nogc vector.toArray(cflags) buildDir programDir
-                                maybe.some(resolver) backends reportInferable)
-                            maybe.none(:String)
+                    let failure =
+                        try
+                            begin
+                                typecheck.install()
+                                moduleCompiler.compileModuleFile(vector.get(sources b)
+                                        maybe.some(vector.get(targetDirs b)) vector.toArray(searchPaths)
+                                        compiler nogc vector.toArray(cflags) buildDir programDir
+                                        maybe.some(resolver) backends reportInferable)
+                                maybe.none(:String)
+                            end
+                        when diagnostics.compilerError with err then
+                            maybe.some(encodeError(err))
+                        when compilerRunner.failure with m then
+                            maybe.some(encodeMessage("runner" m))
                         end
-                    when diagnostics.compilerError with err then
-                        maybe.some(encodeError(err))
-                    when compilerRunner.failure with m then
-                        maybe.some(encodeMessage("runner" m))
-                    end
                     if maybe.isSome(failure) then
                         failed := maybe.some(conv.int(b) <> "\n" <> maybe.unwrap(failure))
                     end

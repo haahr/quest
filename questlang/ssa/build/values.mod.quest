@@ -2,27 +2,29 @@
 
 module values : Values
 import
-    questlang/types/model : questlang/types/Model
-    ir = questlang/ir/nodes : questlang/ir/Nodes
-    questlang/repr/shapes : questlang/repr/Shapes
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/cfg : questlang/ssa/Cfg
-    questlang/repr/layout : questlang/repr/Layout
-    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
-    questlang/repr/symbols : questlang/repr/Symbols
-    questlang/repr/staticdata : questlang/repr/StaticData
-    questlang/repr/objectLayout : questlang/repr/ObjectLayout
-    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
-    questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
+    ascii : Ascii
+    conv : Conv
+    stringOp = string : StringOp
+    word : Word
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
-    stringOp = string : StringOp
-    conv : Conv
-    word : Word
-    ascii : Ascii
+
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/objectLayout : questlang/repr/ObjectLayout
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/repr/staticdata : questlang/repr/StaticData
+    questlang/repr/symbols : questlang/repr/Symbols
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
+    questlang/types/model : questlang/types/Model
 export
     Let Type = model.Type
     Let Variable = ir.Variable
@@ -90,7 +92,8 @@ export
      * word, a record or variant as a pointer to its box
      * (layout.isBoxedInSlots), a Bool or Char widened to the word *)
     let slotParts(t: Type): Array(Part) =
-        if layout.isBoxedInSlots(shapes.shape(t)) then array of wordPart(tPtr) end
+        if layout.isBoxedInSlots(shapes.shape(t)) then
+            array of wordPart(tPtr) end
         else
             let ps = parts(t)
             let r = array of(extent ps wordPart(tInt))
@@ -238,7 +241,12 @@ export
         begin
             if not(hashMap.contains(u.codeNames f.id)) then
                 let base = symbols.mangleIdent(if stringOp.length(f.v.hint) > 0 then f.v.hint else "fun" end)
-                let bare = if strutil.startsWith(base "qv_") then stringOp.getSub(base 3 {stringOp.length(base) - 3}) else base end
+                let bare =
+                    if strutil.startsWith(base "qv_") then
+                        stringOp.getSub(base 3 {stringOp.length(base) - 3})
+                    else
+                        base
+                    end
                 put(u.codeNames f.id freshName(u "qf_" <> bare))
             end
             hashMap.find(u.codeNames f.id)
@@ -251,14 +259,22 @@ export
         begin
             if not(hashMap.contains(u.globalSymbols v.id)) then
                 let base = symbols.mangleIdent(if stringOp.length(v.hint) > 0 then v.hint else "global" end)
-                let bare = if strutil.startsWith(base "qv_") then stringOp.getSub(base 3 {stringOp.length(base) - 3}) else base end
+                let bare =
+                    if strutil.startsWith(base "qv_") then
+                        stringOp.getSub(base 3 {stringOp.length(base) - 3})
+                    else
+                        base
+                    end
                 let symbol = freshName(u "g_" <> bare)
                 put(u.globalSymbols v.id symbol)
                 let ps = varParts(v)
                 let n = extent ps
                 vector.append(u.built.data tuple
-                    let symbol = symbol let exported = false let writable = true
-                    let contents = option contentsZero of ssa.Contents with let bytes = 8 * {if n > 0 then n else 1 end} end
+                    let symbol = symbol
+                    let exported = false
+                    let writable = true
+                    let contents =
+                        option contentsZero of ssa.Contents with let bytes = 8 * {if n > 0 then n else 1 end} end
                 end)
                 if partsHoldPointer(ps) then
                     vector.append(u.roots tuple let symbol = symbol let words = n end)
@@ -276,7 +292,9 @@ export
                 let symbol = "qs_" <> conv.int(u.stringCount)
                 put(u.strings s symbol)
                 vector.append(u.built.data tuple
-                    let symbol = symbol let exported = false let writable = false
+                    let symbol = symbol
+                    let exported = false
+                    let writable = false
                     let contents = option contentsText of ssa.Contents with let text = s end
                 end)
             end
@@ -324,16 +342,18 @@ export
     let symbolAt(fn: Fn symbol: String): Int = ssa.symbolAddress(fn.f fn.cur symbol)
     let symbolPlus(fn: Fn symbol: String addend: Int): Int = ssa.symbolPlus(fn.f fn.cur symbol addend)
     let threadLocal(fn: Fn symbol: String): Int = ssa.threadLocal(fn.f fn.cur symbol)
-    let load(fn: Fn address: Int offset: Int p: Part): Int = ssa.load(fn.f fn.cur address offset p.width p.signed p.type)
+    let load(fn: Fn address: Int offset: Int p: Part): Int =
+        ssa.load(fn.f fn.cur address offset p.width p.signed p.type)
     let loadWord(fn: Fn address: Int offset: Int t: ssa.Type): Int = ssa.load(fn.f fn.cur address offset 8 false t)
     let invariantWord(fn: Fn address: Int offset: Int t: ssa.Type): Int =
         ssa.invariantLoad(fn.f fn.cur address offset 8 false t)
-    let store(fn: Fn address: Int offset: Int width: Int value: Int): Ok = ssa.store(fn.f fn.cur address offset width value)
+    let store(fn: Fn address: Int offset: Int width: Int value: Int): Ok =
+        ssa.store(fn.f fn.cur address offset width value)
     let barrierOn(fn: Fn obj: Int): Ok =
         begin
             let r = runtimeFunctions.function("quest_barrier")
             ssa.call(fn.f fn.cur "quest_barrier" array of obj end runtimeFunctions.signature(r)
-                runtimeFunctions.resultTypes(r))
+                    runtimeFunctions.resultTypes(r))
             ok
         end
     (* Runs before any call that may trigger garbage collection: emits a write
@@ -404,7 +424,7 @@ export
     (* A call of a Quest function: of the unit's or another unit's (or with
      * symbol "", of the code pointer args[0]), its results *)
     let callQuest(fn: Fn symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int) results: Array(Part))
-        : Array(Int) =
+            : Array(Int) =
         begin
             mayCollect(fn)
             ssa.call(fn.f fn.cur symbol args signatureOf(typesOfValues(fn args) pairs narrow results) typesOf(results))
@@ -481,8 +501,7 @@ export
         end
 
     (* The opcode extending a narrow part's byte *)
-    let extension(p: Part): ssa.Opcode =
-        if p.signed then ssa.opSext8 else ssa.opZext8 end
+    let extension(p: Part): ssa.Opcode = if p.signed then ssa.opSext8 else ssa.opZext8 end
 
     (* Extends a 1-byte bool or char returned from a callee to a full word,
      * since the ARM64 ABI (AAPCS64) leaves the upper bytes unspecified *)
@@ -506,8 +525,11 @@ export
     let binding(fn: Fn v: Variable): maybe.T(Binding) =
         if hashMap.contains(fn.bindings v.id) then
             hashMap.get(fn.bindings v.id)
-        elsif isGlobal(fn v) then maybe.some(option bindGlobal of Binding end)
-        else maybe.none() end
+        elsif isGlobal(fn v) then
+            maybe.some(option bindGlobal of Binding end)
+        else
+            maybe.none()
+        end
 
     let bind(fn: Fn v: Variable b: Binding): Ok = put(fn.bindings v.id b)
     let bindToValues(fn: Fn v: Variable vs: Array(Int)): Ok =
@@ -521,7 +543,8 @@ export
     let pointerOf(fn: Fn v: Variable): maybe.T(Int) =
         begin
             let b = binding(fn v)
-            if maybe.isNone(b) then maybe.none()
+            if maybe.isNone(b) then
+                maybe.none()
             else
                 case maybe.unwrap(b)
                     when bindPointer with x then maybe.some(x.address)
@@ -591,7 +614,8 @@ export
         end
 
     let writeValue(fn: Fn address: Int t: Type values: Array(Int)): Ok = writeParts(fn address parts(t) values)
-    let writeLocation(fn: Fn address: Int t: Type values: Array(Int)): Ok = writeParts(fn address locationParts(t) values)
+    let writeLocation(fn: Fn address: Int t: Type values: Array(Int)): Ok =
+        writeParts(fn address locationParts(t) values)
 
     (* The values a variable holds now *)
     let read(fn: Fn v: Variable): Array(Int) =
@@ -802,12 +826,13 @@ export
     (* A record or variant into a new box, and out of its box *)
     let boxed(fn: Fn vs: Array(Int) t: Type): Array(Int) =
         begin
-            let helper = case layout.representationKind(t)
-                when repRecord then "quest_record_box"
-                (* Records and variants alone are boxed (isBoxedInSlots) *)
-                when repVariant, repVoid, repInt, repWord, repBool, repChar, repReal, repPointer, repQVal then
-                    "quest_variant_box"
-            end
+            let helper =
+                case layout.representationKind(t)
+                    when repRecord then "quest_record_box"
+                    (* Records and variants alone are boxed (isBoxedInSlots) *)
+                    when repVariant, repVoid, repInt, repWord, repBool, repChar, repReal, repPointer, repQVal then
+                        "quest_variant_box"
+                end
             array of call1(fn helper vs) end
         end
     let unboxed(fn: Fn vs: Array(Int) t: Type): Array(Int) = readValue(fn vs[0] t)
@@ -822,7 +847,9 @@ export
             let ifTrue = ssa.target(if holds then good else bad end noValues)
             let ifFalse = ssa.target(if holds then bad else good end noValues)
             terminate(fn option termBranch of ssa.Terminator with
-                let cond = cond let ifTrue = ifTrue let ifFalse = ifFalse
+                let cond = cond
+                let ifTrue = ifTrue
+                let ifFalse = ifFalse
             end)
             fn.cur := bad
             callVoid(fn name args())
@@ -836,8 +863,12 @@ export
 
     let newFn(u: UnitBuilder f: Function closure: maybe.T(ir.OpMakeClosure)): Fn =
         tuple
-            let u = u let f = f let var cur = 0 let var calls = 0
-            let initObjects = vector.new() let initMarks = vector.new()
+            let u = u
+            let f = f
+            let var cur = 0
+            let var calls = 0
+            let initObjects = vector.new()
+            let initMarks = vector.new()
             let bindings = hashMap.new(intEqual hash.int)
             let joins = hashMap.new(eq hash.string)
             let joinParts = hashMap.new(eq hash.string)

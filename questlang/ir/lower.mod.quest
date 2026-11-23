@@ -2,28 +2,30 @@
 
 module lower : Lower
 import
-    questlang/common/location : questlang/common/Location
-    questlang/common/diagnostics : questlang/common/Diagnostics
-    questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
-    questlang/types/subtyping : questlang/types/Subtyping
-    questlang/types/reduce : questlang/types/Reduce
-    questlang/types/env : questlang/types/Env
-    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
-    questlang/modules/elaboration : questlang/modules/Elaboration
-    questlang/modules/stdlib : questlang/modules/Stdlib
-    questlang/modules/paths : questlang/modules/Paths
-    questlang/repr/shapes : questlang/repr/Shapes
-    questlang/ir/nodes : questlang/ir/Nodes
-    questlang/repr/layout : questlang/repr/Layout
-    questlang/repr/genericLayout : questlang/repr/GenericLayout
+    conv : Conv
+    stringOp = string : StringOp
+
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    stringOp = string : StringOp
-    conv : Conv
+
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/location : questlang/common/Location
     questlang/ir/captures : questlang/ir/Captures
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/stdlib : questlang/modules/Stdlib
+    questlang/repr/genericLayout : questlang/repr/GenericLayout
+    questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/shapes : questlang/repr/Shapes
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/model : questlang/types/Model
+    questlang/types/reduce : questlang/types/Reduce
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/symbols : questlang/types/Symbols
 export
     Let Type = model.Type
     Let Expr = typedAst.Expr
@@ -84,10 +86,11 @@ export
      * function's own type parameters; none when they are not known *)
     let expectedParams(varType: Type funType: Type count: Int): maybe.T(Array(Type)) =
         begin
-            let funQuants = case funType.form
-                when typeAll with x then x.quantifiers
-                else array of :model.Quantifier end
-            end
+            let funQuants =
+                case funType.form
+                    when typeAll with x then x.quantifiers
+                    else array of :model.Quantifier end
+                end
             let collected = reduce.collectFunQuantifiers(varType)
             let quants = collected.quantifiers
             case collected.body.form
@@ -98,7 +101,8 @@ export
                         let subst = model.newSubst()
                         for i = 0 upto {extent quants - 1} do
                             hashMap.insert(subst quants[i].symbolId
-                                model.typeVariable(funQuants[i].name funQuants[i].symbolId maybe.some(funQuants[i].bound)))
+                                    model.typeVariable(funQuants[i].name funQuants[i].symbolId
+                                            maybe.some(funQuants[i].bound)))
                         end
                         let types = array of(count model.okType)
                         for i = 0 upto {count - 1} do
@@ -347,17 +351,19 @@ export
 
     (* An imported module, with the record type of the interface it is imported
      * through *)
-    let makeImport(l: Lowerer name: String modulePath: String canonicalPath: String interfacePath: String): nodes.Import =
+    let makeImport(l: Lowerer name: String modulePath: String canonicalPath: String
+            interfacePath: String): nodes.Import =
         begin
             let var scope = env.lookupModule(l.env canonicalPath)
             if maybe.isNone(scope) then scope := env.lookupModule(l.env modulePath) end
             if maybe.isNone(scope) then scope := env.lookupModule(l.env name) end
             if maybe.isNone(scope) then scope := env.lookupInterface(l.env interfacePath) end
-            let recordType = if maybe.isSome(scope) then
-                maybe.some(elaboration.buildRecordTypeFromScope(maybe.unwrap(scope) maybe.none(:String)))
-            else
-                maybe.none(:Type)
-            end
+            let recordType =
+                if maybe.isSome(scope) then
+                    maybe.some(elaboration.buildRecordTypeFromScope(maybe.unwrap(scope) maybe.none(:String)))
+                else
+                    maybe.none(:Type)
+                end
             let source = env.resolveModule(l.env canonicalPath).source
             let libPath = if maybe.isSome(source) then paths.libModulePath(maybe.unwrap(source))
                 else maybe.none(:String) end
@@ -390,7 +396,7 @@ export
                 let b = maybe.unwrap(found)
                 if not(hashMap.contains(l.earlierImports b.holder)) then
                     let imp = nodes.newImport(b.holder b.holder b.holder "" maybe.some(b.recordType)
-                        maybe.none())
+                            maybe.none())
                     hashMap.insert(l.earlierImports b.holder imp)
                     vector.append(l.imports imp)
                 end
@@ -432,10 +438,11 @@ export
             let earlier = if maybe.isSome(local) then maybe.none(:Tuple binding: Earlier ref: nodes.ModuleRef end)
                 else earlierBinding(l symbolId) end
             if maybe.isSome(earlier)
-                andif maybe.unwrap(earlier).binding.boxed then
+                    andif maybe.unwrap(earlier).binding.boxed then
                 let found = maybe.unwrap(earlier)
                 maybe.some(letVar(l option opModuleMember of Op with
-                    let var moduleRef = found.ref let var member = maybe.some(found.binding.field)
+                    let var moduleRef = found.ref
+                    let var member = maybe.some(found.binding.field)
                 end fieldType(found.binding.recordType found.binding.field) none ""))
             else
                 local
@@ -465,7 +472,7 @@ export
                      * modules. *)
                     let declared = earlierBinding(l x.symbol.symbolId)
                     if maybe.isNone(found)
-                        andif maybe.isSome(declared) andif eq(maybe.unwrap(declared).binding.field "") then
+                            andif maybe.isSome(declared) andif eq(maybe.unwrap(declared).binding.field "") then
                         let d = maybe.unwrap(declared)
                         maybe.some(d.ref)
                     elsif maybe.isNone(found) andif model.bindsModule(x.name e.type) then
@@ -473,7 +480,8 @@ export
                          * importing it *)
                         let std = standardModuleName(x.name)
                         if maybe.isNone(std) then
-                            fail(:Ok "module '" <> x.name <> "' (#" <> conv.int(x.symbol.symbolId) <> ") is neither defined nor imported")
+                            fail(:Ok "module '" <> x.name <> "' (#" <> conv.int(x.symbol.symbolId)
+                                <> ") is neither defined nor imported")
                         end
                         let name = maybe.unwrap(std)
                         let imp = makeImport(l x.name name name standardInterface(name))
@@ -502,7 +510,7 @@ export
             if maybe.isSome(field) then
                 for i = 0 upto {extent s.components - 1} do
                     if {found < 0} andif maybe.isSome(s.components[i].name)
-                        andif eq(maybe.unwrap(s.components[i].name) maybe.unwrap(field)) then
+                            andif eq(maybe.unwrap(s.components[i].name) maybe.unwrap(field)) then
                         found := i
                     end
                 end
@@ -526,14 +534,15 @@ export
      * that variable so a let avoids an extra copy; with none, constants and
      * existing variables are returned directly and a fresh variable is created
      * only for an operation. *)
-    let rec value(l: Lowerer e: Expr into: maybe.T(Variable)): Atom =
-        at(l e.offset fun(): Atom valueForm(l e into))
+    let rec value(l: Lowerer e: Expr into: maybe.T(Variable)): Atom = at(l e.offset fun(): Atom valueForm(l e into))
     and valueForm(l: Lowerer e: Expr into: maybe.T(Variable)): Atom =
         case e.form
             when exprInt with x then copyInto(l intConst(x.value) into)
-            when exprReal with x then copyInto(l const(option constReal of nodes.ConstValue with let r = x.value end model.realType) into)
+            when exprReal with x then
+                copyInto(l const(option constReal of nodes.ConstValue with let r = x.value end model.realType) into)
             when exprBool with x then copyInto(l boolConst(x.value) into)
-            when exprChar with x then copyInto(l const(option constChar of nodes.ConstValue with let c = x.value end model.charType) into)
+            when exprChar with x then
+                copyInto(l const(option constChar of nodes.ConstValue with let c = x.value end model.charType) into)
             when exprString with x then
                 copyInto(l const(option constString of nodes.ConstValue with let s = x.value end model.stringType) into)
             when exprOk then copyInto(l okConst() into)
@@ -552,7 +561,10 @@ export
             when exprExternal with x then letOp(l option opExternal of Op with let symbol = x.symbol end e.type into)
             when exprFun then
                 let v = if maybe.isSome(into) then maybe.unwrap(into) else fresh("f" e.type false) end
-                emit(l option sFuns of Stmt with let var functions = array of function(l e v maybe.none()) end let recursive = false end)
+                emit(l option sFuns of Stmt with
+                    let var functions = array of function(l e v maybe.none()) end
+                    let recursive = false
+                end)
                 va(v)
             when exprApp then call(l e into)
             when exprTypeApp then typeApplication(l e into)
@@ -573,7 +585,11 @@ export
             when exprIndex with x then
                 let a = value(l x.target none)
                 let i = value(l x.index none)
-                letOp(l option opIndex of Op with let var arr = a let var index = i let offset = offsetOf(l e) end e.type into)
+                letOp(l option opIndex of Op with
+                    let var arr = a
+                    let var index = i
+                    let offset = offsetOf(l e)
+                end e.type into)
             when exprArray with x then
                 let atoms = vector.new(:Atom)
                 for i = 0 upto {extent x.elements - 1} do vector.append(atoms value(l x.elements[i] none)) end
@@ -581,7 +597,11 @@ export
             when exprArrayRep with x then
                 let n = value(l x.count none)
                 let v = value(l x.initVal none)
-                letOp(l option opArrayRep of Op with let var count = n let var init = v let offset = offsetOf(l e) end e.type into)
+                letOp(l option opArrayRep of Op with
+                    let var count = n
+                    let var init = v
+                    let offset = offsetOf(l e)
+                end e.type into)
             when exprVarCell with x then
                 letOp(l option opAddrCell of Op with let var init = value(l x.value none) end e.type into)
             when exprSelectRef with x then
@@ -593,7 +613,11 @@ export
             when exprIndexRef with x then
                 let a = value(l x.target none)
                 let i = value(l x.index none)
-                letOp(l option opAddrElement of Op with let var base = a let var index = i let offset = offsetOf(l e) end e.type into)
+                letOp(l option opAddrElement of Op with
+                    let var base = a
+                    let var index = i
+                    let offset = offsetOf(l e)
+                end e.type into)
             when exprTupleSelectRef with x then
                 if maybe.isSome(payloadBase(x.target)) then
                     payloadAddress(l e x.target tupleIndex(x.target.type x.index x.field) into)
@@ -611,14 +635,16 @@ export
                     else maybe.none(:Atom) end
                 letOp(l option opMakeVariant of Op with let tag = x.tag let var payload = p end e.type into)
             when exprOption with x then
-                let ordinalAtom = if maybe.isSome(x.ordinalExpr) then
-                    maybe.some(value(l maybe.unwrap(x.ordinalExpr) none))
-                else
-                    maybe.none(:Atom)
-                end
+                let ordinalAtom =
+                    if maybe.isSome(x.ordinalExpr) then
+                        maybe.some(value(l maybe.unwrap(x.ordinalExpr) none))
+                    else
+                        maybe.none(:Atom)
+                    end
                 let p = if maybe.isSome(x.payload) then maybe.some(value(l maybe.unwrap(x.payload) none))
                     else maybe.none(:Atom) end
-                let cases = if maybe.isSome(ordinalAtom) then reduce.optionCaseNames(e.type) else array of :String end end
+                let cases =
+                    if maybe.isSome(ordinalAtom) then reduce.optionCaseNames(e.type) else array of :String end end
                 letOp(l nodes.makeOption(x.tag p ordinalAtom offsetOf(l e) cases) e.type into)
             when exprVariantCheck with x then letOp(l nodes.isTag(value(l x.target none) x.tag) e.type into)
             when exprVariantAssert then letOp(l payloadOp(l e value(l extractedOf(e) none)) e.type into)
@@ -687,7 +713,9 @@ export
                 elsif maybe.isSome(box) then
                     (* A boxed variable's address is its box's component's *)
                     letOp(l option opAddrComponent of Op with
-                        let var base = va(maybe.unwrap(box)) let index = 0 let var access = nodes.direct
+                        let var base = va(maybe.unwrap(box))
+                        let index = 0
+                        let var access = nodes.direct
                         let var viewMap = maybe.none()
                     end e.type into)
                 elsif maybe.isSome(bound) then
@@ -708,15 +736,18 @@ export
                         copyInto(l okConst() into)
                     elsif found.binding.isVar then
                         let recordAtom = letOp(l option opModuleMember of Op with
-                            let var moduleRef = found.ref let var member = maybe.none()
+                            let var moduleRef = found.ref
+                            let var member = maybe.none()
                         end found.binding.recordType none)
                         letOp(l option opAddrField of Op with
-                            let var base = recordAtom let name = found.binding.field
+                            let var base = recordAtom
+                            let name = found.binding.field
                             let var viewMap = maybe.none()
                         end e.type into)
                     else
                         letOp(l option opModuleMember of Op with
-                            let var moduleRef = found.ref let var member = maybe.some(found.binding.field)
+                            let var moduleRef = found.ref
+                            let var member = maybe.some(found.binding.field)
                         end e.type into)
                     end
                 elsif maybe.isSome(builtin) then
@@ -746,10 +777,11 @@ export
      * member *)
     and calleeOf(l: Lowerer func: Expr): Callee =
         begin
-            let m = case func.form
-                when exprSelect with x then moduleRefOf(l x.target)
-                else maybe.none(:nodes.ModuleRef)
-            end
+            let m =
+                case func.form
+                    when exprSelect with x then moduleRefOf(l x.target)
+                    else maybe.none(:nodes.ModuleRef)
+                end
             if maybe.isSome(m) then
                 let field = case func.form when exprSelect with x then x.field else "" end
                 tuple let callee = none let moduleRef = m let member = maybe.some(field) end
@@ -811,32 +843,46 @@ export
                 let resultType = case rest.body.form when typeFun with f then f.result else rest.body end
                 inBody(l fbody fun(): Ok
                     begin
-                        let result = case rest.body.form
-                            when typeFun with f then
-                                let args = vector.new(:Atom)
-                                for i = 0 upto {extent f.params - 1} do
-                                    let p = f.params[i]
-                                    let mode = if p.isVar orif p.type.form?typeVar then "var"
-                                        elsif p.isOut orif p.type.form?typeOut then "out" else "value" end
-                                    let param = fresh(p.name unref(p.type) not(eq(mode "value")))
-                                    vector.append(params tuple let v = param let mode = mode end)
-                                    if eq(mode "value") then
-                                        vector.append(args va(param))
-                                    else
-                                        let refType = if eq(mode "var") then model.varType(param.type) else model.outType(param.type) end
-                                        vector.append(args letOp(l option opAddrVar of Op with let var v = param end refType none))
+                        let result =
+                            case rest.body.form
+                                when typeFun with f then
+                                    let args = vector.new(:Atom)
+                                    for i = 0 upto {extent f.params - 1} do
+                                        let p = f.params[i]
+                                        let mode = if p.isVar orif p.type.form?typeVar then "var"
+                                            elsif p.isOut orif p.type.form?typeOut then "out"
+                                            else "value" end
+                                        let param = fresh(p.name unref(p.type) not(eq(mode "value")))
+                                        vector.append(params tuple let v = param let mode = mode end)
+                                        if eq(mode "value") then
+                                            vector.append(args va(param))
+                                        else
+                                            let refType =
+                                                if eq(mode "var") then
+                                                    model.varType(param.type)
+                                                else
+                                                    model.outType(param.type)
+                                                end
+                                            vector.append(args
+                                                    letOp(l option opAddrVar of Op with
+                                                        let var v = param
+                                                    end refType none))
+                                        end
                                     end
-                                end
-                                letOp(l nodes.call(c.callee allTypeArgs vector.toArray(args) c.moduleRef c.member calleeType)
-                                    f.result none)
-                            else letOp(l nodes.typeApp(c.callee allTypeArgs c.moduleRef c.member calleeType) rest.body none)
-                        end
+                                    letOp(l
+                                            nodes.call(c.callee allTypeArgs vector.toArray(args) c.moduleRef c.member
+                                                    calleeType)
+                                            f.result none)
+                                else
+                                    letOp(l nodes.typeApp(c.callee allTypeArgs c.moduleRef c.member calleeType)
+                                            rest.body none)
+                            end
                         terminate(l option sReturn of Stmt with let var pos = ~1 let var value = result end)
                     end)
                 emit(l option sFuns of Stmt with
                     let var functions = array of
                         nodes.newFunction(v vector.toArray(typeParams) vector.toArray(params)
-                            resultType fbody maybe.some(l.frame))
+                                resultType fbody maybe.some(l.frame))
                     end
                     let recursive = false
                 end)
@@ -860,47 +906,57 @@ export
                     case func.form
                         when exprTypeApp with x then
                             let combined = vector.fromArray(x.typeArgs)
-                            for i = 0 upto {vector.length(typeArgs) - 1} do vector.append(combined vector.get(typeArgs i)) end
+                            for i = 0 upto {vector.length(typeArgs) - 1} do
+                                vector.append(combined vector.get(typeArgs i))
+                            end
                             vector.clear(typeArgs)
-                            for i = 0 upto {vector.length(combined) - 1} do vector.append(typeArgs vector.get(combined i)) end
+                            for i = 0 upto {vector.length(combined) - 1} do
+                                vector.append(typeArgs vector.get(combined i))
+                            end
                             func := x.func
                         else unwrapping := false
                     end
                 end
-                let builtin = case func.form
-                    when exprVar with x then hashMap.get(l.builtins x.symbol.symbolId)
-                    else maybe.none(:String)
-                end
+                let builtin =
+                    case func.form
+                        when exprVar with x then hashMap.get(l.builtins x.symbol.symbolId)
+                        else maybe.none(:String)
+                    end
                 if maybe.isSome(builtin) andif builtinFunction(maybe.unwrap(builtin)) then
                     let name = maybe.unwrap(builtin)
                     let args = vector.new(:Atom)
                     for i = 0 upto {extent app.args - 1} do vector.append(args value(l app.args[i] none)) end
                     let atoms = vector.toArray(args)
-                    let o = if eq(name "ordinal") then
-                        nodes.ordinalOf(atoms[0] reduce.optionCaseNames(app.args[0].type))
-                    else
-                        nodes.prim(nodes.primNamed(name) atoms offsetOf(l e))
-                    end
+                    let o =
+                        if eq(name "ordinal") then
+                            nodes.ordinalOf(atoms[0] reduce.optionCaseNames(app.args[0].type))
+                        else
+                            nodes.prim(nodes.primNamed(name) atoms offsetOf(l e))
+                        end
                     letOp(l o e.type into)
                 else
                     let c = calleeOf(l func)
                     let args = vector.new(:Atom)
                     for i = 0 upto {extent app.args - 1} do vector.append(args value(l app.args[i] none)) end
                     let atoms = vector.toArray(args)
-                    let isArrayOp = if maybe.isSome(c.moduleRef) then
-                        case maybe.unwrap(c.moduleRef)
-                            when refImport with x then
-                                eq(paths.lower(x.i.canonicalPath) "arrayop") andif arrayOp(maybe.unwrapOr(c.member ""))
-                            else false
+                    let isArrayOp =
+                        if maybe.isSome(c.moduleRef) then
+                            case maybe.unwrap(c.moduleRef)
+                                when refImport with x then
+                                    eq(paths.lower(x.i.canonicalPath) "arrayop")
+                                        andif arrayOp(maybe.unwrapOr(c.member ""))
+                                else false
+                            end
+                        else
+                            false
                         end
-                    else
-                        false
-                    end
                     if isArrayOp then
                         arrayOperation(l maybe.unwrap(c.member) atoms e.type into offsetOf(l e))
                     else
-                        let calleeType = if maybe.isSome(c.moduleRef) then maybe.some(func.type) else maybe.none(:Type) end
-                        letOp(l nodes.call(c.callee vector.toArray(typeArgs) atoms c.moduleRef c.member calleeType) e.type into)
+                        let calleeType =
+                            if maybe.isSome(c.moduleRef) then maybe.some(func.type) else maybe.none(:Type) end
+                        letOp(l nodes.call(c.callee vector.toArray(typeArgs) atoms c.moduleRef c.member calleeType)
+                                e.type into)
                     end
                 end
             else fail("not a call")
@@ -908,13 +964,22 @@ export
 
     (* A call of the standard library's arrayOp, as the array operation it is;
      * its errors are located at the call *)
-    and arrayOperation(l: Lowerer member: String args: Array(Atom) t: Type into: maybe.T(Variable) offset: maybe.T(Int)): Atom =
+    and arrayOperation(l: Lowerer member: String args: Array(Atom) t: Type into: maybe.T(Variable)
+            offset: maybe.T(Int)): Atom =
         if eq(member "new") then
-            letOp(l option opArrayRep of Op with let var count = args[0] let var init = args[1] let offset = offset end t into)
+            letOp(l option opArrayRep of Op with
+                let var count = args[0]
+                let var init = args[1]
+                let offset = offset
+            end t into)
         elsif eq(member "size") then
             letOp(l nodes.prim(nodes.primExtent array of args[0] end maybe.none()) t into)
         elsif eq(member "get") then
-            letOp(l option opIndex of Op with let var arr = args[0] let var index = args[1] let offset = offset end t into)
+            letOp(l option opIndex of Op with
+                let var arr = args[0]
+                let var index = args[1]
+                let offset = offset
+            end t into)
         else
             emit(l option sStoreElement of Stmt with
                 let var pos = ~1
@@ -941,9 +1006,9 @@ export
                     when shapeTuple then
                         letOp(l nodes.tupleField(base tupleIndex(target.type ~1 maybe.some(field))) e.type into)
                     when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
-                        shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut, shapeException,
-                        shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
-                        shapePending then
+                            shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut, shapeException,
+                            shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
+                            shapePending then
                         letOp(l nodes.recordField(base field) e.type into)
                 end
             end
@@ -996,7 +1061,9 @@ export
                     begin
                         let var found = false
                         for g = 0 upto {extent x.recGroups - 1} do
-                            for k = 0 upto {extent x.recGroups[g] - 1} do if x.recGroups[g][k] is i then found := true end end
+                            for k = 0 upto {extent x.recGroups[g] - 1} do
+                                if x.recGroups[g][k] is i then found := true end
+                            end
                         end
                         found
                     end
@@ -1014,21 +1081,27 @@ export
                                 let funVars = vector.new(:Variable)
                                 for k = 0 upto {extent members - 1} do
                                     let sym = labelOf(members[k])
-                                    let v = if maybe.isSome(sym) then
-                                        bindSymbol(l maybe.unwrap(sym) maybe.none() false)
-                                    else
-                                        fresh("f" x.elements[members[k]].type false)
-                                    end
+                                    let v =
+                                        if maybe.isSome(sym) then
+                                            bindSymbol(l maybe.unwrap(sym) maybe.none() false)
+                                        else
+                                            fresh("f" x.elements[members[k]].type false)
+                                        end
                                     setValue(members[k] va(v))
                                     vector.append(funVars v)
                                 end
                                 let funs = vector.new(:nodes.Function)
                                 for k = 0 upto {extent members - 1} do
                                     let funExpr = x.elements[members[k]]
-                                    if not(funExpr.form?exprFun) then fail(:Ok "recursive tuple components other than functions") end
+                                    if not(funExpr.form?exprFun) then
+                                        fail(:Ok "recursive tuple components other than functions")
+                                    end
                                     vector.append(funs function(l funExpr vector.get(funVars k) maybe.none(:String)))
                                 end
-                                emit(l option sFuns of Stmt with let var functions = vector.toArray(funs) let recursive = true end)
+                                emit(l option sFuns of Stmt with
+                                    let var functions = vector.toArray(funs)
+                                    let recursive = true
+                                end)
                             elsif not(inGroup(i)) then
                                 let lbl = labelOf(i)
                                 if maybe.isNone(lbl) then
@@ -1074,7 +1147,9 @@ export
             let a = value(l branch none)
             if not(nodes.terminated(l.body)) then
                 terminate(l option sJump of Stmt with
-                    let var pos = ~1 let label = lbl let var args = array of a end
+                    let var pos = ~1
+                    let label = lbl
+                    let var args = array of a end
                 end)
             end
         end
@@ -1108,7 +1183,8 @@ export
                             let var cond = c
                             let var thenBody = thenBody
                             let var elseBody = nodes.bodyOf(array of option sBreak of Stmt with
-                                let var pos = l.pos let label = lbl
+                                let var pos = l.pos
+                                let label = lbl
                             end end)
                         end)
                         inBody(l thenBody fun(): Ok effect(l x.body))
@@ -1133,17 +1209,29 @@ export
                 let i = value(l x.index none)
                 let v = value(l x.value none)
                 emit(l option sStoreElement of Stmt with
-                    let var pos = ~1 let var value = v let var base = a let var index = i let offset = offsetOf(l e)
+                    let var pos = ~1
+                    let var value = v
+                    let var base = a
+                    let var index = i
+                    let offset = offsetOf(l e)
                 end)
             when exprRaise with x then
                 let exc = value(l x.exc none)
                 let p = if maybe.isSome(x.payload) then maybe.some(value(l maybe.unwrap(x.payload) none))
                     else maybe.none(:Atom) end
                 (* The payload's type as the interpreters show it *)
-                let text = if maybe.isSome(x.payload) andif not(isOk(maybe.unwrap(x.payload).type)) then
-                    model.show(maybe.unwrap(x.payload).type) else "" end
+                let text =
+                    if maybe.isSome(x.payload) andif not(isOk(maybe.unwrap(x.payload).type)) then
+                        model.show(maybe.unwrap(x.payload).type)
+                    else
+                        ""
+                    end
                 terminate(l option sRaise of Stmt with
-                    let var pos = ~1 let var exc = exc let var payload = p let offset = offsetOf(l e) let payloadText = text
+                    let var pos = ~1
+                    let var exc = exc
+                    let var payload = p
+                    let offset = offsetOf(l e)
+                    let payloadText = text
                     let var descriptor = maybe.none()
                 end)
             when exprApp then
@@ -1158,7 +1246,8 @@ export
                                 let sameVar = case a when atomVar with y then nodes.same(y.v x.v) else false end
                                 if isCall andif sameVar then
                                     vector.set(stmts {vector.length(stmts) - 1} option sDo of Stmt with
-                                        let var pos = x.pos let var value = x.value
+                                        let var pos = x.pos
+                                        let var value = x.value
                                     end)
                                 end
                             else ok
@@ -1215,10 +1304,13 @@ export
     and inPayload(l: Lowerer extraction: Expr inCase: All(c: Variable) Ok otherwise: All(copy: Atom) Ok): Ok =
         begin
             let o = value(l extractedOf(extraction) none)
-            let fields = case extraction.type.form
-                when typeTuple with t then t.fields
-                else fail(:Array(model.TupleComponent) "an option's extraction of type " <> model.show(extraction.type))
-            end
+            let fields =
+                case extraction.type.form
+                    when typeTuple with t then t.fields
+                    else
+                        fail(:Array(model.TupleComponent) "an option's extraction of type "
+                            <> model.show(extraction.type))
+                end
             let payloadFields = array of(extent fields - 1 fields[0])
             for i = 1 upto {extent fields - 1} do payloadFields[i - 1] := fields[i] end
             let c = fresh("p" model.tupleType(payloadFields) false)
@@ -1234,14 +1326,18 @@ export
      * less (it has no ordinal) *)
     and payloadStore(l: Lowerer extraction: Expr index: Int v: Expr): Ok =
         inPayload(l extraction
-            fun(c: Variable): Ok begin
-                let a = value(l v none)
-                emit(l option sStoreComponent of Stmt with
-                    let var pos = ~1 let var value = a let var base = va(c) let index = index - 1
-                    let var access = nodes.direct let var viewMap = maybe.none()
-                end)
-            end
-            fun(copy: Atom): Ok ok)
+                fun(c: Variable): Ok begin
+                    let a = value(l v none)
+                    emit(l option sStoreComponent of Stmt with
+                        let var pos = ~1
+                        let var value = a
+                        let var base = va(c)
+                        let index = index - 1
+                        let var access = nodes.direct
+                        let var viewMap = maybe.none()
+                    end)
+                end
+                fun(copy: Atom): Ok ok)
 
     (* @o!tag.f, of e, f at index in o!tag's type: the address of the
      * option's own component f, from its case's binder, joined out of the
@@ -1253,18 +1349,27 @@ export
             let joinBody = nodes.newBody()
             let continuation = nodes.newBody()
             emit(l option sJoin of Stmt with
-                let label = lbl let var params = array of result end let var continuation = continuation
+                let label = lbl
+                let var params = array of result end
+                let var continuation = continuation
                 let var body = joinBody
             end)
             let address(base: Atom at: Int): Ok =
                 begin
                     let a = letOp(l option opAddrComponent of Op with
-                        let var base = base let index = at let var access = nodes.direct let var viewMap = maybe.none()
+                        let var base = base
+                        let index = at
+                        let var access = nodes.direct
+                        let var viewMap = maybe.none()
                     end e.type none)
-                    terminate(l option sJump of Stmt with let var pos = ~1 let label = lbl let var args = array of a end end)
+                    terminate(l option sJump of Stmt with
+                        let var pos = ~1
+                        let label = lbl
+                        let var args = array of a end
+                    end)
                 end
             inBody(l joinBody fun(): Ok inPayload(l extraction
-                fun(c: Variable): Ok address(va(c) index - 1) fun(copy: Atom): Ok address(copy index)))
+                    fun(c: Variable): Ok address(va(c) index - 1) fun(copy: Atom): Ok address(copy index)))
             l.body := continuation
             va(result)
         end
@@ -1291,23 +1396,33 @@ export
             if maybe.isSome(box) then
                 let a = value(l v none)
                 emit(l option sStoreComponent of Stmt with
-                    let var pos = ~1 let var value = a let var base = va(maybe.unwrap(box)) let index = 0
-                    let var access = nodes.direct let var viewMap = maybe.none()
+                    let var pos = ~1
+                    let var value = a
+                    let var base = va(maybe.unwrap(box))
+                    let index = 0
+                    let var access = nodes.direct
+                    let var viewMap = maybe.none()
                 end)
             elsif maybe.isSome(bound) andif maybe.unwrap(bound).isMutable then
                 let a = value(l v none)
                 emit(l option sAssign of Stmt with
-                    let var pos = ~1 let var v = maybe.unwrap(bound) let var value = a
+                    let var pos = ~1
+                    let var v = maybe.unwrap(bound)
+                    let var value = a
                 end)
             elsif maybe.isSome(earlierOf(l target)) then
                 (* An earlier input's var is a field of its record *)
                 let found = maybe.unwrap(earlierOf(l target))
                 let a = value(l v none)
                 let recordAtom = letOp(l option opModuleMember of Op with
-                    let var moduleRef = found.ref let var member = maybe.none()
+                    let var moduleRef = found.ref
+                    let var member = maybe.none()
                 end found.binding.recordType none)
                 emit(l option sStoreField of Stmt with
-                    let var pos = ~1 let var value = a let var base = recordAtom let name = found.binding.field
+                    let var pos = ~1
+                    let var value = a
+                    let var base = recordAtom
+                    let name = found.binding.field
                     let var viewMap = maybe.none()
                 end)
             else
@@ -1315,7 +1430,7 @@ export
                     when exprSelect with x then
                         if maybe.isSome(payloadBase(x.target)) then
                             payloadStore(l maybe.unwrap(payloadBase(x.target))
-                                tupleIndex(x.target.type ~1 maybe.some(x.field)) v)
+                                    tupleIndex(x.target.type ~1 maybe.some(x.field)) v)
                         else
                             let base = value(l x.target none)
                             let a = value(l v none)
@@ -1331,9 +1446,10 @@ export
                                         let var viewMap = maybe.none()
                                     end)
                                 when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord,
-                                    shapeBottom, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut,
-                                    shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract,
-                                    shapeExternal, shapeOperator, shapePending then
+                                        shapeBottom, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell,
+                                        shapeOut,
+                                        shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract,
+                                        shapeExternal, shapeOperator, shapePending then
                                     emit(l option sStoreField of Stmt with
                                         let var pos = ~1
                                         let var value = a
@@ -1347,7 +1463,9 @@ export
                         let address = value(l target none)
                         let a = value(l v none)
                         emit(l option sStoreAt of Stmt with
-                            let var pos = ~1 let var value = a let var address = address
+                            let var pos = ~1
+                            let var value = a
+                            let var address = address
                         end)
                 end
             end
@@ -1377,17 +1495,26 @@ export
                 let stop = value(l x.stop none)
                 let counter = fresh(x.varName model.intType true)
                 emit(l option sVarDecl of Stmt with
-                    let var pos = ~1 let var v = counter let var init = maybe.some(start)
+                    let var pos = ~1
+                    let var v = counter
+                    let var init = maybe.some(start)
                 end)
                 let lbl = label(l "L")
-                let more = letOp(l nodes.prim(if x.isDownto then nodes.primGe else nodes.primLe end array of va(counter) stop end
-                    maybe.none()) model.boolType none)
+                let more =
+                    letOp(l
+                            nodes.prim(if x.isDownto then
+                                nodes.primGe
+                            else
+                                nodes.primLe
+                            end array of va(counter) stop end
+                                    maybe.none()) model.boolType none)
                 let loopBody = nodes.newBody()
                 emit(l option sIf of Stmt with
                     let var pos = ~1
                     let var cond = more
                     let var thenBody = nodes.bodyOf(array of option sLoop of Stmt with
-                        let label = lbl let var body = loopBody
+                        let label = lbl
+                        let var body = loopBody
                     end end)
                     let var elseBody = nodes.newBody()
                 end)
@@ -1399,19 +1526,22 @@ export
                         effect(l x.body)
                         if not(nodes.terminated(l.body)) then
                             let last = letOp(l nodes.prim(nodes.primIs array of va(counter) stop end maybe.none())
-                                model.boolType none)
+                                    model.boolType none)
                             emit(l option sIf of Stmt with
                                 let var pos = ~1
                                 let var cond = last
                                 let var thenBody = nodes.bodyOf(array of option sBreak of Stmt with
-                                    let var pos = l.pos let label = lbl
+                                    let var pos = l.pos
+                                    let label = lbl
                                 end end)
                                 let var elseBody = nodes.newBody()
                             end)
                             let step = letOp(l nodes.prim(if x.isDownto then nodes.primSub else nodes.primAdd end
-                                array of va(counter) intConst(1) end maybe.none()) model.intType none)
+                                    array of va(counter) intConst(1) end maybe.none()) model.intType none)
                             emit(l option sAssign of Stmt with
-                                let var pos = ~1 let var v = counter let var value = step
+                                let var pos = ~1
+                                let var v = counter
+                                let var value = step
                             end)
                         end
                     end)
@@ -1429,7 +1559,10 @@ export
                 let thenBody = nodes.newBody()
                 let elseBody = nodes.newBody()
                 emit(l option sIf of Stmt with
-                    let var pos = ~1 let var cond = c let var thenBody = thenBody let var elseBody = elseBody
+                    let var pos = ~1
+                    let var cond = c
+                    let var thenBody = thenBody
+                    let var elseBody = elseBody
                 end)
                 inBody(l thenBody fun(): Ok lowerBranch(x.thenBranch))
                 inBody(l elseBody fun(): Ok lowerBranch(x.elseBranch))
@@ -1438,11 +1571,12 @@ export
                 let cases = vector.new(:nodes.Case)
                 for i = 0 upto {extent x.branches - 1} do
                     let br = x.branches[i]
-                    let binder = if maybe.isSome(br.binder) then
-                        some(bindSymbol(l maybe.unwrap(br.binder) maybe.none() false))
-                    else
-                        none
-                    end
+                    let binder =
+                        if maybe.isSome(br.binder) then
+                            some(bindSymbol(l maybe.unwrap(br.binder) maybe.none() false))
+                        else
+                            none
+                        end
                     let c = nodes.newCase(br.tags nodes.newBody() binder)
                     inBody(l c.body fun(): Ok lowerBranch(br.body))
                     vector.append(cases c)
@@ -1482,7 +1616,9 @@ export
                     end
                     if pure then
                         let values = vector.new(:Atom)
-                        for i = 0 upto {extent x.branches - 1} do vector.append(values value(l x.branches[i].excPattern none)) end
+                        for i = 0 upto {extent x.branches - 1} do
+                            vector.append(values value(l x.branches[i].excPattern none))
+                        end
                         patterns := maybe.some(vector.toArray(values))
                         catching := nodes.catchListed
                     end
@@ -1542,11 +1678,15 @@ export
             let br = branches[first]
             let pattern = if maybe.isSome(patterns) then maybe.unwrap(patterns)[first]
                 else value(l br.excPattern none) end
-            let matches = letOp(l nodes.prim(nodes.primIs array of va(exc) pattern end maybe.none()) model.boolType none)
+            let matches =
+                letOp(l nodes.prim(nodes.primIs array of va(exc) pattern end maybe.none()) model.boolType none)
             let thenBody = nodes.newBody()
             let elseBody = nodes.newBody()
             emit(l option sIf of Stmt with
-                let var pos = ~1 let var cond = matches let var thenBody = thenBody let var elseBody = elseBody
+                let var pos = ~1
+                let var cond = matches
+                let var thenBody = thenBody
+                let var elseBody = elseBody
             end)
             inBody(l thenBody fun(): Ok
                 begin
@@ -1572,21 +1712,26 @@ export
                 let traceName = diagnostics.frameName(l.frame binder)
                 let t = e.type
                 let typeParams = vector.new(:nodes.TypeParam)
-                let inner = case t.form
-                    when typeAll with all then
-                        for i = 0 upto {extent all.quantifiers - 1} do
-                            let q = all.quantifiers[i]
-                            vector.append(typeParams tuple
-                                let name = q.name
-                                let symbolId = q.symbolId
-                                let kind = q.bound
-                                let bound = if model.isPower(q.bound) then maybe.some(shapes.shape(model.powerBound(q.bound)))
-                                    else maybe.none(:shapes.Shape) end
-                            end)
-                        end
-                        all.body
-                    else t
-                end
+                let inner =
+                    case t.form
+                        when typeAll with all then
+                            for i = 0 upto {extent all.quantifiers - 1} do
+                                let q = all.quantifiers[i]
+                                vector.append(typeParams tuple
+                                    let name = q.name
+                                    let symbolId = q.symbolId
+                                    let kind = q.bound
+                                    let bound =
+                                        if model.isPower(q.bound) then
+                                            maybe.some(shapes.shape(model.powerBound(q.bound)))
+                                        else
+                                            maybe.none(:shapes.Shape)
+                                        end
+                                end)
+                            end
+                            all.body
+                        else t
+                    end
                 let resultType = case inner.form when typeFun with f then f.result else inner end
                 let expected = expectedParams(v.type t extent x.params)
                 let params = vector.new(:nodes.ParamEntry)
@@ -1595,15 +1740,17 @@ export
                     let p = x.params[i]
                     let mode = if p.isVar then "var" elsif p.isOut then "out" else "value" end
                     let paramType = unref(p.type)
-                    let expectedType = if maybe.isSome(expected) then
-                        maybe.some(unref(maybe.unwrap(expected)[i]))
-                    else
-                        maybe.none(:Type)
-                    end
+                    let expectedType =
+                        if maybe.isSome(expected) then
+                            maybe.some(unref(maybe.unwrap(expected)[i]))
+                        else
+                            maybe.none(:Type)
+                        end
                     if eq(mode "value") andif maybe.isSome(expectedType)
-                        andif not(subtyping.isTypeEqual(maybe.unwrap(expectedType) paramType maybe.none())) then
+                            andif not(subtyping.isTypeEqual(maybe.unwrap(expectedType) paramType maybe.none())) then
                         let param = fresh(p.symbol.name maybe.unwrap(expectedType) false)
-                        vector.append(entry nodes.letStmt(bindSymbol(l p.symbol maybe.some(paramType) false) nodes.opOfVar(param)))
+                        vector.append(entry
+                                nodes.letStmt(bindSymbol(l p.symbol maybe.some(paramType) false) nodes.opOfVar(param)))
                         vector.append(params tuple let v = param let mode = mode end)
                     else
                         vector.append(params tuple
@@ -1620,10 +1767,11 @@ export
                 let paramArray = vector.toArray(params)
                 inBody(l fbody fun(): Ok
                     begin
-                        let result = case x.body.form
-                            when exprExternal with ext then externalCall(l ext.symbol t paramArray resultType)
-                            else value(l x.body none)
-                        end
+                        let result =
+                            case x.body.form
+                                when exprExternal with ext then externalCall(l ext.symbol t paramArray resultType)
+                                else value(l x.body none)
+                            end
                         (* The return has no position of its own: it is at the
                          * last of the body's *)
                         if not(nodes.terminated(l.body)) then
@@ -1634,7 +1782,7 @@ export
                 l.loops := savedLoops
                 l.frame := savedFrame
                 nodes.newFunction(v vector.toArray(typeParams) paramArray resultType fbody
-                    maybe.some(traceName))
+                        maybe.some(traceName))
             else fail("not a function")
         end
 
@@ -1656,7 +1804,8 @@ export
                 if eq(entry.mode "value") then
                     vector.append(args va(entry.v))
                 else
-                    let refType = if eq(entry.mode "var") then model.varType(entry.v.type) else model.outType(entry.v.type) end
+                    let refType =
+                        if eq(entry.mode "var") then model.varType(entry.v.type) else model.outType(entry.v.type) end
                     vector.append(args letOp(l option opAddrVar of Op with let var v = entry.v end refType none))
                 end
             end
@@ -1705,11 +1854,16 @@ export
             let box = boxOfSymbol(l lv.symbol.symbolId)
             if maybe.isNone(box) then fail(:Ok "slot '" <> lv.name <> "' has no box") end
             emit(l option sStoreComponent of Stmt with
-                let var pos = ~1 let var value = va(v) let var base = va(maybe.unwrap(box)) let index = 0
-                let var access = nodes.direct let var viewMap = maybe.none()
+                let var pos = ~1
+                let var value = va(v)
+                let var base = va(maybe.unwrap(box))
+                let index = 0
+                let var access = nodes.direct
+                let var viewMap = maybe.none()
             end)
         else
-            let box = letVar(l nodes.makeTuple(array of va(v) end array of :nodes.TypeComponent end) boxType(lv) none lv.name)
+            let box =
+                letVar(l nodes.makeTuple(array of va(v) end array of :nodes.TypeComponent end) boxType(lv) none lv.name)
             hashMap.insert(l.boxes lv.symbol.symbolId box)
             ok
         end
@@ -1717,7 +1871,8 @@ export
     (* What a let held in a slot shows when it is echoed *)
     and showSlot(l: Lowerer lv: typedAst.LetValue v: Variable): Ok =
         if lv.value.form?exprFun then emit(l funText(lv.name lv.symbol.type))
-        else echoBinding(l lv.name lv.symbol v) end
+        else echoBinding(l lv.name lv.symbol v)
+        end
 
     (* Recursive functions held in slots: each new slot's box is made with the
      * functions, in one let rec, so that their bodies, which name the slots,
@@ -1746,14 +1901,17 @@ export
                     let functions = vector.new(:nodes.Function)
                     for i = 0 upto {extent members - 1} do
                         vector.append(functions
-                            function(l members[i].value fvs[i] maybe.some(members[i].name)))
+                                function(l members[i].value fvs[i] maybe.some(members[i].name)))
                     end
                     emit(l option sFuns of Stmt with
-                        let var functions = vector.toArray(functions) let recursive = false
+                        let var functions = vector.toArray(functions)
+                        let recursive = false
                     end)
                     for i = 0 upto {vector.length(made) - 1} do
                         let m = vector.get(made i)
-                        emit(l nodes.letStmt(m.box nodes.makeTuple(array of va(m.value) end array of :nodes.TypeComponent end)))
+                        emit(l
+                                nodes.letStmt(m.box
+                                        nodes.makeTuple(array of va(m.value) end array of :nodes.TypeComponent end)))
                     end
                 end)
             for i = 0 upto {extent members - 1} do
@@ -1790,35 +1948,40 @@ export
                 end)
                 if show then emit(l funText(lv.name symbol.type)) end
             else
-                let v = if symbol.isVar andif hashMap.contains(l.captured symbol.symbolId) then
-                    (* Held in a box that closures capture
-                     * (capturedMutables) *)
-                    let init = value(l lv.value none)
-                    let boxType = model.tupleType(array of
-                        model.tupleField(maybe.some(lv.name) symbol.type true)
-                    end)
-                    let box = letVar(l nodes.makeTuple(array of init end array of :nodes.TypeComponent end) boxType none lv.name)
-                    hashMap.insert(l.boxes symbol.symbolId box)
-                    box
-                elsif symbol.isVar then
-                    let init = value(l lv.value none)
-                    let mv = bindSymbol(l symbol maybe.none() true)
-                    emit(l option sVarDecl of Stmt with
-                        let var pos = ~1 let var v = mv let var init = maybe.some(init)
-                    end)
-                    mv
-                else
-                    if lv.isRec then fail(:Ok "recursive values other than functions") end
-                    (* The value is lowered before the variable is bound, so
-                     * that it refers to any binding it shadows *)
-                    let bound = fresh(symbol.name symbol.type false)
-                    value(l lv.value some(bound))
-                    if hashMap.contains(l.vars symbol.symbolId) then
-                        fail(:Ok "symbol '" <> lv.name <> "' is bound twice")
+                let v =
+                    if symbol.isVar andif hashMap.contains(l.captured symbol.symbolId) then
+                        (* Held in a box that closures capture
+                         * (capturedMutables) *)
+                        let init = value(l lv.value none)
+                        let boxType = model.tupleType(array of
+                            model.tupleField(maybe.some(lv.name) symbol.type true)
+                        end)
+                        let box =
+                            letVar(l nodes.makeTuple(array of init end array of :nodes.TypeComponent end) boxType none
+                                    lv.name)
+                        hashMap.insert(l.boxes symbol.symbolId box)
+                        box
+                    elsif symbol.isVar then
+                        let init = value(l lv.value none)
+                        let mv = bindSymbol(l symbol maybe.none() true)
+                        emit(l option sVarDecl of Stmt with
+                            let var pos = ~1
+                            let var v = mv
+                            let var init = maybe.some(init)
+                        end)
+                        mv
+                    else
+                        if lv.isRec then fail(:Ok "recursive values other than functions") end
+                        (* The value is lowered before the variable is bound, so
+                         * that it refers to any binding it shadows *)
+                        let bound = fresh(symbol.name symbol.type false)
+                        value(l lv.value some(bound))
+                        if hashMap.contains(l.vars symbol.symbolId) then
+                            fail(:Ok "symbol '" <> lv.name <> "' is bound twice")
+                        end
+                        hashMap.insert(l.vars symbol.symbolId bound)
+                        bound
                     end
-                    hashMap.insert(l.vars symbol.symbolId bound)
-                    bound
-                end
                 if show then echoBinding(l lv.name symbol v) end
             end
         end
@@ -1867,7 +2030,9 @@ export
                 when bindLetValueGroup with x then
                     let isRec = {extent x.members > 0} andif x.members[0].isRec
                     let var allFuns = true
-                    for i = 0 upto {extent x.members - 1} do if not(x.members[i].value.form?exprFun) then allFuns := false end end
+                    for i = 0 upto {extent x.members - 1} do
+                        if not(x.members[i].value.form?exprFun) then allFuns := false end
+                    end
                     let var anyBoxed = false
                     for i = 0 upto {extent x.members - 1} do if boxedLet(l x.members[i]) then anyBoxed := true end end
                     if isRec andif not(allFuns) then
@@ -1880,7 +2045,9 @@ export
                          * read a slot another redefines *)
                         let values = array of(extent x.members fresh("v" model.okType false))
                         for i = 0 upto {extent x.members - 1} do
-                            values[i] := if boxedLet(l x.members[i]) then slotValue(l x.members[i])
+                            values[i] :=
+                                if boxedLet(l x.members[i]) then
+                                    slotValue(l x.members[i])
                                 else
                                     let v = fresh(x.members[i].name x.members[i].symbol.type false)
                                     begin value(l x.members[i].value some(v)) v end
@@ -1906,9 +2073,14 @@ export
                             let m = x.members[i]
                             vector.append(functions function(l m.value vector.get(vars i) maybe.some(m.name)))
                         end
-                        emit(l option sFuns of Stmt with let var functions = vector.toArray(functions) let recursive = true end)
+                        emit(l option sFuns of Stmt with
+                            let var functions = vector.toArray(functions)
+                            let recursive = true
+                        end)
                         if show then
-                            for i = 0 upto {extent x.members - 1} do emit(l funText(x.members[i].name x.members[i].symbol.type)) end
+                            for i = 0 upto {extent x.members - 1} do
+                                emit(l funText(x.members[i].name x.members[i].symbol.type))
+                            end
                         end
                     else
                         (* Simultaneous: every member's value refers to the
@@ -1917,15 +2089,18 @@ export
                          * it is computed is the same *)
                         for i = 0 upto {extent x.members - 1} do
                             binding(l typedAst.binding(x.members[i].offset
-                                option bindLetValue of typedAst.BindingForm with let value = x.members[i] end) show)
+                                    option bindLetValue of typedAst.BindingForm with let value = x.members[i] end) show)
                         end
                     end
                 when bindExprStmt with x then phraseExpr(l x.expr show)
                 when bindLetType with x then letType(l x.value show)
-                when bindLetTypeGroup with x then for i = 0 upto {extent x.members - 1} do letType(l x.members[i] show) end
+                when bindLetTypeGroup with x then
+                    for i = 0 upto {extent x.members - 1} do letType(l x.members[i] show) end
                 when bindDefKind with x then
                     if show then
-                        emit(l option sEchoText of Stmt with let text = "DEF " <> x.name <> " = " <> model.showKind(x.symbol.kind) end)
+                        emit(l option sEchoText of Stmt with
+                            let text = "DEF " <> x.name <> " = " <> model.showKind(x.symbol.kind)
+                        end)
                     end
                 when bindImport with x then addImports(l x.items)
                 when bindInterface then fail("TypedInterface inside a block")
@@ -1938,7 +2113,8 @@ export
             let kindText = model.showKind(lt.symbol.kind)
             if maybe.isSome(lt.symbol.definition) then
                 emit(l option sEchoText of Stmt with
-                    let text = "Let " <> lt.name <> "::" <> kindText <> " = " <> model.show(maybe.unwrap(lt.symbol.definition))
+                    let text =
+                        "Let " <> lt.name <> "::" <> kindText <> " = " <> model.show(maybe.unwrap(lt.symbol.definition))
                 end)
             else
                 emit(l option sEchoText of Stmt with let text = "Let " <> lt.name <> "::" <> kindText end)
@@ -1991,15 +2167,17 @@ export
 
     and phraseExpr(l: Lowerer e: Expr show: Bool): Ok =
         begin
-            let namedException = case e.form
-                when exprException with x then stringOp.length(x.name) > 0
-                else false
-            end
+            let namedException =
+                case e.form
+                    when exprException with x then stringOp.length(x.name) > 0
+                    else false
+                end
             if namedException then
                 value(l e none)
                 if show then
                     case e.form
-                        when exprException with x then emit(l option sEchoText of Stmt with let text = "exception " <> x.name end)
+                        when exprException with x then
+                            emit(l option sEchoText of Stmt with let text = "exception " <> x.name end)
                         else ok
                     end
                 end
@@ -2021,7 +2199,8 @@ export
 
     and echoBinding(l: Lowerer name: String symbol: symbols.ValueSymbol v: Variable): Ok =
         begin
-            let prefix = "let " <> if symbol.isVar then "var " else "" end <> name <> ":" <> model.show(symbol.type) <> " = "
+            let prefix =
+                "let " <> if symbol.isVar then "var " else "" end <> name <> ":" <> model.show(symbol.type) <> " = "
             if isOk(symbol.type) then
                 emit(l option sEchoText of Stmt with let text = prefix <> "ok" end)
             else
@@ -2050,7 +2229,7 @@ export
                     let ids = maybe.unwrap(item.symbolIds)
                     if {j < extent ids} andif maybe.isSome(ids[j]) then
                         hashMap.insert(l.moduleRefs maybe.unwrap(ids[j])
-                            option refImport of nodes.ModuleRef with let i = imp end)
+                                option refImport of nodes.ModuleRef with let i = imp end)
                     end
                 end
             end
@@ -2079,7 +2258,7 @@ export
                                     case maybe.unwrap(exc).form
                                         when exprException with x then
                                             nodes.addMember(members x.name
-                                                hashMap.find(l.vars maybe.unwrap(x.symbol).symbolId))
+                                                    hashMap.find(l.vars maybe.unwrap(x.symbol).symbolId))
                                         else ok
                                     end
                                 end
@@ -2087,7 +2266,8 @@ export
                                     nodes.addMember(members lv.name hashMap.find(l.vars lv.symbol.symbolId))
                                 case mb.form
                                     when bindLetValue with x then addValue(x.value)
-                                    when bindLetValueGroup with x then for j = 0 upto {extent x.members - 1} do addValue(x.members[j]) end
+                                    when bindLetValueGroup with x then
+                                        for j = 0 upto {extent x.members - 1} do addValue(x.members[j]) end
                                     else ok
                                 end
                         end
@@ -2099,7 +2279,7 @@ export
                 hashMap.insert(l.moduleEnds lowered.id last)
                 if maybe.isSome(m.symbolId) then
                     hashMap.insert(l.moduleRefs maybe.unwrap(m.symbolId)
-                        option refModule of nodes.ModuleRef with let m = lowered end)
+                            option refModule of nodes.ModuleRef with let m = lowered end)
                 end
                 lowered
             else fail("not a module")
@@ -2146,10 +2326,11 @@ export
             let rv = fresh(m.name <> "_record" recordType false)
             m.recordVar := some(rv)
             vector.append(moduleEnd(l m).statements
-                nodes.letStmt(rv nodes.makeRecord(vector.toArray(atoms))))
+                    nodes.letStmt(rv nodes.makeRecord(vector.toArray(atoms))))
         end
 
-    let lowerProgram(prog: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult: Bool):
+    let lowerProgram(prog: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool
+            printResult: Bool):
             nodes.Unit =
         begin
             let l = newLowerer(e sourceMap 0 echo printResult)
@@ -2174,7 +2355,8 @@ export
                                 let sym = s.sym
                                 let member = nodes.member(m.members sym.name)
                                 if maybe.isNone(member) then
-                                    fail(:Ok "module " <> x.name <> " does not define its interface's member '" <> sym.name <> "'")
+                                    fail(:Ok "module " <> x.name <> " does not define its interface's member '"
+                                        <> sym.name <> "'")
                                 end
                                 let mv = maybe.unwrap(member)
                                 (* An export converts to its interface's
@@ -2183,12 +2365,12 @@ export
                                  * of the module's own
                                  * (docs/c-representation.md section 5.1) *)
                                 if subtyping.isTypeEqual(mv.type sym.type maybe.none())
-                                    andif not(genericLayout.abstractLayoutsDiffer(sym.type)) then
+                                        andif not(genericLayout.abstractLayoutsDiffer(sym.type)) then
                                     nodes.addMember(exports sym.name mv)
                                 else
                                     let exported = fresh(sym.name sym.type false)
                                     vector.append(moduleEnd(l m).statements
-                                        nodes.letStmt(exported nodes.opOfVar(mv)))
+                                            nodes.letStmt(exported nodes.opOfVar(mv)))
                                     nodes.addMember(exports sym.name exported)
                                 end
                             else ok
@@ -2212,7 +2394,7 @@ export
      * made, as a module file's is, when they have run, with a var field for a
      * var (docs/jit.md section 3.2) *)
     let lowerPhrases(prog: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) number: Int
-        earlier: hashMap.T(Int Earlier) echo: Bool printResult: Bool capture: Bool): nodes.Unit =
+            earlier: hashMap.T(Int Earlier) echo: Bool printResult: Bool capture: Bool): nodes.Unit =
         begin
             let l = newLowerer(e sourceMap 0 echo printResult)
             hashMap.forEach(earlier fun(k: Int b: Earlier): Ok
@@ -2231,7 +2413,7 @@ export
                      * not add *)
                     if not(env.redefines(e symbol)) then
                         nodes.addMember(members phraseField(symbol.symbolId)
-                            hashMap.find(l.boxes symbol.symbolId))
+                                hashMap.find(l.boxes symbol.symbolId))
                     end
                 elsif env.redefines(e symbol) then
                     (* A redefined slot of type Ok, which has no words *)
@@ -2292,7 +2474,7 @@ export
                 let n = vector.get(members.names i)
                 let v = hashMap.find(members.vars n)
                 vector.append(recordFields
-                    tuple let name = n let type = v.type let isVar = v.isMutable end)
+                        tuple let name = n let type = v.type let isVar = v.isMutable end)
                 vector.append(atoms tuple let name = n let atom = va(v) let isVar = v.isMutable end)
             end
             let recordType = model.recordType(vector.toArray(recordFields) maybe.none())
