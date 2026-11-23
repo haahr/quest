@@ -21,7 +21,15 @@
 # another's in .build/quest-stages-BACKEND), so that switching rebuilds
 # neither; the backend is part of the stages' identity (.build/.../seed), so
 # that stages another default built are rebuilt, not reused.
+# A stage build waits while another worktree's check or timing holds the
+# machine-wide lock; --no-exclusive, before the driver's arguments, builds at
+# once (as run_tests.py's does), for one that only a check holds.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NO_EXCLUSIVE=""
+if [ "$1" = "--no-exclusive" ]; then
+    NO_EXCLUSIVE=1
+    shift
+fi
 DEFAULT_BACKEND=arm64
 BACKEND="${QUEST_BACKEND:-$DEFAULT_BACKEND}"
 case "$BACKEND" in
@@ -93,8 +101,9 @@ stale() {
 
 if stale; then
     # A stage build waits while another worktree's check or timing holds the
-    # machine-wide lock (docs/testing.md section 4.2); under it, it does not
-    if [ -z "$QUEST_EXCLUSIVE_HELD" ] && [ -x "$SCRIPT_DIR/tools/exclusive" ]; then
+    # machine-wide lock (docs/testing.md section 4.2); under it, or with
+    # --no-exclusive, it does not
+    if [ -z "$QUEST_EXCLUSIVE_HELD" ] && [ -z "$NO_EXCLUSIVE" ] && [ -x "$SCRIPT_DIR/tools/exclusive" ]; then
         "$SCRIPT_DIR/tools/exclusive" --yield "./quest's stage build" || true
     fi
     VERBOSE=""
