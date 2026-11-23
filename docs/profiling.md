@@ -51,6 +51,20 @@ three seconds.
 User time leaves out the system's: ray writes its output a character at a time and spends most of its elapsed time
 in the kernel. On a loaded machine, differences under about 5 percent are noise; check the load average first.
 
+### 3.1. Counting instead of timing
+
+```bash
+python3.11 tools/perf/counts.py fft lexgen
+python3.11 tools/perf/counts.py --results after.jsonl --against before.jsonl fft lexgen
+```
+
+runs each `.build/perf/NAME.TAG` (`--tags`, by default `mlton,ssac,arm64`; `mlton` is the original built by MLton)
+once, under `/usr/bin/time -l`, and prints the instructions it retired and its ratio to the first tag's; `--results`
+appends them, with cycles and bytes allocated, to a JSONL file, and `--against` prints each one's ratio to an earlier
+file's. A loaded machine barely changes the instructions a program retires (a program's own variation, its
+allocation addresses and hash orders, is under 1%), so counts compare builds, and the effect of a change, without a
+quiet machine. They miss what instructions do not show: a load that waits on memory, a branch mispredicted.
+
 ## 4. Where the time goes
 
 `sample(1)` attributes time to functions only, and Instruments needs Xcode. `profile.py` loads a small sampler
