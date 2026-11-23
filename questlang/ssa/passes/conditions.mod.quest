@@ -1,0 +1,124 @@
+(* Quest Self-Hosted Compiler: The SSA's Dominating Conditions Implementation *)
+
+module conditions : Conditions
+import
+    conv : Conv
+    stringOp = string : StringOp
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/passes/valueNumbers : questlang/ssa/passes/ValueNumbers
+export
+    Def Fact = Tuple value: Bool block: Int end
+
+    (* The comparisons a fact is kept for, and the one each equality's
+     * negation is *)
+    let compared(op: ssa.Opcode): Bool =
+        case op
+            when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne then true
+            else false
+        end
+    let negation(op: ssa.Opcode): maybe.T(ssa.Opcode) =
+        case op
+            when opEq then maybe.some(ssa.opNe)
+            when opNe then maybe.some(ssa.opEq)
+            when opPeq then maybe.some(ssa.opPne)
+            when opPne then maybe.some(ssa.opPeq)
+            else maybe.none(:ssa.Opcode)
+        end
+
+    let decideFunction(f: ssa.Function): Bool =
+        begin
+            let defs = ssa.definitions(f)
+            (* A value as text that is the same for values that must be equal:
+             * a constant, a null, or a symbol by what it is, an invariant load
+             * by its address, a copy as what it copies *)
+            let rec operand(v: Int depth: Int): String =
+                begin
+                    let d = defs[v]
+                    if maybe.isNone(d) orif {depth > 4} then
+                        "v" <> conv.int(v)
+                    else
+                        let i = maybe.unwrap(d)
+                        case i.op
+                            when opConst then "c" <> conv.int(i.imm)
+                            when opNull then "n"
+                            when opSymbol then "s" <> i.symbol
+                            when opCopy then operand(i.args[0] depth + 1)
+                            when opLoad then
+                                if i.invariant then
+                                    "L" <> conv.int(i.width) <> ":" <> conv.int(i.imm) <> "("
+                                        <> operand(i.args[0] depth + 1) <> ")"
+                                else
+                                    "v" <> conv.int(v)
+                                end
+                            else "v" <> conv.int(v)
+                        end
+                    end
+                end
+            let key(op: ssa.Opcode i: ssa.Inst): String =
+                ssa.opcodeName(op) <> " " <> conv.int(i.imm) <> " " <> operand(i.args[0] 0) <> " "
+                    <> operand(i.args[1] 0)
+            (* The comparison that defines a branch's condition, if one does *)
+            let comparison(cond: Int): maybe.T(ssa.Inst) =
+                begin
+                    let d = defs[cond]
+                    if maybe.isSome(d) andif compared(maybe.unwrap(d).op) then d else maybe.none(:ssa.Inst) end
+                end
+            let g = cfg.graph(f)
+            let facts = hashMap.new(:String :Fact stringOp.equal hash.string)
+            let var decided = false
+            for k = 0 upto {extent g.order - 1} do
+                let b = g.order[k]
+                (* The fact this block's one entering edge gives *)
+                if extent g.preds[b] is 1 then
+                    let p = g.preds[b][0]
+                    case ssa.block(f p).term
+                        when termBranch with x then
+                            let c = comparison(x.cond)
+                            if maybe.isSome(c) andif {x.ifTrue.block isnot x.ifFalse.block} then
+                                let i = maybe.unwrap(c)
+                                let value = x.ifTrue.block is b
+                                let ignored = hashMap.insert(facts key(i.op i)
+                                        tuple let value = value let block = b end)
+                                let negated = negation(i.op)
+                                if maybe.isSome(negated) then
+                                    let alsoIgnored = hashMap.insert(facts key(maybe.unwrap(negated) i)
+                                            tuple let value = not(value) let block = b end)
+                                end
+                            end
+                        else ok
+                    end
+                end
+                (* This block's branch, if a fact that holds here decides it *)
+                let blk = ssa.block(f b)
+                case blk.term
+                    when termBranch with x then
+                        let c = comparison(x.cond)
+                        if maybe.isSome(c) then
+                            let i = maybe.unwrap(c)
+                            let known = hashMap.get(facts key(i.op i))
+                            if maybe.isSome(known) andif cfg.dominates(g maybe.unwrap(known).block b) then
+                                let chosen = if maybe.unwrap(known).value then x.ifTrue else x.ifFalse end
+                                blk.term := option termJump of ssa.Terminator with let target = chosen end
+                                decided := true
+                            end
+                        end
+                    else ok
+                end
+            end
+            if decided then cfg.dropUnreached(f) end
+            decided
+        end
+
+    let decideUnit(u: ssa.Unit): Ok =
+        for i = 0 upto {vector.length(u.functions) - 1} do
+            let f = vector.get(u.functions i)
+            if decideFunction(f) then valueNumbers.numberFunction(f) end
+        end
+end

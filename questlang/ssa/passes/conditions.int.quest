@@ -1,0 +1,32 @@
+(* Quest Self-Hosted Compiler: The SSA's Dominating Conditions Interface
+ *
+ * Decides a branch on a comparison that a dominating branch on the same
+ * comparison has decided already (docs/ssa.md section 4.1). The builder checks
+ * an array for null and its index against its length at every access, as it
+ * does a string, and each check ends a block, so value numbering, which
+ * removes repeated comparisons only within a block, leaves a check that an
+ * earlier one on the same values has made: fft's butterfly checked its 8
+ * elements 48 times.
+ *
+ * A block that only one edge of a branch enters knows the branch's comparison
+ * true or false (the edge's), and so does every block it dominates. A branch
+ * there on the same comparison becomes a jump to the target that the fact
+ * chooses, and the blocks no longer reached are dropped. Comparisons are the
+ * same when their opcodes and immediates are and their operands are the same
+ * value, or constants, nulls, or symbols of the same value, or invariant
+ * loads of the same address: value numbering keeps those apart in each block
+ * (for registers and pair loads), so their numbers differ though their values
+ * cannot. An equality or a pointer equality known also gives its negation.
+ *
+ * Run after value numbering, and before it again, which then merges the loads
+ * that the removed checks kept apart. *)
+
+interface Conditions
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* Decides f's branches that dominating ones have; whether it decided any *)
+    decideFunction(f: ssa.Function): Bool
+    (* Each function's, numbering the values again of each that changed *)
+    decideUnit(u: ssa.Unit): Ok
+end

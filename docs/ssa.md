@@ -252,6 +252,16 @@ internal error.
   Hoisting loop-invariant pure values and invariant loads to preheaders was tried after it (2026-11-03) and not kept:
   it found almost nothing to move, since a loop's invariant loads sit behind null and bounds checks inside the loop,
   and its constants are rematerialized.
+- **`ssa/passes/conditions`** decides a branch on a comparison that a dominating branch on the same comparison has
+  decided: a block that only one edge of a branch enters knows the comparison's value, and so does every block it
+  dominates, where a branch on the same comparison becomes a jump to the target that value chooses, and the blocks no
+  longer reached are dropped. Comparisons are the same by opcode, immediate, and operands, where a constant, a null, or
+  a symbol is compared by what it is and an invariant load by its address, since value numbering keeps those apart in
+  each block; an equality known gives its negation too. The builder checks an array for null and its index against its
+  length at every access, as it does a string, and value numbering compares only within a block, so fft's butterfly
+  made 24 null checks and 24 bounds checks for its 8 elements, and this takes its arm64 instructions retired to 0.81
+  (benchmarks.md §39). It then numbers the values again of each function it changed, which merges the loads that the
+  checks kept in separate generations.
 - **`ssa/passes/selects`** makes selects of branches (if-conversion): a branch whose two arms only pass values to one
   block, each arm directly or through a block of its own (one with no parameters, reached only from the branch, that
   only jumps on), becomes a jump to that block, each argument the arms pass differently a `select` by the branch's
@@ -361,8 +371,8 @@ The passes share their analyses: `ssa/cfg` (predecessors, successors, reverse po
 preorder and postorder numbers, dominance frontiers, and loop depths); the register allocator computes liveness on the
 machine layer's instructions (`codegen/machine/machine`), not on the SSA. `nodes` has the mutators (`targets`,
 `mapTargets`, `mapBlocks`, `replaceUses`). The driver dumps the SSA after the builder (`--dump-after ssa_built`), after
-each pass (`ssa_escape`, `ssa_promote`, `ssa_constants`, `ssa_concats`, `ssa_valueNumbers`, `ssa_selects`, `ssa_tables`,
-`ssa_accumulate`, `ssa_tailCalls`, `ssa_tailJumps`, `ssa_trampolines`), and at the end (`ssa`);
+each pass (`ssa_escape`, `ssa_promote`, `ssa_constants`, `ssa_concats`, `ssa_valueNumbers`, `ssa_conditions`,
+`ssa_selects`, `ssa_tables`, `ssa_accumulate`, `ssa_tailCalls`, `ssa_tailJumps`, `ssa_trampolines`), and at the end (`ssa`);
 `QUEST_SKIP_PASSES`, a comma-separated list of passes' names, leaves passes out, for a test or a bisection.
 
 ### 4.2. Escape Analysis

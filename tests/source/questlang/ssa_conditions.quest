@@ -1,0 +1,117 @@
+(* Self-Hosted Quest Compiler: Test Dominating Conditions
+ *
+ * questlang/ssa/passes/conditions (docs/ssa.md section 4.1) on functions of
+ * the SSA written as text and read by questlang/ssa/parser, each printed
+ * before and after the pass and verified: a null check made again, on a null
+ * of its own, which becomes a jump; a bounds check made again, on its length
+ * loaded again, likewise; the negation of a known pointer equality; and checks
+ * that stay, on another array, and in a block the first check does not
+ * dominate. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    conv : Conv
+    writer : Writer
+
+    collections/vector : collections/Vector
+    util/strutil : util/Strutil
+
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/passes/conditions : questlang/ssa/passes/Conditions
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/verify : questlang/ssa/Verify
+
+let emit(s: String): Ok = writer.putString(writer.output s)
+
+let show(title: String lines: Array(String)): Ok =
+    begin
+        emit("== " <> title <> "\n")
+        let u = parser.readUnit(strutil.joinArray("\n" lines) <> "\n")
+        emit(printer.formatUnit(u))
+        let decided = conditions.decideFunction(vector.get(u.functions 0))
+        emit("-- after conditions: " <> conv.bool(decided) <> "\n")
+        emit(printer.formatUnit(u))
+        try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
+    end
+
+show("a null check made again" array of
+    "function twice(%0: ptr): int {"
+    "b0(%0: ptr):"
+    "  %1: ptr = null"
+    "  %2: int = peq %0, %1"
+    "  branch %2, b3(), b1()"
+    "b1():"
+    "  %3: int = load8 %0 + 8"
+    "  %4: ptr = null"
+    "  %5: int = peq %0, %4"
+    "  branch %5, b3(), b2()"
+    "b2():"
+    "  %6: int = load8 %0 + 16"
+    "  %7: int = add %3, %6"
+    "  return %7"
+    "b3():"
+    "  unreachable"
+    "}"
+end)
+
+show("a bounds check made again" array of
+    "function both(%0: ptr, %1: int): int {"
+    "b0(%0: ptr, %1: int):"
+    "  %2: int = load8 %0 + 0 invariant"
+    "  %3: int = ult %1, %2"
+    "  branch %3, b1(), b3()"
+    "b1():"
+    "  %4: int = load8 %0 + 0 invariant"
+    "  %5: int = ult %1, %4"
+    "  branch %5, b2(), b3()"
+    "b2():"
+    "  return %4"
+    "b3():"
+    "  unreachable"
+    "}"
+end)
+
+show("the negation of a known equality" array of
+    "function negated(%0: ptr): int {"
+    "b0(%0: ptr):"
+    "  %1: ptr = null"
+    "  %2: int = peq %0, %1"
+    "  branch %2, b3(), b1()"
+    "b1():"
+    "  %3: int = pne %0, %1"
+    "  branch %3, b2(), b3()"
+    "b2():"
+    "  %4: int = const 1"
+    "  return %4"
+    "b3():"
+    "  unreachable"
+    "}"
+end)
+
+show("checks that stay: another array, and one not dominated" array of
+    "function others(%0: ptr, %1: ptr, %2: int): int {"
+    "b0(%0: ptr, %1: ptr, %2: int):"
+    "  %3: ptr = null"
+    "  %4: int = peq %0, %3"
+    "  branch %4, b5(), b1()"
+    "b1():"
+    "  %5: int = peq %1, %3"
+    "  branch %5, b5(), b2()"
+    "b2():"
+    "  branch %2, b3(), b4()"
+    "b3():"
+    "  %6: int = const 1"
+    "  return %6"
+    "b4():"
+    "  %7: int = const 2"
+    "  return %7"
+    "b5():"
+    "  %8: int = peq %0, %3"
+    "  branch %8, b6(), b7()"
+    "b6():"
+    "  unreachable"
+    "b7():"
+    "  %9: int = const 3"
+    "  return %9"
+    "}"
+end)

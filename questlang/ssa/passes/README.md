@@ -21,17 +21,18 @@ together.
 | 3 | [`scalars`](../scalars.int.quest) | objects merged at block parameters become their words' values |
 | 4 | [`constants`](constants.int.quest) | globals stored once with a constant become read-only constants |
 | 5 | [`valueNumbers`](valuenumbers.int.quest) | redundant computations and loads are removed |
-| 6 | [`selects`](selects.int.quest) | small two-armed branches become `select`s (if-conversion) |
-| 7 | [`tables`](tables.int.quest) | dense switches of constants become table loads |
-| 8 | [`accumulate`](accumulate.int.quest) | recursion through `+`, `*`, and the like becomes a loop |
-| 9 | [`tailCalls`](tailcalls.int.quest) | calls in tail position are marked |
-| 10 | [`tailJumps`](tailjumps.int.quest) | mutually tail-recursive functions become loops |
-| 11 | [`trampolines`](trampolines.int.quest) | an exported entry point gets a copy of the function it forwards to |
+| 6 | [`conditions`](conditions.int.quest) | branches a dominating branch on the same comparison decides become jumps |
+| 7 | [`selects`](selects.int.quest) | small two-armed branches become `select`s (if-conversion) |
+| 8 | [`tables`](tables.int.quest) | dense switches of constants become table loads |
+| 9 | [`accumulate`](accumulate.int.quest) | recursion through `+`, `*`, and the like becomes a loop |
+| 10 | [`tailCalls`](tailcalls.int.quest) | calls in tail position are marked |
+| 11 | [`tailJumps`](tailjumps.int.quest) | mutually tail-recursive functions become loops |
+| 12 | [`trampolines`](trampolines.int.quest) | an exported entry point gets a copy of the function it forwards to |
 | | [`interrupts`](interrupts.int.quest) | Jupyter kernel only: interrupt-flag checks at entries and loop heads |
 | | [`unproxies`](unproxies.int.quest) | lowering: each `unproxy` becomes a test and a branch |
 | | [`allocations`](allocations.int.quest) | lowering: each `quest_alloc` becomes the collector's inline fast path |
 
-The first eleven are `pipeline.passes`, run by `pipeline.build`, and the driver can dump the SSA after each (phases
+The first twelve are `pipeline.passes`, run by `pipeline.build`, and the driver can dump the SSA after each (phases
 `ssa_escape`, `ssa_promote`, and so on). Scalar replacement is a pass like the others, though its module is in the
 parent directory. The interrupt checks run at the end of `build`, and only when the kernel's driver turns them on.
 The last two are lowerings, run by `pipeline.lower` just before code generation, so they appear in no dump.
