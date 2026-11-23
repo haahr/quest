@@ -289,8 +289,10 @@ in a hole. Intervals are taken in order of their starts:
   across. Every register is unavailable at the start of a `try`'s handler that the interval covers.
 - **Costs** (2026-11-01). Spilling an interval costs the load at its
   next use, so that use's block's frequency: 1000, times 8 for each loop the block is in (up to four, from
-  `cfg.loopDepths` over the machine function), or 1 for a cold block (from which every path raises, which the
-  target tells the allocator). The choice above takes the register whose holders cost least, and spills the
+  `cfg.loopDepths` over the machine function), or 1 for a cold block (from which every path raises, or one that
+  calls the runtime for a proxy, which a program rarely takes, which the target tells the allocator). A jump's hint
+  from a cold block comes after the others, so that a join takes its hot predecessor's register: a proxy test's join
+  had taken the call's result register, and every hot path moved its value there (2026-11-23). The choice above takes the register whose holders cost least, and spills the
   interval instead if it costs less; the nearest next use decides only at equal costs, as in code without loops.
   A register is also taken, where one is free for only part of the interval, if its holders cost less than the
   part the free one would spill: so a value used in a loop and live across a call in it gets a callee-saved

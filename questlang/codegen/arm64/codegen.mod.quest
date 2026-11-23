@@ -138,9 +138,22 @@ export
                 false
         end
 
+    (* Whether an operation calls the runtime for a proxy: the slow path of a
+     * tuple's or option's access that may meet one, which programs rarely
+     * take (most make no proxies) *)
+    let callsProxy(op: minst.Op): Bool =
+        case op
+            when opBl with x then
+                strutil.startsWith(x.symbol "_quest_proxy_") orif strutil.startsWith(x.symbol "quest_proxy_")
+            else false
+        end
+
     (* Marks blocks from which every path raises an exception: a block that
      * ends in brk (unreachable after a raise), or a block that does not
-     * return and whose successors are all cold *)
+     * return and whose successors are all cold; and a proxy's slow path, a
+     * block that calls the runtime for one, which a program rarely takes, so
+     * that the allocator charges it little and gives the hot path the
+     * registers at the join, and the layout puts it out of line *)
     let coldBlocks(s: select.Selection): Array(Bool) =
         begin
             let m = s.f
@@ -158,6 +171,7 @@ export
                         let var hot = false
                         for j = 0 upto {vector.length(insts) - 1} do
                             let i = vector.get(insts j)
+                            if callsProxy(vector.get(s.ops i.op)) then raises := true end
                             if machine.isKind(i machine.kindReturn) then
                                 if isBrk(vector.get(s.ops i.op)) then raises := true else leaves := true end
                             end

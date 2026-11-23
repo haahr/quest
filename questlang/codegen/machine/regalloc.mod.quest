@@ -665,6 +665,10 @@ export
                 if virtual(a) andif {virtual(b) orif allocatable[b]} then
                     vector.append(hints[machine.index(f a)] b)
                 end
+            (* A cold jump's hints come after the others, so that a join's
+             * parameter takes its hot predecessor's register, the move going
+             * to the cold path *)
+            let coldHints = vector.new(:Int)
             let remat = array of(nValues false)
             for b = 0 upto {nBlocks - 1} do
                 let insts = machine.block(f b).insts
@@ -676,7 +680,12 @@ export
                     elsif machine.isKind(i machine.kindJump) then
                         let params = machine.block(f i.target).params
                         for a = 0 upto {extent i.operands - 1} do
-                            hint(vector.get(params a) i.operands[a].reg)
+                            if cold(b) then
+                                vector.append(coldHints vector.get(params a))
+                                vector.append(coldHints i.operands[a].reg)
+                            else
+                                hint(vector.get(params a) i.operands[a].reg)
+                            end
                             hint(i.operands[a].reg vector.get(params a))
                         end
                     end
@@ -697,6 +706,9 @@ export
                         end
                     end
                 end
+            end
+            for k = 0 upto {{vector.length(coldHints) / 2} - 1} do
+                hint(vector.get(coldHints 2 * k) vector.get(coldHints {2 * k} + 1))
             end
             let sc = tuple
                 let classes = classes
