@@ -478,6 +478,39 @@ The recommendation was to revert the three changes, measure again without them n
 A and B only if repeated elaboration still matters, consider C on its own merits, and leave D and E for the case
 where inlined modules become a permanent part of separate compilation.
 
+**What followed (2026-11-23).** The three changes were reverted, with the no-effect experiments of §6.5
+(`openedTransparent`'s memo, the inliner budget without copies, `vector.append`'s split). Measured again with the
+collector fixed, by an experimental stage 1 (the release compiling the tree), building the fixed tree in one process,
+instructions retired:
+
+| Build | Instructions retired |
+|---|---:|
+| Separate, nothing inlined | 428 G |
+| Inlined, no cache | 1,825 G |
+| Inlined, the first cache and shared base scope | 1,442 G |
+| Inlined, A and B | 1,519 G |
+
+Repeated elaboration still mattered, so A and B were built:
+
+- **A.** `env.initBuiltins` makes the builtins once for the process, in a scope of their own (`builtinScope`), and
+  declares the same symbols into each environment's own base scope. What one environment declares there no other
+  sees.
+- **B.** `loader.loadInlinedSource` keeps, for each inlined module, entries of its typed module with the source and
+  its time, the expected interface, and the scopes of the interfaces its imports bound. On a lookup it parses the
+  module's header, binds its imports into the environment as its elaboration does (`elaboration.bindImportsOf`, now
+  shared with `elaborateModule`), from the module's directory, and reuses an entry only if the expected interface is
+  the same and every import's interface is the same scope. `loadedQis` makes one scope for each unchanged `.qi`, so
+  an interface that changed or resolves elsewhere is a miss. Nothing loads on demand, and no error is swallowed: a
+  failed binding is a miss, and elaborating reports it.
+- **Several entries.** A first version kept one entry per module. Traced over the full build it hit 470 times and
+  missed 27, all `util/iter`, whose `StringOp` was the builtin registry's scope in some units and a `.qi`'s in others,
+  so each switch elaborated it again. Keeping an entry for each set of scopes removes those misses: 1,616 G with one
+  entry, 1,519 G with several.
+
+B costs about 5% more than the first cache, for parsing each module's header and binding its imports on every
+lookup, and saves 17% against none. The seconds and peak memory of these runs are left out: other sessions' checks
+held the machine at a load of 100 and more.
+
 ### 6.7. Tools added
 
 - `tools/perf/crosscalls.py`, with `tests/python/test_crosscalls.py`.
