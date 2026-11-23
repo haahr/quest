@@ -177,18 +177,48 @@ So no program's behavior changes, and no backend or interpreter has to follow. T
 `language/real_errors` (or its equivalent) extended with NaNs made at each position of a chain, each raising at its
 own site, in every mode. **Measure:** nucleic, fft, mandelbrot, matrix-multiply.
 
-### 3.5. Step 5: no proxy tests for types no proxy is made of
+### 3.5. Step 5: fewer proxy tests (two designs, the user to choose)
 
-A tuple or option type whose components can change view may hold a proxy (`mayBeProxied`, `repr/layout`;
-[runtime-design.md](runtime-design.md) §2.3), so every read of its tag, payload, or field is preceded by `tbnz wN, #0`
-and a cold call: 8 of the 25 instructions per element of tyan's walk through ssac, 5 to 8 per step of logic's.
+A tuple or option type whose values may be proxies (`mayBeProxied`, `repr/layout`; [runtime-design.md](runtime-design.md)
+§2.3) has every read of its tag, payload, or field preceded by `tbnz wN, #0` and a cold call. **Measured** (2026-11-23,
+a build in which `mayBeProxied` is always false, unsound but exact for these programs, which make no proxies):
+instructions retired against the baseline, through ssac and arm64, tyan 0.739 and 0.728, logic 0.834 and 0.800, mpuz
+0.825 and 0.757, lexgen 0.706 and 0.703 (with steps 1 and 2, which alone gave 0.794 and 0.823). The tests are 17 to 27%
+of what tyan, logic, and mpuz retire: the largest single item for code that walks lists and trees.
 
-A whole program knows every site that makes a proxy (an upcast whose components change view, `ir/represent`).
-`whole` collects the types those sites make proxies of, and `mayBeProxied` answers false for any other in that unit.
-Unit by unit it cannot know, and nothing changes.
+Nearly all come from one rule: an option of two or more cases may be a proxy, because its tags number its cases in the
+order of their names, and an upcast to a type with more cases renumbers them (an `Option nil end` seen as a list's
+`Option cons nil end` has its `nil` move from tag 0 to tag 1), so the upcast makes a proxy that shows the original at
+the new numbering. Every list and logic's `Term` is such an option. Proxies for a payload whose components change view
+are the rarer case, and both designs keep them.
 
-**Tests:** a whole-program SSA golden of a list walk with no proxy test; `language/proxies` (or its equivalent) in
-whole-program mode, unchanged. **Measure:** tyan, logic, lexgen, mpuz, as whole programs.
+**5a, a whole program proves where proxies are made.** A proxy is made only by a conversion to a supertype (a `view`
+plan of `ir/represent`, §5.8), whose target type the proxy then has; a value of a type no conversion makes a proxy at
+is never one, since nothing converts down. A whole program sees every such conversion: `whole` runs represent's planning
+over the unit before representing it (planning with today's rule, which can only find more), collects the shapes that
+view plans and `dynamic.be`'s and the runtime's descriptor views (`quest_view_*`, reached from plans whose targets are
+static types) make proxies at, and `mayBeProxied` answers false for every other. Costs: moderate, in `ir/represent`,
+`repr/layout`, and `driver/whole`; no ABI change. Gains only in whole programs; unit by unit nothing changes, since a
+unit cannot see the others' conversions. The soundness of the proof rests on finding every place that makes a proxy, so
+the step adds a check mode in which the runtime's proxy constructors abort on a shape the compiler said none is made
+at, run over the suite and the tests.
+
+**5b, tags that no upcast renumbers.** Each case's tag is the same in every option type that has it: a 32-bit hash of
+its name (with a type's two names that collide numbered apart, and that type keeping today's rule). An upcast then
+renumbers nothing, and an option is a proxy only when a payload's components change view. Gains everywhere, unit by
+unit too. Costs: an ABI change through the runtime (`ordinal`, the payload-free constants' tables, which are indexed by
+ordinal and would be found by a search, `dynamic` and serialization, the barrier's test that a word under 65536 is a
+tag), both compilers' C, the SSA builder, and the WebAssembly backend; and every switch on an option's tag becomes a
+search over sparse constants rather than a jump table (the tables pass requires dense cases), which the compiler itself,
+switching over options of 20 to 60 cases, would feel. So 5b would first count, in a hand-made build of the compiler and
+of the suite, what sparse switches cost, before any of it is designed further.
+
+Recommended: 5a first, whose gain is certain for whole programs and whose cost is local; 5b only if unit-by-unit
+programs need the gain and its count of sparse switches is small.
+
+**Tests either way:** a whole-program SSA golden of a list walk with no proxy test; the proxy tests
+(`language/proxies` and the like) in whole-program mode, unchanged; the stress tier. **Measure:** tyan, logic, lexgen,
+mpuz.
 
 ### 3.6. Step 6: a cheaper allocation
 
