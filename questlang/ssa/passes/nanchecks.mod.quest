@@ -189,13 +189,22 @@ export
                     end
                     if any then
                         (* The replay: the region again from its inputs, with
-                         * every check, each to its own raising block *)
+                         * every check, each to its own raising block. The
+                         * last check's block is not replayed: when every
+                         * earlier check passes, the last one is the one that
+                         * failed.
+                         * So the replay needs no value the last block reads
+                         * but nothing before it does, such as a loop's sum,
+                         * which would otherwise stay live past the next sum
+                         * and cost a move on the loop's chain *)
                         let replay = ssa.newBlock(f)
                         let copies = hashMap.new(:Int :Int intEqual hash.int)
                         let mapped(v: Int): Int = maybe.unwrapOr(hashMap.get(copies v) v)
                         let var at = replay
                         let var checkIndex = 0
-                        for r = 0 upto {vector.length(blocks) - 1} do
+                        let var last = vector.length(blocks) - 1
+                        while maybe.isNone(checkOf(vector.get(blocks last))) do last := last - 1 end
+                        for r = 0 upto {last - 1} do
                             let bb = vector.get(blocks r)
                             let blk = ssa.block(f bb)
                             let from = if r is 0 then start else 0 end
@@ -228,9 +237,10 @@ export
                                 checkIndex := checkIndex + 1
                             end
                         end
-                        (* Some check failed, so the replay raised; this is
-                         * not reached *)
-                        ssa.terminate(f at ssa.termUnreachable)
+                        let lastCheck = checkOf(vector.get(blocks last))
+                        ssa.terminate(f at option termJump of ssa.Terminator with
+                            let target = ssa.target(maybe.unwrap(lastCheck).bad array of :Int end)
+                        end)
                         for q = 0 upto {vector.length(checks) - 1} do
                             let c = vector.get(checks q)
                             let blk = ssa.block(f c.block)
