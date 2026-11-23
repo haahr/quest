@@ -152,13 +152,13 @@ Quest provides a standard `Word` module (`lib/word.mod.quest`) for 64-bit unsign
     `quest_word_add`, `quest_word_sub`, `quest_word_mul`, `quest_word_mul_hi` (the high word of the 128-bit
     product), `quest_word_lt`, `quest_word_le`, `quest_word_gt`, `quest_word_ge`.
   - Checked division and modulo: `quest_word_div_val` and `quest_word_mod_val`, raising `word.error` on zero divisors.
-  - Shifts, rotations, bitfields, and bit counts: `quest_word_shift_val`, `quest_word_rotate_val`,
-    `quest_word_extract_val`, `quest_word_replace_val`, `quest_word_pop_count_val`,
+  - Shifts, rotations, and bit counts: `quest_word_shift_val`, `quest_word_rotate_val`, `quest_word_pop_count_val`,
     `quest_word_count_leading_zeros_val`, and `quest_word_count_trailing_zeros_val`.
   - Integer and float bit-casts: `quest_word_to_int`, `quest_word_from_int`, `quest_word_to_real_val` (raising
     `word.error` on a NaN bit pattern; [type-system.md](type-system.md) §6.3.2), and `quest_word_from_real_val`.
-- **Quest-Implemented Operations**: Single-bit operations `getBit`, `setBit`, and `clearBit` are implemented in Quest
-  within `lib/word.mod.quest` utilizing `shift`, `andBits`, `orBits`, and `notBits`.
+- **Quest-Implemented Operations**: Single-bit operations `getBit`, `setBit`, and `clearBit`, and the bitfields
+  `extract` and `replace`, are implemented in Quest within `lib/word.mod.quest` utilizing `shift`, `andBits`,
+  `orBits`, `notBits`, and `sub`.
 - **Word Size Constant**: `word.bits` provides the word width `64`.
 
 ### 3.5. Rationale for Uniform 64-Bit Representation vs. Non-64-Bit Alternatives
@@ -1464,10 +1464,11 @@ runtime/
     divisor). Infinities pass through. See [type-system.md](type-system.md) §6.3.2.
   - `double quest_real_pow(double base, double exp)`: Implements Quest `^^` (and `real.exp`) via `pow()`, raising
     `real.error` for a zero base with a negative exponent or a NaN result.
-  - `QString *quest_conv_real(double r)`: Formats a real as the interpreter does (Python's `repr`: the shortest digits
-    that read back as `r`, fixed notation for `1e-5 <= |r| < 1e16`, otherwise an exponent), with `~` for negatives.
-    Displays (`quest_print_value`) write the same digits with `-`. The digits come from `quest_shortest_digits`,
-    which tries each length's correctly rounded decimal and, beside a power of two, its neighbors.
+  - `void quest_format_real(double r, char *out, size_t n)` (quest_runtime_internal.h): a real's magnitude as
+    `conv.real` writes it (the shortest digits that read back as `r`, fixed notation for `1e-4 <= |r| < 1e16`,
+    otherwise an exponent), for displays (`quest_print_value`), which write a sign of `-`. The digits come from
+    `quest_shortest_digits`, which tries each length's correctly rounded decimal and, beside a power of two, its
+    neighbors. `conv.real` itself is Quest, `util/realconv.toString`, which computes the same digits exactly.
   - `bool quest_val_is(const QTypeDescriptor *t, QVal a, QVal b)`: `is` on `QVal`-represented values; bit equality,
     or IEEE equality when `t` describes `Real` (so `0.0 is ~0.0`).
   - `uint64_t quest_identity_hash(const QTypeDescriptor *t, QVal x)`: `hash.identityHash`; hashes `~0.0` as `0.0` for

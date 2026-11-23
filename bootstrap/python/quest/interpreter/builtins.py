@@ -823,28 +823,6 @@ def _word_rotate(w: QWord, count: QInt) -> QWord:
     val = ((w.value << cnt) & 0xFFFF_FFFF_FFFF_FFFF) | (w.value >> (64 - cnt))
     return QWord(val)
 
-def _word_extract(w: QWord, pos: QInt, width: QInt) -> QWord:
-    p = pos.value
-    wd = width.value
-    if p < 0 or p >= 64 or wd <= 0:
-        return QWord(0)
-    if wd > 64 - p:
-        wd = 64 - p
-    mask = 0xFFFF_FFFF_FFFF_FFFF if wd == 64 else ((1 << wd) - 1)
-    return QWord((w.value >> p) & mask)
-
-def _word_replace(w: QWord, val: QWord, pos: QInt, width: QInt) -> QWord:
-    p = pos.value
-    wd = width.value
-    if p < 0 or p >= 64 or wd <= 0:
-        return w
-    if wd > 64 - p:
-        wd = 64 - p
-    mask = 0xFFFF_FFFF_FFFF_FFFF if wd == 64 else ((1 << wd) - 1)
-    cleared = w.value & ~(mask << p)
-    inserted = (val.value & mask) << p
-    return QWord((cleared | inserted) & 0xFFFF_FFFF_FFFF_FFFF)
-
 def _word_pop_count(w: QWord) -> QInt:
     return QInt(w.value.bit_count())
 
@@ -934,15 +912,6 @@ def _splitmix64(z: int) -> int:
     z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9 & 0xFFFF_FFFF_FFFF_FFFF
     z = (z ^ (z >> 27)) * 0x94D049BB133111EB & 0xFFFF_FFFF_FFFF_FFFF
     return (z ^ (z >> 31)) & 0xFFFF_FFFF_FFFF_FFFF
-
-def _quest_hash_mix(w: QWord) -> QWord:
-    return QWord(_splitmix64(w.value & 0xFFFF_FFFF_FFFF_FFFF))
-
-def _quest_hash_combine(h1: QWord, h2: QWord) -> QWord:
-    combined = (
-        h1.value ^ (h2.value + 0x9E3779B97F4A7C15 + (h1.value << 6) + (h1.value >> 2))
-    ) & 0xFFFF_FFFF_FFFF_FFFF
-    return QWord(combined)
 
 def _quest_identity_hash(v: QValue, t: Optional[QType] = None) -> QWord:
     """util/hash's identityHash (quest_identity_hash in the runtime): a hash
@@ -1167,9 +1136,6 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
 
     # Conv
     "quest_conv_int": _conv_int,
-    "quest_conv_real": _conv_real,
-    "quest_conv_string": lambda s: QString(s.to_str() if isinstance(s, QString) else ""),
-    "quest_conv_char": lambda c: QString(c.to_str() if isinstance(c, QChar) else ""),
     "quest_conv_bool": lambda b: QString("true" if isinstance(b, QBool) and b.value else "false"),
     "quest_conv_okay": lambda _: QString("ok"),
 
@@ -1228,7 +1194,6 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     # StringOp
     "quest_string_alloc": _string_new,
     "quest_string_length": lambda s: QInt(len(s.value)),
-    "quest_string_is_empty": lambda s: QBool(len(s.value) == 0),
     "quest_string_get_char": _string_get_char,
     "quest_string_set_char": _string_set_char,
     "quest_string_freeze": _string_freeze,
@@ -1253,9 +1218,6 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_sb_append_string_shared": lambda b, s: _sb_append(b, s.value),
     "quest_sb_append_char": lambda b, c: _sb_append(b, c.value),
     "quest_sb_append_int": lambda b, n: _sb_append(b, _conv_int(n).value),
-    "quest_sb_append_real": lambda b, r: _sb_append(b, _conv_real(r).value),
-    "quest_sb_append_bool": lambda b, v: _sb_append(b, "true" if v.value else "false"),
-    "quest_sb_append_word": lambda b, w: _sb_append(b, str(w.value & 0xFFFF_FFFF_FFFF_FFFF)),
     "quest_sb_append_sub": _sb_append_sub,
     "quest_sb_append_repeat": _sb_append_repeat,
     "quest_sb_clear": _sb_clear,
@@ -1285,8 +1247,6 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_word_shift": _word_shift,
     "quest_word_shift_val": _word_shift,
     "quest_word_rotate_val": _word_rotate,
-    "quest_word_extract_val": _word_extract,
-    "quest_word_replace_val": _word_replace,
     "quest_word_lt": _word_lt,
     "quest_word_le": _word_le,
     "quest_word_gt": _word_gt,
@@ -1297,8 +1257,6 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_word_get_bit_val": _word_get_bit,
     "quest_word_set_bit_val": _word_set_bit,
     "quest_word_clear_bit_val": _word_clear_bit,
-    "quest_hash_mix": _quest_hash_mix,
-    "quest_hash_combine": _quest_hash_combine,
     "quest_identity_hash": _quest_identity_hash,
 
     # System

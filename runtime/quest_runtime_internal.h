@@ -36,10 +36,8 @@ void quest_install_stack_guard(void);
 Q_NORETURN void quest_fatal(const char *message, const char *loc);
 extern Q_THREAD_LOCAL QExceptionHandler *quest_fatal_handler;
 
-/* quest_print.c: formats r without its sign, as the interpreter does; and
- * appends a character of a char or string literal, escaped */
+/* quest_print.c: formats r without its sign, as the interpreter does */
 void quest_format_real(double r, char *out, size_t n);
-void quest_sb_append_escaped(QStringBuilder *b, unsigned char c, char quote);
 
 /* quest_views.c: an option's identity hash at its type t */
 uint64_t quest_option_identity_hash(const QTypeDescriptor *t, const void *p);

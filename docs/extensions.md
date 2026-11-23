@@ -469,8 +469,8 @@ end
 - **Word Size Constant**: `word.bits` evaluates to `64`.
 - **Universal Word Boxing (`QVal`)**: In `QVal`, `Word.T` maps to the raw unsigned 64-bit word member `uint64_t u;`.
   Boxing is performed via `((QVal){ .u = (expr) })` and unboxing via `(expr).u`.
-- **Pure Quest Functions**: `getBit`, `setBit`, and `clearBit` are implemented directly in Quest source code
-  within `lib/word.mod.quest`, composed from `shift`, `andBits`, `orBits`, and `notBits`.
+- **Pure Quest Functions**: `getBit`, `setBit`, `clearBit`, `extract`, and `replace` are implemented directly in
+  Quest source code within `lib/word.mod.quest`, composed from `shift`, `andBits`, `orBits`, `notBits`, and `sub`.
 - **External C Runtime Bindings**: The remaining operations in `lib/word.mod.quest` bind via `external` to inline
   helpers in `runtime/quest_runtime.h`:
   - `notBits`, `andBits`, `orBits`, `xorBits` $\to$ `quest_word_not_bits`, `quest_word_and_bits`,
@@ -483,7 +483,6 @@ end
   - `shift` $\to$ `quest_word_shift_val` (logical right shift for negative counts, logical left shift for positive
     counts, returning `0` if $|count| \ge 64$ to avoid C undefined behavior)
   - `rotate` $\to$ `quest_word_rotate_val` (circular rotation modulo 64)
-  - `extract`, `replace` $\to$ `quest_word_extract_val`, `quest_word_replace_val`
   - `popCount`, `countLeadingZeros`, `countTrailingZeros` $\to$ `quest_word_pop_count_val` (`__builtin_popcountll`),
     `quest_word_count_leading_zeros_val` (`__builtin_clzll`; 64 if $w = 0$), and
     `quest_word_count_trailing_zeros_val` (`__builtin_ctzll`; 64 if $w = 0$)

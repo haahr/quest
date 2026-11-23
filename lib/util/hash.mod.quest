@@ -7,8 +7,24 @@ export
     let identityEqual(A::TYPE)(x1: A x2: A): Bool = x1 is x2
 
     let identityHash(A::TYPE)(x: A): wordLib.T = external "quest_identity_hash"
-    let mix(w: wordLib.T): wordLib.T = external "quest_hash_mix"
-    let combine(h1: wordLib.T h2: wordLib.T): wordLib.T = external "quest_hash_combine"
+
+    (* SplitMix64's finalizer: every bit of w spread over the result. The
+     * multipliers are 0xbf58476d1ce4e5b9 and 0x94d049bb133111eb *)
+    let mix(w: wordLib.T): wordLib.T =
+        begin
+            let a = wordLib.mul(wordLib.xorBits(w wordLib.shift(w ~30)) wordLib.fromInt(~4658895280553007687))
+            let b = wordLib.mul(wordLib.xorBits(a wordLib.shift(a ~27)) wordLib.fromInt(~7723592293110705685))
+            wordLib.xorBits(b wordLib.shift(b ~31))
+        end
+
+    (* h2 folded into h1, as Boost's hash_combine does, with the golden ratio's
+     * 0x9e3779b97f4a7c15 *)
+    let combine(h1: wordLib.T h2: wordLib.T): wordLib.T =
+        begin
+            let golden = wordLib.fromInt(~7046029254386353131)
+            let sum = wordLib.add(wordLib.add(wordLib.add(h2 golden) wordLib.shift(h1 6)) wordLib.shift(h1 ~2))
+            wordLib.xorBits(h1 sum)
+        end
 
     let int(n: Int): wordLib.T = mix(wordLib.fromInt(n))
 

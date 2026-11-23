@@ -566,7 +566,7 @@ export
                 else
                     let var match = true
                     for i = 0 upto extent sup.parts - 1 do
-                        let named = not(stringOp.isEmpty(sup.labels[i]))
+                        let named = {stringOp.length(sup.labels[i]) > 0}
                         if named andif not(stringOp.equal(sub.labels[i] sup.labels[i])) then match := false
                         elsif isVar(sup i) then
                             if not(isVar(sub i)) orif {match andif not(both(sub.parts[i] sup.parts[i]))} then
@@ -1706,19 +1706,6 @@ export
 
     let sbAppendInt(b: Buffer n: Int): Ok = sbAppendString(b convInt(n))
 
-    let sbAppendBool(b: Buffer v: Bool): Ok = sbAppendString(b if v then "true" else "false" end)
-
-    (* A Word in decimal, unsigned: its bits halved, so that they are an Int
-     * that is not negative, then a tenth and a last digit *)
-    let sbAppendWord(b: Buffer w: Int): Ok =
-        if w >= 0 then sbAppendString(b decimal(w))
-        else
-            let q = shrU(w 1) / 5
-            let r = w - {q * 10}
-            sbAppendString(b decimal(q))
-            sbAppendString(b decimal(r))
-        end
-
     let sbAppendRepeat(b: Buffer c: Char n: Int): Ok =
         begin
             if n < 0 then stringError() end
@@ -1887,7 +1874,7 @@ export
     let absolute(path: String): String =
         begin
             preopens()
-            if startsWith(path "/") orif stringOp.isEmpty(opened.cwd) then path
+            if startsWith(path "/") orif {stringOp.length(opened.cwd) is 0} then path
             elsif stringOp.equal(path ".") then opened.cwd
             else opened.cwd <> "/" <> path
             end
@@ -1899,7 +1886,7 @@ export
      * nothing (fd ~1), as natively *)
     Def Resolved = Tuple fd: Int path: String end
     let resolve(path: String): Resolved =
-        if stringOp.isEmpty(path) then tuple let fd = ~1 let path = "" end
+        if {stringOp.length(path) is 0} then tuple let fd = ~1 let path = "" end
         else
             let full = absolute(path)
             let all = preopens()
@@ -1916,7 +1903,7 @@ export
                 elsif stringOp.equal(all[i].name ".") then fd := all[i].fd
                 end
             end
-            if stringOp.isEmpty(rest) then rest := "." end
+            if {stringOp.length(rest) is 0} then rest := "." end
             tuple let fd = fd let path = rest end
         end
 
@@ -2003,7 +1990,7 @@ export
      * one that exists already (EEXIST, 20) left as it is *)
     let makeDirectory(path: String): Ok =
         begin
-            if stringOp.isEmpty(path) then systemError() end
+            if {stringOp.length(path) is 0} then systemError() end
             let make = fun(p: String): Ok
                 onPath(p fun(fd: Int n: Int): Int
                     begin
@@ -2063,7 +2050,7 @@ export
     let currentDirectory(): String =
         begin
             preopens()
-            if stringOp.isEmpty(opened.cwd) then systemError() end
+            if {stringOp.length(opened.cwd) is 0} then systemError() end
             opened.cwd
         end
 
@@ -2080,7 +2067,7 @@ export
                 if {i is stringOp.length(full)} orif {stringOp.getChar(full i) is '/'} then
                     let part = stringOp.getSub(full start i - start)
                     if stringOp.equal(part "..") then if count > 0 then count := count - 1 end
-                    elsif not(stringOp.isEmpty(part)) andif not(stringOp.equal(part ".")) then
+                    elsif {stringOp.length(part) > 0} andif not(stringOp.equal(part ".")) then
                         parts[count] := part
                         count := count + 1
                     end
@@ -2089,7 +2076,7 @@ export
             end
             let var cwd = ""
             for i = 0 upto count - 1 do cwd := cwd <> "/" <> parts[i] end
-            opened.cwd := if stringOp.isEmpty(cwd) then "/" else cwd end
+            opened.cwd := if {stringOp.length(cwd) is 0} then "/" else cwd end
         end
 
     (* fd, opened from path's directory with oflags (1 to create, 2 for a
@@ -2345,7 +2332,7 @@ export
      * error naming it, which the driver gives back as the status
      * (questlang/driver/main's exitAbove) *)
     let exitStatus(code: Int): Int =
-        if {code > 125} andif not(stringOp.isEmpty(getEnv("QUEST_WASM_EXIT_LINE"))) then
+        if {code > 125} andif {stringOp.length(getEnv("QUEST_WASM_EXIT_LINE")) > 0} then
             putStringTo(intAny(2) "quest: exit status " <> decimal(code) <> "\n")
             125
         else code

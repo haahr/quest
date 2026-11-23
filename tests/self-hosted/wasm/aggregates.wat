@@ -183,6 +183,7 @@
   (import "wasm/core" "viewOptionPayload" (func $wasm/core.viewOptionPayload (type 52)))
   (import "wasm/core" "writerPutString" (func $wasm/core.writerPutString (type 52)))
   (import "conv" "bool" (func $conv.bool (type 70)))
+  (import "conv" "char" (func $conv.char (type 70)))
   (import "wasm/core" "flushWriters" (func $wasm/core.flushWriters (type 71)))
   (global $noClosure (ref $clos) i32.const 0 struct.new $clos)
   (global $quest_type_Int (mut eqref) ref.null none)
@@ -1445,24 +1446,9 @@
     i32.const 1
     array.get $slots
     local.set $v
-    i32.const 0
-    i32.const 1
-    i32.const 755
-    i32.const 1
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $noClosure
     i32.const 99
-    call $convChar
-    i32.const 39
-    call $escaped
-    call $concat
-    i32.const 0
-    i32.const 1
-    i32.const 756
-    i32.const 1
-    array.new_data $bytes $strings
-    struct.new $string
-    call $concat
+    call $conv.char
     local.set $v.4
     local.get $v.2
     local.get $v
@@ -1482,7 +1468,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 757
+      i32.const 755
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -1545,7 +1531,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 758
+      i32.const 756
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -1558,7 +1544,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 759
+      i32.const 757
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -1571,7 +1557,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 760
+      i32.const 758
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -1590,7 +1576,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 761
+      i32.const 759
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -1622,7 +1608,7 @@
       ref.i31
       i32.const 0
       i32.const 44
-      i32.const 762
+      i32.const 760
       i32.const 44
       array.new_data $bytes $strings
       struct.new $string
@@ -1642,7 +1628,7 @@
     if
       i32.const 0
       i32.const 63
-      i32.const 806
+      i32.const 804
       i32.const 63
       array.new_data $bytes $strings
       struct.new $string
@@ -1688,7 +1674,7 @@
             ref.i31
             i32.const 0
             i32.const 45
-            i32.const 869
+            i32.const 867
             i32.const 45
             array.new_data $bytes $strings
             struct.new $string
@@ -1744,7 +1730,7 @@
       ref.i31
       i32.const 0
       i32.const 45
-      i32.const 914
+      i32.const 912
       i32.const 45
       array.new_data $bytes $strings
       struct.new $string
@@ -1784,7 +1770,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 959
+      i32.const 957
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -1807,7 +1793,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 960
+      i32.const 958
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -1844,7 +1830,7 @@
     if
       i32.const 1073741824
       i32.const 6
-      i32.const 961
+      i32.const 959
       i32.const 6
       array.new_data $bytes $strings
       struct.new $string
@@ -1860,7 +1846,7 @@
     if
       i32.const 1073741824
       i32.const 2
-      i32.const 967
+      i32.const 965
       i32.const 2
       array.new_data $bytes $strings
       struct.new $string
@@ -1872,7 +1858,7 @@
     if
       i32.const 1073741824
       i32.const 2
-      i32.const 969
+      i32.const 967
       i32.const 2
       array.new_data $bytes $strings
       struct.new $string
@@ -1890,7 +1876,7 @@
     if
       i32.const 1073741824
       i32.const 3
-      i32.const 971
+      i32.const 969
       i32.const 3
       array.new_data $bytes $strings
       struct.new $string
@@ -1900,24 +1886,9 @@
     i64.const 2
     call $stringGetChar
     local.set $v.9
-    i32.const 0
-    i32.const 1
-    i32.const 974
-    i32.const 1
-    array.new_data $bytes $strings
-    struct.new $string
+    global.get $noClosure
     local.get $v.9
-    call $convChar
-    i32.const 39
-    call $escaped
-    call $concat
-    i32.const 0
-    i32.const 1
-    i32.const 975
-    i32.const 1
-    array.new_data $bytes $strings
-    struct.new $string
-    call $concat
+    call $conv.char
     local.set $v.45
     local.get $v.2
     global.get $literal.1
@@ -1925,7 +1896,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 976
+      i32.const 972
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -1938,7 +1909,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 977
+      i32.const 973
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -1951,7 +1922,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 978
+      i32.const 974
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -1970,7 +1941,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 979
+      i32.const 975
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -2000,7 +1971,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 980
+      i32.const 976
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -2108,7 +2079,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 981
+      i32.const 977
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -2121,7 +2092,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 982
+      i32.const 978
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -2142,7 +2113,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 983
+      i32.const 979
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -2172,7 +2143,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 984
+      i32.const 980
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -2220,7 +2191,7 @@
       ref.i31
       i32.const 0
       i32.const 44
-      i32.const 985
+      i32.const 981
       i32.const 44
       array.new_data $bytes $strings
       struct.new $string
@@ -2275,7 +2246,7 @@
       ref.i31
       i32.const 0
       i32.const 45
-      i32.const 1029
+      i32.const 1025
       i32.const 45
       array.new_data $bytes $strings
       struct.new $string
@@ -2445,7 +2416,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 1074
+      i32.const 1070
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -2467,7 +2438,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 1075
+      i32.const 1071
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -2518,7 +2489,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 1076
+      i32.const 1072
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -2555,7 +2526,7 @@
       ref.i31
       i32.const 0
       i32.const 45
-      i32.const 1077
+      i32.const 1073
       i32.const 45
       array.new_data $bytes $strings
       struct.new $string
@@ -2589,7 +2560,7 @@
     if
       i32.const 1073741824
       i32.const 1
-      i32.const 1122
+      i32.const 1118
       i32.const 1
       array.new_data $bytes $strings
       struct.new $string
@@ -2971,6 +2942,6 @@
     i31.get_s
     i64.extend_i32_s
   )
-  (data $strings "Record x: Int var y: Int name: String endTuple r: Int endTuple x: Int y: Int endTuple side: Int endTuple v: Int endOption circle: Tuple r: Int end empty point: Tuple x: Int y: Int end square: Tup...Option none some: Tuple v: Int end endnamexyrxysidevcircleemptypointsquarenonesometests/self-hosted/wasm/aggregates.quest:25:55\0atests/self-hosted/wasm/aggregates.quest:26:10tests/self-hosted/wasm/aggregates.quest:26:10 \0atests/self-hosted/wasm/aggregates.quest:28:15tests/self-hosted/wasm/aggregates.quest:28:75tests/self-hosted/wasm/aggregates.quest:29:25tests/self-hosted/wasm/aggregates.quest:29:57tests/self-hosted/wasm/aggregates.quest:29:70   \0aOption ordinal  out of bounds (0 <= ordinal < 3)\0a  at tests/self-hosted/wasm/aggregates.quest:31:13\0a \0a \0atwo!''\0a   \0atests/self-hosted/wasm/aggregates.quest:54:9quest: out of memory: an array of more than 134217720 elements\0atests/self-hosted/wasm/aggregates.quest:55:21tests/self-hosted/wasm/aggregates.quest:56:14 \0aabcdefabababc''   \0ap  \0aqtests/self-hosted/wasm/aggregates.quest:68:5tests/self-hosted/wasm/aggregates.quest:68:33 \0a\0atests/self-hosted/wasm/aggregates.quest:71:14\0a")
+  (data $strings "Record x: Int var y: Int name: String endTuple r: Int endTuple x: Int y: Int endTuple side: Int endTuple v: Int endOption circle: Tuple r: Int end empty point: Tuple x: Int y: Int end square: Tup...Option none some: Tuple v: Int end endnamexyrxysidevcircleemptypointsquarenonesometests/self-hosted/wasm/aggregates.quest:25:55\0atests/self-hosted/wasm/aggregates.quest:26:10tests/self-hosted/wasm/aggregates.quest:26:10 \0atests/self-hosted/wasm/aggregates.quest:28:15tests/self-hosted/wasm/aggregates.quest:28:75tests/self-hosted/wasm/aggregates.quest:29:25tests/self-hosted/wasm/aggregates.quest:29:57tests/self-hosted/wasm/aggregates.quest:29:70   \0aOption ordinal  out of bounds (0 <= ordinal < 3)\0a  at tests/self-hosted/wasm/aggregates.quest:31:13\0a \0a \0atwo!\0a   \0atests/self-hosted/wasm/aggregates.quest:54:9quest: out of memory: an array of more than 134217720 elements\0atests/self-hosted/wasm/aggregates.quest:55:21tests/self-hosted/wasm/aggregates.quest:56:14 \0aabcdefabababc   \0ap  \0aqtests/self-hosted/wasm/aggregates.quest:68:5tests/self-hosted/wasm/aggregates.quest:68:33 \0a\0atests/self-hosted/wasm/aggregates.quest:71:14\0a")
 )
 

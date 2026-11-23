@@ -167,10 +167,6 @@ QString *quest_string_alloc(int64_t size, QChar init) {
     return s;
 }
 
-bool quest_string_is_empty(const QString *s) {
-    return s == NULL || s->length == 0;
-}
-
 int64_t quest_string_length(const QString *s) {
     if (s == NULL) return 0;
     return s->length;

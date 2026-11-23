@@ -38,6 +38,24 @@ are in benchmarks.md; or the idea is dropped with its measurement.
 
 ---
 
+## string.getSub, catSub, and conc in Quest, over an unfilled string
+
+**Problem.** These three are externals (runtime/quest_runtime.c) only because Quest has no way to allocate a string
+without filling it. Written in Quest over `string.new` and `string.setSub`, they keep `setSub`'s `memcpy`, but
+`new(n c)` first fills all n bytes, so each byte is written twice: a cost on long strings that the C versions don't
+pay. A review of the library's externals (2026-11-23) found every other cheap external either moved to Quest without
+loss or worth keeping in C (string comparison, the string builder, `real.format`, and `strtod` lose 1.2 to 100 times
+in Quest, measured on arm64).
+
+**Where to start.** An allocation the runtime and every backend provide, such as `string.uninitialized(n)` (zeroed
+where a backend must, as WebAssembly's `array.new_default` is), and the three functions written over it in
+lib/string.mod.quest, as runtime/wasm/core.mod.quest already writes `catSub` and `conc`.
+
+**Done when.** The three are Quest, a micro-benchmark of each on long strings shows no loss against the C versions,
+and their runtime functions and interpreter builtins are gone; or the primitive is judged not worth adding.
+
+---
+
 ## The JIT's "a use of variable qj_1_record, which nothing binds"
 
 **Problem.** A review of the wasm backend (2026-11-15) reported the JIT failing with "a use of variable qj_1_record

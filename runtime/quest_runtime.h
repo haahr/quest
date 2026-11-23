@@ -331,7 +331,6 @@ static_assert(Q_HEADER_READONLY_BIT >= 56, readonly_bit_must_be_in_the_top_byte)
  * QVals of unknown kind, for the collector (quest_layout_array_pointer and its siblings). */
 QString *quest_string_new(const char *src, int64_t len);
 QString *quest_string_alloc(int64_t size, QChar init);
-bool     quest_string_is_empty(const QString *s);
 int64_t  quest_string_length(const QString *s);
 QString *quest_string_concat(const QString *s1, const QString *s2);
 QString *quest_string_concat_n(int64_t n, const QString *p0, const QString *p1, const QString *p2, const QString *p3,
@@ -517,9 +516,6 @@ void     quest_reader_close(QReader *r);
 QString *quest_conv_okay(void);
 QString *quest_conv_bool(bool b);
 QString *quest_conv_int(int64_t n);
-QString *quest_conv_real(double r);
-QString *quest_conv_char(QChar ch);
-QString *quest_conv_string(const QString *s);
 
 /* Strutil module primitives */
 double   quest_strutil_to_real(const QString *s);
@@ -553,9 +549,6 @@ void     quest_sb_append_string(QStringBuilder *b, const QString *s);
 void     quest_sb_append_string_shared(QStringBuilder *b, QString *s);
 void     quest_sb_append_char(QStringBuilder *b, QChar ch);
 void     quest_sb_append_int(QStringBuilder *b, int64_t n);
-void     quest_sb_append_real(QStringBuilder *b, double r);
-void     quest_sb_append_bool(QStringBuilder *b, bool v);
-void     quest_sb_append_word(QStringBuilder *b, uint64_t w);
 void     quest_sb_append_sub(QStringBuilder *b, const QString *s, int64_t start, int64_t size);
 void     quest_sb_append_repeat(QStringBuilder *b, QChar ch, int64_t n);
 void     quest_sb_clear(QStringBuilder *b);
@@ -1006,20 +999,6 @@ Q_INLINE uint64_t quest_word_rotate(uint64_t w, int64_t count) {
     return (w << shift) | (w >> (64 - shift));
 }
 
-Q_INLINE uint64_t quest_word_extract(uint64_t w, int64_t pos, int64_t width) {
-    if (pos < 0 || pos >= 64 || width <= 0) return 0ULL;
-    if (width > 64 - pos) width = 64 - pos;
-    uint64_t mask = (width == 64) ? ~0ULL : ((1ULL << width) - 1ULL);
-    return (w >> pos) & mask;
-}
-
-Q_INLINE uint64_t quest_word_replace(uint64_t w, uint64_t val, int64_t pos, int64_t width) {
-    if (pos < 0 || pos >= 64 || width <= 0) return w;
-    if (width > 64 - pos) width = 64 - pos;
-    uint64_t mask = (width == 64) ? ~0ULL : ((1ULL << width) - 1ULL);
-    return (w & ~(mask << pos)) | ((val & mask) << pos);
-}
-
 Q_INLINE int64_t quest_word_pop_count(uint64_t w) {
     return (int64_t)__builtin_popcountll(w);
 }
@@ -1087,14 +1066,6 @@ Q_INLINE uint64_t quest_word_shift_val(uint64_t w, int64_t count) {
 
 Q_INLINE uint64_t quest_word_rotate_val(uint64_t w, int64_t count) {
     return quest_word_rotate(w, count);
-}
-
-Q_INLINE uint64_t quest_word_extract_val(uint64_t w, int64_t pos, int64_t width) {
-    return quest_word_extract(w, pos, width);
-}
-
-Q_INLINE uint64_t quest_word_replace_val(uint64_t w, uint64_t val, int64_t pos, int64_t width) {
-    return quest_word_replace(w, val, pos, width);
 }
 
 Q_INLINE int64_t quest_word_pop_count_val(uint64_t w) {
@@ -1170,18 +1141,15 @@ Q_INLINE bool quest_word_ge(uint64_t w1, uint64_t w2) {
     return w1 >= w2;
 }
 
-/* Hashing, for lib/util/hash: quest_hash_mix64 is SplitMix64's finalizer, which spreads every input bit over the
- * output (quest_hash_mix, hash.mix, calls it); quest_hash_combine folds h2 into h1 in the manner of Boost's
- * hash_combine; quest_identity_hash (hash.identityHash) hashes x at type t so that values is takes as equal hash
- * equally (quest_val_is), most values by their bits (an object's are its address) */
+/* Hashing: quest_hash_mix64 is SplitMix64's finalizer, which spreads every input bit over the output, as
+ * lib/util/hash's mix does in Quest; quest_identity_hash (hash.identityHash) hashes x at type t so that values is takes
+ * as equal hash equally (quest_val_is), most values by their bits (an object's are its address) */
 Q_INLINE uint64_t quest_hash_mix64(uint64_t z) {
     z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
     z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
     return z ^ (z >> 31);
 }
 
-uint64_t quest_hash_mix(uint64_t w);
-uint64_t quest_hash_combine(uint64_t h1, uint64_t h2);
 uint64_t quest_identity_hash(const QTypeDescriptor *t, QVal x);
 
 /* The built-in operators as values, when a program uses one other than by applying it (passing + to a fold): static

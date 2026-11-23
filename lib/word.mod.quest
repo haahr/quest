@@ -28,13 +28,6 @@ unsound module word : Word export
      * 64) *)
     let rotate(w: T count: Int): T = external "quest_word_rotate_val"
 
-    (* Extract width bits starting at bit pos, returned right-aligned *)
-    let extract(w: T pos: Int width: Int): T = external "quest_word_extract_val"
-
-    (* Replace width bits in w starting at bit pos with the lowest width bits of
-     * val *)
-    let replace(w: T val: T pos: Int width: Int): T = external "quest_word_replace_val"
-
     (* Number of set bits (population count / Hamming weight) *)
     let popCount(w: T): Int = external "quest_word_pop_count_val"
 
@@ -111,5 +104,28 @@ unsound module word : Word export
             w
         else
             andBits(w notBits(shift(fromInt(1) pos)))
+        end
+
+    (* The low n bits set, n 1 to 64 *)
+    let lowBits(n: Int): T = if n >= bits then notBits(fromInt(0)) else sub(shift(fromInt(1) n) fromInt(1)) end
+
+    (* Extract width bits starting at bit pos, returned right-aligned: 0 for
+     * pos outside 0 to 63 or width <= 0, and only the bits up to the top for
+     * a width past it *)
+    let extract(w: T pos: Int width: Int): T =
+        if {pos < 0} \/ {pos >= bits} \/ {width <= 0} then
+            fromInt(0)
+        else
+            andBits(shift(w {0 - pos}) lowBits(if width > {bits - pos} then bits - pos else width end))
+        end
+
+    (* Replace width bits in w starting at bit pos with the lowest width bits of
+     * val: w unchanged for pos outside 0 to 63 or width <= 0 *)
+    let replace(w: T val: T pos: Int width: Int): T =
+        if {pos < 0} \/ {pos >= bits} \/ {width <= 0} then
+            w
+        else
+            let mask = lowBits(if width > {bits - pos} then bits - pos else width end)
+            orBits(andBits(w notBits(shift(mask pos))) shift(andBits(val mask) pos))
         end
 end

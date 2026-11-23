@@ -1,6 +1,10 @@
 unsound module stringBuilder : StringBuilder
 import
+    ascii : Ascii
+    stringOp = string : StringOp
     wordLib = word : Word
+
+    util/realconv : util/RealConv
 export
     (* The native buffer: a fixed-size working buffer and the chunks already
      * filled (see quest_sb_* in the runtime) *)
@@ -11,12 +15,31 @@ export
     let strShared(b: T s: String): Ok = external "quest_sb_append_string_shared"
     let char(b: T c: Char): Ok = external "quest_sb_append_char"
     let int(b: T n: Int): Ok = external "quest_sb_append_int"
-    let real(b: T r: Real): Ok = external "quest_sb_append_real"
-    let bool(b: T v: Bool): Ok = external "quest_sb_append_bool"
-    let word(b: T w: wordLib.T): Ok = external "quest_sb_append_word"
     let sub(b: T s: String start: Int size: Int): Ok = external "quest_sb_append_sub"
     let repeat(b: T c: Char n: Int): Ok = external "quest_sb_append_repeat"
     let clear(b: T): Ok = external "quest_sb_clear"
     let length(b: T): Int = external "quest_sb_length"
     let toString(b: T): String = external "quest_sb_to_string"
+
+    (* r as conv.real writes it *)
+    let real(b: T r: Real): Ok = str(b realconv.toString(r))
+
+    let bool(b: T v: Bool): Ok = str(b if v then "true" else "false" end)
+
+    (* w in decimal, unsigned *)
+    let word(b: T w: wordLib.T): Ok =
+        begin
+            let digits = stringOp.new(20 '0')
+            let ten = wordLib.fromInt(10)
+            let var at = 20
+            let var v = w
+            let var more = true
+            while more do
+                at := at - 1
+                stringOp.setChar(digits at ascii.char(48 + wordLib.toInt(wordLib.mod(v ten))))
+                v := wordLib.div(v ten)
+                more := wordLib.gt(v wordLib.fromInt(0))
+            end
+            sub(b digits at 20 - at)
+        end
 end

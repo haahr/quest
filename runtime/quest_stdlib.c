@@ -271,34 +271,6 @@ QString *quest_conv_int(int64_t n) {
     return quest_string_new(buf, (int64_t)strlen(buf));
 }
 
-QString *quest_conv_real(double r) {
-    char buf[48];
-    /* Quest writes negation as ~, including for negative zero and negative
-     * infinity. */
-    buf[0] = '~';
-    bool is_neg = signbit(r);
-    quest_format_real(r, buf + (is_neg ? 1 : 0), sizeof(buf) - 1);
-    return quest_string_new(buf, (int64_t)strlen(buf));
-}
-
-/* conv.char and conv.string: quoted, with escapes, as the interpreters write
- * them (and as quest_print_value does) */
-QString *quest_conv_char(QChar ch) {
-    QStringBuilder *b = quest_sb_new();
-    quest_sb_append_char(b, '\'');
-    quest_sb_append_escaped(b, ch, '\'');
-    quest_sb_append_char(b, '\'');
-    return quest_sb_to_string(b);
-}
-
-QString *quest_conv_string(const QString *s) {
-    QStringBuilder *b = quest_sb_new();
-    quest_sb_append_char(b, '"');
-    for (int64_t i = 0; s != NULL && i < s->length; ++i) quest_sb_append_escaped(b, (unsigned char)s->data[i], '"');
-    quest_sb_append_char(b, '"');
-    return quest_sb_to_string(b);
-}
-
 /* Strutil module primitives */
 double quest_strutil_to_real(const QString *s) {
     /* strutil.tryToReal has checked the syntax; strtod rounds correctly, and
@@ -416,27 +388,6 @@ void quest_sb_append_int(QStringBuilder *b, int64_t n) {
     if (n == QUEST_INT_MIN) len = snprintf(buf, sizeof(buf), "~9223372036854775808");
     else if (n < 0) len = snprintf(buf, sizeof(buf), "~%lld", (long long)-n);
     else len = snprintf(buf, sizeof(buf), "%lld", (long long)n);
-    quest_sb_append_bytes(b, buf, len);
-}
-
-void quest_sb_append_real(QStringBuilder *b, double r) {
-    char buf[48];
-    /* As conv.real: ~ for negatives, including negative zero and negative
-     * infinity */
-    buf[0] = '~';
-    bool is_neg = signbit(r);
-    quest_format_real(r, buf + (is_neg ? 1 : 0), sizeof(buf) - 1);
-    quest_sb_append_bytes(b, buf, (int64_t)strlen(buf));
-}
-
-void quest_sb_append_bool(QStringBuilder *b, bool v) {
-    if (v) quest_sb_append_bytes(b, "true", 4);
-    else quest_sb_append_bytes(b, "false", 5);
-}
-
-void quest_sb_append_word(QStringBuilder *b, uint64_t w) {
-    char buf[32];
-    int len = snprintf(buf, sizeof(buf), "%llu", (unsigned long long)w);
     quest_sb_append_bytes(b, buf, len);
 }
 
@@ -619,14 +570,6 @@ double quest_word_to_real_val(uint64_t w) {
 
 uint64_t quest_word_from_real_val(double r) {
     return ((QVal){ .r = r }).u;
-}
-
-uint64_t quest_hash_mix(uint64_t w) {
-    return quest_hash_mix64(w);
-}
-
-uint64_t quest_hash_combine(uint64_t h1, uint64_t h2) {
-    return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
 }
 
 /* Hashes consistently with is (quest_val_is): ~0.0 hashes as 0.0. */

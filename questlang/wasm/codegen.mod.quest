@@ -2232,8 +2232,6 @@ export
         array of "quest_sb_append_string_shared" "sbAppendString" "ee" "e" end
         array of "quest_sb_append_char" "sbAppendChar" "eb" "e" end
         array of "quest_sb_append_int" "sbAppendInt" "en" "e" end
-        array of "quest_sb_append_bool" "sbAppendBool" "eb" "e" end
-        array of "quest_sb_append_word" "sbAppendWord" "en" "e" end
         array of "quest_sb_append_sub" "sbAppendSub" "eenn" "e" end
         array of "quest_sb_append_repeat" "sbAppendRepeat" "ebn" "e" end
         array of "quest_sb_clear" "sbClear" "e" "e" end
@@ -2294,8 +2292,6 @@ export
     (* The externals that are functions of util/realconv, Quest that both
      * targets compile (section 4.3), each with the function it calls *)
     let realconvExternals = array of
-        array of "quest_conv_real" "toString" end
-        array of "quest_sb_append_real" "toString" end
         array of "quest_strutil_to_real" "toReal" end
         array of "quest_real_format" "format" end
     end
@@ -2382,20 +2378,6 @@ export
             step(31 0)
         end
 
-    (* The quoted text of a Char or a String (quest_conv_char and
-     * quest_conv_string): in quotes, escaped *)
-    let quoted(f: F args: Array(ir.Atom) quote: Char): Ok =
-        begin
-            literal(f stringOp.new(1 quote))
-            atoms(f args)
-            if quote is '\'' then runtimeCall(f "convChar") end
-            emit(f model.i32Const(ascii.val(quote)))
-            runtimeCall(f "escaped")
-            runtimeCall(f "concat")
-            literal(f stringOp.new(1 quote))
-            runtimeCall(f "concat")
-        end
-
     (* Compiles a call to the library external symbol (section 4.2): as a call
      * to the base runtime (runtimeCall), a call to a Quest runtime unit
      * (wasm/core, util/realconv, or util/realmath), or inline instructions.
@@ -2411,14 +2393,7 @@ export
             let core = coreExternal(symbol)
             let realconv = realconvFunction(symbol)
             let realmath = realmathFunction(symbol)
-            if named("quest_sb_append_real") then
-                emit(f i1(ops.globalGet f.g.noClosure))
-                atom(f args[0])
-                emit(f i1(ops.globalGet f.g.noClosure))
-                atom(f args[1])
-                runtimeUnitCall(f "util/realconv.toString")
-                runtimeUnitCall(f "wasm/core.sbAppendString")
-            elsif maybe.isSome(realconv) then
+            if maybe.isSome(realconv) then
                 emit(f i1(ops.globalGet f.g.noClosure))
                 atoms(f args)
                 runtimeUnitCall(f "util/realconv." <> maybe.unwrap(realconv))
@@ -2466,18 +2441,14 @@ export
                 through("concat")
             elsif named("quest_string_equal") then
                 through("stringEqual")
-            elsif named("quest_string_is_empty") orif named("quest_string_length") then
+            elsif named("quest_string_length") then
                 atoms(f args)
                 castTo(f rt.index("string"))
                 emit(f i2(ops.structGet rt.index("string") rt.field("string" "length")))
-                if named("quest_string_is_empty") then emit(f i(ops.i32Eqz)) else emit(f i(ops.i64ExtendI32U)) end
+                emit(f i(ops.i64ExtendI32U))
             (* conv *)
             elsif named("quest_conv_int") then
                 through("convInt")
-            elsif named("quest_conv_char") then
-                quoted(f args '\'')
-            elsif named("quest_conv_string") then
-                quoted(f args '"')
             (* writer: the core's (coreExternals) *)
             (* ascii, arrayOp, raised, system *)
             elsif named("quest_ascii_char") then
@@ -2541,25 +2512,6 @@ export
                 emit(f model.i32Const(0))
             elsif strutil.startsWith(symbol "quest_readline_") then
                 raiseAt(f "readline.error" maybe.none())
-            (* hash *)
-            elsif named("quest_hash_mix") then
-                atoms(f args)
-                hashMix(f)
-            elsif named("quest_hash_combine") then
-                (* h1 ^ (h2 + 0x9e3779b97f4a7c15 + (h1 << 6) + (h1 >> 2)) *)
-                atom(f args[0])
-                atom(f args[1])
-                emit(f model.i64Const(~7046029254386353131))
-                emit(f i(ops.i64Add))
-                atom(f args[0])
-                emit(f model.i64Const(6))
-                emit(f i(ops.i64Shl))
-                emit(f i(ops.i64Add))
-                atom(f args[0])
-                emit(f model.i64Const(2))
-                emit(f i(ops.i64ShrU))
-                emit(f i(ops.i64Add))
-                emit(f i(ops.i64Xor))
             (* word *)
             elsif named("quest_word_not_bits") then
                 atoms(f args)
@@ -2633,66 +2585,6 @@ export
                 emit(f i(ops.i64Sub))
                 emit(f i(ops.i64ShrU))
                 emit(f model.endInst)
-                emit(f model.endInst)
-            elsif named("quest_word_extract_val") orif named("quest_word_replace_val") then
-                (* the field of width bits at pos, its width cut to the word;
-                 * for pos outside 0 to 63 or width <= 0, extract gives 0 and
-                 * replace the word unchanged *)
-                let replacing = named("quest_word_replace_val")
-                let w = args[0]
-                let pos = args[if replacing then 2 else 1 end]
-                let width = args[if replacing then 3 else 2 end]
-                let mask = scratch(f model.i64)
-                let i64Result = option blockValue of model.BlockType with let type = model.i64 end
-                atom(f pos)
-                emit(f model.i64Const(64))
-                emit(f i(ops.i64GeU))
-                atom(f width)
-                emit(f model.i64Const(0))
-                emit(f i(ops.i64LeS))
-                emit(f i(ops.i32Or))
-                emit(f model.ifInst(i64Result ""))
-                if replacing then atom(f w) else emit(f model.i64Const(0)) end
-                emit(f model.elseInst)
-                (* mask: width >= 64 - pos gives all the bits above pos *)
-                atom(f width)
-                emit(f model.i64Const(64))
-                atom(f pos)
-                emit(f i(ops.i64Sub))
-                emit(f i(ops.i64GeS))
-                emit(f model.ifInst(i64Result ""))
-                emit(f model.i64Const(~1))
-                atom(f pos)
-                emit(f i(ops.i64ShrU))
-                emit(f model.elseInst)
-                emit(f model.i64Const(1))
-                atom(f width)
-                emit(f i(ops.i64Shl))
-                emit(f model.i64Const(1))
-                emit(f i(ops.i64Sub))
-                emit(f model.endInst)
-                emit(f i1(ops.localSet mask))
-                if replacing then
-                    atom(f w)
-                    emit(f i1(ops.localGet mask))
-                    atom(f pos)
-                    emit(f i(ops.i64Shl))
-                    emit(f model.i64Const(~1))
-                    emit(f i(ops.i64Xor))
-                    emit(f i(ops.i64And))
-                    atom(f args[1])
-                    emit(f i1(ops.localGet mask))
-                    emit(f i(ops.i64And))
-                    atom(f pos)
-                    emit(f i(ops.i64Shl))
-                    emit(f i(ops.i64Or))
-                else
-                    atom(f w)
-                    atom(f pos)
-                    emit(f i(ops.i64ShrU))
-                    emit(f i1(ops.localGet mask))
-                    emit(f i(ops.i64And))
-                end
                 emit(f model.endInst)
             elsif named("quest_word_mul_hi") then
                 (* the high 64 bits of the product, from 32-bit halves *)
@@ -6135,11 +6027,6 @@ export
                                 realmathImport(e[1] if stringOp.equal(e[2] "2") then 2 else 1 end)
                             elsif maybe.isSome(realconvFunction(symbol)) then
                                 realconvImport(maybe.unwrap(realconvFunction(symbol)))
-                                let append = "wasm/core.sbAppendString"
-                                if stringOp.equal(symbol "quest_sb_append_real")
-                                        andif not(hashMap.contains(g.runtimeUnits append)) then
-                                    runtimeImport("wasm/core" "sbAppendString" repTypes("ee") repTypes("e"))
-                                end
                             elsif not(g.isCore) andif maybe.isSome(coreExternal(symbol)) then
                                 let e = maybe.unwrap(coreExternal(symbol))
                                 if not(hashMap.contains(g.runtimeUnits "wasm/core." <> e[1])) then

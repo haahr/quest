@@ -115,13 +115,6 @@ static void quest_put_escaped_char(unsigned char c, char quote) {
     fwrite(out, 1, (size_t)quest_escape_char(c, quote, out), stdout);
 }
 
-/* Appends a character of a char or string literal, escaped */
-void quest_sb_append_escaped(QStringBuilder *b, unsigned char c, char quote) {
-    char out[5];
-    int n = quest_escape_char(c, quote, out);
-    for (int i = 0; i < n; ++i) quest_sb_append_char(b, (QChar)out[i]);
-}
-
 /* The REPL's results, captured while the JIT runs an input (docs/jit.md
  * section 3.8): the echo printers below write to the capture's stream, made
  * stdout while they write, rather than to stdout, so the program's own output

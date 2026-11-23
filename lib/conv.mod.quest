@@ -1,4 +1,10 @@
-unsound module conv : Conv export
+unsound module conv : Conv
+import
+    ascii : Ascii
+    stringOp = string : StringOp
+
+    util/realconv : util/RealConv
+export
     (* Return the string "ok" *)
     let okay = fun(): String "ok"
 
@@ -8,12 +14,60 @@ unsound module conv : Conv export
     (* Return decimal string representation of an integer *)
     let int(n: Int): String = external "quest_conv_int"
 
-    (* Return string representation of a real number *)
-    let real(r: Real): String = external "quest_conv_real"
+    (* Return string representation of a real number: the shortest digits
+     * that read back as r (util/realconv) *)
+    let real(r: Real): String = realconv.toString(r)
+
+    (* How many characters c takes in a literal quoted by quote: \n, \t, \r,
+     * \\, and the quote escaped; other printable ASCII as itself; the rest as
+     * \x and two hex digits *)
+    let escapedLength(c: Char quote: Char): Int =
+        if {c is '\n'} orif {c is '\t'} orif {c is '\r'} orif {c is '\\'} orif {c is quote} then
+            2
+        elsif {ascii.val(c) >= 32} andif {ascii.val(c) <= 126} then
+            1
+        else
+            4
+        end
+
+    let hexDigit(n: Int): Char = ascii.char(if n < 10 then 48 + n else 87 + n end)
+
+    (* Writes c, escaped for a literal quoted by quote, into text at at; returns
+     * the position after it *)
+    let putEscaped(text: String at: Int c: Char quote: Char): Int =
+        begin
+            let n = escapedLength(c quote)
+            if n is 1 then
+                stringOp.setChar(text at c)
+            elsif n is 2 then
+                stringOp.setChar(text at '\\')
+                let e = if c is '\n' then 'n' elsif c is '\t' then 't' elsif c is '\r' then 'r' else c end
+                stringOp.setChar(text at + 1 e)
+            else
+                let v = ascii.val(c)
+                stringOp.setChar(text at '\\')
+                stringOp.setChar(text at + 1 'x')
+                stringOp.setChar(text at + 2 hexDigit(v / 16))
+                stringOp.setChar(text at + 3 hexDigit(v - {{v / 16} * 16}))
+            end
+            at + n
+        end
+
+    (* s between quotes, each character escaped as a literal writes it *)
+    let quoted(s: String quote: Char): String =
+        begin
+            let n = stringOp.length(s)
+            let var size = 2
+            for i = 0 upto {n - 1} do size := size + escapedLength(stringOp.getChar(s i) quote) end
+            let text = stringOp.new(size quote)
+            let var at = 1
+            for i = 0 upto {n - 1} do at := putEscaped(text at stringOp.getChar(s i) quote) end
+            text
+        end
 
     (* Return single-quoted character representation with escape sequences *)
-    let char(c: Char): String = external "quest_conv_char"
+    let char(c: Char): String = quoted(stringOp.new(1 c) '\'')
 
     (* Return double-quoted string representation with escape sequences *)
-    let string(s: String): String = external "quest_conv_string"
+    let string(s: String): String = quoted(s '"')
 end
