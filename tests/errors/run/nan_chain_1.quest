@@ -1,0 +1,12 @@
+(* A NaN made by the first operation of a chain raises real.error at that operation, though the SSA checks only
+   the chain's last value (questlang/ssa/passes/nanChecks) *)
+import real : RealOp;
+let inputs = tuple let var a = 0.0 let var b = real.infinity let var c = 1.0 end;
+let chain(a: Real b: Real c: Real): Real =
+    begin
+        let x = a ** b (* ERROR: Exception: real.error *)
+        let y = x ++ c
+        let z = y -- a
+        z ** 2.0
+    end;
+chain(inputs.a inputs.b inputs.c);

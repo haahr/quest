@@ -1,0 +1,37 @@
+(* Quest Self-Hosted Compiler: The SSA's NaN Checks Interface
+ *
+ * Removes the NaN checks that a later check finds the NaN of, keeping where
+ * and how each raises (docs/ssa.md section 4.1). Real arithmetic raises
+ * real.error on a NaN result, so the builder checks each ++, --, **, and //
+ * (questlang/ssa/build/calls), a test and a branch to a block that raises at
+ * the operation's site: 126 of nucleic's tfoCombine's 203 instructions over
+ * MLton's.
+ *
+ * A NaN operand makes each of the four operations' result NaN, so a check of
+ * a value used only by such operations, each checked, is found again by a
+ * check that remains. The checks are removed only within a region: blocks
+ * joined by checks' good edges, each entered only from the last, holding
+ * nothing that writes memory or calls (loads, arithmetic, and comparisons
+ * only), so that nothing happens in a region that a program could see before
+ * a check raises. A check is removed when its value has uses, all of them
+ * operands of those four operations in the region.
+ *
+ * Raising at a remaining check would then report the wrong site when an
+ * earlier operation made the NaN. So a remaining check that fails goes to the
+ * region's replay instead: a copy of the region's instructions computed from
+ * its inputs, with every check it had, which raises at the first operation
+ * that makes a NaN, with that operation's site, as the program did before.
+ * The values and loads are the same the second time, since nothing in the
+ * region writes memory; and only the region's inputs, not its intermediate
+ * values, stay live to the replay.
+ *
+ * Run before value numbering, which removes the tests the checks left. *)
+
+interface NanChecks
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* Removes f's checks that a later one covers; how many it removed *)
+    checkFunction(f: ssa.Function): Int
+    checkUnit(u: ssa.Unit): Ok
+end

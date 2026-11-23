@@ -1,0 +1,264 @@
+(* Quest Self-Hosted Compiler: The SSA's NaN Checks Implementation *)
+
+module nanChecks : NanChecks
+import
+    stringOp = string : StringOp
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* A check: the block it ends, the value it tests, the instruction that
+     * tests it, and the block that raises *)
+    Def Check = Tuple block: Int value: Int bad: Int good: Int end
+
+    (* The four operations a NaN operand makes a NaN *)
+    let propagates(op: ssa.Opcode): Bool = case op when opFadd, opFsub, opFmul, opFdiv then true else false end
+
+    (* What a region may hold: nothing that writes memory or calls *)
+    let allowed(i: ssa.Inst): Bool =
+        case i.op when opStore, opCall, opCallIndirect, opThreadLocal then false else true end
+
+    let intEqual(a: Int b: Int): Bool = a is b
+
+    let checkFunction(f: ssa.Function): Int =
+        begin
+            let nBlocks = vector.length(f.blocks)
+            let defs = ssa.definitions(f)
+            (* A block that only raises real.error *)
+            let raises(b: Int): Bool =
+                begin
+                    let blk = ssa.block(f b)
+                    let var found = false
+                    for k = 0 upto {vector.length(blk.insts) - 1} do
+                        let i = vector.get(blk.insts k)
+                        if ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol "quest_raise_real_error_at") then
+                            found := true
+                        end
+                    end
+                    found andif {case blk.term when termUnreachable then true else false end}
+                end
+            (* The check a block ends with, if it ends with one *)
+            let checkOf(b: Int): maybe.T(Check) =
+                case ssa.block(f b).term
+                    when termBranch with x then
+                        let d = defs[x.cond]
+                        if maybe.isSome(d) andif ssa.isOp(maybe.unwrap(d) ssa.opIsNaN)
+                                andif raises(x.ifTrue.block) andif {extent x.ifFalse.args is 0} then
+                            maybe.some(tuple
+                                let block = b
+                                let value = maybe.unwrap(d).args[0]
+                                let bad = x.ifTrue.block
+                                let good = x.ifFalse.block
+                            end)
+                        else
+                            maybe.none(:Check)
+                        end
+                    else maybe.none(:Check)
+                end
+            let g = cfg.graph(f)
+            let allAllowed(b: Int): Bool =
+                begin
+                    let blk = ssa.block(f b)
+                    let var ok2 = true
+                    for k = 0 upto {vector.length(blk.insts) - 1} do
+                        if not(allowed(vector.get(blk.insts k))) then ok2 := false end
+                    end
+                    ok2
+                end
+            (* The block after b in a region, if b's check leads to one *)
+            let next(b: Int): maybe.T(Int) =
+                begin
+                    let c = checkOf(b)
+                    if maybe.isSome(c) then
+                        let good = maybe.unwrap(c).good
+                        if {extent g.preds[good] is 1} andif {good isnot b} andif allAllowed(good) then
+                            maybe.some(good)
+                        else
+                            maybe.none(:Int)
+                        end
+                    else
+                        maybe.none(:Int)
+                    end
+                end
+            (* Each value's uses: whether every one is an operand of a
+             * propagating operation, by the block it is in; uses in a test
+             * of the value itself are not counted *)
+            let usedBy = hashMap.new(:Int :vector.T(Int) intEqual hash.int)
+            let bad = array of(vector.length(f.types) false)
+            let note(v: Int b: Int): Ok =
+                begin
+                    let found = hashMap.get(usedBy v)
+                    if maybe.isSome(found) then
+                        vector.append(maybe.unwrap(found) b)
+                    else
+                        let blocks = vector.new(:Int)
+                        vector.append(blocks b)
+                        let ignored = hashMap.insert(usedBy v blocks)
+                    end
+                end
+            for b = 0 upto {nBlocks - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
+                    for a = 0 upto {extent i.args - 1} do
+                        if propagates(i.op) then note(i.args[a] b)
+                        elsif ssa.isOp(i ssa.opIsNaN) then ok
+                        else bad[i.args[a]] := true
+                        end
+                    end
+                end
+                let uses = ssa.terminatorUses(blk.term)
+                for a = 0 upto {extent uses - 1} do
+                    (* A branch on a NaN test uses the test, not the value *)
+                    bad[uses[a]] := true
+                end
+            end
+            let inRegion = array of(nBlocks ~1)
+            let var removed = 0
+            for b = 0 upto {nBlocks - 1} do
+                (* A region starts at a block with a check that no region's
+                 * check leads into *)
+                let continues =
+                    {extent g.preds[b] is 1} andif maybe.isSome(next(g.preds[b][0]))
+                        andif {maybe.unwrap(next(g.preds[b][0])) is b}
+                if {inRegion[b] is ~1} andif {g.rank[b] >= 0} andif maybe.isSome(checkOf(b)) andif not(continues) then
+                    let blocks = vector.new(:Int)
+                    vector.append(blocks b)
+                    let var cur = next(b)
+                    while maybe.isSome(cur) do
+                        vector.append(blocks maybe.unwrap(cur))
+                        cur := next(maybe.unwrap(cur))
+                    end
+                    let id = b
+                    for r = 0 upto {vector.length(blocks) - 1} do inRegion[vector.get(blocks r)] := id end
+                    (* The first block's instructions from the last that is
+                     * not allowed *)
+                    let first = ssa.block(f b)
+                    let var start = vector.length(first.insts)
+                    let var scanning = true
+                    while scanning andif {start > 0} do
+                        if allowed(vector.get(first.insts start - 1)) then start := start - 1 else scanning := false end
+                    end
+                    (* Whether a value is made in the region *)
+                    let madeIn = hashMap.new(:Int :Bool intEqual hash.int)
+                    for r = 0 upto {vector.length(blocks) - 1} do
+                        let blk = ssa.block(f vector.get(blocks r))
+                        let from = if r is 0 then start else 0 end
+                        for k = from upto {vector.length(blk.insts) - 1} do
+                            let i = vector.get(blk.insts k)
+                            for q = 0 upto {extent i.results - 1} do
+                                let ignored = hashMap.insert(madeIn i.results[q] true)
+                            end
+                        end
+                    end
+                    (* The checks to remove: of a value made in the region, by a
+                     * propagating operation, whose uses are all propagating
+                     * operations in the region *)
+                    let removable(c: Check): Bool =
+                        begin
+                            let d = defs[c.value]
+                            let users = hashMap.get(usedBy c.value)
+                            if maybe.isNone(d) orif not(propagates(maybe.unwrap(d).op)) orif bad[c.value]
+                                    orif maybe.isNone(hashMap.get(madeIn c.value)) orif maybe.isNone(users) then
+                                false
+                            else
+                                let var all = true
+                                let us = maybe.unwrap(users)
+                                for u = 0 upto {vector.length(us) - 1} do
+                                    if inRegion[vector.get(us u)] isnot id then all := false end
+                                end
+                                all
+                            end
+                        end
+                    let checks = vector.new(:Check)
+                    let drop = vector.new(:Bool)
+                    let var any = false
+                    for r = 0 upto {vector.length(blocks) - 1} do
+                        let c = checkOf(vector.get(blocks r))
+                        if maybe.isSome(c) then
+                            vector.append(checks maybe.unwrap(c))
+                            let d = removable(maybe.unwrap(c))
+                            vector.append(drop d)
+                            if d then any := true end
+                        end
+                    end
+                    if any then
+                        (* The replay: the region again from its inputs, with
+                         * every check, each to its own raising block *)
+                        let replay = ssa.newBlock(f)
+                        let copies = hashMap.new(:Int :Int intEqual hash.int)
+                        let mapped(v: Int): Int = maybe.unwrapOr(hashMap.get(copies v) v)
+                        let var at = replay
+                        let var checkIndex = 0
+                        for r = 0 upto {vector.length(blocks) - 1} do
+                            let bb = vector.get(blocks r)
+                            let blk = ssa.block(f bb)
+                            let from = if r is 0 then start else 0 end
+                            for k = from upto {vector.length(blk.insts) - 1} do
+                                let i = vector.get(blk.insts k)
+                                let results = array of(extent i.results 0)
+                                for q = 0 upto {extent i.results - 1} do
+                                    results[q] := ssa.newValue(f ssa.typeOf(f i.results[q]))
+                                    let ignored = hashMap.insert(copies i.results[q] results[q])
+                                end
+                                let args = array of(extent i.args 0)
+                                for q = 0 upto {extent i.args - 1} do args[q] := mapped(i.args[q]) end
+                                let copy = ssa.instruction(i.op args results i.imm i.symbol i.width i.signed
+                                        i.signature)
+                                copy.loc := i.loc
+                                copy.invariant := i.invariant
+                                ssa.append(f at copy)
+                            end
+                            let c = checkOf(bb)
+                            if maybe.isSome(c) then
+                                let x = maybe.unwrap(c)
+                                let continued = ssa.newBlock(f)
+                                let tested = case blk.term when termBranch with t then t.cond else 0 end
+                                ssa.terminate(f at option termBranch of ssa.Terminator with
+                                    let cond = mapped(tested)
+                                    let ifTrue = ssa.target(x.bad array of :Int end)
+                                    let ifFalse = ssa.target(continued array of :Int end)
+                                end)
+                                at := continued
+                                checkIndex := checkIndex + 1
+                            end
+                        end
+                        (* Some check failed, so the replay raised; this is
+                         * not reached *)
+                        ssa.terminate(f at ssa.termUnreachable)
+                        for q = 0 upto {vector.length(checks) - 1} do
+                            let c = vector.get(checks q)
+                            let blk = ssa.block(f c.block)
+                            if vector.get(drop q) then
+                                blk.term := option termJump of ssa.Terminator with
+                                    let target = ssa.target(c.good array of :Int end)
+                                end
+                                removed := removed + 1
+                            else
+                                case blk.term
+                                    when termBranch with t then
+                                        blk.term := option termBranch of ssa.Terminator with
+                                            let cond = t.cond
+                                            let ifTrue = ssa.target(replay array of :Int end)
+                                            let ifFalse = t.ifFalse
+                                        end
+                                    else ok
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            removed
+        end
+
+    let checkUnit(u: ssa.Unit): Ok =
+        for i = 0 upto {vector.length(u.functions) - 1} do
+            let ignored = checkFunction(vector.get(u.functions i))
+        end
+end

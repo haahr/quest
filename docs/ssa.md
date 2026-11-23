@@ -233,6 +233,19 @@ internal error.
   call that may write memory between them, takes that one's parts, and the chain becomes one call of
   `quest_string_concat_n`, which allocates the whole string once and copies each part once; a chain of more than seven
   parts is joined seven at a time. `language/concat_chains` covers it.
+- **`ssa/passes/nanChecks`** removes the NaN checks that a later check finds the NaN of. The builder checks each `++`,
+  `--`, `**`, and `//` for a NaN result, which raises `real.error` at the operation (a test and a branch to a block that
+  raises with its site): 126 of nucleic's `tfoCombine`'s 203 instructions over MLton's. A NaN operand makes each of the
+  four's result NaN, so a check of a value whose uses are all such operations, each checked, is found again by a check
+  that remains. The checks are removed only within a region: blocks that checks' good edges join, each entered only
+  from the last, holding nothing that writes memory or calls, so that nothing a program could see happens between a
+  removed check and the one that finds its NaN. Raising there would report the wrong site, so a remaining check that
+  fails goes to the region's replay instead: its instructions again, computed from its inputs with every check it had,
+  which raises at the first operation that makes a NaN with that operation's site, as before. Nothing in the region
+  writes memory, so the replay computes the same values; only the region's inputs stay live to it, not the values
+  between. No program's behavior changes, and the interpreters and the other backends need not follow; the error
+  tests `nan_chain_*` raise at each operation of a chain. It takes nucleic's instructions retired to 0.82 through
+  ssac and 0.86 through arm64 (benchmarks.md §39). It runs before value numbering, which removes the tests it leaves.
 - **`ssa/passes/valueNumbers`** removes redundant values along the dominator tree, in the manner of Briggs, Cooper, and
   Simpson: a pure instruction or a load whose equal dominates it becomes that equal, by a key of its opcode, immediate,
   symbol, result type, and arguments' numbers (a constant's by its value; commutative ones ordered; a load's address
@@ -371,9 +384,10 @@ The passes share their analyses: `ssa/cfg` (predecessors, successors, reverse po
 preorder and postorder numbers, dominance frontiers, and loop depths); the register allocator computes liveness on the
 machine layer's instructions (`codegen/machine/machine`), not on the SSA. `nodes` has the mutators (`targets`,
 `mapTargets`, `mapBlocks`, `replaceUses`). The driver dumps the SSA after the builder (`--dump-after ssa_built`), after
-each pass (`ssa_escape`, `ssa_promote`, `ssa_constants`, `ssa_concats`, `ssa_valueNumbers`, `ssa_conditions`,
-`ssa_selects`, `ssa_tables`, `ssa_accumulate`, `ssa_tailCalls`, `ssa_tailJumps`, `ssa_trampolines`), and at the end (`ssa`);
-`QUEST_SKIP_PASSES`, a comma-separated list of passes' names, leaves passes out, for a test or a bisection.
+each pass (`ssa_escape`, `ssa_promote`, `ssa_constants`, `ssa_concats`, `ssa_nanChecks`, `ssa_valueNumbers`,
+`ssa_conditions`, `ssa_selects`, `ssa_tables`, `ssa_accumulate`, `ssa_tailCalls`, `ssa_tailJumps`, `ssa_trampolines`),
+and at the end (`ssa`); `QUEST_SKIP_PASSES`, a comma-separated list of passes' names, leaves passes out, for a test or a
+bisection.
 
 ### 4.2. Escape Analysis
 
