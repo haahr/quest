@@ -25,7 +25,8 @@ through a loop's parameters (§30), character I/O without a lock per character (
 ssac's `volatile` locals (§33) and adapter closures made once (§34), times every backend again, arm64 whole
 program included (§35), measures what inlining three library modules into their importers would gain (§36),
 makes whole program as fast as unit by unit (§37), counts where the median programs' instructions go against
-MLton's (§38), and takes one-block large objects from the collector's free list (§39).
+MLton's (§38), takes one-block large objects from the collector's free list (§39), and counts the first fixes for
+the median programs (§40).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -3568,3 +3569,64 @@ assembly for every unit. Instructions retired (`/usr/bin/time -l`); the seconds,
 7.4 percent fewer instructions. The build with the library modules inlined into its units fell from 2,732 G to
 1,442 G (by an experimental stage 1).
 
+## 40. The median programs' first fixes, by counts (2026-11-23)
+
+The first part of the plan for §38's findings (`docs/mlton-median-plan.md`), and one item of its second, each measured
+by instructions retired (`tools/perf/counts.py`, profiling.md §3.1) against the baseline at `73bb9e45`, whole programs
+at a thirty-second of the suite's counts. The counts are in `benchmarks/mlton/baselines/2026-11-23/`: `counts-73bb9e45`
+before, `counts-5e9365cc` after, both named by commits before the steps were rebased onto `6921cbe2` (the
+commits below are the rebased ones). Not timed: that waits for a quiet machine at the end of the part.
+
+| Step | What | Commit |
+|---|---|---|
+| 1 | `conv.int` in Quest, not `snprintf` (ABI 90) | `01710327` |
+| 2 | `string.precedes` compares its first 16 bytes in a loop | `330c83e6` |
+| 3 | a branch that a dominating branch on the same comparison decides is a jump (`ssa/passes/conditions`) | `ba22db96` |
+| 4 | a NaN check that a later one covers goes, its site kept by a replay (`ssa/passes/nanChecks`) | `1ad39002` |
+| 6a | allocation's inline test is the limit alone, its start bit one global | `4651830c` |
+| 7 | a Real array element is loaded and stored as a real | `31aa2e79` |
+| 13, 16 in part | arm64: a proxy's slow path is cold, and a join takes its hot predecessor's register | `883a870d` |
+
+Instructions retired, against MLton's at the baseline and now, and now against the baseline:
+
+| Benchmark | ssac / MLton, before | after | ssac, after / before | arm64 / MLton, before | after | arm64, after / before |
+|---|--:|--:|--:|--:|--:|--:|
+| tyan | 1.12 | 1.04 | 0.925 | 1.42 | 1.22 | 0.863 |
+| nucleic | 1.92 | 1.47 | 0.763 | 2.39 | 1.87 | 0.784 |
+| logic | 1.34 | 1.19 | 0.887 | 1.84 | 1.56 | 0.849 |
+| fft | 1.18 | 1.09 | 0.913 | 2.08 | 1.41 | 0.673 |
+| matrix-multiply | 1.99 | 1.74 | 0.876 | 3.72 | 3.23 | 0.867 |
+| mandelbrot | 1.30 | 1.29 | 0.994 | 1.66 | 1.57 | 0.947 |
+| mpuz | 0.94 | 0.94 | 1.000 | 1.67 | 1.54 | 0.924 |
+| lexgen | 1.79 | 1.38 | 0.773 | 1.94 | 1.49 | 0.771 |
+| checksum | 4.78 | 4.78 | 1.000 | 8.56 | 7.96 | 0.930 |
+| zern | 1.20 | 1.15 | 0.963 | 1.68 | 1.46 | 0.876 |
+| wc-input1 | 3.77 | 3.78 | 1.000 | 4.14 | 4.15 | 1.000 |
+
+What each step did, in the programs it was aimed at (from each step's commit, against the step before):
+
+- **Step 1:** lexgen 0.84 through ssac and 0.86 through arm64. A first Quest version, dividing twice a digit, retired
+  613 instructions a call against `snprintf`'s 994 and an allocation's 224.
+- **Step 2:** lexgen a further 0.94 and 0.96. Its keys all begin with a space, so they differ at the second byte.
+- **Step 3:** through arm64, fft 0.81, matrix-multiply 0.97, mpuz 0.97; ssac unchanged, since clang removed the checks.
+- **Step 4:** nucleic 0.82 and 0.86, matrix-multiply 0.88 and 0.93, zern 0.96 and 0.94, fft through arm64 0.93 more.
+- **Step 6a:** logic 0.89 and 0.90, tyan 0.92, nucleic 0.93 more.
+- **Step 7:** through arm64, fft 0.90, matrix-multiply 0.93, zern 0.94.
+- **Steps 13 and 16, in part:** through arm64, tyan 0.93, logic 0.95, mpuz 0.95, lexgen 0.96.
+
+Tried and not kept:
+
+- **`string.precedes` expanded inline in the SSA,** deciding by the first byte and calling the runtime past it: lexgen
+  took 1.09 of its instructions, since its keys' first bytes are always equal.
+- **`string.equal` expanded inline** as a test for the same string: logic 0.994 through ssac and 0.997 through arm64,
+  under the plan's 1%.
+- **The entry's parameters that nothing reads** (a loop's static closure) left out of block 0 on arm64, so that a
+  self tail call moves nothing into them: tyan and logic 0.995.
+
+Measured for a decision (the plan's step 5): with no proxy tests at all (a build in which nothing may be a proxy,
+unsound but exact for these programs, which make none), tyan retired 0.74 of the baseline's instructions through ssac
+and 0.73 through arm64, logic 0.83 and 0.80, mpuz 0.83 and 0.76. Proxy tests are the largest item left for code that
+walks lists and trees; the plan has two designs for removing them.
+
+checksum and wc-input1 retire 4 to 8 times MLton's instructions but take 1.2 to 1.35 times its time (§35.3): their
+extra instructions are cheap ones, and none of these steps was aimed at them.

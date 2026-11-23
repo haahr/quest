@@ -10,6 +10,13 @@ backend share. The two-compilers policy holds: behavior goldens stay shared and 
 and C goldens are each compiler's own. A step that changes the runtime or a library module changes the WebAssembly
 backend too, in the same step ([wasm.md](wasm.md)); the SSA's passes do not reach it, since it starts from the IR.
 
+## Status (2026-11-23)
+
+Done and pushed, counted in [benchmarks.md](benchmarks.md) §40: steps 0, 1, 2, 3, 4, 6a, 7, and part of 13 and 16
+(a proxy's slow path cold, a join taking its hot predecessor's register). Tried and not kept: `precedes` and `equal`
+expanded inline (step 2), and the entry's unread parameters left out (step 15). Step 5 is measured and has two designs;
+the user chose neither for now. Not started: 6b, 8 to 12, 14, 17, 18, and §4.3. Not yet timed.
+
 ## 1. Decisions
 
 Made by the user on 2026-11-23:
@@ -23,8 +30,10 @@ Made by the user on 2026-11-23:
 - **D4, the representation changes as specific steps** (§4.3), each measured before it is made, each stopping the
   section if it does not pay.
 
-Open: **pushing.** Each step is committed; `tools/check` runs at the end of each part (and after each step of §4.3,
-which change the ABI); pushing waits for the user.
+**Pushing:** Part 1 was pushed on 2026-11-23, after a rebase onto `6921cbe2`, which had taken ABI 89 for its own
+externals, so step 1's is 90. Each step was tested by targeted suites (the arm64 fixed point, each backend's run of
+every program, the stress tier for step 6a), not `tools/check`, at the user's request. Later steps are committed and
+wait for the user to push them.
 
 ## 2. Measuring
 
@@ -42,6 +51,11 @@ programs' own variation (allocation addresses, hash orders), not from load.
 
 Timing waits for a quiet machine: `run.py time --clean --scale 0.25` through arm64, ssac, and arm64 whole program, at
 the end of each part, recorded as a new section of benchmarks.md.
+
+**Done** (`tools/perf/counts.py`, profiling.md §3.1): `--tags mlton,ssac,arm64`, `--results`, `--against`,
+`--scale` (a thirty-second by default), `--count`; MLton's binaries are copied from `run.py`'s builds. The baseline is
+`benchmarks/mlton/baselines/2026-11-23/counts-73bb9e45.jsonl`, and Part 1's result `counts-5e9365cc.jsonl` (both
+commits before the rebase). `./quest --no-exclusive` was added alongside, so a stage build need not wait for the lock.
 
 ## 3. Part 1: the cheapest changes (§38.4)
 
@@ -115,6 +129,11 @@ reimplement for a gain nothing has measured.
 **Tests:** `stdlib/conv_*` (every Int's form, including 0, ~1, the least and greatest Int, and powers of 10 and one
 less); the behavior goldens, unchanged. **Measure:** lexgen, and `benchmarks/mlton` programs that print numbers.
 
+**Done.** The digits are counted by comparisons with powers of ten (minus ten to the power, up to 10^18), so each
+digit costs one division. The WebAssembly backend's case and both interpreters' builtins went; `conv` imports `string`
+as `stringOp`, since it now exports a `string` of its own (`6921cbe2`). `language/thunks`, which bound the external,
+binds `word.popCount`'s instead. No C yardstick was written. lexgen: 0.843 of before through ssac, 0.861 through arm64.
+
 ### 3.2. Step 2: string comparisons expanded inline
 
 `stringOp.precedes` is `quest_string_precedes`: a frame, a null check, and a `memcmp` call. In lexgen the strings
@@ -131,6 +150,11 @@ call where MLton compares pointers.
 The cold call keeps every case the runtime handles, so behavior cannot change.
 
 **Tests:** an SSA golden showing the expansion; `stdlib/string_*`, unchanged. **Measure:** lexgen, logic.
+
+**Done, differently.** The inline expansions were built and not kept. lexgen's keys all begin with a space, so a
+test on the first byte never decided and cost lexgen 9%; `equal` as a same-pointer test saved logic 0.6% through ssac
+and 0.3% through arm64, under the 1% bar. What was kept is in the runtime: `quest_string_precedes` compares up to 16
+bytes itself, then calls `memcmp`. lexgen: 0.94 through ssac, 0.96 through arm64. Test: `stdlib/string_comparisons`.
 
 ### 3.3. Step 3: checks that a dominating check decides
 
@@ -152,6 +176,12 @@ than equal value numbers is attempted in this step.
 **Tests:** `questlang/ssa_conditions` (hand-built SSA: a repeated null check, a repeated bounds check, a check on
 another array kept, a check not dominated kept); `language/*` SSA goldens regenerated. **Measure:** fft, mpuz,
 matrix-multiply.
+
+**Done.** Facts are made at a block that one edge of a branch alone enters, and hold in the blocks it dominates.
+Operands are keyed by what they are where value numbering keeps them apart (constants, nulls, symbols, invariant
+loads); an equality also gives its negation; only the same comparison is decided, not the weaker unsigned ones. A
+decided branch becomes a jump, unreached blocks go, and a changed function is numbered again. Through arm64: fft
+0.812, matrix-multiply 0.967, mpuz 0.973; ssac unchanged, since clang already removed them.
 
 ### 3.4. Step 4: NaN checks where a value is observed
 
@@ -176,6 +206,13 @@ So no program's behavior changes, and no backend or interpreter has to follow. T
 **Tests:** `questlang/ssa_nanchecks` (a chain, a chain with a use outside it kept, the recomputation block);
 `language/real_errors` (or its equivalent) extended with NaNs made at each position of a chain, each raising at its
 own site, in every mode. **Measure:** nucleic, fft, mandelbrot, matrix-multiply.
+
+**Done, wider than a block.** A region is blocks joined by checks' good edges, each entered only from the last,
+storing nothing and calling nothing. A check goes when its value comes from `fadd`, `fsub`, `fmul`, or `fdiv` and every
+use is such an operation in the region. A failing check jumps to the region's replay, which raises at the original
+site. The pass, `ssa/passes/nanChecks`, runs before value numbering. Tests: `tests/errors/run/nan_chain_1` to `3`,
+which raise at each operation of a chain, in every mode. Against the baseline, through ssac and arm64: nucleic 0.824
+and 0.864, matrix-multiply 0.876 and 0.934, zern 0.964 and 0.936, mandelbrot 0.994 and 0.947.
 
 ### 3.5. Step 5: fewer proxy tests (two designs, the user to choose)
 
@@ -220,6 +257,8 @@ programs need the gain and its count of sparse switches is small.
 (`language/proxies` and the like) in whole-program mode, unchanged; the stress tier. **Measure:** tyan, logic, lexgen,
 mpuz.
 
+**Not taken:** the user chose neither design for now (2026-11-23).
+
 ### 3.6. Step 6: a cheaper allocation
 
 The fast path (`quest_gc_bump` and `quest_gc_note_start`, runtime/quest_gc.h; `ssa/passes/allocations`) is about 22
@@ -249,6 +288,12 @@ sketch of 6b's cost: the walk at each collection over the objects allocated sinc
 **Tests:** the stress tier (`tools/check --stress`), which allocates through every path; the collector's own tests.
 **Measure:** logic, tyan, nucleic.
 
+**6a done, in part.** The flags are folded into the limit: a checking mode hides the limits after each allocation, as
+an incremental cycle does, so the inline path tests the limit alone. The start bit's byte is `quest_gc_start_base` plus
+the address shifted right by 6, one global. The cursor and limit were not paired for one `ldp`, and the WebAssembly
+runtime's allocator is unchanged. Against the baseline, through ssac and arm64: logic 0.887 and 0.895, tyan 0.924 and
+0.923, nucleic 0.763 and 0.802. 6b is not started.
+
 ### 3.7. Step 7: real elements loaded as reals, the data offset folded
 
 On arm64, a `Real` array element is loaded into an integer register and moved with `fmov` (and stored the same way
@@ -261,6 +306,10 @@ of a store's operand into the store (`str d`), and folds a constant added to a b
 load or store (`ldr d, [x, #8]` or, with an index, after a shifted register add). The SSA does not change.
 
 **Tests:** `questlang/arm64_select` cases for each fold. **Measure:** fft, matrix-multiply, nucleic.
+
+**Done in the SSA, not in selection.** The builder's `realSlot` loads and stores a `Real` slot as a real, since the
+slot holds its bits, so no reinterpretation is left to fold. The `+8` was not folded. Through arm64, against the
+baseline: fft 0.677, matrix-multiply 0.868, zern 0.877; ssac unchanged.
 
 ## 4. Part 2: the rest of §38.3
 
@@ -303,6 +352,12 @@ cases:
   around `quest_gc_alloc_slow` on the fast path; spill code moved to the cold block.
 - **Step 18, `cset`/`orr` sequences as branches:** a conjunction of comparisons that feeds only a branch becomes `ccmp`
   and one branch (logic's 1,563 `cset`/`csel` against ssac's 19).
+
+**Done in part** (`883a870d`, for steps 13 and 16): a block that calls the runtime for a proxy is cold, as one that
+raises is, so it is laid out of line; and a jump's register hint from a cold block comes after the others, so a proxy
+test's join takes the hot path's register and the move is on the cold path. Through arm64, against the baseline: tyan
+0.863, logic 0.850, lexgen 0.770, mpuz 0.925, nucleic 0.784. **Tried for step 15 and not kept:** leaving the entry's
+unread parameters (a loop's static closure) out of block 0, under 1%.
 
 ### 4.3. Data representation
 
