@@ -7,13 +7,16 @@
  * does, and ssac's C printer calls every runtime function out of line.
  *
  * The expanded sequence loads the free-region cursor and limit for the
- * object's heap space. Unless a GC checking mode is active or the current
- * free hole has too little room, the fast path bumps the cursor past the
- * object and writes the layout header word before it. Otherwise, the slow
- * path calls quest_gc_alloc_slow, which finds the next hole or runs a
- * collection and writes the header word (including any GC mark flags during
- * incremental marking; docs/collector.md section 3.10). Both paths then set
- * the object's start bit in the collector's bitmap.
+ * object's heap space. Unless the current free hole has too little room, the
+ * fast path bumps the cursor past the object and writes the layout header
+ * word before it; a checking mode, like an incremental collection, hides the
+ * limit (making it the cursor), so that every allocation fails the one test.
+ * Otherwise, the slow path calls quest_gc_alloc_slow, which finds the next
+ * hole or runs a collection and writes the header word (including any GC
+ * mark flags during incremental marking; docs/collector.md section 3.10).
+ * Both paths then set the object's start bit in the collector's bitmap: its
+ * byte quest_gc_start_base plus the object's address >> 6, its bit the
+ * address >> 3 & 7.
  *
  * Each layout's heap space is read from the unit's static layout data:
  * pointer-free layouts allocate in the noscan space, while runtime-owned

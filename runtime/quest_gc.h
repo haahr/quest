@@ -245,6 +245,7 @@ void          quest_gc_add_roots(void *low, void *high);
 extern uintptr_t quest_gc_cursor[2];
 extern uintptr_t quest_gc_limit[2];
 extern uint8_t  *quest_gc_start_bits;
+extern uintptr_t quest_gc_start_base;
 void *quest_gc_alloc_slow(size_t total, const QLayout *layout);
 
 Q_INLINE unsigned quest_layout_space(const QLayout *layout) {
@@ -256,7 +257,7 @@ Q_INLINE unsigned quest_layout_space(const QLayout *layout) {
 Q_INLINE uintptr_t *quest_gc_bump(size_t total, const QLayout *layout, size_t header) {
     unsigned space = quest_layout_space(layout);
     uintptr_t p = quest_gc_cursor[space];
-    if (quest_gc_check_flags != 0 || total > quest_gc_limit[space] - p) {
+    if (total > quest_gc_limit[space] - p) {
         return (uintptr_t *)quest_gc_alloc_slow(total, layout);
     }
     quest_gc_cursor[space] = p + total;
@@ -265,8 +266,8 @@ Q_INLINE uintptr_t *quest_gc_bump(size_t total, const QLayout *layout, size_t he
 }
 
 Q_INLINE void quest_gc_note_start(const void *obj) {
-    uintptr_t i = ((uintptr_t)obj - quest_gc_heap_lo) >> 3;
-    quest_gc_start_bits[i >> 3] |= (uint8_t)(1u << (i & 7));
+    uintptr_t a = (uintptr_t)obj;
+    *(uint8_t *)(quest_gc_start_base + (a >> 6)) |= (uint8_t)(1u << ((a >> 3) & 7));
 }
 
 Q_INLINE void *quest_alloc(size_t sz, const QLayout *layout) {

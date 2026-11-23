@@ -172,6 +172,10 @@ typedef struct QBlock {
 uintptr_t        quest_gc_heap_lo = 0;
 uintptr_t        quest_gc_heap_hi = 0;
 uint8_t         *quest_gc_start_bits = NULL;   /* a bit per 8 bytes of the reserve, by (address - heap_lo) >> 3 */
+/* The start bits' byte for address 0, were the bitmap to reach it: an
+ * object's byte is this plus its address >> 6, its bit its address >> 3 & 7,
+ * since heap_lo is a block's boundary (quest_gc_note_start) */
+uintptr_t        quest_gc_start_base = 0;
 uint8_t         *quest_gc_cards = NULL;        /* a byte per card (Q_GC_CARD_BITS), set by the slot barrier */
 static size_t    quest_gc_block_n = 0;         /* blocks in the reserve */
 static size_t    quest_gc_high_water = 0;      /* blocks ever taken; those beyond are fresh */
@@ -248,6 +252,27 @@ static uint64_t  quest_gc_pause_goal_ns = 10 * 1000000;
 static uint64_t  quest_gc_last_full_ns = 0;        /* what the last full collection took, its marking and its sweep */
 static bool      quest_gc_cycle = false;
 static uintptr_t quest_gc_hidden_limit[2] = { 0, 0 };
+/* Whether the limits are hidden: each is its cursor, so that every inline
+ * allocation fails its test and comes to the slow path, while a cycle marks
+ * or a checking mode counts allocations, and the hidden limits are the real
+ * ones (quest_gc_alloc_slow) */
+static bool      quest_gc_limits_hidden = false;
+static void quest_gc_show_limits(void) {
+    if (quest_gc_limits_hidden) {
+        quest_gc_limit[0] = quest_gc_hidden_limit[0];
+        quest_gc_limit[1] = quest_gc_hidden_limit[1];
+        quest_gc_limits_hidden = false;
+    }
+}
+static void quest_gc_hide_limits(void) {
+    if (!quest_gc_limits_hidden) {
+        for (unsigned k = 0; k < 2; ++k) {
+            quest_gc_hidden_limit[k] = quest_gc_limit[k];
+            quest_gc_limit[k] = quest_gc_cursor[k];
+        }
+        quest_gc_limits_hidden = true;
+    }
+}
 static uint64_t  quest_gc_cycle_debt = 0;          /* bytes allocated in the cycle since its last slice */
 static size_t    quest_gc_pace = 4;                /* bytes marked per byte allocated (QUEST_GC_PACE) */
 static size_t    quest_gc_slice_bytes = 32 << 10;  /* bytes allocated between slices (QUEST_GC_SLICE, in KB) */
@@ -404,6 +429,7 @@ static void quest_gc_setup(void) {
     quest_gc_lines = (uint8_t *)quest_gc_map(quest_gc_block_n * Q_GC_BLOCK_LINES);
     quest_gc_marks = (uint8_t *)quest_gc_map(quest_gc_block_n * Q_GC_BLOCK_BITMAP);
     quest_gc_start_bits = (uint8_t *)quest_gc_map(quest_gc_block_n * Q_GC_BLOCK_BITMAP);
+    quest_gc_start_base = (uintptr_t)quest_gc_start_bits - (lo >> 6);
     quest_gc_cards = (uint8_t *)quest_gc_map(quest_gc_block_n * (Q_GC_BLOCK >> Q_GC_CARD_BITS));
     if (quest_gc_blocks == NULL || quest_gc_lines == NULL || quest_gc_marks == NULL || quest_gc_start_bits == NULL ||
         quest_gc_cards == NULL) {
@@ -699,24 +725,18 @@ static void quest_gc_born(uintptr_t base, size_t total, const QLayout *layout, s
  * may end the cycle; while one runs, the limits are shown to the body and
  * hidden again after, so that the next allocation comes here too */
 void *quest_gc_alloc_slow(size_t total, const QLayout *layout) {
-    if (quest_gc_cycle) {
-        quest_gc_cycle_step(total);
-        if (quest_gc_cycle) {
-            quest_gc_limit[0] = quest_gc_hidden_limit[0];
-            quest_gc_limit[1] = quest_gc_hidden_limit[1];
-        }
-    }
+    if (quest_gc_cycle) quest_gc_cycle_step(total);
+    quest_gc_show_limits();
     void *p = quest_gc_alloc_slow_body(total, layout);
     size_t prefix = quest_gc_prefix_of(layout);
     if (quest_gc_cycle) {
         quest_gc_born((uintptr_t)p, total, layout, prefix);
-        for (unsigned k = 0; k < 2; ++k) {
-            quest_gc_hidden_limit[k] = quest_gc_limit[k];
-            quest_gc_limit[k] = quest_gc_cursor[k];
-        }
     } else {
         ((uintptr_t *)p)[prefix / sizeof(uintptr_t) - 1] = (uintptr_t)layout;
     }
+    /* The inline paths test only the limit, so a checking mode, which counts
+     * every allocation, hides it too */
+    if (quest_gc_cycle || quest_gc_check_flags != 0) quest_gc_hide_limits();
     if ((quest_gc_check_flags & QUEST_GC_CHECK_SITES) != 0) quest_gc_note_site((uintptr_t)p + prefix);
     return p;
 }
@@ -1391,7 +1411,7 @@ static void quest_gc_sweep(void) {
     for (unsigned k = 0; k < 2; ++k) {
         quest_gc_recyclable_n[k] = 0;
         quest_gc_recyclable_next[k] = 0;
-        quest_gc_cursor[k] = quest_gc_limit[k] = 0;
+        quest_gc_cursor[k] = quest_gc_limit[k] = quest_gc_hidden_limit[k] = 0;
         quest_gc_over_cursor[k] = quest_gc_over_limit[k] = 0;
         quest_gc_current[k] = Q_GC_NO_BLOCK;
         quest_gc_current_line[k] = 0;
@@ -1475,7 +1495,7 @@ static void quest_gc_sweep_young(void) {
         memmove(quest_gc_recyclable[k], quest_gc_recyclable[k] + quest_gc_recyclable_next[k], rest * sizeof(size_t));
         quest_gc_recyclable_n[k] = rest;
         quest_gc_recyclable_next[k] = 0;
-        quest_gc_cursor[k] = quest_gc_limit[k] = 0;
+        quest_gc_cursor[k] = quest_gc_limit[k] = quest_gc_hidden_limit[k] = 0;
         quest_gc_over_cursor[k] = quest_gc_over_limit[k] = 0;
         quest_gc_current[k] = Q_GC_NO_BLOCK;
         quest_gc_current_line[k] = 0;

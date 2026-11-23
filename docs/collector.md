@@ -241,7 +241,10 @@ dead values' slots unnecessary, and it does none. `QUEST_GC_MAPS=0` scans every 
 
 - **Bump allocation inline** in every backend: compare the cursor and the limit, bump, store the header, set the
   object's bit in the object-start bitmap (a byte loaded, or'ed, and stored: the bitmap is what validates ambiguous
-  words, §3.1, and only the allocator knows where objects begin), return the address. The C backends get the sequence
+  words, §3.1, and only the allocator knows where objects begin), return the address. The bit's byte is
+  `quest_gc_start_base` plus the address shifted right 6, and the bit the address shifted right 3, and 7: the base is
+  the bitmap's address less the heap's low address shifted right 6, which a block's boundary makes exact, so that the
+  sequence reads one global for it, not two. The C backends get the sequence
   from the header (`quest_alloc`, `quest_gc_bump`, `quest_gc_note_start` in `runtime/quest_gc.h`); the SSA's backends
   select it (`ssa/passes/allocations`, [ssa.md](ssa.md) §4.1), arm64 and the JIT because they cannot take it from the
   header, and ssac because its printer calls every runtime function out of line. The inline sequence's base, the
@@ -256,7 +259,9 @@ dead values' slots unnecessary, and it does none. `QUEST_GC_MAPS=0` scans every 
 - **The slow path,** `quest_gc_alloc_slow`, takes the next hole of the current block, then a recyclable block's, then
   a free block's; medium objects take the overflow cursor and large ones runs of blocks (§3.1); and it collects first
   when a collection is due (§3.6). While a checking mode is on (`quest_gc_check_flags` nonzero) every allocation takes
-  it, and it counts them. During an incremental cycle it serves every allocation too, and stores the header word
+  it, and it counts them: the slow path hides the limits (each made its cursor, the real ones kept) after each
+  allocation, as during a cycle, so that the inline test of the limit alone sends the next one there too. During an
+  incremental cycle it serves every allocation too, and stores the header word
   itself with the flags of an object born during the cycle (§3.10); the inline path stores the header only for what
   it bumps itself.
 - **Zeroing:** holes are zeroed when they are entered, not per object, so the compilers' assumption that fresh memory
