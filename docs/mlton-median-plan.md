@@ -26,7 +26,13 @@ Part 2, analyzed and not made (local, not pushed): steps 11 and 24, under the pl
 on lexgen but needing a whole-program analysis of a field's values (the user to decide); step 19's census
 (`allocations.py --by-layout`), which supports step 21; step 20, folded into 21, since alone it saves about 5% of
 logic's and raytrace's bytes and 0.6% of the compiler's. Step 23 analyzed: 4 to 10% on mpuz and logic, nothing
-elsewhere (the user to decide). Not started: 6b, 8 to 10, 14, 17, 18, 21, 22.
+elsewhere (the user to decide). Not started: 6b, 8 to 10, 14, 17, 18, 21, 22, 25, 26.
+
+Conversions changed (2026-11-23, [benchmarks.md](benchmarks.md) §42): an owner's own `ref` is a `var` field in boyer,
+logic, model-elimination, mpuz, and ratio-regions (mpuz 0.90 to 0.94 of its instructions, logic 0.97), and loops stay
+recursive, measured against hand-written loops for steps 25 and 26 (§4.4). The changed mpuz and logic are step 23's hand-made
+variants (mpuz retires the same 0.940 and 0.896), so the conversions now have its gain; what is left of step 23 is
+the compiler finding the pattern in code written the nested way, which no program in the suite now is.
 
 ## 1. Decisions
 
@@ -547,6 +553,24 @@ one in `dgfBase` (`tfoCombine(nuc.dgfBaseTfo tfoCombine(tfo tfoInvOrtho(x)))`) m
 read. A hand-made nucleic with the three calls fused, so that only the stored `Tfo` is allocated, allocates 0.903 of
 the bytes, but retires 0.987 of the instructions through ssac and 1.004 through arm64 (whole programs at count 128;
 its own check of the result passes), where 24 live Reals spill. Under the 1% this part asks on arm64; not made.
+
+### 4.4. Loops in recursive form
+
+The conversions keep the originals' recursive loops (2026-11-23), so the compiler, not the conversion, must make them
+good loops. [benchmarks.md](benchmarks.md) §42.3 measured hand-written loop versions of six programs: contification
+already makes most of them what the loops are, within 3%, and two costs are left:
+
+- **Step 25, a module cell kept in a register across a loop:** mandelbrot adds to `sumIterations.n` on each pass of
+  its middle loop; with the sum a parameter instead it retires 0.908 of the instructions through ssac and 0.900
+  through arm64. In a loop whose body makes no call that can reach the cell and reads it through no other name, the
+  cell's field is loaded before the loop, carried as a loop parameter, and stored at each exit (and before a raise).
+- **Step 26, indices that step together merged:** tensor's folds pass two or three indices that each step by one;
+  with one index and the others offsets from it, 0.968 and 0.973. Close to step 9's strength reduction, and done with
+  it.
+
+Also found, not about the recursive form: Quest's own `while` on a `var` flag costs 1.25 times the recursion through
+arm64 in mandelbrot (likely step 14's), and imp-for's nest, which clang computes without looping, retires 324 times
+ssac's instructions through arm64 in every form.
 
 ## 5. Order and stopping
 

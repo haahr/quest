@@ -16,9 +16,9 @@ Let Rec Term = Option
     str with f: String ts: lists.T(Term) end
     integer with n: Int end
     con with s: String end
-    ref with r: Ref end
+    ref with var v: TermOption end
 end
-(* term option ref *)
+(* SML's term option ref: the ref case's payload, whose identity is the variable's *)
 and Ref = Tuple var v: TermOption end
 and TermOption = Option none some with t: Term end end
 
@@ -66,14 +66,14 @@ let bind(r: Ref t: Term): Ok =
 
 (* unify.sml *)
 
-let sameRef(r: Ref t: Term): Bool = case t when ref with x then r is x.r else false end
+let sameRef(r: Ref t: Term): Bool = case t when ref with x then r is x else false end
 
 let occursCheck(r: Ref t: Term): Bool =
     begin
         let rec oc(t: Term): Bool =
             case t
                 when str with x then ocs(x.ts)
-                when ref with x then case x.r.v when some with s then oc(s.t) else r isnot x.r end
+                when ref with x then case x.v when some with s then oc(s.t) else r isnot x end
                 when con then true
                 when integer then true
             end
@@ -83,16 +83,16 @@ let occursCheck(r: Ref t: Term): Bool =
 
 let rec deref(t: Term): Term =
     case t
-        when ref with x then case x.r.v when some with s then deref(s.t) else t end
+        when ref with x then case x.v when some with s then deref(s.t) else t end
         else t
     end
 
 let rec unify1(s: Term t: Term sc: All() Ok): Ok =
     case s
-        when ref with x then unifyRef(x.r t sc)
+        when ref with x then unifyRef(x t sc)
         else
             case t
-                when ref with y then unifyRef(y.r s sc)
+                when ref with y then unifyRef(y s sc)
                 else
                     case s
                         when str with a then
@@ -133,8 +133,7 @@ let conO = con(oS)
 let conNil = con(nilS)
 let conX = con(xS)
 
-let newRef(): Ref = tuple let var v = noTerm end
-let exists(sc: All(t: Term) Ok): Ok = sc(option ref of Term with newRef() end)
+let exists(sc: All(t: Term) Ok): Ok = sc(option ref of Term with let var v = noTerm end)
 
 let rec moveHoriz(t1: Term t2: Term sc: All() Ok): Ok =
     begin

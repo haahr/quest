@@ -21,9 +21,10 @@ let print(s: String): Ok = writer.putString(writer.output s)
 
 (* SML's Word32 (and MLton's 32-bit Word), in the low 32 bits of a word *)
 Let W = word.T
-let mask32 = word.fromInt(4294967295)
+let mask32 = word.fromInt(0xFFFFFFFF)
 let w(n: Int): W = word.andBits(word.fromInt(n) mask32)
-(* SML's hexadecimal word literals (0wx...) are written in decimal: Quest has none *)
+(* SML's hexadecimal word literals (0wx...) are hexadecimal integers where they
+ * are bit patterns, and decimal where they are small numbers *)
 let weq(a: W b: W): Bool = word.toInt(a) is word.toInt(b)
 let add32(a: W b: W): W = word.andBits(word.add(a b) mask32)
 let sub32(a: W b: W): W = word.andBits(word.sub(a b) mask32)
@@ -84,8 +85,8 @@ let map(A::TYPE B::TYPE)(f: All(a: A) B ia: ImmArray(A)): ImmArray(B) =
 (* structure RegisterFile *)
 Let RegisterFile = ImmArray(W)
 let initRegisterFile(): RegisterFile =
-    update(:W)(update(:W)(update(:W)(update(:W)(immarray(:W)(32 w(0)) 0 w(0)) 28 w(0)) 29 w(262144)) 30
-            w(262144))
+    update(:W)(update(:W)(update(:W)(update(:W)(immarray(:W)(32 w(0)) 0 w(0)) 28 w(0)) 29 w(0x40000)) 30
+            w(0x40000))
 let loadRegister(rf: RegisterFile reg: Int): W = sub(:W)(rf reg)
 let storeRegister(rf: RegisterFile reg: Int data: W): RegisterFile = update(:W)(rf reg data)
 
@@ -136,7 +137,7 @@ let alignWAddress(address: W): W = shl(shr(address 2) 2)
 let alignHWAddress(address: W): W = shl(shr(address 1) 1)
 
 let memInit(): Memory = tuple
-    let mem = immarray(:W)(toInt(w(65536)) w(0))
+    let mem = immarray(:W)(toInt(w(0x10000)) w(0))
     let counts = tuple
         let reads = 0
         let writes = 0
@@ -266,7 +267,7 @@ let getTag(address: W): W = shr(address indexBits + blockOffsetBits)
  * address *)
 let getIndex(address: W): W =
     begin
-        let mask = notb(shl(shr(w(4294967295) indexBits + blockOffsetBits) indexBits + blockOffsetBits))
+        let mask = notb(shl(shr(w(0xFFFFFFFF) indexBits + blockOffsetBits) indexBits + blockOffsetBits))
         shr(andb(address mask) blockOffsetBits)
     end
 
@@ -274,7 +275,7 @@ let getIndex(address: W): W =
  * field of address *)
 let getBlockOffset(address: W): W =
     begin
-        let mask = notb(shl(shr(w(4294967295) blockOffsetBits) blockOffsetBits))
+        let mask = notb(shl(shr(w(0xFFFFFFFF) blockOffsetBits) blockOffsetBits))
         andb(address mask)
     end
 
@@ -491,10 +492,10 @@ let cStoreByte(m: CMemory address: W data: W): CMemory =
         let sWord = cLoad(m alignedAddress).w
         let put(keep: W shift: Int): CMemory = cStore(m alignedAddress
                 orb(andb(keep sWord) shl(andb(w(255) data) shift)))
-        if weq(alignedAddress w(0)) then put(w(4294967040) 0)
-        elsif weq(alignedAddress w(8)) then put(w(4294902015) 8)
-        elsif weq(alignedAddress w(16)) then put(w(4278255615) 16)
-        elsif weq(alignedAddress w(24)) then put(w(16777215) 24)
+        if weq(alignedAddress w(0)) then put(w(0xFFFFFF00) 0)
+        elsif weq(alignedAddress w(8)) then put(w(0xFFFF00FF) 8)
+        elsif weq(alignedAddress w(16)) then put(w(0xFF00FFFF) 16)
+        elsif weq(alignedAddress w(24)) then put(w(0xFFFFFF) 24)
         else begin print("Error SB: Memory unchanged\n") m end
         end
     end
@@ -846,10 +847,10 @@ let rec loadProgAux(instrs: lists.T(String) mem: CMemory address: W): CMemory =
 
 (* The function LoadProg takes a list of instructions and memory, and loads
  * the file into memory, beginning at 0x10000 *)
-let loadProg(instrs: lists.T(String) mem: CMemory): CMemory = loadProgAux(instrs mem w(65536))
+let loadProg(instrs: lists.T(String) mem: CMemory): CMemory = loadProgAux(instrs mem w(0x10000))
 
 let runProg(instructions: lists.T(String) trap: Trap): Result =
-    cycleLoop(machine(w(65536) initRegisterFile() loadProg(instructions cInit()) trap))
+    cycleLoop(machine(w(0x10000) initRegisterFile() loadProg(instructions cInit()) trap))
 
 (* Example programs *)
 

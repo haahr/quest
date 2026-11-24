@@ -7,9 +7,9 @@ import
     support/bench : support/Bench
 
 (* SML's Word32 arithmetic, in the low 32 bits of a word *)
-let mask32 = word.fromInt(4294967295)
+let mask32 = word.fromInt(0xFFFFFFFF)
 let w(n: Int): word.T = word.fromInt(n)
-(* SML's hexadecimal word literals (0wx...) are written in decimal: Quest has none *)
+(* SML's hexadecimal word literals (0wx...) are hexadecimal integers *)
 let add32(a: word.T b: word.T): word.T = word.andBits(word.add(a b) mask32)
 let mul32(a: word.T b: word.T): word.T = word.andBits(word.mul(a b) mask32)
 let notb32(a: word.T): word.T = word.xorBits(a mask32)
@@ -27,21 +27,20 @@ let once(): Ok =
                 go(start ac)
             end
         let niter = 4
-        let make(l: Array(word.T)): All(i: Int) word.T = fun(i: Int): word.T l[i]
-        let c1 = make(array of w(3131664519) w(504877868) w(62770492) w(255054258) end)
-        let c2 = make(array of w(1259289432) w(3899977923) w(1767228838) w(1437059654) end)
+        let c1 = array of w(0xBAA96887) w(0x1E17D32C) w(0x03BDCD3C) w(0x0F33D1B2) end
+        let c2 = array of w(0x4B0F3B58) w(0xE874F0C3) w(0x6955C5A6) w(0x55A7CA46) end
         let half = 16
         let reverse(x: word.T): word.T = word.orBits(shr32(x half) shl32(x half))
         let psdes(lword: word.T irword: word.T): Pair =
             natFold(0 niter tuple let l = lword let r = irword end fun(i: Int p: Pair): Pair
                 begin
-                    let ia = word.xorBits(p.r c1(i))
-                    let itmpl = word.andBits(ia w(65535))
+                    let ia = word.xorBits(p.r c1[i])
+                    let itmpl = word.andBits(ia w(0xFFFF))
                     let itmph = shr32(ia half)
                     let ib = add32(mul32(itmpl itmpl) notb32(mul32(itmph itmph)))
                     tuple
                         let l = p.r
-                        let r = word.xorBits(p.l add32(mul32(itmpl itmph) word.xorBits(c2(i) reverse(ib))))
+                        let r = word.xorBits(p.l add32(mul32(itmpl itmph) word.xorBits(c2[i] reverse(ib))))
                     end
                 end)
         let state = tuple let var lword = w(13) let var irword = w(14) let var needTo = true end
@@ -58,7 +57,7 @@ let once(): Ok =
                 begin state.needTo := true state.irword end
             end
         let rec go(i: Int acc: word.T): Ok =
-            if i is 0 then if not(eq(acc w(321592167))) then raise bench.bug end end
+            if i is 0 then if not(eq(acc w(0x132B1B67))) then raise bench.bug end end
             else go(i - 1 add32(acc next()))
             end
         go(150000000 w(0))

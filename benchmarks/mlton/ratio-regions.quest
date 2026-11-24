@@ -214,13 +214,12 @@ let raoRatioRegion(cRight: Array(Array(Int)) cDown: Array(Array(Int)) w: Array(A
                     end))
                 let relabel(): Ok =
                     begin
-                        Let Rec Queue = Option nilQ consQ with p: XY cdr: QueueRef end end
-                        and QueueRef = Tuple var v: Queue end
+                        (* The original's queue cells hold a ref to the next cell; here the cell's var field *)
+                        Let Rec Queue = Option nilQ consQ with p: XY var cdr: Queue end end
                         let nilQ = option nilQ of Queue end
-                        let newRef(v: Queue): QueueRef = tuple let var v = v end
-                        let null(q: QueueRef): Bool = case q.v when nilQ then true else false end
-                        let rq = newRef(nilQ)
-                        let tail = newRef(nilQ)
+                        let null(q: Queue): Bool = case q when nilQ then true else false end
+                        let var rq = nilQ
+                        let var tail = nilQ
                         let enqueue(y: Int x: Int value: Int): Ok =
                             if value < h[y][x] then
                                 begin
@@ -228,16 +227,22 @@ let raoRatioRegion(cRight: Array(Array(Int)) cDown: Array(Array(Int)) w: Array(A
                                     if not(marked[y][x]) then
                                         begin
                                             marked[y][x] := true
-                                            case tail.v
+                                            case tail
                                                 when nilQ then
                                                     begin
-                                                        tail.v := option consQ of Queue with xy(x y) newRef(nilQ) end
-                                                        rq.v := tail.v
+                                                        tail := option consQ of Queue with
+                                                            xy(x y)
+                                                            let var cdr = nilQ
+                                                        end
+                                                        rq := tail
                                                     end
                                                 when consQ with c then
                                                     begin
-                                                        c.cdr.v := option consQ of Queue with xy(x y) newRef(nilQ) end
-                                                        tail.v := c.cdr.v
+                                                        c.cdr := option consQ of Queue with
+                                                            xy(x y)
+                                                            let var cdr = nilQ
+                                                        end
+                                                        tail := c.cdr
                                                     end
                                             end
                                         end
@@ -245,13 +250,13 @@ let raoRatioRegion(cRight: Array(Array(Int)) cDown: Array(Array(Int)) w: Array(A
                                 end
                             end
                         let dequeue(): XY =
-                            case rq.v
+                            case rq
                                 when nilQ then raise failure with "dequeue" end
                                 when consQ with c then
                                     begin
                                         marked[c.p.y][c.p.x] := false
-                                        rq.v := c.cdr.v
-                                        if null(rq) then tail.v := nilQ end
+                                        rq := c.cdr
+                                        if null(rq) then tail := nilQ end
                                         c.p
                                     end
                             end

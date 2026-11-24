@@ -3020,7 +3020,7 @@ let modusPonens(th: Thm gs: Formulas s: State): State =
         updateProof(fun(p: Thms): Thms mp(inst(env th) lists.rev(:Formula)(gs) p) s)
     end
 
-Let System = Tuple parm: Parameters rules: Rules meter: MeterRef saturated: Tuple var b: Bool end
+Let System = Tuple parm: Parameters rules: Rules meter: MeterRef var saturated: Bool
     cut: All(f: Expand) Expand end
 
 let mesonExpand(system: System): Expand =
@@ -3059,7 +3059,7 @@ let mesonExpand(system: System): Expand =
         and expandRule(ancestors: Formulas g: Formula cont: Cont s: State r: Rule): ChoiceRes =
             begin
                 let depth = s.depth - r.asmn
-                if not(0 <= depth) then begin system.saturated.b := false err(:Ok)("meson" "too deep") end end
+                if not(0 <= depth) then begin system.saturated := false err(:Ok)("meson" "too deep") end end
                 let ro = freshenRule(r s.offset)
                 let ns = nextState(parm.stateSimplify s.env ro.a g)
                 recordInfs(meter.m 1)
@@ -3122,7 +3122,7 @@ let mkSystem(parm: Parameters units: UnitsRef meter: MeterRef rules: Rules): Sys
         let parm = parm
         let rules = rules
         let meter = meter
-        let saturated = tuple let var b = false end
+        let var saturated = false
         let cut = fun(f: Expand): Expand unitCut(parm.unitLemmaizing units cacheCut(parm.cacheCutting f))
     end
 
@@ -3135,12 +3135,11 @@ let meson1(parm: Parameters): SolverNode =
                         <> intToString(lists.length(:Thm)(f.hyps)) <> "--#rules=" <> intToString(numRules(ruls))
                         <> "--#initial_rules=" <> intToString(numInitialRules(ruls)) <> ".\n")
                     let system = mkSystem(parm f.units f.slice ruls)
-                    let b = system.saturated
                     let rec d(n: Int): Stream(Int) =
-                        if b.b then
+                        if system.saturated then
                             sNil(:Int)()
                         else
-                            begin b.b := true sCons(:Int)(n fun(): Stream(Int) d(n + 1)) end
+                            begin system.saturated := true sCons(:Int)(n fun(): Stream(Int) d(n + 1)) end
                         end
                     let fq(q: Formulas): All(d: Int) Stream(Answer) =
                         fun(d: Int): Stream(Answer) begin chatMeson(1 "-" <> intToString(d)) rawMeson(system q d) end

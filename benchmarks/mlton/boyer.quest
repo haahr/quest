@@ -10,10 +10,10 @@ import
 
 (* terms.sml: Manipulations over terms *)
 
-(* A head is a name and its lemmas (the original's property list) *)
+(* A head is a name and its lemmas (the original's property list, a ref the
+ * head holds, here a var field of the head) *)
 Let Rec Term = Option variable with v: Int end prop with head: Head args: lists.T(Term) end end
-and Head = Tuple name: String props: Props end
-and Props = Tuple var v: lists.T(Lemma) end
+and Head = Tuple name: String var props: lists.T(Lemma) end
 and Lemma = Tuple left: Term right: Term end
 Let Terms = lists.T(Term)
 
@@ -30,8 +30,7 @@ let get(name: String): Head =
                 when cons with c then if stringOp.equal(c.hd.name name) then c.hd else getRec(c.tl) end
                 when nil then
                     begin
-                        let props: Props = tuple let var v = lists.nil(:Lemma) end
-                        let entry: Head = tuple let name = name let props = props end
+                        let entry: Head = tuple let name = name let var props = lists.nil(:Lemma) end
                         lemmas.v := lists.cons(:Head)(entry lemmas.v)
                         entry
                     end
@@ -51,9 +50,9 @@ let addLemma(t: Term): Ok =
                             case a1.tl
                                 when cons with a2 then
                                     if lists.null(:Term)(a2.tl) then
-                                        left.head.props.v :=
+                                        left.head.props :=
                                                 lists.cons(:Lemma)(tuple let left = a1.hd let right = a2.hd end
-                                                        left.head.props.v)
+                                                        left.head.props)
                                     else
                                         raise match end
                                     end
@@ -93,8 +92,9 @@ let applySubst(alist: Bindings): All(t: Term) Term =
         asRec
     end
 
-(* SML's = on heads (a name and a ref) and on terms *)
-let headEq(a: Head b: Head): Bool = stringOp.equal(a.name b.name) andif {a.props is b.props}
+(* SML's = on heads (a name and a ref, here the head's identity, since each
+ * head has its own ref) and on terms *)
+let headEq(a: Head b: Head): Bool = stringOp.equal(a.name b.name) andif {a is b}
 let rec termEq(a: Term b: Term): Bool =
     case a
         when variable with x then case b when variable with y then x.v is y.v else false end
@@ -139,7 +139,7 @@ let rec rewrite(t: Term): Term =
     case t
         when variable then t
         when prop with p then
-            rewriteWithLemmas(option prop of Term with p.head lists.map(:Term :Term)(rewrite p.args) end p.head.props.v)
+            rewriteWithLemmas(option prop of Term with p.head lists.map(:Term :Term)(rewrite p.args) end p.head.props)
     end
 and rewriteWithLemmas(t: Term l: lists.T(Lemma)): Term =
     case l

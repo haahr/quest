@@ -3703,3 +3703,68 @@ imp-for 1.28 through ssac (0.26 s).
 - **mandelbrot is 5% slower than at §35 through arm64,** though it retires 0.95 of the baseline's instructions (§40).
   It was not taken apart.
 
+
+## 42. Conversions written as Quest writes them, and loops in recursive form (2026-11-23)
+
+Two changes to the conversions (`benchmarks/mlton/README.md`, "How the programs are converted"), and a measure of
+what the compiler leaves when loops are written as recursion. Whole programs at a thirty-second of the suite's
+counts, instructions retired (`tools/perf/counts.py`) at `06247d4f`, each program against itself before the change.
+
+### 42.1. A ref of the owner's own as a `var` field
+
+SML's only mutable field is a `ref`, so a record or constructor that has one points to a separate cell. Where the cell
+belongs to its owner alone, the conversions now have a `var` field instead: mpuz's letter values, logic's variables
+(the `ref` case's payload is the variable, compared by identity), boyer's heads' properties, ratio-regions' queue
+cells, and model-elimination's `saturated` flag.
+
+| Benchmark | ssac, new / old | arm64, new / old | Bytes, new / old |
+|---|--:|--:|--:|
+| mpuz | 0.896 | 0.940 | none allocated |
+| logic | 0.968 | 0.966 | 0.965 |
+| boyer | 0.987 | 0.981 | 1.000 |
+| ratio-regions | 0.986 | 0.984 | 0.984 |
+| model-elimination | 1.002 | 1.001 | 1.000 |
+
+model-elimination's flag is read once a search, so nothing changed. The comparisons with MLton in §38 to §41 are of the
+old conversions; mpuz's and logic's ratios are now a few percent lower.
+
+### 42.2. Cosmetic changes
+
+md5's, psdes-random's, and DLXSimulator's constants are hexadecimal where the originals' are (extensions.md,
+"Hexadecimal Integers", since 2026-11-01); psdes-random's tables and zern's array are array literals, life's `spaces`
+a fold, raytrace's hash table a reversal, and hamlet's table state one tuple. All are within 0.2% of the old
+instructions except zern, 0.981 through ssac and 0.966 through arm64: its array was filled by a function that took a
+closure.
+
+### 42.3. Loops in recursive form
+
+The conversions keep the originals' recursive loops and higher-order `for`s: compiling them well is the compiler's
+work. To measure what it leaves, six programs whose time is in such loops were rewritten by hand (kept out of the
+suite) with Quest's `for` and `while` over `var`s, or with the recursion kept but its state passed as parameters:
+
+| Benchmark | Variant | ssac / original | arm64 / original |
+|---|---|--:|--:|
+| imp-for | `forLoop` a `while` over a `var` | 0.999 | 1.000 |
+| imp-for | and the seven nested calls `for` loops | 1.015 | 0.923 |
+| psdes-random | `natFold` a `for` over two `var`s | 0.985 | 0.973 |
+| mandelbrot | recursion kept, the sum a parameter, not a module cell | 0.908 | 0.900 |
+| mandelbrot | `for` and `while` loops, the sum a local `var` | 0.877 | 1.254 |
+| simple | `forRange` a `while` | 0.996 | 0.989 |
+| fft | its four loops `while` and `for` | 1.005 | 0.998 |
+| tensor | its four folds `for` loops, one index stepping | 0.968 | 0.973 |
+
+Contification and the inliner (ir.md §8.6) already make these loops what the hand-written ones are: none allocates,
+and most variants are within 3%. What is left:
+
+- **A module cell updated in a loop:** mandelbrot adds each point's count to `sumIterations.n`, a load and a store
+  each pass of the middle loop. Passing the sum as a parameter saves 10% on both backends. A cell that the loop's code
+  neither calls out from nor reads through another name can be kept in a register across the loop, stored once after
+  it.
+- **Indices that step together:** tensor's folds pass two or three indices that each step by one; a single one, the
+  others an offset from it, saves 3%.
+- **arm64 and a `while` on a flag:** mandelbrot's inner loop as a `while` on a `var` flag retires 1.25 times the
+  recursive version's instructions through arm64, though 0.88 through ssac. Not taken apart; likely step 14's kind
+  of cost (mlton-median-plan.md), moves on the back edge. Not a cost of the recursive form, which the suite uses,
+  but of Quest's own loops.
+- **imp-for through arm64** retires 324 times ssac's instructions in all three forms, about 5 an innermost pass: clang
+  computes the nest's result without the loops, as it does fib's (§2.3). Not a cost of the form either.

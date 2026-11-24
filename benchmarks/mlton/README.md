@@ -64,6 +64,12 @@ exactly what its conversion does. No recorded output depends on those bits.
 - The algorithms and data structures are the originals', and so is the order of operations where it shows: the order
   in which folds visit elements and in which side effects happen, and the association of real arithmetic (Quest's
   infix operators are right associative, so left-associative SML arithmetic is braced).
+- The data structures are written as Quest writes them, not as SML must. A record or constructor holding a `ref` of
+  its own, SML's only mutable field, has a `var` field instead (since 2026-11-23: boyer, logic, model-elimination,
+  mpuz, and ratio-regions; [docs/benchmarks.md](../../docs/benchmarks.md) §42 says how their counts changed). A `ref`
+  that several values share, or that is compared by identity apart from its owner, stays a tuple of its own.
+- Loops are the originals' recursion and higher-order functions (`for (start, stop, f)`, folds), not Quest's `for`
+  and `while`: compiling them well is the compiler's work, and §42 measures what it leaves.
 - Code the benchmark never runs is left out: other entry points, debugging output, and unused library functions. Each
   conversion's header says what it leaves out. Top-level effects are kept. For hamlet, an SML interpreter, what runs was
   found with MLton's execution-count profiling (`-profile count`).

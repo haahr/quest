@@ -499,12 +499,8 @@ let pointV(x: V y: V z: V): V = option vPoint of V with x y z end
 Let Entry = Tuple k: String d: T end
 let prim(k: String p: K): Entry = tuple let k = k let d = option pPrim of T with p end end
 
-let createHashtables(init: lists.T(Entry)): Tuple var t: lists.T(Entry) end =
-    begin
-        let tbl = tuple let var t = lists.nil(:Entry) end
-        lists.app(:Entry)(fun(e: Entry): Ok tbl.t := lists.cons(:Entry)(e tbl.t) init)
-        tbl
-    end
+(* Each entry is consed on in turn, so the table is the entries reversed *)
+let createHashtables(init: lists.T(Entry)): lists.T(Entry) = lists.rev(:Entry)(init)
 
 let keywords = createHashtables(lists.fromArray(:Entry)(array of
     (* Booleans are either the literal true or the literal false. *)
@@ -540,7 +536,7 @@ let find(k: String): T =
                 when cons with c then if stringOp.equal(k c.hd.k) then c.hd.d else findRec(c.tl) end
                 else raise notFound end
             end
-        findRec(keywords.t)
+        findRec(keywords)
     end
 
 (* Translation of an identifier *)
