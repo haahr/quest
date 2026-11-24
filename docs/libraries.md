@@ -719,7 +719,7 @@ end
 
 ---
 
-### 1.13. `util/json : util/Json`
+### 1.13. `util/json : util/JSON`
 
 JSON (RFC 8259) in Quest ([json.md](json.md)), for programs, for the compiler (`.qm` manifests, `.qi`
 files, the build workers' messages, the Jupyter kernel), and for the interpreters' `dynamic.intern`. A parsed text
@@ -749,7 +749,7 @@ documents, in every implementation of the format, to the same text.
 #### Interface Summary
 
 ```quest
-interface Json
+interface JSON
 import
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector

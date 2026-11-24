@@ -1,6 +1,6 @@
 # JSON: `util/json`
 
-`util/json : util/Json` is Quest's JSON (RFC 8259) library, written in Quest with no externals
+`util/json : util/JSON` is Quest's JSON (RFC 8259) library, written in Quest with no externals
 (`lib/util/json.{int,mod}.quest`). Its interface and a summary of its rules are in [libraries.md](libraries.md)
 §1.13. This document says how it is built, who uses it, why it is the way it is, and what was left out.
 
