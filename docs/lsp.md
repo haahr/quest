@@ -29,7 +29,7 @@ compiler prints for a program.
 - **Initialization options:** `buildDir`, where artifacts go, and `includePaths`, directories to search for imported
   units besides a document's own and the standard library, relative to the workspace. VS Code's setting for them is
   `quest.server.includePaths`; this repository's `.vscode/settings.json`, the one file of `.vscode/` it tracks, lists
-  `lib` and `questlang`.
+  `lib` and `.`, the top of the project, where imports such as `questlang/lsp/server` begin.
 
 ## 2. Design
 
