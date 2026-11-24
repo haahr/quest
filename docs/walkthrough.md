@@ -1028,16 +1028,13 @@ b6():
 ...
 b11(%222: int, %225: int, %228: int):
   @20:25
-  %60: ptr = null
-  %61: int = peq %6, %60
-  branch %61, b14(), b13()
+  jump b13()
 ...
 b13():
   @20:25
   %64: int = ult %228, %23
-  branch %64, b15(), b16()
-...
-b15():
+  branch %64, b14(), b15()
+b14():
   @20:25
   %66: int = const 8
   %67: int = mul %228, %66
@@ -1054,14 +1051,14 @@ b15():
   @21:13
   %237: int = select %79, %228, %222
   %238: int = select %79, %74, %225
-  jump b17(%237, %238)
+  jump b16(%237, %238)
 ...
-b17(%223: int, %226: int):
+b16(%223: int, %226: int):
   @19:9
   %84: int = eq %228, %51
-  branch %84, b18(), b19()
+  branch %84, b17(), b18()
 ...
-b20():
+b19():
   @19:9
   %87: int = const 1
   %88: int = add %228, %87
@@ -1070,16 +1067,18 @@ b20():
 ```
 
 Block `b11` is the loop's head. Its parameters are `best` (`%222`), `bestKey` (`%225`), and `i` (`%228`); the jump
-into the loop passes `0`, the first key, and `1`, and the jump at the end of `b20` passes the new `best`, the new
+into the loop passes `0`, the first key, and `1`, and the jump at the end of `b19` passes the new `best`, the new
 `bestKey`, and `i + 1`. Elsewhere in the function, `%6` is the `words` array, `%23` its length, `%51` is `n - 1`, and
 `%21` and `%22` are the closures for `key` and `isGreater`; `b6` calls `key` on the first element before the loop.
 
-Reading `words[i]` is three blocks. `b11` checks that the array pointer is not null and `b13` that `i` is below the
-length (`ult`, an unsigned comparison, which also rejects a negative `i`); each failure branches to a block that
-raises Quest's array error. `b15` then computes the element's address: an array is its length followed by its
-elements, eight bytes each, so element `i` is at `8 + 8 * i`. The element is a `val`, a uniform word, since the
-array's representation does not depend on its element type, and `fromVal` reinterprets it as the pointer to a string
-it is known to be here.
+Reading `words[i]` is two blocks. `b13` checks that `i` is below the length (`ult`, an unsigned comparison, which also
+rejects a negative `i`), and its failure branches to a block that raises Quest's array error. The builder also checked
+that the array pointer is not null, at this access as at every one, but reading the first element before the loop made
+the same check, and a pass (`ssa_conditions`) turns a branch that a dominating branch on the same comparison has already
+decided into a jump: all that is left of it is the head's `jump b13()`. `b14` then computes the element's address: an
+array is its length followed by its elements, eight bytes each, so element `i` is at `8 + 8 * i`. The element is a
+`val`, a uniform word, since the array's representation does not depend on its element type, and `fromVal` reinterprets
+it as the pointer to a string it is known to be here.
 
 A call through a closure loads one word from the closure, the code, and calls the code with the closure itself as an
 extra first argument (`callIndirect`), from which the code reads its captures. The load is marked `invariant`: a
@@ -1088,7 +1087,7 @@ here: the loop's call of `key` reuses `%46`, the code `b6` loaded for the call b
 `isGreater` returns a `Bool` in the low byte of a register, which is widened to a full word.
 
 The IR's `if isGreater(...) then best := i; bestKey := k end` has become two `select`s, which choose a value by a
-condition without branching (`select %90, %246, %240` is `%90 ? i : best`). That is *if-conversion*, done by one of
+condition without branching (`select %79, %228, %222` is `%79 ? i : best`). That is *if-conversion*, done by one of
 the SSA's passes (`ssa_selects`): a branch whose outcome is hard to predict, as a comparison of data usually is, costs
 more on a modern processor than computing both choices. The candidate use's loop keeps its branch: its `bestKey` is a
 `Real`, and the pass makes no selects of reals. Each pass can be stopped after, so `--stop-after ssa_built` shows the
@@ -1103,24 +1102,22 @@ The same loop:
 <!-- excerpt: self-hosted examples/argmax/argmax.quest codegen_arm64 -->
 ```
 ...
-Lf1_b12:
-	.loc 1 20 25
-	cbz x20, Lf1_b15
 Lf1_b14:
+	.loc 1 20 25
 	cmp x28, x23
-	b.hs Lf1_b17
-Lf1_b16:
+	b.hs Lf1_b16
+Lf1_b15:
 	add x12, x20, #8
 	ldr x12, [x12, x28, lsl #3]
 	mov x0, x21
 	mov x1, x12
 	.loc 1 20 21
 	blr x25
-	mov x21, x0
+	mov x20, x0
 	.loc 1 21 16
 	ldr x12, [x22, #0]
 	mov x0, x22
-	mov x1, x21
+	mov x1, x20
 	mov x2, x27
 	blr x12
 	and x12, x0, #0xff
@@ -1128,33 +1125,34 @@ Lf1_b16:
 	cmp x12, #0
 	csel x13, x28, x24, ne
 	cmp x12, #0
-	csel x12, x21, x27, ne
-Lf1_b18:
+	csel x12, x20, x27, ne
+Lf1_b17:
 	.loc 1 19 9
 	cmp x28, x26
 	b.eq Lf1_b13
-Lf1_b21:
+Lf1_b20:
 	add x28, x28, #1
 	mov x24, x13
 	mov x27, x12
-	ldr x21, [sp, #0]
-	b Lf1_b12
+	ldr x20, [sp, #0]
+	b Lf1_b14
 ...
 ```
 
 arm64 has 31 general registers, `x0` to `x30`. Values that must survive a call live in the *callee-saved* registers
-`x19` to `x28`, which a called function must restore before it returns: here `x20` holds the array, `x21` and `x22`
-the two closures, `x23` the length, `x25` the code of `key`, `x26` is `n - 1`, and the loop's three block parameters
-are `x24` (`best`), `x27` (`bestKey`), and `x28` (`i`). The key's result needs a register too, and the allocator gives
-it `x21`, reloading the `key` closure from the stack (`ldr x21, [sp, #0]`) before the jump back. Arguments go in `x0`, `x1`, `x2`, ... and a result comes back in `x0`, as the platform's
-calling convention says, so the C functions of the runtime and Quest's compiled functions can call each other.
+`x19` to `x28`, which a called function must restore before it returns: here `x20` holds the array, `x21` and `x22` the
+two closures, `x23` the length, `x25` the code of `key`, `x26` is `n - 1`, and the loop's three block parameters are
+`x24` (`best`), `x27` (`bestKey`), and `x28` (`i`). The key's result needs a register too, and the allocator gives it
+`x20`, reloading the array from the stack (`ldr x20, [sp, #0]`) before the jump back. Arguments go in `x0`, `x1`, `x2`,
+... and a result comes back in `x0`, as the platform's calling convention says, so the C functions of the runtime and
+Quest's compiled functions can call each other.
 
 Each SSA instruction is a few machine instructions, and some SSA instructions fold together:
 
-- The null check is `cbz` (compare and branch if zero), and the bounds check `cmp` then `b.hs` (branch if higher or
-  same, unsigned): both jump to blocks that raise, which the backend lays out at the end of the function, away from
-  the loop.
-- The element's load is one `ldr` with a scaled index: `[x12, x27, lsl #3]` is the address `x12 + x27 * 8`.
+- The bounds check is `cmp` then `b.hs` (branch if higher or same, unsigned), which jumps to a block that raises; the
+  backend lays such blocks out at the end of the function, away from the loop. The null check before the loop, the one
+  that decided the loop's, is `cbz` (compare and branch if zero).
+- The element's load is one `ldr` with a scaled index: `[x12, x28, lsl #3]` is the address `x12 + x28 * 8`.
 - A call through a closure loads its code (`ldr x12, [x22, #0]`), moves the closure into `x0`, the first argument,
   then the arguments, then `blr` (branch with link to register). The call of `key` uses the code loaded before the
   loop, in `x25`.
