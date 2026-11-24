@@ -26,6 +26,11 @@ prints for a program.
 
 What is missing:
 
+- **UTF-8 in JSON.** `util/json` reads a string's bytes as Latin-1 (json.md §5). It writes each byte above 127 as
+  `\u00XX`, so an editor would see each byte of a UTF-8 character as a separate character, and it refuses an escape
+  above `ÿ`. §3.0 gives it a UTF-8 mode.
+- **File URIs.** The protocol names documents by URI (`file:///Users/x/a%20b.quest`), and nothing in lib encodes or
+  decodes them. §3.0 adds `util/uri`.
 - **Declaration places.** `ValueSymbol` and `TypeSymbol` (`questlang/types/symbols`) hold a name, a type or kind, and
   an id, but not where they were declared.
 - **Source text from the editor.** A unit's text is read from its file in three places:
@@ -53,9 +58,11 @@ What is missing:
   ([release-compiler.md](release-compiler.md) §2).
 - **Full document sync first.** Each `didChange` carries the whole text (`TextDocumentSyncKind.Full`). Incremental
   sync is a later change, and is worth it only if large files show that copying the text costs anything.
-- **Positions in bytes.** Quest strings are bytes. The server offers the `utf-8` `positionEncoding` (LSP 3.17), so
-  columns are byte offsets in the line. If the client accepts only `utf-16`, the server converts, counting a
-  multibyte UTF-8 sequence as one or two units.
+- **Positions in UTF-16, converted at the edge.** Quest strings are bytes, and every offset inside the server is a
+  byte offset. The protocol's default column is a count of UTF-16 code units, and every client must support it.
+  LSP 3.17 lets a server choose `utf-8` instead when the client lists it in `general.positionEncodings`. I haven't
+  confirmed whether VS Code's client lists it; step 5 finds out. So conversion is the normal path, and `utf-8` is
+  used when it's offered. Conversion is a few dozen lines in `questlang/lsp/positions`, not a library (§3.0).
 - **A build directory out of the tree.** Interfaces the server compiles go in a cache directory, never beside the
   sources (as with `--build-dir`). The cache is per workspace, under `$XDG_CACHE_HOME/quest-lsp/` or
   `~/Library/Caches/quest-lsp/`.
@@ -65,8 +72,124 @@ What is missing:
 
 ## 3. Steps
 
-Each step ends with tools/check passing and a commit. Steps 1–5 are tier 1, a usable server; steps 6–8 are tier 2,
-navigation; steps 9–10 are tier 3, editing help.
+Each step ends with tools/check passing and a commit. Steps L1 and L2 are libraries, which must be released before the
+server can use them. Steps 1–5 are tier 1, a usable server; steps 6–8 are tier 2, navigation; steps 9–10 are tier 3,
+editing help.
+
+### 3.0. Libraries first
+
+Code in `questlang/` may use only library functions that the current release has (release-compiler.md §2). So L1
+and L2 are written, pushed and released before step 2, in the order the digest plan used: library, release,
+compiler. Neither touches the runtime, the externals, or the ABI: both are pure Quest, so every backend and both
+interpreters run them unchanged, and the WebAssembly backend needs nothing of its own.
+
+**L1. A UTF-8 mode for `util/json`.**
+
+- **The decision it reverses.** json.md §5 records "no UTF-8 mode (user, 2026-11-18)". This step needs the user to
+  lift that, for this mode only: the Latin-1 behavior stays the default, and every existing caller is unchanged.
+- **The interface.** `ParseOptions` and `PrintOptions` each gain a field, `utf8: Bool`, which is false in `parsing`,
+  `parsingDynamic`, `compact` and `indented(n)`. Two new values cover what the server needs: `parsingUtf8` (not
+  unique) and `compactUtf8`. Nothing outside `util/json` builds these records, so the new field breaks no caller.
+- **Writing in UTF-8 mode.** The output is what Python's `json.dumps(v, ensure_ascii=False)` writes, encoded as
+  UTF-8, so it can be checked against Python as the Latin-1 output is:
+  - control characters (below 32), `"` and `\` are escaped as they are now;
+  - every other byte, DEL and bytes above 127 included, is written unchanged when it is part of a well-formed UTF-8
+    sequence;
+  - a byte that isn't (a stray continuation byte, a truncated sequence, an overlong form, a surrogate's encoding) is
+    written as `�`. The text is then always valid UTF-8, which a client's JSON parser requires. Such a string
+    does not round-trip, and the mode's comment says so.
+- **Reading in UTF-8 mode.**
+  - Raw bytes are read unchanged, as now, and are not checked.
+  - `\uXXXX` gives the UTF-8 encoding of that code point: one byte below 128, two below 2048, three otherwise.
+  - A high surrogate escape followed by a low surrogate escape gives the four-byte encoding of the pair's code point.
+  - A surrogate escape without its partner is an error at its offset, in keeping with the parser's strictness.
+    Python accepts it, which is the one place where the two differ, and the documentation says so.
+- **Where the change goes.** The string scanner's escape case (`lib/util/json.mod.quest`, where it raises "an escape
+  past \\u00ff") and the printer's string writer. The emitter shares the printer's writer, so its `stringValue`
+  follows. `read` collects a value's text by counting brackets and is unaffected.
+- **Tests.**
+  - New cases in `tests/source/stdlib/json_*`: two-, three- and four-byte characters both ways, surrogate pairs,
+    lone surrogates, malformed bytes written as `�`, and DEL.
+  - The expected output is checked once against Python 3.11's `json.dumps(ensure_ascii=False)` and `json.loads`.
+  - The existing Latin-1 goldens stay as they are, which shows the default didn't move.
+- **Done when:** the new cases pass in every mode, json.md §5 describes both modes, and libraries.md §1.13 lists the
+  new values.
+
+**L2. `util/uri : util/Uri`, file URIs and percent-encoding.**
+
+- **Scope.** Only what URIs need in general, plus file URIs, with no networking. A URI is RFC 3986 text, and Quest
+  strings are its bytes.
+- **The interface.**
+
+  ```
+  interface Uri
+  import
+      util/maybe : util/Maybe
+  export
+      (* Raised on text that is not a URI, a malformed %XX, or a file URI
+       * that names no local path *)
+      error: Exception(String)
+
+      (* A URI's five parts (RFC 3986 §3). The authority is present when the
+       * URI has "//", even if it is empty, as in file:///a. The path is still
+       * percent-encoded *)
+      Def Parts = Tuple
+          scheme: String
+          authority: maybe.T(String)
+          path: String
+          query: maybe.T(String)
+          fragment: maybe.T(String)
+      end
+      parse(text: String): Parts
+      (* The text of parts; toString(parse(t)) is t *)
+      toString(parts: Parts): String
+
+      (* Each byte outside the unreserved set (A-Z a-z 0-9 - . _ ~) and
+       * keep as %XX, with upper-case hex digits *)
+      encode(s: String keep: String): String
+      (* Each %XX as its byte; raises error on % not followed by two hex
+       * digits *)
+      decode(s: String): String
+
+      (* The file URI of an absolute path: file:// and the path, with each
+       * segment encoded and the separators kept; raises error on a relative
+       * path *)
+      fromPath(path: String): String
+      (* The path a file URI names: its decoded path, if its scheme is file
+       * (in any case) and its authority is empty or localhost; raises error
+       * otherwise *)
+      toPath(uri: String): String
+  end
+  ```
+- **Comparing documents.** Clients differ in what they encode. VS Code writes `:` as `%3A`, and others leave it as
+  it is. So the server compares documents by `toPath`, never by URI text. It answers with the URI the client sent
+  for an open document, and with `fromPath` for any other.
+- **POSIX only.** There are no drive letters and no backslashes, as `util/path` has none.
+- **Tests.** `tests/source/stdlib/uri_*`:
+  - `parse` and `toString` on the RFC's examples;
+  - `encode` and `decode` round trips over every byte;
+  - `fromPath` and `toPath` round trips on paths with spaces, `%`, `#`, `?` and non-ASCII bytes;
+  - the error cases;
+  - expected values checked once against Python's `urllib.parse` and `pathlib.Path.as_uri`.
+- **Done when:** the tests pass in every mode, and libraries.md has a section for the module.
+
+**Not a library: UTF-16 columns.** The server converts columns in `questlang/lsp/positions`, step 2. It is not
+lib, for two reasons:
+- future-libraries.md and the regexp decision keep Unicode out of the libraries for now;
+- nothing but the server needs the conversion.
+
+Since it lives in `questlang/`, it also needs no release first. The conversion, over one line's bytes:
+- a UTF-8 lead byte of a one-, two- or three-byte sequence is one UTF-16 unit, a four-byte one is two, and
+  continuation bytes are none;
+- a byte that isn't part of a well-formed sequence is one unit, as an editor showing it as U+FFFD counts it;
+- going from UTF-16 to bytes, a column between the two halves of a surrogate pair moves back to the character's
+  first byte.
+
+Lines are split at `\n` alone, as `location.SourceMap` splits them, which treats a `\r` before it as part of the
+line. The protocol also ends lines at `\r\n` and a lone `\r`. A `\r\n` file therefore has the same line numbers in
+both; only its last column differs, and no diagnostic points there. A lone `\r`, which nothing in the tree has,
+would put the two out of step. If that ever matters, the fix is to have the source map split lines as the protocol
+does.
 
 ### 3.1. Tier 1: diagnostics, formatting, and an outline
 
@@ -78,9 +201,13 @@ navigation; steps 9–10 are tier 3, editing help.
    - **Done when:** the existing suites pass, and a unit test checks a module whose import is supplied from the
      table with no file on disk.
 2. **The server's skeleton.**
-   - **What:** `quest --lsp` with framing and the lifecycle (`initialize`, `initialized`, `shutdown`, `exit`). It
-     keeps a document table updated from `didOpen`, `didChange` and `didClose`, and answers an unknown request with
-     `MethodNotFound`.
+   - **What:** `quest --lsp` with framing and the lifecycle (`initialize`, `initialized`, `shutdown`, `exit`).
+     - Messages go through `util/json`'s UTF-8 mode (L1).
+     - Documents are keyed by `uri.toPath` (L2).
+     - Columns go through `questlang/lsp/positions` (§3.0), with the encoding chosen in `initialize`.
+
+     It keeps a document table updated from `didOpen`, `didChange` and `didClose`, and answers an unknown request
+     with `MethodNotFound`.
    - **Done when:** the protocol test (§4) runs a session that opens, edits and closes a document and shuts down
      cleanly.
 3. **Diagnostics.**
