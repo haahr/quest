@@ -23,10 +23,11 @@ zebra take twice as long in some runs (`69f83386`). With both, against MLton's t
 whole program 1.64 (§35's 1.25, 1.79, 1.85).
 
 Part 2, analyzed and not made (local, not pushed): steps 11 and 24, under the plan's threshold; step 12, worth 6 to 9%
-on lexgen but needing a whole-program analysis of a field's values (the user to decide); step 19's census
-(`allocations.py --by-layout`), which supports step 21; step 20, folded into 21, since alone it saves about 5% of
-logic's and raytrace's bytes and 0.6% of the compiler's. Step 23 analyzed: 4 to 10% on mpuz and logic, nothing
-elsewhere (the user to decide). Not started: 6b, 8 to 10, 14, 17, 18, 21, 22, 25, 26.
+on lexgen but needing a whole-program analysis of a field's values (designed, tabled by D5); step 19's census
+(`allocations.py --by-layout`); step 20, folded into 21, since alone it saves about 5% of logic's and raytrace's
+bytes and 0.6% of the compiler's. Step 21, and step 20 with it, abandoned by the user (2026-11-24): not worth the
+cost (§4.3). Step 23 analyzed: 4 to 10% on mpuz and logic, nothing
+elsewhere (the user to decide). Not started: 6b, 8 to 10, 14, 17, 18, 25, 26. Tabled as whole-program only (D5): 5a, 12, 22.
 
 Conversions changed (2026-11-23, [benchmarks.md](benchmarks.md) §42): an owner's own `ref` is a `var` field in boyer,
 logic, model-elimination, mpuz, and ratio-regions (mpuz 0.90 to 0.94 of its instructions, logic 0.97), and loops stay
@@ -46,6 +47,11 @@ Made by the user on 2026-11-23:
   cheaper; the step reports which.
 - **D4, the representation changes as specific steps** (§4.3), each measured before it is made, each stopping the
   section if it does not pay.
+
+- **D5, whole-program-only steps tabled** (2026-11-24). Most Quest programs are expected to be built unit by unit,
+  so a change that gains only in whole programs leans toward tuning the benchmarks rather than the compiler as it is
+  used. Steps 5a, 12, and 22 are kept as designs and not made; the whole-program system is still measured, but no
+  step aims at it alone.
 
 **Pushing:** Part 1 was pushed on 2026-11-23, after a rebase onto `6921cbe2`, which had taken ABI 89 for its own
 externals, so step 1's is 90. Each step was tested by targeted suites (the arm64 fixed point, each backend's run of
@@ -274,13 +280,14 @@ switching over options of 20 to 60 cases, would feel. So 5b would first count, i
 of the suite, what sparse switches cost, before any of it is designed further.
 
 Recommended: 5a first, whose gain is certain for whole programs and whose cost is local; 5b only if unit-by-unit
-programs need the gain and its count of sparse switches is small.
+programs need the gain and its count of sparse switches is small. With 5a tabled (D5), 5b, after its count, is the only way to the gain.
 
 **Tests either way:** a whole-program SSA golden of a list walk with no proxy test; the proxy tests
 (`language/proxies` and the like) in whole-program mode, unchanged; the stress tier. **Measure:** tyan, logic, lexgen,
 mpuz.
 
-**Not taken:** the user chose neither design for now (2026-11-23).
+**Not taken:** the user chose neither design for now (2026-11-23); 5a, gaining only in whole programs, is tabled by
+D5 (2026-11-24).
 
 ### 3.6. Step 6: a cheaper allocation
 
@@ -385,6 +392,45 @@ of another `Dict`'s `leq`) holds `stringLeq`, every `Dict(Int _)` `intLeq`, and 
 `leq` from a `Dict` at a closed type is that function, which the simplifier then calls directly and inlines. That is a
 design of its own (where the facts are collected, how a copy of the field is followed, and what makes a type's field
 values known), for the user to decide on; it is not started.
+
+**Step 12 designed, tabled by D5** (2026-11-24). The same pattern is in the library: `collections/hashMap` keeps
+`equal` and `hash` in its `T`, and the sorted maps and the heap their comparisons, so the gain is not lexgen's alone.
+The design, should it be taken up:
+
+- **Where:** the self-hosted simplifier, in its rounds on the Core IR, where a known function is inlined and
+  polymorphic code is cloned at closed types; whole programs only, since every construction must be seen.
+- **Facts** (a new `ir/fieldvalues`): at the start of each round after the first, a walk of the unit records, for
+  every tuple made with an immutable function-typed component, its label, its value, and the component's type. By
+  then small constructors such as `create` are inlined, so the construction is at a closed type. A value is a known
+  source when it is a global function (top-level or a module's member); a load of the same label adds nothing (the
+  facts are a fixed point, so `enter`'s copy of `d.leq` is the fact itself); anything else (a parameter, a local
+  closure, a construction at an open type) makes the label unknown. Facts are keyed by label and component type, not by
+  the type's name: tuples are structural, so any tuple with a `leq` component of a subtype is a `Dict`, whatever it
+  was written as. A load whose component type is `All(a: String b: String) Bool` can see the values of the
+  constructions with label `leq` whose stored type is a subtype of it: `stringLeq`, not `intLeq`. Keying by the
+  component's type makes the facts per instantiation.
+- **Loads resolved:** a load of such a field at a closed type whose fact is one global function becomes a reference to
+  it, so the call through it is known and the inliner's rules apply. A top-level function's closure is static, so
+  nothing, `is` included, can tell.
+- **Specialization on a known field:** in the generic `lookup` the load's type is `All(a: K b: K) Bool`, open. As the
+  inliner clones a recursive function for a known function passed to a static parameter (ir.md §8.6), it would clone a
+  callee for a call at closed type arguments whose callee loads and calls a field of a parameter with a one-function
+  fact at those types; in the clone the load resolves and the call inlines. Clones are shared by function and type
+  arguments, as `specialize`'s are, and bounded as the known-function bonus is.
+- **Soundness:** function-typed fields only, since only the program's code makes closures (not deserialization or
+  `dynamic`); `var` fields left out, or each assignment counted as a source; a label that an external's type mentions
+  unknown; facts taken after dead-code removal, so that the generic `create` is gone; source order throughout, for the
+  fixed point.
+- **Limits:** one function per type: `hashMap`s at one key type with two `equal`s resolve nothing, and telling them
+  apart by where each was made would need cloning per construction site. Unit by unit it gains nothing; a main
+  program's unit could be argued separately (its structural tuples can come only from imports whose interfaces mention
+  the label, and from `dynamic`).
+- **Work and tests:** `ir/fieldvalues`, a hook in `simplify`, the extension of `inline.specialize`; self-hosted only,
+  behavior goldens unchanged. `language/` goldens at `ir_simplified`: a load resolved; two functions flowing in, the
+  load left; a wider tuple of another name flowing in; a generic construction left, the label unknown; a `var` field.
+  ir.md §8.6 and inlining.md.
+- **Gate:** the fact collector first, with a report flag (as `--report-inferable`), counting over the suite's whole
+  programs and the compiler's own whole build the loads it would resolve, and those in loops.
 
 ### 4.2. The arm64 code generator
 
@@ -500,12 +546,23 @@ loses its tag word (a cons cell 24 bytes, as MLton's), and the payload is at the
 - the arm64 backend reads a tag in one more instruction than now, so the step first counts, in a hand-edited build of
   tyan and logic, whether the bytes saved (fewer collections, better density) pay for it; it is not made if not.
 
+**Step 21 abandoned** (2026-11-24, the user's decision; step 20 goes with it). Not worth the cost: it saves 15 to
+26% of the bytes of the programs that allocate options most, but the census measures bytes, not time, and fewer bytes
+have not been fewer instructions (step 24's nucleic saved 10% of its bytes and under 1.3% of its instructions). Against
+that, every case test that reads a tag takes four instructions where it takes one; it is the widest change in the plan
+(every case's offsets, both compilers' C, the runtime, the barrier, the arm64, ssac, and JIT backends, proxies,
+`dynamic`, an ABI bump and a release), and it needs one table of consecutive layouts per option type, which options
+made in other units, generically, or by the runtime make hard to keep. Whether it paid could have been bounded
+without building it, by timing two throwaway builds: options padded by a word (the bytes' cost, the inverse of the
+gain) and every tag read made the four-instruction sequence (the reads' cost). That was not run: the cost is certain and
+large, the gain uncertain.
+
 **Step 22, payload-free cases tested by address (whole programs).** Today a payload-free case is a constant in each
 unit's table, so `is` cannot compare addresses across units and a test for `nil` loads the tag. In a whole program
 there is one unit, so one table: a case test for a payload-free case is the pointer compared with the constant's
 address, with no load, where every option of that type that the program makes is made by compiled code (not by
 `dynamic`, deserialization, or the runtime, which `whole` can see). It changes no layout and no ABI. Gain: about 4
-instructions per element of tyan's and lexgen's list walks.
+instructions per element of tyan's and lexgen's list walks. **Tabled by D5** (2026-11-24): whole programs only.
 
 **Step 23, a tuple field made with its owner, allocated inside it.** mpuz's `(v, ref false)` is two objects, the value
 and the tuple holding its `used` flag, and reading the flag loads the inner tuple's address first; MLton makes one
@@ -575,7 +632,7 @@ ssac's instructions through arm64 in every form.
 ## 5. Order and stopping
 
 Part 1's steps in order 1 to 7, then the part's counts and timings (§2) into benchmarks.md. Then Part 2: §4.1 and §4.2
-in order; then §4.3, starting with the census (step 19) and the two steps that change no ABI (24, then 22), then 20, 21
-(only after 20), and 23, each gated by its census gain. A step that saves less than 1% of instructions on every program
+in order; then §4.3, starting with the census (step 19) and the two steps that change no ABI (24, then 22), then 23
+(20 and 21 abandoned), each gated by its census gain. A step that saves less than 1% of instructions on every program
 it was aimed at is reverted and recorded as tried in benchmarks.md, as §37.1 records the budgets. The plan is deleted
 when done, its findings kept in benchmarks.md and the design docs the steps change.
