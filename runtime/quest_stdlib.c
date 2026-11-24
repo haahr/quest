@@ -13,6 +13,8 @@
 
 #include "quest_runtime_internal.h"
 
+#include <poll.h>
+
 /* Writer module primitives.
  *
  * putChar and the reader's character reads use the unlocked stdio calls
@@ -166,13 +168,33 @@ bool quest_reader_more(QReader *r) {
     return true;
 }
 
-/* reader.ready: the same as quest_reader_more, so it too may block; there is
- * no test for a character that can be read without waiting */
+/* How many characters r's stream holds in its buffer, read from its
+ * descriptor but not yet taken, where the C library lets that be known (BSD's
+ * and macOS's FILE, glibc's); 0 elsewhere */
+static long reader_buffered(FILE *f) {
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
+    return (long)f->_r;
+#elif defined(__GLIBC__)
+    return (long)(f->_IO_read_end - f->_IO_read_ptr);
+#else
+    (void)f;
+    return 0;
+#endif
+}
+
+/* reader.ready: whether a character (or the end) can be read without waiting:
+ * one already peeked, one in the stream's buffer, or a descriptor that polls
+ * readable or closed. It never blocks; false means a read might wait, and
+ * where the buffer cannot be seen, it may also be false when one would not */
 bool quest_reader_ready(QReader *r) {
     if (r == NULL || r->is_closed || r->file == NULL) {
         quest_raise_reader_error();
     }
-    return quest_reader_more(r);
+    if (r->peek_char != -1 || reader_buffered(r->file) > 0) {
+        return true;
+    }
+    struct pollfd p = { .fd = fileno(r->file), .events = POLLIN, .revents = 0 };
+    return poll(&p, 1, 0) > 0;
 }
 
 QChar quest_reader_get_char(QReader *r) {

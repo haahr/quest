@@ -14,6 +14,7 @@ import
     sb = util/stringBuilder : util/StringBuilder
 
     questlang/common/memoryFiles : questlang/common/MemoryFiles
+    questlang/common/overlays : questlang/common/Overlays
 export
     let isAbsolute(p: String): Bool = pathLib.isAbsolute(p)
     let join(a: String b: String): String = pathLib.join(a b)
@@ -90,32 +91,58 @@ export
             let rel = relativeTo(absolute(p) absolute(system.currentDirectory()))
             maybe.unwrapOr(rel p)
         end
+    (* The overlay standing for file, if any; with none, as in a build, the
+     * path is not looked up *)
+    let overlay(file: String): maybe.T(overlays.Overlay) =
+        if overlays.isEmpty() then maybe.none() else overlays.get(absolute(file)) end
+
     let readText(file: String): maybe.T(String) =
-        if memoryFiles.isMemory(file) then
-            memoryFiles.read(file)
-        elsif not(system.isFile(file)) then
-            maybe.none()
-        else
-            try
-                maybe.some(filePath.readText(filePath.fromString(file)))
-            when system.error then
+        begin
+            let o = overlay(file)
+            if maybe.isSome(o) then
+                maybe.some(maybe.unwrap(o).text)
+            elsif memoryFiles.isMemory(file) then
+                memoryFiles.read(file)
+            elsif not(system.isFile(file)) then
                 maybe.none()
+            else
+                try
+                    maybe.some(filePath.readText(filePath.fromString(file)))
+                when system.error then
+                    maybe.none()
+                end
             end
         end
     let fileTime(file: String): maybe.T(Int) =
         begin
-            let s = fileStats.find(file)
-            if maybe.isSome(s) andif {maybe.unwrap(s).kind?file} then
-                maybe.some(maybe.unwrap(s).modifiedNs)
+            let o = overlay(file)
+            if maybe.isSome(o) then
+                maybe.some(maybe.unwrap(o).stamp)
             else
-                maybe.none()
+                let s = fileStats.find(file)
+                if maybe.isSome(s) andif {maybe.unwrap(s).kind?file} then
+                    maybe.some(maybe.unwrap(s).modifiedNs)
+                else
+                    maybe.none()
+                end
             end
         end
-    (* A file in memory is newer than every file *)
+    (* A file in memory is newer than every file; an overlay is as new as its
+     * stamp *)
     let modifiedNs(p: String): Int =
-        if memoryFiles.isMemory(p) then 9223372036854775807 else fileStats.stat(p).modifiedNs end
+        begin
+            let o = overlay(p)
+            if maybe.isSome(o) then maybe.unwrap(o).stamp
+            elsif memoryFiles.isMemory(p) then 9223372036854775807
+            else fileStats.stat(p).modifiedNs
+            end
+        end
     let isFile(p: String): Bool =
-        if memoryFiles.isMemory(p) then maybe.isSome(memoryFiles.read(p)) else system.isFile(p) end
+        if maybe.isSome(overlay(p)) then true
+        elsif memoryFiles.isMemory(p) then maybe.isSome(memoryFiles.read(p))
+        else system.isFile(p)
+        end
+    let isSourceFile(p: String): Bool = maybe.isSome(overlay(p)) orif system.isFile(p)
     (* Suffix appended to temporary file names; only parallel build workers
      * set a non-empty tag (build/workers) *)
     let worker = tuple let var tag = "" end

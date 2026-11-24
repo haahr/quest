@@ -42,6 +42,7 @@ export
         var loadInterface: All(name: String e: env.T) symbols.Scope
         var loadModule: All(name: String expectedInterface: String e: env.T) typedAst.Binding
         var elaborateBinding: All(b: ast.Decl e: env.T loopDepth: Int) maybe.T(typedAst.Binding)
+        var keepMembers: All(name: String members: Array(typedAst.Binding) scope: symbols.Scope) Ok
     end
 
     let hooks: Hooks = tuple
@@ -51,6 +52,7 @@ export
             diagnostics.fail("internal: no unit loader is installed" 0)
         let var elaborateBinding = fun(b: ast.Decl e: env.T loopDepth: Int): maybe.T(typedAst.Binding)
             diagnostics.fail("internal: no binding elaborator is installed" 0)
+        let var keepMembers = fun(name: String members: Array(typedAst.Binding) scope: symbols.Scope): Ok ok
     end
 
     let loadInterface(name: String e: env.T): Scope = hooks.loadInterface(name e)
@@ -753,6 +755,7 @@ export
                             state.failed := true
                         end
                     end
+                    hooks.keepMembers(decl.name vector.toArray(typedBindings) internalScope)
                     (* A member that failed was reported: the module fails
                      * without another error *)
                     if state.failed then diagnostics.raiseError(:Ok diagnostics.silentError) end

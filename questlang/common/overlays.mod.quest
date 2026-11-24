@@ -1,0 +1,20 @@
+(* Quest Self-Hosted Compiler: Source Overlays Implementation *)
+
+module overlays : Overlays
+import
+    stringOp = string : StringOp
+
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+export
+    Let Overlay = Tuple text: String stamp: Int end
+
+    let table = hashMap.new(:String :Overlay stringOp.equal hash.string)
+
+    let set(path: String text: String stamp: Int): Ok =
+        begin hashMap.insert(table path tuple let text = text let stamp = stamp end) ok end
+    let remove(path: String): Ok = begin hashMap.delete(table path) ok end
+    let get(path: String): maybe.T(Overlay) = hashMap.get(table path)
+    let isEmpty(): Bool = hashMap.empty(table)
+end

@@ -200,9 +200,19 @@ def _reader_more(r: QReader) -> QBool:
         raise QuestException(READER_ERROR_EXC)
 
 def _reader_ready(r: QReader) -> QInt:
+    """1 if a character (or the end) can be read without waiting: the one read
+    ahead, a stream in memory, or a descriptor that polls readable; else 0. A
+    stream's own buffer cannot be seen, so 0 may mean only that it might
+    wait"""
     if r.is_closed:
         raise QuestException(READER_ERROR_EXC)
-    return QInt(0)
+    if r.peek is not None or isinstance(r.stream, io.StringIO):
+        return QInt(1)
+    try:
+        import select
+        return QInt(1 if select.select([r.stream], [], [], 0)[0] else 0)
+    except (OSError, ValueError, TypeError, io.UnsupportedOperation):
+        return QInt(1)
 
 def _reader_get_char(r: QReader) -> QChar:
     if r.is_closed:

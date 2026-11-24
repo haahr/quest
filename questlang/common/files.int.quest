@@ -30,18 +30,23 @@ export
     (* How diagnostics name a file the compiler found: relative to the current
      * directory if inside it *)
     displayName(p: String): String
-    (* The text of a file, or of a file in memory (common/memoryFiles); none if
-     * it cannot be read *)
+    (* The text of a file, of a file in memory (common/memoryFiles), or of the
+     * overlay standing for it (common/overlays); none if it cannot be read *)
     readText(file: String): maybe.T(String)
     (* A regular file's modification time in nanoseconds, from a single stat;
      * none if the path names anything else or nothing *)
     fileTime(file: String): maybe.T(Int)
-    (* Modification time of p in nanoseconds, or the greatest Int for a file in
-     * memory; raises system.error if p does not exist *)
+    (* Modification time of p in nanoseconds, the greatest Int for a file in
+     * memory, or an overlay's stamp; raises system.error if p does not
+     * exist *)
     modifiedNs(p: String): Int
     (* Whether a path names a regular file, or a file in memory that has been
      * written *)
     isFile(p: String): Bool
+    (* Whether a path names a regular file on disk or has an overlay
+     * (common/overlays): where the module system looks for sources, which
+     * are never in memory *)
+    isSourceFile(p: String): Bool
     (* Names this process's temporary files apart from other workers' *)
     setWorkerTag(tag: String): Ok
     (* Writes text to file, creating parent directories as needed. On disk,

@@ -1,0 +1,27 @@
+(* Quest Self-Hosted Compiler: Source Overlays Interface
+ *
+ * Texts that stand in for files on disk: the language server's open
+ * documents, which an editor holds unsaved (docs/lsp-plan.md step 1).
+ * common/files consults the table before the disk, so every reader of a
+ * source (the loader, the interface compiler, the fingerprints, the import
+ * graph) sees an overlay's text and its stamp, which stands for the file's
+ * modification time, so that an artifact built before the last edit is
+ * stale. With the table empty, as it is in every build, nothing changes, and
+ * files does not look up a path. *)
+
+interface Overlays
+import
+    util/maybe : util/Maybe
+export
+    Def Overlay = Tuple text: String stamp: Int end
+
+    (* Puts text in place of the file at path (absolute and normalized), as
+     * if it had been modified at stamp nanoseconds *)
+    set(path: String text: String stamp: Int): Ok
+    (* Returns path to the file on disk *)
+    remove(path: String): Ok
+    (* The overlay of path (absolute and normalized), if it has one *)
+    get(path: String): maybe.T(Overlay)
+    (* Whether the table holds no overlay *)
+    isEmpty(): Bool
+end
