@@ -6,6 +6,7 @@ import
 
     collections/vector : collections/Vector
     util/maybe : util/Maybe
+    util/strutil : util/Strutil
 
     questlang/common/diagbag : questlang/common/DiagBag
     questlang/common/diagnostics : questlang/common/Diagnostics
@@ -40,6 +41,7 @@ export
         comments: vector.T(location.Span)
         syntax: maybe.T(ast.Program)
         typed: Array(typedAst.Binding)
+        loose: Array(typedAst.Expr)
         scope: maybe.T(symbols.Scope)
         env: maybe.T(env.T)
     end
@@ -119,6 +121,134 @@ export
             found
         end
 
+    (* ======================================================================
+     * Recovering from syntax errors (docs/lsp-plan.md step 10)
+     *
+     * The parser stops at a syntax error. A token keeps its offset in the
+     * text, so the declaration the error is in can be cut out of the token
+     * vector and the rest parsed again, until it parses or the cuts give
+     * out; each error is reported as the parser words it, and the parser is
+     * unchanged. A declaration is a line that starts at a unit's members'
+     * column (an interface's or module's, 5) or a program's (1), with the
+     * lines after it, until the next that starts at that column or left of
+     * it. A let or a type binding cut out is replaced by a stub that fails to
+     * check, so that its name is poisoned as a failed binding's is and its
+     * uses fail silently, not as undefined names; the stub's own error is
+     * not reported.
+     * ====================================================================== *)
+
+    (* The name a stub uses, which no document's names will meet *)
+    let brokenValue: String = "questLspBroken"
+    let brokenType: String = "QuestLspBroken"
+
+    let isStubError(message: String): Bool =
+        strutil.contains(message brokenValue) orif strutil.contains(message brokenType)
+
+    let lexemeIs(t: tokens.Token names: Array(String)): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent names - 1} do if stringOp.equal(t.lexeme names[i]) then found := true end end
+            found
+        end
+
+    (* The tokens of a stub declaring what the declaration at toks[s]
+     * declares, all at its place; none for a declaration that declares
+     * nothing to stub *)
+    let stubFor(toks: vector.T(tokens.Token) s: Int path: String): vector.T(tokens.Token) =
+        begin
+            let first = vector.get(toks s)
+            let var k = s + 1
+            let isValue = stringOp.equal(first.lexeme "let")
+            let isType = lexemeIs(first array of "Let" "Def" end)
+            while {k < vector.length(toks)} andif lexemeIs(vector.get(toks k) array of "rec" "var" "Rec" end) do
+                k := k + 1
+            end
+            let result = vector.new(:tokens.Token)
+            if {isValue orif isType} andif {k < vector.length(toks)} then
+                let name = vector.get(toks k)
+                let isName = case name.kind when ident then true else false end
+                if isName then
+                    let text = if isValue then "let " <> name.lexeme <> " = " <> brokenValue
+                        else "Let " <> name.lexeme <> " = " <> brokenType end
+                    let made = tokenizer.tokenizeAll(tokenizer.new(location.newSourceMap(path text) diagbag.new()))
+                    for i = 0 upto {vector.length(made) - 1} do
+                        let t = vector.get(made i)
+                        let isEnd = case t.kind when eof then true else false end
+                        if not(isEnd) then vector.append(result tokens.make(t.kind t.lexeme t.value first.span)) end
+                    end
+                end
+            end
+            result
+        end
+
+    (* toks with the declaration holding offset cut out (and stubbed), if it
+     * can be found *)
+    let cutAt(toks: vector.T(tokens.Token) sm: location.SourceMap offset: Int
+            path: String): maybe.T(vector.T(tokens.Token)) =
+        begin
+            let n = vector.length(toks)
+            let line = fun(i: Int): Int location.locate(sm vector.get(toks i).span.startOffset).line
+            let column = fun(i: Int): Int location.locate(sm vector.get(toks i).span.startOffset).col
+            let startsLine = fun(i: Int): Bool {i is 0} orif {line(i - 1) < line(i)}
+            let isUnit = {n > 0} andif lexemeIs(vector.get(toks 0) array of "module" "interface" "unsound" end)
+            let limit = if isUnit then 5 else 1 end
+            (* The error's token *)
+            let var at = 0
+            while {at < {n - 1}} andif {vector.get(toks at).span.startOffset < offset} do at := at + 1 end
+            (* The declaration's first token. An error at the first token of a
+             * declaration is the end of the one before it, which is
+             * incomplete *)
+            let var s = if {at > 0} andif startsLine(at) andif {column(at) <= limit} then at - 1 else at end
+            while {s > 0} andif not(startsLine(s) andif {column(s) <= limit}) do s := s - 1 end
+            let refused = array of "end" "else" "elsif" "when" "then" "do" "export" "module" "interface" "unsound" end
+            let header = isUnit andif stringOp.equal(vector.get(toks s).lexeme "import") andif {column(s) is 1}
+            if {n is 0} orif lexemeIs(vector.get(toks s) refused) orif header then
+                maybe.none()
+            else
+                let c = column(s)
+                let var e = s + 1
+                while {e < {n - 1}} andif not(startsLine(e) andif {column(e) <= c}) do e := e + 1 end
+                let result = vector.new(:tokens.Token)
+                for i = 0 upto {s - 1} do vector.append(result vector.get(toks i)) end
+                let stub = stubFor(toks s path)
+                for i = 0 upto {vector.length(stub) - 1} do vector.append(result vector.get(stub i)) end
+                for i = e upto {n - 1} do vector.append(result vector.get(toks i)) end
+                maybe.some(result)
+            end
+        end
+
+    (* The program the tokens parse to, cutting out declarations with syntax
+     * errors, each reported in bag; none if no cut helps *)
+    let parseRecovering(toks: vector.T(tokens.Token) sm: location.SourceMap bag: diagbag.T
+            path: String): maybe.T(ast.Program) =
+        begin
+            let var current = toks
+            let var result = maybe.none(:ast.Program)
+            let var going = true
+            let var cuts = 0
+            (* Each cut must move the error on, or it did not help *)
+            let var lastError = ~1
+            while going do
+                let b = diagbag.new()
+                try
+                    result := maybe.some(parser.parseProgram(current sm b))
+                    going := false
+                when diagbag.fatalError then
+                    for i = 0 upto {diagbag.count(b) - 1} do diagbag.add(bag diagbag.get(b i)) end
+                    cuts := cuts + 1
+                    let at = if diagbag.count(b) > 0 then diagnostics.span(diagbag.get(b 0)).startOffset else ~1 end
+                    if {at <= lastError} orif {cuts > 20} then
+                        going := false
+                    else
+                        lastError := at
+                        let next = cutAt(current sm at path)
+                        if maybe.isNone(next) then going := false else current := maybe.unwrap(next) end
+                    end
+                end
+            end
+            result
+        end
+
     let check(path: String text: String settings: Settings): T =
         begin
             install()
@@ -133,6 +263,7 @@ export
                 let var syntax = maybe.none(:ast.Program)
                 let var scope = maybe.none(:symbols.Scope)
                 let var env = maybe.none(:env.T)
+                let var loose = array of :typedAst.Expr end
             end
             let kept = tuple
                 let var members = maybe.none(:Array(typedAst.Binding))
@@ -145,7 +276,9 @@ export
                 state.comments := tokenizer.comments(tz)
                 if not(diagbag.hasErrors(bag)) then
                     state.tokens := maybe.some(toks)
-                    let program = parser.parseProgram(toks sm bag)
+                    let parsed = parseRecovering(toks sm bag path)
+                    if maybe.isNone(parsed) then raise diagbag.fatalError with diagbag.get(bag 0) end end
+                    let program = maybe.unwrap(parsed)
                     state.syntax := maybe.some(program)
                     let moduleName = declaredModule(program)
                     let e = newEnv(path settings)
@@ -157,7 +290,10 @@ export
                             kept.members := maybe.some(members)
                             kept.scope := maybe.some(scope)
                         end
+                    typedAst.startRecording()
                     let result = typecheck.elaborateProgram(desugar.program(program) e)
+                    let made = typedAst.stopRecording()
+                    if extent result.errors > 0 then state.loose := made end
                     for i = 0 upto {extent result.errors - 1} do
                         diagbag.add(bag diagnostics.errorDiagnostic(result.errors[i] path))
                     end
@@ -194,7 +330,11 @@ export
                         location.span(path 0 0)))
             end
             elaboration.hooks.keepMembers := saved
-            for i = 0 upto {diagbag.count(bag) - 1} do vector.append(problems problemOf(diagbag.get(bag i) path)) end
+            typedAst.stopRecording()
+            for i = 0 upto {diagbag.count(bag) - 1} do
+                let d = diagbag.get(bag i)
+                if not(isStubError(diagnostics.message(d))) then vector.append(problems problemOf(d path)) end
+            end
             tuple
                 let path = path
                 let text = text
@@ -204,6 +344,7 @@ export
                 let comments = state.comments
                 let syntax = state.syntax
                 let typed = vector.toArray(typed)
+                let loose = state.loose
                 let scope = state.scope
                 let env = state.env
             end

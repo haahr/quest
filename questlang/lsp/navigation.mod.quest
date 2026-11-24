@@ -7,6 +7,7 @@
 
 module navigation : Navigation
 import
+    conv : Conv
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
@@ -113,14 +114,20 @@ export
             found
         end
 
-    (* The identifier spelling name nearest after offset, starting a few
-     * tokens before it: a signature's offset may be its type's *)
+    (* The identifier spelling name nearest before offset, within a few
+     * tokens, else the first after it: a signature's offset may be its
+     * type's, past its name and parameters *)
     let findNear(toks: vector.T(tokens.Token) offset: Int name: String): maybe.T(tokens.Token) =
         begin
             let i = tokenFrom(toks offset)
-            let back = if i >= 4 then i - 4 else 0 end
-            let from = if back < vector.length(toks) then vector.get(toks back).span.startOffset else offset end
-            findName(toks from name false)
+            let var j = if i < vector.length(toks) then i else vector.length(toks) - 1 end
+            let var found = maybe.none(:tokens.Token)
+            while maybe.isNone(found) andif {j >= 0} andif {j > i - 32} do
+                let t = vector.get(toks j)
+                if isIdent(t) andif stringOp.equal(t.lexeme name) then found := maybe.some(t) end
+                j := j - 1
+            end
+            if maybe.isSome(found) then found else findName(toks offset name false) end
         end
 
     (* The identifier token at offset, or ending there (a cursor just after a
@@ -301,6 +308,60 @@ export
             else ok
         end
 
+    (* The token at exactly offset, if it is an identifier spelling name, with
+     * its index *)
+    let tokenExactly(toks: vector.T(tokens.Token) offset: Int name: String): maybe.T(Int) =
+        begin
+            let i = tokenFrom(toks offset)
+            if {i < vector.length(toks)} andif {vector.get(toks i).span.startOffset is offset}
+                    andif isIdent(vector.get(toks i)) andif stringOp.equal(vector.get(toks i).lexeme name) then
+                maybe.some(i)
+            else
+                maybe.none()
+            end
+        end
+
+    (* The variables and module members a failed binding checked before it
+     * failed, from the check's record of every expression made. A recorded
+     * node may come from another unit the check loaded, so it is taken only
+     * where the document's token at its offset spells its name; and only
+     * where the typed bindings put nothing *)
+    let addLoose(ix: T made: Array(typedAst.Expr)): Ok =
+        if extent made > 0 then
+            let taken = hashMap.new(:String :Bool stringOp.equal hash.string)
+            for i = 0 upto {vector.length(ix.occurrences) - 1} do
+                hashMap.insert(taken conv.int(vector.get(ix.occurrences i).start) true)
+            end
+            let free = fun(t: tokens.Token): Bool not(hashMap.contains(taken conv.int(t.span.startOffset)))
+            for i = 0 upto {extent made - 1} do
+                let e = made[i]
+                case e.form
+                    when exprVar with x then
+                        let at = tokenExactly(ix.toks e.offset x.name)
+                        if maybe.isSome(at) andif free(vector.get(ix.toks maybe.unwrap(at))) then
+                            addValue(ix e.offset x.name x.symbol false)
+                            hashMap.insert(taken conv.int(e.offset) true)
+                        end
+                    when exprSelect with x then
+                        case x.target.form
+                            when exprVar with y then
+                                let at = tokenExactly(ix.toks x.target.offset y.name)
+                                if maybe.isSome(at) andif {{maybe.unwrap(at) + 2} < vector.length(ix.toks)} then
+                                    let j = maybe.unwrap(at)
+                                    let field = vector.get(ix.toks j + 2)
+                                    if stringOp.equal(vector.get(ix.toks j + 1).lexeme ".")
+                                            andif stringOp.equal(field.lexeme x.field) andif free(field) then
+                                        addMember(ix e x.target x.field)
+                                        hashMap.insert(taken conv.int(field.span.startOffset) true)
+                                    end
+                                end
+                            else ok
+                        end
+                    else ok
+                end
+            end
+        end
+
     let index(a: analysis.T): T =
         begin
             let ix: T = tuple
@@ -312,6 +373,7 @@ export
             end
             for i = 0 upto {extent a.typed - 1} do gatherImports(ix a.typed[i]) end
             for i = 0 upto {extent a.typed - 1} do walkBinding(ix a.typed[i]) end
+            addLoose(ix a.loose)
             ix
         end
 

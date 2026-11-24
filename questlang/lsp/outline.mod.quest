@@ -43,8 +43,16 @@ export
                 if vector.get(toks mid).span.startOffset < offset then lo := mid + 1 else hi := mid end
             end
             let var found = maybe.none(:tokens.Token)
-            (* A few tokens back: a signature's offset may be its type's *)
-            let var i = if lo >= 4 then lo - 4 else 0 end
+            (* Back a few tokens first: a signature's offset may be its type's,
+             * past its name and parameters *)
+            let var j = if lo < vector.length(toks) then lo else vector.length(toks) - 1 end
+            while maybe.isNone(found) andif {j >= 0} andif {j > lo - 32} do
+                let t = vector.get(toks j)
+                let isIdent = case t.kind when ident then true else false end
+                if isIdent andif stringOp.equal(t.lexeme name) then found := maybe.some(t) end
+                j := j - 1
+            end
+            let var i = lo
             while maybe.isNone(found) andif {i < vector.length(toks)} andif {i < lo + 400} do
                 let t = vector.get(toks i)
                 let isIdent = case t.kind when ident then true else false end

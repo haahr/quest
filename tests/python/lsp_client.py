@@ -118,4 +118,17 @@ class Client:
     def close(self, timeout: float = 30.0) -> int:
         self.result("shutdown", None)
         self.notify("exit", None)
-        return self.process.wait(timeout=timeout)
+        code = self.process.wait(timeout=timeout)
+        self.dispose()
+        return code
+
+    def dispose(self) -> None:
+        """Ends the server if it is still running, and closes its pipes"""
+        if self.process.poll() is None:
+            self.process.kill()
+            self.process.wait()
+        for stream in (self.process.stdin, self.process.stdout, self.process.stderr):
+            try:
+                stream.close()
+            except OSError:
+                pass

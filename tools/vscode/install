@@ -1,0 +1,23 @@
+#!/bin/sh
+# Installs the Quest extension into VS Code (docs/lsp-plan.md step 5): fetches
+# its one dependency, vscode-languageclient, with npm, records this checkout
+# in checkout.json so that the extension finds tools/lsp/quest-lsp, and links
+# the directory into VS Code's extensions (~/.vscode/extensions, or
+# $VSCODE_EXTENSIONS). VS Code loads it when it next starts. --uninstall
+# removes the link.
+set -e
+DIR="$(cd "$(dirname "$0")" && pwd)"
+CHECKOUT="$(cd "$DIR/../.." && pwd)"
+EXTENSIONS="${VSCODE_EXTENSIONS:-$HOME/.vscode/extensions}"
+LINK="$EXTENSIONS/quest.quest-language-0.1.0"
+if [ "$1" = "--uninstall" ]; then
+    rm -f "$LINK"
+    echo "removed $LINK"
+    exit 0
+fi
+(cd "$DIR" && npm install --no-audit --no-fund --omit=dev)
+printf '{"checkout": "%s"}\n' "$CHECKOUT" > "$DIR/checkout.json"
+mkdir -p "$EXTENSIONS"
+rm -f "$LINK"
+ln -s "$DIR" "$LINK"
+echo "installed $LINK -> $DIR; restart VS Code"

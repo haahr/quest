@@ -126,8 +126,29 @@ export
 
     Let Program = Tuple offset: Int phrases: Array(Binding) end
 
+    (* The expressions made while recording *)
+    let recorder = tuple let var on = false let var made = vector.new(:Expr) end
+
     let expr(offset: Int type: model.Type form: ExprForm): Expr =
-        tuple let offset = offset let type = type let form = form end
+        begin
+            let e: Expr = tuple let offset = offset let type = type let form = form end
+            if recorder.on then vector.append(recorder.made e) end
+            e
+        end
+
+    let startRecording(): Ok =
+        begin
+            recorder.made := vector.new(:Expr)
+            recorder.on := true
+        end
+
+    let stopRecording(): Array(Expr) =
+        begin
+            recorder.on := false
+            let made = vector.toArray(recorder.made)
+            recorder.made := vector.new(:Expr)
+            made
+        end
 
     let binding(offset: Int form: BindingForm): Binding = tuple let offset = offset let form = form end
 
