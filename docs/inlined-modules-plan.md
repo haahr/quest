@@ -9,7 +9,7 @@ does not change.
 **Status (2026-11-23):** rewritten after the first design was built, measured, and found to cost a build 3.4 times
 its instructions. The second design (§2) is built: a build of the compiler costs 1.33 times one without copies, the
 compiler it makes retires 3.5 to 7% fewer instructions, and `benchmarks/iter`'s pipelines run as a whole program's
-do ([benchmarks.md](benchmarks.md) §41). §3 says why the first design cost what it did, §4 what is left, and §5
+do ([benchmarks.md](benchmarks.md) §43). §3 says why the first design cost what it did, §4 what is left, and §5
 what is open. The design as it stands is described in [ir.md](ir.md) §8.6 and [build-process.md](build-process.md)
 §4; this document goes when §4 is done.
 

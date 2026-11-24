@@ -26,7 +26,8 @@ ssac's `volatile` locals (§33) and adapter closures made once (§34), times eve
 program included (§35), measures what inlining three library modules into their importers would gain (§36),
 makes whole program as fast as unit by unit (§37), counts where the median programs' instructions go against
 MLton's (§38), takes one-block large objects from the collector's free list (§39), counts the first fixes for
-the median programs (§40), and times them, with two regressions the timing found and fixed (§41).
+the median programs (§40), times them, with two regressions the timing found and fixed (§41), and inlines three
+library modules into their importers (§43).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -3790,6 +3791,30 @@ modules, three runs:
 3.5% fewer by the medians. A compiler's count varies by 4%, sometimes 8%, with its addresses, and an earlier pair of
 three runs each gave 514 G and 477 G, 7% fewer. The two compilers write the same assembly, objects, and manifests for
 the tree's 216 units.
+
+**Each module's share** (2026-11-24, `--no-inline-library` with `--inline-module` for each module named):
+
+| Inlined | Building the driver | Peak memory | `__TEXT` | The compiler built, three runs |
+|---|---:|---:|---:|---:|
+| none | 433 G | 4.2 GB | 10.8 MB | 452, 453, 455 G |
+| `util/iter` | 441 G (1.02×) | 4.6 GB | 10.8 MB | 453, 455, 483 G |
+| `collections/vector` | 495 G (1.14×) | 4.7 GB | 11.5 MB | 445, 446, 447 G |
+| `util/maybe` | 536 G (1.24×) | 9.6 GB | 11.4 MB | 444, 445, 447 G |
+| `util/iter`, `collections/vector` | 530 G (1.22×) | 5.1 GB | 11.5 MB | 444, 445, 446 G |
+| all three | 577 G (1.33×) | 5.5 GB | 12.0 MB | 436, 437, 468 G |
+
+`util/iter` costs little and the compiler hardly uses it; its gain is the pipelines' below. `util/maybe` and
+`collections/vector` each give the compiler about 2%. `util/maybe` has no benchmark of its own and is kept because
+programs otherwise write their own equivalents of it to avoid the calls. Its 9.6 GB alone, more than all three
+together, is one run and not explained.
+
+**Rules that were tried in place of the bounds** (2026-11-24, not kept; each with no bound and a declined call sent
+back to the compiled module): no change otherwise, 811 G, 14.0 GB, the compiler built 424 to 426 G; the growth
+budget's base without the copies, with no floor, or charged by measured growth, 782 to 794 G and 424 to 427 G; an
+allowance for copies of 5% to 20% of the unit's own code, 746 to 809 G, 439 to 445 G, and `benchmarks/iter`'s `map`
+at 61; no polymorphic bonus for a copy, 665 G, 11.7 GB, 431 to 434 G, `benchmarks/iter` as the default's; copies
+left unsimplified, 806 G, or 609 G without the bonus, with `map` at 15 and `filter` at 118. None costs less than the
+bounds, and none gains more than 3% over them.
 
 **The bound on what is copied** (`QUEST_INLINE`'s `copy`, one bound for every module; before the rebase onto
 `f7f14565`, so its counts are a little higher). The build's cost grows with the bound, and most of the gain is in
