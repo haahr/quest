@@ -115,14 +115,14 @@ interpreters run them unchanged, and the WebAssembly backend needs nothing of it
 - **Done when:** the new cases pass in every mode, json.md §5 describes both modes, and libraries.md §1.13 lists the
   new values.
 
-**L2. `util/uri : util/Uri`, file URIs and percent-encoding.**
+**L2. `util/uri : util/URI`, file URIs and percent-encoding.**
 
 - **Scope.** Only what URIs need in general, plus file URIs, with no networking. A URI is RFC 3986 text, and Quest
   strings are its bytes.
 - **The interface.**
 
   ```
-  interface Uri
+  interface URI
   import
       util/maybe : util/Maybe
   export
