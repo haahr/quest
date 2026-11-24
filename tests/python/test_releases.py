@@ -102,6 +102,42 @@ class ReleasesTest(unittest.TestCase):
                 self.tool.install(prefix)
             self.assertEqual(command.read_text(), "#!/bin/sh\n")
 
+    def test_publish_cuts_installs_and_pushes_the_page_of_one_commit(self) -> None:
+        commit = "c" * 40
+        runs = []
+
+        def run(command, **options):
+            runs.append([str(part) for part in command])
+            if "release.py" in runs[-1][1]:
+                self.tool.point(self.tool.CURRENT, self.release(commit))
+            return mock.Mock(returncode=0)
+
+        prefix = self.directory / "prefix"
+        with mock.patch.object(self.tool, "git", return_value=commit), \
+                mock.patch.object(self.tool, "install") as install, \
+                mock.patch.object(self.tool.subprocess, "run", side_effect=run), redirect_stdout(io.StringIO()):
+            self.tool.publish("python", prefix, "release", "arm64", False)
+            cut, page = runs[0], runs[-1]
+            self.assertEqual(cut[2:], ["--seed", "release", "--backend", "arm64"])
+            self.assertEqual(page[1:], [commit, "--push"])
+            install.assert_called_once_with(prefix)
+            # Run again, the commit is current: installed and published, not cut
+            runs.clear()
+            self.tool.publish("python", prefix, "release", "arm64", False)
+            self.assertFalse(any("release.py" in command[1] for command in runs if len(command) > 1))
+            self.assertEqual(runs[-1][1:], [commit, "--push"])
+
+    def test_publish_stops_when_the_cut_fails(self) -> None:
+        def run(command, **options):
+            return mock.Mock(returncode=1 if "release.py" in str(command[1]) else 0)
+
+        with mock.patch.object(self.tool, "git", return_value="d" * 40), \
+                mock.patch.object(self.tool, "install") as install, \
+                mock.patch.object(self.tool.subprocess, "run", side_effect=run), redirect_stdout(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                self.tool.publish("python", self.directory / "prefix", "release", "arm64", False)
+            install.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

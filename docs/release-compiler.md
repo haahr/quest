@@ -74,6 +74,11 @@ seconds.
   caller's is. Installing a later release copies it beside the earlier ones, which are kept, and points the script at
   it; the script is replaced only if `--install` wrote it. The install still needs clang, which the compiler uses to
   build programs.
+- **Publishing one** (`tools/release --publish [PREFIX]`) does all three steps for origin/main: it cuts the release in
+  a worktree of its own (`.build/release-publish`, removed after), with `--seed`, `--backend` and `--whole-program`
+  as for a cut; installs it as `--install` does; and pushes the REPL's page built from the same commit
+  (`tools/wasm-page/publish COMMIT --push`, docs/wasm.md). Each step stops the rest when it fails. Run again, a commit
+  that is current already is not cut a second time, only installed and published.
 - **When to cut one:** by hand, when the working tree needs something the current release cannot compile (§2), and
   otherwise when convenient, for example after a larger piece of work. A release is never cut automatically by a push.
 

@@ -18,6 +18,10 @@ current names the release that seeds builds, and previous the one before it.
     tools/release --install [PREFIX]
                                copy the current release to PREFIX/share/quest/COMMIT (PREFIX is ~/.local by
                                default), check it there, and point PREFIX/bin/quest at it
+    tools/release --publish [PREFIX]
+                               cut a release from origin/main in a worktree of its own (the options above apply),
+                               install it as --install does, and push the REPL's page built from it to GitHub
+                               Pages (tools/wasm-page/publish --push); a commit already current is not cut again
 
 Cutting a release neither takes the machine-wide lock tools/check takes nor
 waits for it (docs/testing.md section 4.2): it starts at once, and runs its
@@ -312,6 +316,51 @@ def install(prefix: Path) -> None:
         print(f"{command.parent} is not on PATH")
 
 
+# Where --publish checks out origin/main to cut it, so that no edit in this
+# tree reaches the release
+PUBLISH_WORKTREE = ROOT_DIR / ".build" / "release-publish"
+
+
+def publish(python: str, prefix: Path, seed: str, backend: str, whole_program: bool) -> None:
+    """Cuts a release from origin/main, installs it in prefix, and pushes the
+    REPL's page built from the same commit. Each step stops the rest when it
+    fails; run again, a commit already current is installed and published
+    without a second cut."""
+    git("fetch", "-q", "origin")
+    commit = git("rev-parse", "origin/main")
+    current = target(CURRENT)
+    if current is not None and current.name == commit:
+        print(f"{commit[:8]} is the current release already; installing and publishing it", flush=True)
+    else:
+        # The worktree's own tools/release cuts it, so that the cut is the
+        # commit's and its tree is clean; the releases are shared, so the cut
+        # lands in this tree's too
+        remove_publish_worktree()
+        git("worktree", "add", "--quiet", "--detach", str(PUBLISH_WORKTREE), commit)
+        try:
+            command = [python, str(PUBLISH_WORKTREE / "tools" / "release.py"), "--seed", seed, "--backend", backend,
+                       *(["--whole-program"] if whole_program else [])]
+            print(f"Cutting {commit[:8]} in {PUBLISH_WORKTREE.relative_to(ROOT_DIR)}", flush=True)
+            if subprocess.run(command, cwd=PUBLISH_WORKTREE).returncode != 0:
+                fail("the cut failed; nothing was installed or published")
+        finally:
+            remove_publish_worktree()
+    install(prefix)
+    page = subprocess.run([str(ROOT_DIR / "tools" / "wasm-page" / "publish"), commit, "--push"], cwd=ROOT_DIR)
+    if page.returncode != 0:
+        fail(f"publishing the page failed; {commit[:8]} is released and installed, and "
+             f"tools/wasm-page/publish {commit[:8]} --push publishes it")
+    print(f"Published {commit[:8]}: released, installed, and its page pushed")
+
+
+def remove_publish_worktree() -> None:
+    if PUBLISH_WORKTREE.exists():
+        subprocess.run(["git", "worktree", "remove", "--force", str(PUBLISH_WORKTREE)], cwd=ROOT_DIR,
+                       capture_output=True)
+        shutil.rmtree(PUBLISH_WORKTREE, ignore_errors=True)
+    git("worktree", "prune")
+
+
 def show() -> None:
     for release in (CURRENT, PREVIOUS):
         description = release / "release.json"
@@ -338,6 +387,9 @@ def main() -> None:
     action.add_argument("--install", nargs="?", type=Path, const=Path.home() / ".local", metavar="PREFIX",
                         help="install the current release in PREFIX/share/quest, run as PREFIX/bin/quest "
                              "(default ~/.local)")
+    action.add_argument("--publish", nargs="?", type=Path, const=Path.home() / ".local", metavar="PREFIX",
+                        help="cut a release from origin/main, install it in PREFIX (default ~/.local), and push "
+                             "the REPL's page built from it")
     parser.add_argument("--seed", choices=("release", "bootstrap"), default="release",
                         help="what builds the check's stage 1: the current release (default), or the bootstrap")
     parser.add_argument("--check-dir", type=Path, default=DEFAULT_CHECK_DIR,
@@ -356,6 +408,8 @@ def main() -> None:
         rollback()
     elif args.show:
         show()
+    elif args.publish is not None:
+        publish(sys.executable, args.publish.expanduser().resolve(), args.seed, args.backend, args.whole_program)
     elif args.install is not None:
         install(args.install.expanduser().resolve())
     else:
