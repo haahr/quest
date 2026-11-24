@@ -674,9 +674,12 @@ the runtime's helpers inline ([ssa.md](ssa.md) §4); clang inlines within a C un
   copy of what it reaches of it, an opened module (`ir/opened`), with no exports, its symbols the unit's own. The copy
   keeps the module's functions and scalar constants; a member with identity (an exception, a string, a variable,
   anything computed) is read from the compiled module's record, and a function that reaches a private one is not
-  copied, so the module's state stays single. Nor is a function whose body is larger than the module's bound
-  (`inlined.copyBound`: 15, none for `util/iter`), or one that uses such a function: what a unit copies it compiles
-  again, so the bound keeps a build's cost near that of one without copies. The unit's shapes stay as they are without
+  copied, so the module's state stays single. Nor is a function whose body is larger than a bound, by
+  the inliner's measure, or one that uses such a function: what a unit copies it compiles again, so the bound keeps a
+  build's cost near that of one without copies. The bound is 15 for a function of data alone, and for one that takes
+  or returns a function, or a value that holds one (an iterator), it is the largest the inliner takes at a call with
+  type arguments (60, its threshold and its polymorphic bonus): such a function gains by its caller's functions being
+  known in its body, and a larger one would not be inlined. The unit's shapes stay as they are without
   copies, every abstract type opaque: a copy's code, which names the representations, meets the unit's values
   through represent's conversions between an abstract type and its representation (§8.3), which change no value
   where the type's generic and native layouts agree, as at `vector.T(Int)` and `maybe.T(Real)`. A call goes to the

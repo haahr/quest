@@ -23,6 +23,7 @@ import
     questlang/repr/genericLayout : questlang/repr/GenericLayout
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/types/env : questlang/types/Env
+    questlang/types/model : questlang/types/Model
 export
     Let Module = nodes.Module
 
@@ -33,11 +34,58 @@ export
      * case (driver/whole's) *)
     let key(canonical: String): String = paths.lower(canonical)
 
-    (* QUEST_INLINE's copy, which bounds every module's copies in place of
-     * its own bound (inlined.copyBound) when given, for measuring: -1 for no
-     * bound *)
-    let unset = ~2
-    let copyOverride = simplify.setting("copy" unset)
+    (* The largest function an importer copies, by the inliner's measure of
+     * its body (inline.size), for a function that passes no function and for
+     * one that does (passesFunctions); negative for no bound. What a unit
+     * copies it compiles again, so a build's cost grows with the bound, and
+     * for a function of data alone most of the gain is in the smallest: at
+     * 15 a build of the compiler costs 1.3 times one without copies and its
+     * code retires 7% fewer instructions, and at 60 1.8 times and 9%
+     * (docs/benchmarks.md section 41). A function that passes functions gains
+     * by its caller's functions being known in its body (util/iter's stages
+     * run in a third of the instructions copied), and such functions are
+     * few, so its bound is the largest the inliner takes at a call with type
+     * arguments: a larger one is not inlined, and a copy of it gains little.
+     * QUEST_INLINE's copy and copyFun set the two, for measuring. *)
+    let copyBound = simplify.setting("copy" 15)
+    let copyFunBound = simplify.setting("copyFun" simplify.polymorphicInlineSize)
+
+    (* Whether a value of type t0 is a function or holds one: the type's
+     * structure is searched through aliases and applications, so an
+     * iterator, a tuple of two functions in its module's own source, is
+     * one *)
+    let holdsFunction(t0: model.Type): Bool =
+        begin
+            let seen = hashMap.new(:Int :Bool same hash.int)
+            let var found = false
+            let rec visit(t: model.Type): Ok =
+                if not(found) andif not(hashMap.contains(seen t.id)) then
+                    hashMap.insert(seen t.id true)
+                    if t.form?typeFun then
+                        found := true
+                    else
+                        let parts = model.typeParts(t)
+                        for i = 0 upto {vector.length(parts) - 1} do
+                            case vector.get(parts i)
+                                when partType with x then visit(x.t)
+                                else ok
+                            end
+                        end
+                    end
+                end
+            visit(model.prune(t0))
+            found
+        end
+
+    (* Whether f takes or returns a function, or a value that holds one *)
+    let passesFunctions(f: nodes.Function): Bool =
+        begin
+            let var found = holdsFunction(f.resultType)
+            for i = 0 upto {extent f.params - 1} do
+                if holdsFunction(f.params[i].v.type) then found := true end
+            end
+            found
+        end
 
     let openedName(m: Module): maybe.T(String) = nodes.openedModuleName(m)
 
@@ -210,19 +258,22 @@ export
                     else vector.append(uses array of :hashMap.T(Int Bool) end)
                 end
             end
-            (* A function larger than the module's bound is left out, with the
-             * functions that use it (lost), and its calls stay calls of the
-             * compiled module *)
-            let copySize = if copyOverride is unset then inlined.copyBound(i.canonicalPath) else copyOverride end
-            if copySize >= 0 then
+            (* A function larger than its bound is left out, with the functions
+             * that use it (lost), and its calls stay calls of the compiled
+             * module *)
+            if {copyBound >= 0} orif {copyFunBound >= 0} then
                 let sizes = inline.analyze(array of(1 m.init)).sizes
                 for k = 0 upto {vector.length(groups) - 1} do
                     case vector.get(groups k)
                         when sFuns with x then
                             let var large = false
                             for j = 0 upto {extent x.functions - 1} do
-                                let size = hashMap.get(sizes x.functions[j].v.id)
-                                if maybe.isNone(size) orif {maybe.unwrap(size) > copySize} then large := true end
+                                let f = x.functions[j]
+                                let bound = if passesFunctions(f) then copyFunBound else copyBound end
+                                let size = hashMap.get(sizes f.v.id)
+                                if {bound >= 0} andif {maybe.isNone(size) orif {maybe.unwrap(size) > bound}} then
+                                    large := true
+                                end
                             end
                             if large then
                                 vector.set(live k false)

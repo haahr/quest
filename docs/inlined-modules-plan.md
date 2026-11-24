@@ -36,11 +36,16 @@ and incremental builds, so the question was how much of that gain a separate bui
   read from the compiled module's record, and a function that reaches a private one is not copied, so the module's
   state stays single and its object needs no new exports. Copies are pruned to what the unit reaches, before the
   simplifier and after it.
-- **A bound on what is copied.** A function larger than its module's bound (`inlined.copyBound`, by the inliner's
-  measure: 15, and none for `util/iter`) is left out, with the functions that use it, and its calls stay calls of the
-  compiled module. What a unit copies it compiles again, and the large functions cost most and gain least (§3.3).
-  `util/iter`'s stages are larger than 15 and few units use them (§3.5). `QUEST_INLINE`'s `copy` sets one bound for
-  every module, for measuring.
+- **A bound on what is copied.** A function larger than its bound, by the inliner's measure of its body (statements,
+  a call counting 2), is left out, with the functions that use it, and its calls stay calls of the compiled module.
+  What a unit copies it compiles again, and the large functions cost most and gain least (§3.3), so a function of
+  data alone has a bound of 15, which leaves `vector.append` (46) a call. A function that takes or returns a
+  function, or a value that holds one (an iterator, a tuple of two functions in `util/iter`'s source), gains by its
+  caller's functions being known in its body (§3.5), and its bound is the largest function the inliner takes at a
+  call with type arguments, its threshold and polymorphic bonus (60): a larger one would not be inlined. No module is
+  named, and no bound is a module's own. Of the three modules' 75 functions, 28 over 15 pass functions (26 of
+  `util/iter`, `vector.forEach` and `fold`), the largest 60. `QUEST_INLINE`'s `copy` and `copyFun` set the two
+  bounds, for measuring.
 - **Every shape stays opaque.** The unit's types are laid out as they are without copies. A copy's code names the
   abstract types' representations, and meets the unit's values through the conversions represent already has for a
   module's member called at its interface's type (`represent.call`, and the `let`s the inliner binds parameters
@@ -127,7 +132,7 @@ units to the same assembly, objects, and manifests as the compiler without copie
   path out of line.
 - **Exports for openers:** not needed, since a function that reaches private state is not copied.
 
-### 3.5. `util/iter` wants no bound
+### 3.5. Functions that pass functions want a larger bound
 
 `benchmarks/iter`, instructions retired per element, each build made clean:
 
@@ -137,7 +142,8 @@ units to the same assembly, objects, and manifests as the compiler without copie
 | `filter` | 151.6 | 125.6 | 117.6 | 44.1 | 44.1 | 44.1 |
 | `sumInt` | 140.1 | 125.1 | 117.1 | 44.1 | 44.1 | 44.1 |
 
-With its stages copied, a separately compiled pipeline is a whole program's. So the bound is each module's own.
+With its stages copied, a separately compiled pipeline is a whole program's. So such functions have their own bound (§2);
+at first `util/iter` had none, by its name.
 
 ## 4. What is left
 

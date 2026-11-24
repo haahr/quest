@@ -3805,12 +3805,15 @@ the smallest functions:
 | 60 | 833 G (1.83×) | 13.2 GB | 15.4 MB | 466 G |
 | none | 840 G (1.84×) | 14.2 GB | 15.4 MB | 463 G |
 
-`maybe` and `vector` are bounded at 15, which leaves `vector.append` a call.
+So a function of data alone is bounded at 15, which leaves `vector.append` (46) a call.
 
 **`benchmarks/iter`,** instructions per element, each build made clean. `util/iter`'s stages are larger than 30, and
-with them copied a separately compiled pipeline is a whole program's, so `util/iter` has no bound:
+with them copied a separately compiled pipeline is a whole program's. So a function that takes or returns a
+function, or a value that holds one, has the inliner's own bound for a call with type arguments, 60 (`copyFun`),
+which takes every function of `util/iter`; the default build costs the same as one with `util/iter` unbounded
+(577.1 G against 577.3 G):
 
-| Workload | No inlined modules | `copy` 15 | 30 | 60 | Default (`util/iter` unbounded) | Whole program |
+| Workload | No inlined modules | `copy` 15 | 30 | 60 | Default | Whole program |
 |---|---:|---:|---:|---:|---:|---:|
 | `map` | 83.1 | 29.1 | 15.1 | 9.1 | 9.1 | 9.1 |
 | `filter` | 151.6 | 125.6 | 117.6 | 44.1 | 44.1 | 44.1 |
