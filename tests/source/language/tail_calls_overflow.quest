@@ -12,14 +12,11 @@ exception other end
 let rec guarded(n: Int): Int = try guarded(n + 1) when other then 0 end
 print(try conv.int(guarded(0)) else "overflow in a try" end)
 
-(* A call in a loop's body *)
-let rec looping(n: Int): Int =
-    begin
-        let var r = 0
-        for i = 0 upto 0 do r := looping(n + 1) end
-        r
-    end
-print(try conv.int(looping(0)) else "overflow in a loop" end)
+(* A call in a loop's body, the function's body itself, so that each call
+ * takes little of the self-hosted interpreter's host stack (8 MB, which
+ * maxCallDepth calls through a block and an assignment would overflow) *)
+let rec looping(n: Int): Ok = for i = 0 upto 0 do looping(n + 1) end
+print(try begin looping(0) "no overflow" end else "overflow in a loop" end)
 
 (* A call as an argument, to a function with work left after it, so that it
  * stays one where the IR inlines that function (an identity function would

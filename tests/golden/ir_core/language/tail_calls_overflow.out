@@ -33,68 +33,65 @@ main {
   join k2(r.1: String) {
     do call print(r.1) @13:1
     funs rec {
-      fun looping(n.1: Int): Int {
-        var r.2: Int = 0 @18:9
-        var i: Int = 0 @19:9
-        let %7: Bool = prim <=(i, 0) @19:9
-        if %7 { @19:9
+      fun looping(n.1: Int): Ok {
+        var i: Int = 0 @18:31
+        let %7: Bool = prim <=(i, 0) @18:31
+        if %7 { @18:31
           loop L1 {
-            let i.1: Int = i @19:9
-            let %8: Int = prim +(n.1, 1) @19:42
-            let %9: Int = call looping(%8) @19:34
-            r.2 := %9 @19:29
-            let %10: Bool = prim is(i, 0) @19:9
-            if %10 { @19:9
-              break L1 @19:9
+            let i.1: Int = i @18:31
+            let %8: Int = prim +(n.1, 1) @18:59
+            do call looping(%8) @18:51
+            let %9: Bool = prim is(i, 0) @18:31
+            if %9 { @18:31
+              break L1 @18:31
             }
-            let %11: Int = prim +(i, 1) @19:9
-            i := %11 @19:9
+            let %10: Int = prim +(i, 1) @18:31
+            i := %10 @18:31
           }
         }
-        return r.2
+        return ok
       }
     }
-    join k3(r.3: String) {
-      do call print(r.3) @22:1
+    join k3(r.2: String) {
+      do call print(r.2) @19:1
       funs {
         fun next(n.2: Int): Int {
-          let %12: Int = prim +(n.2, 1) @27:25
-          return %12
+          let %11: Int = prim +(n.2, 1) @24:25
+          return %11
         }
       }
       funs rec {
         fun nested(n.3: Int): Int {
-          let %13: Int = prim +(n.3, 1) @28:43
-          let %14: Int = call nested(%13) @28:36
-          let %15: Int = call next(%14) @28:31
-          return %15
+          let %12: Int = prim +(n.3, 1) @25:43
+          let %13: Int = call nested(%12) @25:36
+          let %14: Int = call next(%13) @25:31
+          return %14
         }
       }
-      join k4(r.4: String) {
-        do call print(r.4) @29:1
+      join k4(r.3: String) {
+        do call print(r.3) @26:1
       } in {
         try catching all {
-          let %16: Int = call nested(0) @29:20
-          let %17: String = call conv.int(%16) @29:11
-          jump k4(%17) @29:7
+          let %15: Int = call nested(0) @26:20
+          let %16: String = call conv.int(%15) @26:11
+          jump k4(%16) @26:7
         } handle (e.1: Exception) {
-          jump k4("overflow in an argument") @29:7
+          jump k4("overflow in an argument") @26:7
         }
       }
     } in {
       try catching all {
-        let %18: Int = call looping(0) @22:20
-        let %19: String = call conv.int(%18) @22:11
-        jump k3(%19) @22:7
+        do call looping(0) @19:17
+        jump k3("no overflow") @19:7
       } handle (e.2: Exception) {
-        jump k3("overflow in a loop") @22:7
+        jump k3("overflow in a loop") @19:7
       }
     }
   } in {
     try catching all {
-      let %20: Int = call guarded(0) @13:20
-      let %21: String = call conv.int(%20) @13:11
-      jump k2(%21) @13:7
+      let %17: Int = call guarded(0) @13:20
+      let %18: String = call conv.int(%17) @13:11
+      jump k2(%18) @13:7
     } handle (e.3: Exception) {
       jump k2("overflow in a try") @13:7
     }

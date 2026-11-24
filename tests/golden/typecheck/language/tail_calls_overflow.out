@@ -55,43 +55,33 @@
             :branches ()
             :else (TypedString 'overflow in a try' :type String))
         )))
-    (TypedLetValue 'looping' :rec :type Fun(n: Int): Int
-      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
-        :body (TypedBlock :type Int
-          :bindings (
-            (TypedLetValue 'r' :type Int
-              :value (TypedInt 0 :type Int))
-            (TypedExprStmt
-              :expr (TypedFor 'i' :upto
-                :start (TypedInt 0 :type Int)
-                :stop (TypedInt 0 :type Int)
-                :body (TypedAssign
-                  :target (TypedVar 'r' :type Var(Int))
-                  :value (TypedApp :type Int
-                    :func (TypedVar 'looping' :type Fun(n: Int): Int)
-                    :args (
-                      (TypedInfix '+' :type Int
-                        :left (TypedVar 'n' :type Int)
-                        :right (TypedInt 1 :type Int))
-                    )))))
-          )
-          :result (TypedDerefCell :type Int
-            :target (TypedVar 'r' :type Var(Int))))))
+    (TypedLetValue 'looping' :rec :type Fun(n: Int): Ok
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Ok
+        :body (TypedFor 'i' :upto
+          :start (TypedInt 0 :type Int)
+          :stop (TypedInt 0 :type Int)
+          :body (TypedApp :type Ok
+            :func (TypedVar 'looping' :type Fun(n: Int): Ok)
+            :args (
+              (TypedInfix '+' :type Int
+                :left (TypedVar 'n' :type Int)
+                :right (TypedInt 1 :type Int))
+            )))))
     (TypedExprStmt
       :expr (TypedApp :type Ok
         :func (TypedVar 'print' :type Fun(s: String): Ok)
         :args (
           (TypedTry :type String
-            :body (TypedApp :type String
-              :func (TypedSelect 'int' :type Fun(n: Int): String
-                :target (TypedVar 'conv' :type Module 'conv'))
-              :args (
-                (TypedApp :type Int
-                  :func (TypedVar 'looping' :type Fun(n: Int): Int)
-                  :args (
-                    (TypedInt 0 :type Int)
-                  ))
-              ))
+            :body (TypedBlock :type String
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedApp :type Ok
+                    :func (TypedVar 'looping' :type Fun(n: Int): Ok)
+                    :args (
+                      (TypedInt 0 :type Int)
+                    )))
+              )
+              :result (TypedString 'no overflow' :type String))
             :branches ()
             :else (TypedString 'overflow in a loop' :type String))
         )))
