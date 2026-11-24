@@ -1,5 +1,5 @@
 """Counts the calls between modules in a separately compiled arm64 build
-(docs/inlined-modules-plan.md section 2.1): for each module, how many call
+(docs/benchmarks.md section 36): for each module, how many call
 sites in other modules' code call its exported members, and how big each
 member's code is, which says which modules inlining into their importers
 could gain from.

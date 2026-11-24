@@ -39,7 +39,7 @@ class TestDirectives:
     # output (the IR, the SSA, code) inline the library's inlined modules,
     # which they do not unless asked, so that their goldens do not change with
     # those modules' bodies; and the modules it inlines besides
-    # (docs/inlined-modules-plan.md section 5)
+    # (docs/ir.md section 8.6)
     inline_library: bool = False
     inline_modules: list[str] = field(default_factory=list)
 

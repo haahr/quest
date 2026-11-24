@@ -3553,7 +3553,7 @@ resolves an interior pointer, collector.md §3.1); the others change no behavior
 An object of 8 to 32 KB is large (collector.md §3.1) and takes a run of one block, which `quest_gc_take_run` found by
 scanning the block table from its start for the first free block, every time: linear in the heap's blocks for each
 such allocation. The code generator's per-function tables are such objects and grow with the function, so a build
-whose functions grow (one inlining library modules into its units, docs/inlined-modules-plan.md) spent 65% of its
+whose functions grow (one inlining library modules into its units, §43) spent 65% of its
 samples in that scan, compiling `questlang/wasm/codegen.mod.quest` alone in 947 G instructions where its functions
 inlined nothing took 77 G. A one-block run is now the free list's next block, as a small block's is; longer runs
 still take the first fit.

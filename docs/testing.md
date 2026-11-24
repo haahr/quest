@@ -502,7 +502,7 @@ input) can specify host execution requirements via top-level comment directives:
 
 - **Inlined Modules (`(* @inline-module: M *)`, `(* @inline-library *)`)**:
   For the self-hosted driver, `@inline-module` passes `--inline-module M` in every phase, so that the units importing
-  `M` inline it ([inlined-modules-plan.md](inlined-modules-plan.md)). The phases that print what the compiler makes
+  `M` inline it ([ir.md](ir.md) §8.6). The phases that print what the compiler makes
   (the IR stages, the SSA, code) run with `--no-inline-library`, so that their goldens do not change with the bodies
   of `util/maybe`, `util/iter`, and `collections/vector`; `@inline-library` keeps the library's inlined there too. The
   bootstrap ignores both, so a behavior golden is the same either way.

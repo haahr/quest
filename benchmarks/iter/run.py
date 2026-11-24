@@ -6,7 +6,7 @@ docs/iter.md section 2).
 
 It builds iter.quest three times with ./quest: as separate units (the
 default, which inlines util/maybe, util/iter, and collections/vector into
-their importers, docs/inlined-modules-plan.md), as separate units inlining
+their importers, docs/ir.md section 8.6), as separate units inlining
 none of them (--no-inline-library), and with --whole-program. It runs each
 workload once in each under /usr/bin/time -l, checks that the builds print
 the same sum, and prints the instructions retired per element, which load

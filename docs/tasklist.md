@@ -28,11 +28,25 @@ separately, 45 whole), and for 56% of it in the compiler, 2.5% of the separate c
 (whole: 4.5%). Inlining the three into separately compiled units, without the rest of a whole program, may gain
 somewhat less there.
 
-**Built (2026-11-23)** ([inlined-modules-plan.md](inlined-modules-plan.md), [ir.md](ir.md) §8.6,
-[benchmarks.md](benchmarks.md) §43): importers copy the three modules' small functions (all of `util/iter`'s), with
-every shape still opaque. A build of the compiler costs 1.33 times one without copies, the compiler built retires
-3.5 to 7% fewer instructions, and `benchmarks/iter`'s pipelines run as a whole program's. Left: whether util/iter's
-own slots give way to `util/maybe`, and the plan's open items (its §5).
+**Built (2026-11-24)** ([ir.md](ir.md) §8.6, [benchmarks.md](benchmarks.md) §43): importers copy the three
+modules' small functions (all of `util/iter`'s), with every shape still opaque. A build of the compiler costs 1.33
+times one without copies, the compiler built retires about 3.5% fewer instructions, and `benchmarks/iter`'s
+pipelines run as a whole program's. Ten other rules for what to copy were measured and not kept (§43). Left:
+
+- **util/iter's own slots** may give way to `util/maybe` (iter.md rule 5), measured.
+- **The sources' 12%.** Every unit that imports an inlined module elaborates and lowers its source. The module's
+  own compile could write its lowered IR beside its object for importers to read, which needs an IR serialization
+  and builds ordered so that importers wait.
+- **Whole programs.** `shapes.transparent` substitutes through each type before its cache, and whole programs cost
+  3.6 times. A shape built structurally, taking a representation where it meets an abstract application and sharing
+  the shapes of the parts, would not pay it. Not profiled.
+- **Instances whose layouts disagree** (`iter.T(Real)`) stay calls. If iterators over `Real` or records matter, the
+  conversion could be a view rather than a copy.
+- **A program's own modules.** `--inline-module` is tested on one module of a test's. Nothing records the choice
+  between builds but the `.qi` mark's freshness, and no error names a module it cannot serve (one with variants, or
+  without a source).
+- **`collections/hashMap`** as a fourth, measured the same way.
+- **`util/maybe` alone** peaks at 9.6 GB building the compiler, against 5.5 GB for all three: one run, not explained.
 
 **Done when.** The listed modules' calls are inlined in separately compiled importers, util/iter's own slots may give
 way to `util/maybe` (iter.md rule 5 then says so), and the driver build's instructions retired and `benchmarks/iter/`
