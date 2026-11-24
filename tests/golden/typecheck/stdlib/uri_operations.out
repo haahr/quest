@@ -1,0 +1,591 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('ascii') : 'Ascii')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('stringOp') : 'StringOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('maybe') : 'Maybe')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('uri') : 'URI')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'shown' :type Fun(m: maybe.T(String)): String
+      :value (TypedFun :params (('m' : maybe.T(String))) :type Fun(m: maybe.T(String)): String
+        :body (TypedIf :type String
+          :cond (TypedApp :type Bool
+            :func (TypedTypeApp [String] :type Fun(o: maybe.T(String)): Bool
+              :func (TypedSelect 'isSome' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                :target (TypedVar 'maybe' :type Module 'maybe')))
+            :args (
+              (TypedVar 'm' :type maybe.T(String))
+            ))
+          :then (TypedInfix '<>' :type String
+            :left (TypedString '"' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedTypeApp [String] :type Fun(o: maybe.T(String)): String
+                  :func (TypedSelect 'unwrap' :type All(A :: TYPE) Fun(o: maybe.T(A)): A
+                    :target (TypedVar 'maybe' :type Module 'maybe')))
+                :args (
+                  (TypedVar 'm' :type maybe.T(String))
+                ))
+              :right (TypedString '"' :type String)))
+          :else (TypedString 'none' :type String))))
+    (TypedLetValue 'attempt' :type Fun(f: Fun(): String): String
+      :value (TypedFun :params (('f' : Fun(): String)) :type Fun(f: Fun(): String): String
+        :body (TypedTry :type String
+          :body (TypedApp :type String
+            :func (TypedVar 'f' :type Fun(): String)
+            :args ())
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedSelect 'error' :type Exception(String)
+                :target (TypedVar 'uri' :type Module 'uri'))
+              :body (TypedInfix '<>' :type String
+                :left (TypedString 'error: ' :type String)
+                :right (TypedVar 'e' :type String)))
+          ))))
+    (TypedLetValue 'parsed' :type Fun(text: String): Ok
+      :value (TypedFun :params (('text' : String)) :type Fun(text: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedApp :type String
+              :func (TypedVar 'attempt' :type Fun(f: Fun(): String): String)
+              :args (
+                (TypedFun :params () :type Fun(): String
+                  :body (TypedBlock :type String
+                    :bindings (
+                      (TypedLetValue 'p' :type Parts
+                        :value (TypedApp :type Parts
+                          :func (TypedSelect 'parse' :type Fun(text: String): Parts
+                            :target (TypedVar 'uri' :type Module 'uri'))
+                          :args (
+                            (TypedVar 'text' :type String)
+                          )))
+                      (TypedLetValue 'same' :type String
+                        :value (TypedIf :type String
+                          :cond (TypedApp :type Bool
+                            :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                              :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                            :args (
+                              (TypedApp :type String
+                                :func (TypedSelect 'toString' :type Fun(parts: Parts): String
+                                  :target (TypedVar 'uri' :type Module 'uri'))
+                                :args (
+                                  (TypedVar 'p' :type Parts)
+                                ))
+                              (TypedVar 'text' :type String)
+                            ))
+                          :then (TypedString '' :type String)
+                          :else (TypedString ' (toString differs)' :type String)))
+                    )
+                    :result (TypedInfix '<>' :type String
+                      :left (TypedSelect 'scheme' :type String
+                        :target (TypedVar 'p' :type Parts))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedVar 'shown' :type Fun(m: maybe.T(String)): String)
+                            :args (
+                              (TypedSelect 'authority' :type maybe.T(String)
+                                :target (TypedVar 'p' :type Parts))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ' "' :type String)
+                            :right (TypedInfix '<>' :type String
+                              :left (TypedSelect 'path' :type String
+                                :target (TypedVar 'p' :type Parts))
+                              :right (TypedInfix '<>' :type String
+                                :left (TypedString '" ' :type String)
+                                :right (TypedInfix '<>' :type String
+                                  :left (TypedApp :type String
+                                    :func (TypedVar 'shown' :type Fun(m: maybe.T(String)): String)
+                                    :args (
+                                      (TypedSelect 'query' :type maybe.T(String)
+                                        :target (TypedVar 'p' :type Parts))
+                                    ))
+                                  :right (TypedInfix '<>' :type String
+                                    :left (TypedString ' ' :type String)
+                                    :right (TypedInfix '<>' :type String
+                                      :left (TypedApp :type String
+                                        :func (TypedVar 'shown' :type Fun(m: maybe.T(String)): String)
+                                        :args (
+                                          (TypedSelect 'fragment' :type maybe.T(String)
+                                            :target (TypedVar 'p' :type Parts))
+                                        ))
+                                      :right (TypedVar 'same' :type String))))))))))))
+              ))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'ftp://ftp.is.co.za/rfc/rfc1808.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'http://www.ietf.org/rfc/rfc2396.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'ldap://[2001:db8::7]/c=GB?objectClass?one' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'mailto:John.Doe@example.com' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'news:comp.infosystems.www.servers.unix' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'tel:+1-816-555-1212' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'telnet://192.0.2.16:80/' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'urn:oasis:names:specification:docbook:dtd:xml:4.1.2' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'foo://example.com:8042/over/there?name=ferret#nose' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'file:///Users/x/a%20b.quest' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'file:/a' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'file://localhost/a' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'a:' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'a:?#' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'a://?q#f?g#h' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'x+y-z.1:path' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'C%3A:x' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString '/no/scheme' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString ':empty' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString '1a:x' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'a b:x' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'http://x/%2' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'http://x/%zz' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'parsed' :type Fun(text: String): Ok)
+        :args (
+          (TypedString '' :type String)
+        )))
+    (TypedLetValue 'all' :type String
+      :value (TypedApp :type String
+        :func (TypedSelect 'new' :type Fun(size: Int init: Char): String
+          :target (TypedVar 'stringOp' :type Module 'stringOp'))
+        :args (
+          (TypedInt 256 :type Int)
+          (TypedChar ' ' :type Char)
+        )))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInt 255 :type Int)
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'setChar' :type Fun(string: String index: Int char: Char): Ok
+            :target (TypedVar 'stringOp' :type Module 'stringOp'))
+          :args (
+            (TypedVar 'all' :type String)
+            (TypedVar 'i' :type Int)
+            (TypedApp :type Char
+              :func (TypedSelect 'char' :type Fun(n: Int): Char
+                :target (TypedVar 'ascii' :type Module 'ascii'))
+              :args (
+                (TypedVar 'i' :type Int)
+              ))
+          ))))
+    (TypedLetValue 'encoded' :type String
+      :value (TypedApp :type String
+        :func (TypedSelect 'encode' :type Fun(s: String keep: String): String
+          :target (TypedVar 'uri' :type Module 'uri'))
+        :args (
+          (TypedVar 'all' :type String)
+          (TypedString '' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedVar 'encoded' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'encode' :type Fun(s: String keep: String): String
+              :target (TypedVar 'uri' :type Module 'uri'))
+            :args (
+              (TypedVar 'all' :type String)
+              (TypedString '/:@' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedIf :type String
+            :cond (TypedApp :type Bool
+              :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                :target (TypedVar 'stringOp' :type Module 'stringOp'))
+              :args (
+                (TypedApp :type String
+                  :func (TypedSelect 'decode' :type Fun(s: String): String
+                    :target (TypedVar 'uri' :type Module 'uri'))
+                  :args (
+                    (TypedVar 'encoded' :type String)
+                  ))
+                (TypedVar 'all' :type String)
+              ))
+            :then (TypedString 'decode inverts encode' :type String)
+            :else (TypedString 'decode differs' :type String))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'decode' :type Fun(s: String): String
+              :target (TypedVar 'uri' :type Module 'uri'))
+            :args (
+              (TypedString '%41%62c%2f%2F%e4%B8%AD' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'attempt' :type Fun(f: Fun(): String): String)
+            :args (
+              (TypedFun :params () :type Fun(): String
+                :body (TypedApp :type String
+                  :func (TypedSelect 'decode' :type Fun(s: String): String
+                    :target (TypedVar 'uri' :type Module 'uri'))
+                  :args (
+                    (TypedString '100%' :type String)
+                  )))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'attempt' :type Fun(f: Fun(): String): String)
+            :args (
+              (TypedFun :params () :type Fun(): String
+                :body (TypedApp :type String
+                  :func (TypedSelect 'decode' :type Fun(s: String): String
+                    :target (TypedVar 'uri' :type Module 'uri'))
+                  :args (
+                    (TypedString '%4' :type String)
+                  )))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'attempt' :type Fun(f: Fun(): String): String)
+            :args (
+              (TypedFun :params () :type Fun(): String
+                :body (TypedApp :type String
+                  :func (TypedSelect 'decode' :type Fun(s: String): String
+                    :target (TypedVar 'uri' :type Module 'uri'))
+                  :args (
+                    (TypedString '%g0' :type String)
+                  )))
+            ))
+        )))
+    (TypedLetValue 'paths' :type Array(String)
+      :value (TypedArray :type Array(String)
+        :elements (
+          (TypedString '/' :type String)
+          (TypedString '/Users/x/a.quest' :type String)
+          (TypedString "/a b/c%d#e?f;g=h&i+j,k:l@m!n$o'p(q)r*s" :type String)
+          (TypedString '/ä¸\xadæ\x96\x87/Ã©' :type String)
+          (TypedString '/tab\there' :type String)
+          (TypedString '/~user/a_b-c.d' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [String] :type Fun(a: Array(String)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'paths' :type Array(String))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'u' :type String
+              :value (TypedApp :type String
+                :func (TypedSelect 'fromPath' :type Fun(path: String): String
+                  :target (TypedVar 'uri' :type Module 'uri'))
+                :args (
+                  (TypedIndex :type String
+                    :target (TypedVar 'paths' :type Array(String))
+                    :index (TypedVar 'i' :type Int))
+                )))
+            (TypedLetValue 'back' :type String
+              :value (TypedApp :type String
+                :func (TypedSelect 'toPath' :type Fun(uri: String): String
+                  :target (TypedVar 'uri' :type Module 'uri'))
+                :args (
+                  (TypedVar 'u' :type String)
+                )))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedVar 'print' :type Fun(s: String): Ok)
+            :args (
+              (TypedInfix '<>' :type String
+                :left (TypedVar 'u' :type String)
+                :right (TypedIf :type String
+                  :cond (TypedApp :type Bool
+                    :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                      :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                    :args (
+                      (TypedVar 'back' :type String)
+                      (TypedIndex :type String
+                        :target (TypedVar 'paths' :type Array(String))
+                        :index (TypedVar 'i' :type Int))
+                    ))
+                  :then (TypedString '' :type String)
+                  :else (TypedString ' (toPath differs)' :type String)))
+            )))))
+    (TypedLetValue 'toPathOf' :type Fun(text: String): Ok
+      :value (TypedFun :params (('text' : String)) :type Fun(text: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedApp :type String
+              :func (TypedVar 'attempt' :type Fun(f: Fun(): String): String)
+              :args (
+                (TypedFun :params () :type Fun(): String
+                  :body (TypedApp :type String
+                    :func (TypedSelect 'toPath' :type Fun(uri: String): String
+                      :target (TypedVar 'uri' :type Module 'uri'))
+                    :args (
+                      (TypedVar 'text' :type String)
+                    )))
+              ))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'toPathOf' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'file:///Users/x/a%3Ab.quest' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'toPathOf' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'FILE://LocalHost/a' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'toPathOf' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'file:/a' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'toPathOf' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'file://other/a' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'toPathOf' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'http://x/a' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'toPathOf' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'file:a' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'toPathOf' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'file://' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'toPathOf' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'file:///a?q' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'toPathOf' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'file:///a#f' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'toPathOf' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'file:///a%00b' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'toPathOf' :type Fun(text: String): Ok)
+        :args (
+          (TypedString 'file:///a%2' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'attempt' :type Fun(f: Fun(): String): String)
+            :args (
+              (TypedFun :params () :type Fun(): String
+                :body (TypedApp :type String
+                  :func (TypedSelect 'fromPath' :type Fun(path: String): String
+                    :target (TypedVar 'uri' :type Module 'uri'))
+                  :args (
+                    (TypedString 'relative/path' :type String)
+                  )))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'attempt' :type Fun(f: Fun(): String): String)
+            :args (
+              (TypedFun :params () :type Fun(): String
+                :body (TypedApp :type String
+                  :func (TypedSelect 'fromPath' :type Fun(path: String): String
+                    :target (TypedVar 'uri' :type Module 'uri'))
+                  :args (
+                    (TypedString '' :type String)
+                  )))
+            ))
+        )))
+  ))

@@ -1,0 +1,247 @@
+import ascii = "ascii" : Ascii
+import stringOp = "string" : StringOp
+import writer = "writer" : Writer
+import maybe = "util/maybe" : util/Maybe
+import uri = "util/uri" : util/URI
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @15:45
+      let %2: String = prim <>(s, "\n") @15:59
+      let %3: Ok = call writer.putString(%1, %2) @15:28
+      return %3
+    }
+  }
+  funs {
+    fun shown(m: maybe.T(String)): String {
+      join k1(r: String) {
+        return r
+      } in {
+        let %4: Bool = call maybe.isSome [String](m) @16:44
+        if %4 { @16:41
+          let %5: String = call maybe.unwrap [String](m) @16:73
+          let %6: String = prim <>(%5, "\"") @16:73
+          let %7: String = prim <>("\"", %6) @16:65
+          jump k1(%7) @16:41
+        } else {
+          jump k1("none") @16:41
+        }
+      }
+    }
+  }
+  funs {
+    fun attempt(f: Fun(): String): String {
+      join k2(r.1: String) {
+        return r.1
+      } in {
+        let %8: Exception(String) = member uri.error @17:53
+        try catching (%8) {
+          let %9: String = call f() @17:44
+          jump k2(%9) @17:40
+        } handle (e: Exception) {
+          let %10: Bool = prim is(e, %8) @17:40
+          if %10 { @17:40
+            let e.1: String = exception_payload(e) @17:40
+            let %11: String = prim <>("error: ", e.1) @17:75
+            jump k2(%11) @17:40
+          } else {
+            reraise e @17:40
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun parsed(text: String): Ok {
+      funs {
+        fun f.1(): String {
+          let p: Parts = call uri.parse(text) @23:21
+          join k3(same: String) {
+            let %12: String = tuple_field(p, 0) @25:13
+            let %13: maybe.T(String) = tuple_field(p, 1) @25:38
+            let %14: String = call shown(%13) @25:32
+            let %15: String = tuple_field(p, 2) @25:63
+            let %16: maybe.T(String) = tuple_field(p, 3) @25:88
+            let %17: String = call shown(%16) @25:82
+            let %18: maybe.T(String) = tuple_field(p, 4) @26:26
+            let %19: String = call shown(%18) @26:20
+            let %20: String = prim <>(%19, same) @26:20
+            let %21: String = prim <>(" ", %20) @25:100
+            let %22: String = prim <>(%17, %21) @25:82
+            let %23: String = prim <>("\" ", %22) @25:73
+            let %24: String = prim <>(%15, %23) @25:63
+            let %25: String = prim <>(" \"", %24) @25:54
+            let %26: String = prim <>(%14, %25) @25:32
+            let %27: String = prim <>(" ", %26) @25:25
+            let %28: String = prim <>(%12, %27) @25:13
+            return %28
+          } in {
+            let %29: String = call uri.toString(p) @24:42
+            let %30: Bool = call stringOp.equal(%29, text) @24:27
+            if %30 { @24:24
+              jump k3("") @24:24
+            } else {
+              jump k3(" (toString differs)") @24:24
+            }
+          }
+        }
+      }
+      let %31: String = call attempt(f.1) @21:11
+      let %32: Ok = call print(%31) @21:5
+      return %32
+    }
+  }
+  do call parsed("ftp://ftp.is.co.za/rfc/rfc1808.txt") @28:1
+  do call parsed("http://www.ietf.org/rfc/rfc2396.txt") @29:1
+  do call parsed("ldap://[2001:db8::7]/c=GB?objectClass?one") @30:1
+  do call parsed("mailto:John.Doe@example.com") @31:1
+  do call parsed("news:comp.infosystems.www.servers.unix") @32:1
+  do call parsed("tel:+1-816-555-1212") @33:1
+  do call parsed("telnet://192.0.2.16:80/") @34:1
+  do call parsed("urn:oasis:names:specification:docbook:dtd:xml:4.1.2") @35:1
+  do call parsed("foo://example.com:8042/over/there?name=ferret#nose") @36:1
+  do call parsed("file:///Users/x/a%20b.quest") @37:1
+  do call parsed("file:/a") @38:1
+  do call parsed("file://localhost/a") @39:1
+  do call parsed("a:") @40:1
+  do call parsed("a:?#") @41:1
+  do call parsed("a://?q#f?g#h") @42:1
+  do call parsed("x+y-z.1:path") @43:1
+  do call parsed("C%3A:x") @44:1
+  do call parsed("/no/scheme") @45:1
+  do call parsed(":empty") @46:1
+  do call parsed("1a:x") @47:1
+  do call parsed("a b:x") @48:1
+  do call parsed("http://x/%2") @49:1
+  do call parsed("http://x/%zz") @50:1
+  do call parsed("") @51:1
+  let all: String = call stringOp.new(256, ' ') @54:11
+  var i: Int = 0 @55:1
+  let %33: Bool = prim <=(i, 255) @55:1
+  if %33 { @55:1
+    loop L1 {
+      let i.1: Int = i @55:1
+      let %34: Char = call ascii.char(i.1) @55:46
+      do call stringOp.setChar(all, i.1, %34) @55:23
+      let %35: Bool = prim is(i, 255) @55:1
+      if %35 { @55:1
+        break L1 @55:1
+      }
+      let %36: Int = prim +(i, 1) @55:1
+      i := %36 @55:1
+    }
+  }
+  let encoded: String = call uri.encode(all, "") @56:15
+  do call print(encoded) @57:1
+  let %37: String = call uri.encode(all, "/:@") @58:7
+  do call print(%37) @58:1
+  join k4(r.2: String) {
+    do call print(r.2) @59:1
+    let %38: String = call uri.decode("%41%62c%2f%2F%e4%B8%AD") @60:7
+    do call print(%38) @60:1
+    funs {
+      fun f.2(): String {
+        let %39: String = call uri.decode("100%") @61:29
+        return %39
+      }
+    }
+    let %40: String = call attempt(f.2) @61:7
+    do call print(%40) @61:1
+    funs {
+      fun f.3(): String {
+        let %41: String = call uri.decode("%4") @62:29
+        return %41
+      }
+    }
+    let %42: String = call attempt(f.3) @62:7
+    do call print(%42) @62:1
+    funs {
+      fun f.4(): String {
+        let %43: String = call uri.decode("%g0") @63:29
+        return %43
+      }
+    }
+    let %44: String = call attempt(f.4) @63:7
+    do call print(%44) @63:1
+    let paths: Array(String) = array("/", "/Users/x/a.quest", "/a b/c%d#e?f;g=h&i+j,k:l@m!n$o'p(q)r*s", "/\u00e4\u00b8\u00ad\u00e6\u0096\u0087/\u00c3\u00a9", "/tab\there", "/~user/a_b-c.d") @66:13
+    let %45: Int = prim extent(paths) @74:17
+    let %46: Int = prim -(%45, 1) @74:17
+    var i.2: Int = 0 @74:1
+    let %47: Bool = prim <=(i.2, %46) @74:1
+    if %47 { @74:1
+      loop L2 {
+        let i.3: Int = i.2 @74:1
+        let %48: String = index(paths, i.3) @75:26
+        let u: String = call uri.fromPath(%48) @75:13
+        let back: String = call uri.toPath(u) @76:16
+        join k5(r.3: String) {
+          let %49: String = prim <>(u, r.3) @77:11
+          do call print(%49) @77:5
+          let %50: Bool = prim is(i.2, %46) @74:1
+          if %50 { @74:1
+            break L2 @74:1
+          }
+          let %51: Int = prim +(i.2, 1) @74:1
+          i.2 := %51 @74:1
+        } in {
+          let %52: String = index(paths, i.3) @77:39
+          let %53: Bool = call stringOp.equal(back, %52) @77:19
+          if %53 { @77:16
+            jump k5("") @77:16
+          } else {
+            jump k5(" (toPath differs)") @77:16
+          }
+        }
+      }
+    }
+    funs {
+      fun toPathOf(text.1: String): Ok {
+        funs {
+          fun f.5(): String {
+            let %54: String = call uri.toPath(text.1) @79:62
+            return %54
+          }
+        }
+        let %55: String = call attempt(f.5) @79:40
+        let %56: Ok = call print(%55) @79:34
+        return %56
+      }
+    }
+    do call toPathOf("file:///Users/x/a%3Ab.quest") @80:1
+    do call toPathOf("FILE://LocalHost/a") @81:1
+    do call toPathOf("file:/a") @82:1
+    do call toPathOf("file://other/a") @83:1
+    do call toPathOf("http://x/a") @84:1
+    do call toPathOf("file:a") @85:1
+    do call toPathOf("file://") @86:1
+    do call toPathOf("file:///a?q") @87:1
+    do call toPathOf("file:///a#f") @88:1
+    do call toPathOf("file:///a%00b") @89:1
+    do call toPathOf("file:///a%2") @90:1
+    funs {
+      fun f.6(): String {
+        let %57: String = call uri.fromPath("relative/path") @91:29
+        return %57
+      }
+    }
+    let %58: String = call attempt(f.6) @91:7
+    do call print(%58) @91:1
+    funs {
+      fun f.7(): String {
+        let %59: String = call uri.fromPath("") @92:29
+        return %59
+      }
+    }
+    let %60: String = call attempt(f.7) @92:7
+    do call print(%60) @92:1
+  } in {
+    let %61: String = call uri.decode(encoded) @59:25
+    let %62: Bool = call stringOp.equal(%61, all) @59:10
+    if %62 { @59:7
+      jump k4("decode inverts encode") @59:7
+    } else {
+      jump k4("decode differs") @59:7
+    }
+  }
+}
+

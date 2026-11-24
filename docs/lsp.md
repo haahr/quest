@@ -201,6 +201,7 @@ stage build waits for the lock.
 - **`reader.ready`**, which now never blocks: true when a character, or the end, can be read without waiting. It
   is true for one read ahead, or one in the C stream's buffer (BSD's and glibc's `FILE`), or when the descriptor
   polls readable. Nothing used the old one, which blocked as `more` does. The bootstrap answers from `select`.
+  WebAssembly has no way to poll, so there it still answers as `more` does, which may wait.
 
 ## 12. Open Work
 
