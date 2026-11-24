@@ -1,0 +1,235 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (LetValueBinding
+      :name 'print'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (ExprStmt
+      :expr (ExprException 'other')
+    )
+    (LetValueBinding
+      :name 'guarded'
+      :value (ExprTry
+        :body (ExprApp
+          :func (ExprId 'guarded')
+          :args (
+            (ExprInfix
+              :left (ExprId 'n')
+              :op '+'
+              :right (ExprInt 1 '1')
+            )
+          )
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprId 'other')
+            :body (ExprInt 0 '0')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'n'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+      :is_rec True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprTry
+            :body (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprId 'guarded')
+                  :args (
+                    (ExprInt 0 '0')
+                  )
+                )
+              )
+            )
+            :else_branch (ExprString 'overflow in a try' '"overflow in a try"')
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'looping'
+      :value (ExprBlock
+        :bindings (
+          (LetValueBinding
+            :name 'r'
+            :value (ExprInt 0 '0')
+            :is_var True
+          )
+          (ExprStmt
+            :expr (ExprFor
+              :var_name 'i'
+              :start (ExprInt 0 '0')
+              :stop (ExprInt 0 '0')
+              :body (ExprInfix
+                :left (ExprId 'r')
+                :op ':='
+                :right (ExprApp
+                  :func (ExprId 'looping')
+                  :args (
+                    (ExprInfix
+                      :left (ExprId 'n')
+                      :op '+'
+                      :right (ExprInt 1 '1')
+                    )
+                  )
+                )
+              )
+            )
+          )
+          (ExprStmt
+            :expr (ExprId 'r')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'n'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+      :is_rec True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprTry
+            :body (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprId 'looping')
+                  :args (
+                    (ExprInt 0 '0')
+                  )
+                )
+              )
+            )
+            :else_branch (ExprString 'overflow in a loop' '"overflow in a loop"')
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'next'
+      :value (ExprInfix
+        :left (ExprId 'n')
+        :op '+'
+        :right (ExprInt 1 '1')
+      )
+      :params (
+        (FormalParam
+          :name 'n'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+    )
+    (LetValueBinding
+      :name 'nested'
+      :value (ExprApp
+        :func (ExprId 'next')
+        :args (
+          (ExprApp
+            :func (ExprId 'nested')
+            :args (
+              (ExprInfix
+                :left (ExprId 'n')
+                :op '+'
+                :right (ExprInt 1 '1')
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'n'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+      :is_rec True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprTry
+            :body (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprId 'nested')
+                  :args (
+                    (ExprInt 0 '0')
+                  )
+                )
+              )
+            )
+            :else_branch (ExprString 'overflow in an argument' '"overflow in an argument"')
+          )
+        )
+      )
+    )
+  )
+)

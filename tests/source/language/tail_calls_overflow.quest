@@ -1,0 +1,29 @@
+(* Calls that are not in tail position stay active, so runaway recursion
+   through them raises stack.overflow in the interpreters, as in
+   stack_overflow_caught.quest; compiled code ends with it instead
+   (docs/exceptions.md section 6). *)
+import conv : Conv
+(* @skip-phase: run_c_compiled *)
+import writer : Writer
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+exception other end
+
+(* A call in a try's body *)
+let rec guarded(n: Int): Int = try guarded(n + 1) when other then 0 end
+print(try conv.int(guarded(0)) else "overflow in a try" end)
+
+(* A call in a loop's body *)
+let rec looping(n: Int): Int =
+    begin
+        let var r = 0
+        for i = 0 upto 0 do r := looping(n + 1) end
+        r
+    end
+print(try conv.int(looping(0)) else "overflow in a loop" end)
+
+(* A call as an argument, to a function with work left after it, so that it
+ * stays one where the IR inlines that function (an identity function would
+ * leave the call in tail position) *)
+let next(n: Int): Int = n + 1
+let rec nested(n: Int): Int = next(nested(n + 1))
+print(try conv.int(nested(0)) else "overflow in an argument" end)

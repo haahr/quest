@@ -212,8 +212,73 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
   - `TypedFun`: Captures current `env` in a `QClosure`.
   - `TypedTypeApp`: Evaluates callee directly (type erasure).
   - `TypedApp`: Evaluates callee and arguments, creates a child frame binding parameters to arguments, and
-    evaluates closure body.
+    evaluates closure body. In tail position, it returns the call instead, for the call running to make (§3.3).
   - `TypedLetValue` with `is_rec=True`: Automatically binds recursive closures into their own environment frame.
+
+### 3.3. Tail Calls
+
+Every interpreter makes a call in tail position without adding to the calls active, so a tail-recursive loop runs
+to any depth instead of stopping at `MAX_CALL_DEPTH` (1000) active calls with `stack.overflow`. The interpreters are
+the tree-walkers (`treewalk.py`, `questlang/interpreter/treewalk`) and the IR interpreters (`ir_interp.py`,
+`questlang/interpreter/irinterp`), so this covers `-i`, the REPL, and the Jupyter kernel too.
+
+This is not a guarantee of the language. arm64 and WebAssembly make tail calls whenever they can
+([arm64.md](arm64.md) §3.7, [wasm.md](wasm.md) §3.3), and the C backend leaves them to clang.
+
+**Tail position in the source.** A call is in tail position when it is:
+- a function's body;
+- the result of a block in tail position;
+- a branch of an `if` in tail position;
+- a branch or the `else` of a `case` or `inspect` in tail position.
+
+Nothing else is a tail position:
+- a `try`'s body or handlers (the handler stays active while the body runs);
+- a loop's body;
+- an operand, an argument, or a binding's value;
+- a module's initializer, or a phrase at the top level.
+
+A type application that runs its closure (a polymorphic constant such as `list.nil()`) stays an ordinary call.
+
+**Tail position in the IR** (`_find_tail_calls`, `irinterp.findTailCalls`). A call is a tail call when its result
+variable is returned:
+- directly;
+- through `Convert`s of it;
+- through jumps to joins that return their one parameter, which is how the lowering joins a tail-position `if`'s
+  branches.
+
+A call in a `try`'s body or handler is never one. A function is analyzed the first time it runs.
+
+The IR can find tail calls that the source does not:
+- `let r = f(x) r` is one in the IR;
+- so is a call that the self-hosted compiler's inliner leaves in tail position, as in `id(f(x))` with `id` inlined.
+
+Compiled code makes the same calls tail calls (`ssa/passes/tailCalls` works on the same shape). Only the frames a
+traceback lists, and how deep a program can go, differ.
+
+**The mechanism: a trampoline at the call boundary.** Both tree-walkers already keep a call's variables in
+heap-allocated scopes, and the frames they report in a list of their own (`call_stack`, `root.callStack`). So a tail
+call needs no new activation:
+- The call evaluates its callee and arguments and hands them back. In Python, a `TailCall`; in the self-hosted
+  compiler, the root's `pendingCall`, with `ok` returned.
+- The call running loops while a call is pending (`run_call`, `runCall`). Each turn renames the frame on top of the
+  call stack to the new callee's, binds its arguments in a fresh scope or IR frame, and runs its body, again in tail
+  position.
+
+Calls between the two interpreters take part in the same loop:
+- An IR closure is a built-in function to the tree-walker. In Python it is a `TailCallable`, with an `activate`
+  method. In the self-hosted compiler it is registered in the root's `tailCallables`, whose `run` makes one call of
+  it.
+- A tail call from an IR function to a library function, or back, replaces the caller's frame as any other does.
+
+Errors raised in a turn are located in the file of the function running then, and record the frames active
+([exceptions.md](exceptions.md) §3.2, §4).
+
+**What it changes.** A traceback no longer lists the frames of functions that called in tail position. All the
+interpreters drop the same ones, and `tests/python/test_tracebacks.py` checks that they agree. Compiled code lists
+the frames of inlined code as their caller's, which may be a frame the interpreters replaced, so compiled tracebacks
+are a subsequence of the frames there would be without tail calls ([exceptions.md](exceptions.md) §2.4).
+`stack.overflow` still comes at `MAX_CALL_DEPTH` for other recursion (`tests/source/language/tail_calls_overflow.quest`,
+`stack_overflow_caught.quest`). `tail_calls_deep.quest` runs each kind of tail call 5000 deep.
 
 ---
 

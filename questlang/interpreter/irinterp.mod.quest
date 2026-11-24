@@ -247,6 +247,10 @@ export
         descriptorSymbols: hashMap.T(Int Int)
         (* The IR closures, by their builtin values *)
         closures: hashMap.T(model.Builtin IrClosure)
+        (* The calls in tail position (by their result variables' ids) of the
+         * functions analyzed so far (by id), found by findTailCalls *)
+        tailCalls: hashMap.T(Int Bool)
+        analyzed: hashMap.T(Int Bool)
     end
 
     let stack(it: Interpreter): vector.T(String) = it.renv.root.callStack
@@ -445,13 +449,104 @@ export
 
     let holeUse = option hole of tm.ReservedSymbolUse end
 
+    (* Whether a is the variable v *)
+    let isVariable(a: Atom v: Variable): Bool = case a when atomVar with x then x.v.id is v.id else false end
+
+    let hasLabel(labels: Array(String) label: String): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent labels - 1} do if eq(labels[i] label) then found := true end end
+            found
+        end
+
+    (* Whether statements, from the i-th on, return v: through Converts of it,
+     * to a return of it or a jump with it to a join that returns it (one of
+     * returning, by label) *)
+    let returns(statements: vector.T(Stmt) i: Int v: Variable returning: Array(String)): Bool =
+        begin
+            let var at = i
+            let var value = v
+            let var answer = maybe.none(:Bool)
+            while maybe.isNone(answer) do
+                if at >= vector.length(statements) then
+                    answer := maybe.some(false)
+                else
+                    case vector.get(statements at)
+                        when sLet with x then
+                            case x.value
+                                when opConvert with c then
+                                    if isVariable(c.value value) then
+                                        value := x.v
+                                        at := at + 1
+                                    else
+                                        answer := maybe.some(false)
+                                    end
+                                else answer := maybe.some(false)
+                            end
+                        when sReturn with x then answer := maybe.some(isVariable(x.value value))
+                        when sJump with x then
+                            answer := maybe.some(hasLabel(returning x.label) andif {extent x.args is 1}
+                                andif isVariable(x.args[0] value))
+                        else answer := maybe.some(false)
+                    end
+                end
+            end
+            maybe.unwrap(answer)
+        end
+
+    (* Adds to found the calls in tail position in b (docs/interpreter.md section
+     * 3.3), by their result variables' ids: a call whose result the function
+     * returns, directly or through Converts and jumps to joins (returning, by
+     * label) that return their parameter. A call in a try's body or handler
+     * is not one, nor one in another function's body. *)
+    let rec findTailCalls(b: Body returning: Array(String) found: hashMap.T(Int Bool)): Ok =
+        for i = 0 upto {vector.length(b.statements) - 1} do
+            case vector.get(b.statements i)
+                when sLet with x then
+                    if x.value?opCall andif returns(b.statements {i + 1} x.v returning) then
+                        hashMap.insert(found x.v.id true)
+                    end
+                when sIf with x then
+                    findTailCalls(x.thenBody returning found)
+                    findTailCalls(x.elseBody returning found)
+                when sSwitch with x then
+                    for j = 0 upto {extent x.cases - 1} do findTailCalls(x.cases[j].body returning found) end
+                    if maybe.isSome(x.elseBody) then findTailCalls(maybe.unwrap(x.elseBody) returning found) end
+                when sInspect with x then
+                    for j = 0 upto {extent x.cases - 1} do findTailCalls(x.cases[j].body returning found) end
+                    if maybe.isSome(x.elseBody) then findTailCalls(maybe.unwrap(x.elseBody) returning found) end
+                when sLoop with x then findTailCalls(x.body returning found)
+                when sLetRec with x then findTailCalls(x.body returning found)
+                when sJoin with x then
+                    findTailCalls(x.continuation returning found)
+                    if {extent x.params is 1} andif returns(x.continuation.statements 0 x.params[0] returning) then
+                        let inner = array of(extent returning + 1 x.label)
+                        for j = 0 upto {extent returning - 1} do inner[j] := returning[j] end
+                        findTailCalls(x.body inner found)
+                    else
+                        findTailCalls(x.body returning found)
+                    end
+                else ok
+            end
+        end
+
+    (* An IR closure's value: a builtin to the tree-walking interpreter, which
+     * treewalk.runCall runs (root.tailCallables), so that tail calls between
+     * the two interpreters add no active call either *)
     let rec closureValue(it: Interpreter c: IrClosure): Value =
         begin
+            let root = it.renv.root
+            let callable: model.TailCallable = tuple
+                let traceName = c.function.traceName
+                let run = fun(args: Array(Value)): Value activate(it c args)
+            end
             let b: model.Builtin = tuple
                 let name = c.function.v.hint
-                let fn = fun(args: Array(Value)): Value applyClosure(it c args)
+                (* IR calls have no offsets, so stack.overflow is not located *)
+                let fn = fun(args: Array(Value)): Value treewalk.runCall(root callable args none)
             end
             hashMap.insert(it.closures b c)
+            hashMap.insert(root.tailCallables b callable)
             option vBuiltin of Value with let b = b end
         end
 
@@ -476,12 +571,11 @@ export
             result
         end
 
-    and applyClosure(it: Interpreter c: IrClosure args: Array(Value)): Value =
+    (* One call of an IR closure, in the frame treewalk.runCall has pushed: its
+     * value, or ok, with the root's pendingCall set, if its body ended with a
+     * call in tail position *)
+    and activate(it: Interpreter c: IrClosure args: Array(Value)): Value =
         begin
-            (* IR calls have no offsets, so stack.overflow is not located *)
-            if vector.length(stack(it)) >= primitives.maxCallDepth then
-                model.raiseException(:Ok primitives.stackOverflow none)
-            end
             let types = newTypes()
             hashMap.forEach(c.typeBindings fun(k: Int t: Type): Ok begin hashMap.insert(types k t) ok end)
             let f = newFrame(maybe.some(c.frame) types)
@@ -492,8 +586,17 @@ export
                 end)
             end
             for i = 0 upto {extent fn.params - 1} do if i < extent args then setValue(f fn.params[i].v args[i]) end end
-            let s = if maybe.isNone(fn.traceName) then runBody(it fn.body f)
-                else inFrame(it maybe.unwrap(fn.traceName) fn.body f) end
+            if not(hashMap.contains(it.analyzed fn.id)) then
+                hashMap.insert(it.analyzed fn.id true)
+                findTailCalls(fn.body array of :String end it.tailCalls)
+            end
+            let s =
+                try
+                    runBody(it fn.body f)
+                when model.runError with e then
+                    if maybe.isSome(fn.traceName) then treewalk.noteFrames(e it.renv) end
+                    rethrow(:Signals e)
+                end
             case maybe.unwrapOr(s option sigBreak of Signal with let label = "" end)
                 when sigReturn with x then x.value
                 else fail("function '" <> fn.v.hint <> "' ends without returning")
@@ -935,6 +1038,34 @@ export
 
     (* Statements *)
 
+    (* A call in tail position (findTailCalls), whose result v would be: its
+     * callee and arguments, as the root's pendingCall for treewalk.runCall to
+     * make, if the callee is a function of either interpreter; any other is
+     * called here *)
+    and tailCall(it: Interpreter v: Variable o: Op f: Frame): Signals =
+        case o
+            when opCall with x then
+                checkDescriptors(it x.descriptors x.typeArgs f)
+                let var callee = calleeValue(it x.callee x.moduleRef x.member f)
+                if extent x.typeArgs > 0 then callee := typeApply(it callee resolveAll(f x.typeArgs)) end
+                let args = atoms(it x.args f)
+                let root = it.renv.root
+                let pends =
+                    case callee
+                        when vClosure then true
+                        when vBuiltin with b then hashMap.contains(root.tailCallables b.b)
+                        else false
+                    end
+                if pends then
+                    root.pendingCall := maybe.some(tuple let callee = callee let args = args let offset = none end)
+                    signal(option sigReturn of Signal with let value = model.okValue end)
+                else
+                    setValue(f v apply(it callee args))
+                    noSignal
+                end
+            else fail("a tail call of an operation that is not a call")
+        end
+
     and runBody(it: Interpreter b: Body f: Frame): Signals =
         begin
             let var result = noSignal
@@ -950,9 +1081,13 @@ export
     and statement(it: Interpreter s: Stmt f: Frame): Signals =
         case s
             when sLet with x then
-                let v = operation(it x.value f maybe.some(x.v))
-                if hashMap.contains(it.declared x.v.id) then bindDeclared(f x.v v) else setValue(f x.v v) end
-                noSignal
+                if hashMap.contains(it.tailCalls x.v.id) andif not(hashMap.contains(it.declared x.v.id)) then
+                    tailCall(it x.v x.value f)
+                else
+                    let v = operation(it x.value f maybe.some(x.v))
+                    if hashMap.contains(it.declared x.v.id) then bindDeclared(f x.v v) else setValue(f x.v v) end
+                    noSignal
+                end
             when sVarDecl with x then
                 setValue(f x.v
                         model.cellValue(if maybe.isSome(x.init) then
@@ -1195,6 +1330,8 @@ export
                 let var sourceMap = unit.sourceMap
                 let descriptorSymbols = symbols
                 let closures = hashMap.new(builtinEqual builtinHash)
+                let tailCalls = hashMap.new(intEqual hash.int)
+                let analyzed = hashMap.new(intEqual hash.int)
             end
             (* Everything runs in the program's frame, imported modules'
              * initializers included *)

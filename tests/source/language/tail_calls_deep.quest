@@ -1,0 +1,59 @@
+(* Calls in tail position add no active call in the interpreters
+   (docs/interpreter.md), so these loops run 5000 deep, past the 1000 active
+   calls at which they raise stack.overflow; compiled code makes tail calls
+   where it can, and has the native stack for the rest. *)
+import conv : Conv
+import writer : Writer
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+let depth = 5000
+
+(* A self tail call, through an if *)
+let rec count(n: Int acc: Int): Int = if n is 0 then acc else count(n - 1 acc + 1) end
+print(conv.int(count(depth 0)))
+
+(* Mutual tail calls, through blocks *)
+let rec isEven(n: Int): Bool =
+    begin
+        let m = n
+        if m is 0 then true else isOdd(m - 1) end
+    end
+and isOdd(n: Int): Bool = begin if n is 0 then false else isEven(n - 1) end end
+print(if isEven(depth) then "even" else "odd" end)
+print(if isOdd(depth + 1) then "odd" else "even" end)
+
+(* A tail call through a closure value *)
+let rec bounce(n: Int k(m: Int): Int): Int = if n is 0 then k(0) else bounce(n - 1 fun(m: Int): Int k(m + 1)) end
+print(conv.int(bounce(depth fun(m: Int): Int m)))
+
+(* Tail calls through case: an option's branches and else *)
+Let Step = Option more with n: Int end done end
+let rec walk(s: Step acc: Int): Int =
+    case s
+        when more with x then
+            walk(if x.n is 0 then option done of Step end else option more of Step with x.n - 1 end end acc + 1)
+        else acc
+    end
+print(conv.int(walk(option more of Step with depth end 0)))
+
+(* Tail calls through inspect *)
+Let Boxed = Auto A::TYPE with v: A end
+let rec unwrap(b: Boxed n: Int): Int =
+    inspect b
+        when Int with arm then if n is 0 then arm.v else unwrap(auto :Int with arm.v + 1 end n - 1) end
+        else ~1
+    end
+print(conv.int(unwrap(auto :Int with 0 end depth)))
+
+(* A tail call of a type-parameterized function *)
+let rec keep(A::TYPE n: Int x: A): A = if n is 0 then x else keep(:A n - 1 x) end
+print(keep(:String depth "kept"))
+
+(* Tail calls of a module's member, which tail-calls back *)
+interface Relay export
+    pass(n: Int k(m: Int): Int): Int
+end
+module relay : Relay export
+    let pass(n: Int k(m: Int): Int): Int = k(n - 1)
+end
+let rec viaRelay(n: Int): Int = if n is 0 then 42 else relay.pass(n viaRelay) end
+print(conv.int(viaRelay(depth)))

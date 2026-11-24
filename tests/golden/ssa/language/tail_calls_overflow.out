@@ -1,0 +1,352 @@
+function qf_guarded(%0: ptr, %1: int): int slots [240:16 8:8 48:8] {
+b0(%0: ptr, %1: int):
+  %2: ptr = slot 0
+  %3: ptr = threadLocal quest_current_exception_handler
+  %4: ptr = load8 %3 + 0
+  store8 %2 + 0, %4
+  %5: ptr = null
+  store8 %2 + 24, %5
+  %6: ptr = symbol g_other
+  %7: ptr = load8 %6 + 0
+  %8: ptr = slot 1
+  store8 %8 + 0, %7
+  store8 %2 + 8, %8
+  %9: int = const 1
+  store8 %2 + 16, %9
+  store8 %3 + 0, %2
+  try slot 0, b1(), handler b2
+b1():
+  @12:44
+  %10: int = const 1
+  %11: int = add %1, %10
+  @12:36
+  %12: ptr = null
+  %13: int = call qf_guarded(%12, %11)
+  @12:32
+  %15: ptr = load8 %2 + 0
+  store8 %3 + 0, %15
+  return %13
+b2():
+  @12:32
+  %17: ptr = load8 %2 + 0
+  store8 %3 + 0, %17
+  %18: ptr = slot 2
+  %19: ptr = threadLocal quest_current_exception
+  %20: int = load8 %19 + 0
+  store8 %18 + 0, %20
+  %21: int = load8 %19 + 8
+  store8 %18 + 8, %21
+  %22: int = load8 %19 + 16
+  store8 %18 + 16, %22
+  %23: int = load8 %19 + 24
+  store8 %18 + 24, %23
+  %24: int = load8 %19 + 32
+  store8 %18 + 32, %24
+  %25: int = load8 %19 + 40
+  store8 %18 + 40, %25
+  %26: ptr = load8 %18 + 0
+  %27: ptr = symbol g_other
+  %28: ptr = load8 %27 + 0
+  %29: int = peq %26, %28
+  branch %29, b3(), b4()
+b3():
+  @12:32
+  %30: int = const 0
+  return %30
+b4():
+  @12:32
+  call quest_reraise(%18) memory [0:48]
+  unreachable
+}
+
+function qf_looping(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  @18:9
+  %3: int = const 0
+  @19:9
+  %11: int = le %3, %3
+  branch %11, b1(), b2()
+b1():
+  @19:9
+  jump b4(%3)
+b2():
+  @19:9
+  jump b3(%3)
+b3(%28: int):
+  @19:9
+  return %28
+b4(%31: int):
+  @19:42
+  %12: int = const 1
+  %13: int = add %1, %12
+  @19:34
+  %14: ptr = null
+  %15: int = call qf_looping(%14, %13)
+  @19:9
+  %19: int = const 0
+  %20: int = eq %31, %19
+  branch %20, b6(), b7()
+b5():
+  @19:9
+  jump b3(%15)
+b6():
+  @19:9
+  jump b5()
+b7():
+  @19:9
+  jump b8()
+b8():
+  @19:9
+  %23: int = const 1
+  %24: int = add %31, %23
+  jump b4(%24)
+}
+
+function qf_nested(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  @27:25
+  %12: int = const 0
+  jump b1(%0, %1, %12)
+b1(%8: ptr, %9: int, %10: int):
+  @28:43
+  %2: int = const 1
+  %3: int = add %9, %2
+  @28:36
+  %4: ptr = null
+  @27:25
+  %11: int = add %10, %2
+  jump b1(%4, %3, %11)
+}
+
+function qr_register_dicts() {
+b0():
+  %0: ptr = symbol qr_roots
+  call quest_register_roots(%0)
+  %1: ptr = symbol qr_frames
+  call quest_register_frames(%1)
+  %2: ptr = symbol qr_funcs
+  %3: int = const 4
+  tail call quest_register_funcs(%2, %3)
+}
+
+function main exported(%0: int, %1: ptr) int32 [0]: int result int32 slots [240:16 48:8 240:16 48:8 240:16 48:8] {
+b0(%0: int, %1: ptr):
+  call quest_gc_init()
+  call quest_builtins_init(%0, %1) int32 [0]
+  call qr_register_dicts()
+  call qv_mod_conv_init()
+  call qv_mod_writer_init()
+  @9:1
+  %2: ptr = symbol qs_5
+  %3: ptr = call quest_alloc_exception(%2)
+  %4: ptr = symbol g_other
+  store8 %4 + 0, %3
+  %5: ptr = symbol qf_guarded_closure
+  %6: ptr = symbol g_guarded
+  store8 %6 + 0, %5
+  %8: ptr = slot 0
+  %9: ptr = threadLocal quest_current_exception_handler
+  %10: ptr = load8 %9 + 0
+  store8 %8 + 0, %10
+  %11: ptr = null
+  store8 %8 + 24, %11
+  store8 %8 + 8, %11
+  %13: int = const ~1
+  store8 %8 + 16, %13
+  store8 %9 + 0, %8
+  try slot 0, b3(), handler b4
+b1(%7: ptr):
+  @8:45
+  %31: ptr = symbol qm_writer
+  %32: ptr = load8 %31 + 0
+  %33: ptr = load8 %31 + 8
+  %34: int = load8 %33 + 40
+  %35: ptr = ptrAdd %32, %34
+  %36: ptr = load8 %35 + 0
+  @8:59
+  %37: ptr = symbol qso_7 + 8
+  %38: ptr = call quest_string_concat(%7, %37)
+  @8:28
+  call quest_writer_put_string(%36, %38)
+  %39: ptr = symbol qf_looping_closure
+  %40: ptr = symbol g_looping
+  store8 %40 + 0, %39
+  %42: ptr = slot 2
+  %44: ptr = load8 %9 + 0
+  store8 %42 + 0, %44
+  %45: ptr = null
+  store8 %42 + 24, %45
+  store8 %42 + 8, %45
+  %47: int = const ~1
+  store8 %42 + 16, %47
+  store8 %9 + 0, %42
+  try slot 2, b7(), handler b8
+b2():
+  @8:28
+  %107: int = const 0
+  return %107
+b3():
+  @13:20
+  %14: ptr = null
+  %15: int = const 0
+  %16: int = call qf_guarded(%14, %15)
+  @13:11
+  %17: ptr = call qv_conv_int(%16)
+  @13:7
+  %19: ptr = load8 %8 + 0
+  store8 %9 + 0, %19
+  jump b1(%17)
+b4():
+  @13:7
+  %21: ptr = load8 %8 + 0
+  store8 %9 + 0, %21
+  %22: ptr = slot 1
+  %23: ptr = threadLocal quest_current_exception
+  %24: int = load8 %23 + 0
+  store8 %22 + 0, %24
+  %25: int = load8 %23 + 8
+  store8 %22 + 8, %25
+  %26: int = load8 %23 + 16
+  store8 %22 + 16, %26
+  %27: int = load8 %23 + 24
+  store8 %22 + 24, %27
+  %28: int = load8 %23 + 32
+  store8 %22 + 32, %28
+  %29: int = load8 %23 + 40
+  store8 %22 + 40, %29
+  %30: ptr = symbol qso_6 + 8
+  jump b1(%30)
+b5(%41: ptr):
+  @8:45
+  %65: ptr = symbol qm_writer
+  %66: ptr = load8 %65 + 0
+  %67: ptr = load8 %65 + 8
+  %68: int = load8 %67 + 40
+  %69: ptr = ptrAdd %66, %68
+  %70: ptr = load8 %69 + 0
+  @8:59
+  %71: ptr = symbol qso_7 + 8
+  %72: ptr = call quest_string_concat(%41, %71)
+  @8:28
+  call quest_writer_put_string(%70, %72)
+  %73: ptr = symbol qf_nested_closure
+  %74: ptr = symbol g_nested
+  store8 %74 + 0, %73
+  %76: ptr = slot 4
+  %78: ptr = load8 %9 + 0
+  store8 %76 + 0, %78
+  %79: ptr = null
+  store8 %76 + 24, %79
+  store8 %76 + 8, %79
+  %81: int = const ~1
+  store8 %76 + 16, %81
+  store8 %9 + 0, %76
+  try slot 4, b11(), handler b12
+b6():
+  @8:28
+  jump b2()
+b7():
+  @22:20
+  %48: ptr = null
+  %49: int = const 0
+  %50: int = call qf_looping(%48, %49)
+  @22:11
+  %51: ptr = call qv_conv_int(%50)
+  @22:7
+  %53: ptr = load8 %42 + 0
+  store8 %9 + 0, %53
+  jump b5(%51)
+b8():
+  @22:7
+  %55: ptr = load8 %42 + 0
+  store8 %9 + 0, %55
+  %56: ptr = slot 3
+  %57: ptr = threadLocal quest_current_exception
+  %58: int = load8 %57 + 0
+  store8 %56 + 0, %58
+  %59: int = load8 %57 + 8
+  store8 %56 + 8, %59
+  %60: int = load8 %57 + 16
+  store8 %56 + 16, %60
+  %61: int = load8 %57 + 24
+  store8 %56 + 24, %61
+  %62: int = load8 %57 + 32
+  store8 %56 + 32, %62
+  %63: int = load8 %57 + 40
+  store8 %56 + 40, %63
+  %64: ptr = symbol qso_8 + 8
+  jump b5(%64)
+b9(%75: ptr):
+  @8:45
+  %99: ptr = symbol qm_writer
+  %100: ptr = load8 %99 + 0
+  %101: ptr = load8 %99 + 8
+  %102: int = load8 %101 + 40
+  %103: ptr = ptrAdd %100, %102
+  %104: ptr = load8 %103 + 0
+  @8:59
+  %105: ptr = symbol qso_7 + 8
+  %106: ptr = call quest_string_concat(%75, %105)
+  @8:28
+  call quest_writer_put_string(%104, %106)
+  jump b10()
+b10():
+  @8:28
+  jump b6()
+b11():
+  @29:20
+  %82: ptr = null
+  %83: int = const 0
+  %84: int = call qf_nested(%82, %83)
+  @29:11
+  %85: ptr = call qv_conv_int(%84)
+  @29:7
+  %87: ptr = load8 %76 + 0
+  store8 %9 + 0, %87
+  jump b9(%85)
+b12():
+  @29:7
+  %89: ptr = load8 %76 + 0
+  store8 %9 + 0, %89
+  %90: ptr = slot 5
+  %91: ptr = threadLocal quest_current_exception
+  %92: int = load8 %91 + 0
+  store8 %90 + 0, %92
+  %93: int = load8 %91 + 8
+  store8 %90 + 8, %93
+  %94: int = load8 %91 + 16
+  store8 %90 + 16, %94
+  %95: int = load8 %91 + 24
+  store8 %90 + 24, %95
+  %96: int = load8 %91 + 32
+  store8 %90 + 32, %96
+  %97: int = load8 %91 + 40
+  store8 %90 + 40, %97
+  %98: ptr = symbol qso_9 + 8
+  jump b9(%98)
+}
+
+data g_other writable zero 8
+data qf_guarded_closure words [qf_guarded]
+data qf_looping_closure words [qf_looping]
+data qf_nested_closure words [qf_nested]
+data qs_1 text "guarded"
+data qs_2 text "looping"
+data qs_3 text "nested"
+data qs_4 text "<main>"
+data qr_frames words [0]
+data qr_funcs words [qf_guarded, qs_1, qf_looping, qs_2, qf_nested, qs_3, main, qs_4]
+data qs_5 text "other"
+data g_guarded writable zero 8
+data qs_6 text "overflow in a try"
+data qso_6 words [quest_layout_string + ~9223372036854775808, 17, qs_6]
+data qs_7 text "\n"
+data qso_7 words [quest_layout_string + ~9223372036854775808, 1, qs_7]
+data g_looping writable zero 8
+data qs_8 text "overflow in a loop"
+data qso_8 words [quest_layout_string + ~9223372036854775808, 18, qs_8]
+data g_nested writable zero 8
+data qs_9 text "overflow in an argument"
+data qso_9 words [quest_layout_string + ~9223372036854775808, 23, qs_9]
+data qr_roots words [g_other, 1, g_guarded, 1, g_looping, 1, g_nested, 1, 0, 0]
+

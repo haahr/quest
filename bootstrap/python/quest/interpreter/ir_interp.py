@@ -36,16 +36,22 @@ from quest.common.diagnostics import MAIN_FRAME, QuestCompilerError, init_frame
 from quest.interpreter.formatting import exposed_type, format_value_with_type
 from quest.interpreter.primitives import (
     ARRAY_OP_ERROR_EXC,
-    MAX_CALL_DEPTH,
     QuestRuntimeError,
-    STACK_OVERFLOW_EXC,
     VARIANT_ERROR_EXC,
     int_arithmetic,
     int_relational,
     real_arithmetic,
     real_relational,
 )
-from quest.interpreter.treewalk import RuntimeEnvironment, load_module_for_interpreter, note_frames, run_closure
+from quest.interpreter.treewalk import (
+    RuntimeEnvironment,
+    TailCall,
+    TailCallable,
+    load_module_for_interpreter,
+    note_frames,
+    run_call,
+    run_closure,
+)
 from quest.values.model import (
     DYNAMIC_ERROR_EXC,
     QuestException,
@@ -189,10 +195,12 @@ class _Raised(QValue):
         return self.raised.exc_val.to_str(visited)
 
 
-class _Closure(QBuiltinFun):
+class _Closure(TailCallable):
     """An IR function value: its function, the frame it was made in, and the
     types bound to its type parameters. It is a built-in function to the source
-    interpreter, so that library functions written in Quest can call it."""
+    interpreter, so that library functions written in Quest can call it, and
+    one that run_call runs in its loop of tail calls, so that tail calls between
+    the two interpreters add no active call either."""
 
     def __init__(self, interp: Interpreter, function: ir.Function, frame: _Frame,
                  type_bindings: Optional[dict[int, QType]] = None, env: Optional[list[QValue]] = None) -> None:
@@ -202,6 +210,14 @@ class _Closure(QBuiltinFun):
         self.type_bindings: dict[int, QType] = dict(type_bindings or {})
         # After closure conversion, the values the closure captured
         self.env = env
+        self.trace_name = function.trace_name
+        self.interp = interp
+
+    def activate(self, args: list[QValue]) -> Any:
+        return self.interp.activate(self, args)
+
+    def call_stack(self) -> list[str]:
+        return self.interp.renv.call_stack
 
     def instantiate(self, interp: Interpreter, type_args: tuple[QType, ...]) -> _Closure:
         unbound = [tp.symbol_id for tp in self.function.type_params if tp.symbol_id not in self.type_bindings]
@@ -258,6 +274,10 @@ class Interpreter:
         # The symbols of the type parameters the unit's functions' descriptor
         # variables describe (by variable)
         self.descriptor_symbols: dict[int, int] = {}
+        # The calls in tail position (their Let statements, by identity) of
+        # the functions analyzed so far (_find_tail_calls)
+        self.tail_calls: set[int] = set()
+        self.analyzed: set[int] = set()
 
     # Units
 
@@ -350,27 +370,38 @@ class Interpreter:
 
     def apply(self, callee: QValue, args: list[QValue]) -> QValue:
         match callee:
-            case _Closure(function=f):
+            case _Closure():
                 # IR calls have no offsets, so stack.overflow is not located
-                if len(self.renv.call_stack) >= MAX_CALL_DEPTH:
-                    raise QuestException(STACK_OVERFLOW_EXC)
-                frame = _Frame(callee.frame, dict(callee.type_bindings))
-                if f.env is not None:
-                    frame.values[id(f.env)] = callee.env
-                for (param, _mode), arg in zip(f.params, args):
-                    frame.values[id(param)] = arg
-                if f.trace_name is None:
-                    signal = self.body(f.body, frame)
-                else:
-                    signal = self.in_frame(f.trace_name, f.body, frame)
-                if signal is None or signal[0] != "return":
-                    raise IRInterpreterError(f"function '{f.var.hint}' ends without returning")
-                return signal[1]
+                return run_call(callee, args)
             case QBuiltinFun(fn=fn):
                 return fn(*args)
             case QClosure():
                 return run_closure(callee, args)
         raise QuestRuntimeError(f"Cannot call non-function of type {callee.type_name}")
+
+    def activate(self, callee: _Closure, args: list[QValue]) -> Any:
+        """Runs one call of an IR closure, in the frame run_call has pushed: its
+        value, or the TailCall its body ended with."""
+        f = callee.function
+        frame = _Frame(callee.frame, dict(callee.type_bindings))
+        if f.env is not None:
+            frame.values[id(f.env)] = callee.env
+        for (param, _mode), arg in zip(f.params, args):
+            frame.values[id(param)] = arg
+        if id(f) not in self.analyzed:
+            self.analyzed.add(id(f))
+            _find_tail_calls(f.body, frozenset(), self.tail_calls)
+        try:
+            signal = self.body(f.body, frame)
+        except QuestCompilerError as error:
+            if f.trace_name is not None:
+                note_frames(error, self.renv)
+            raise
+        if signal is not None and signal[0] == "tailcall":
+            return TailCall(signal[1], signal[2], None)
+        if signal is None or signal[0] != "return":
+            raise IRInterpreterError(f"function '{f.var.hint}' ends without returning")
+        return signal[1]
 
     def type_apply(self, callee: QValue, type_args: tuple[QType, ...]) -> QValue:
         """A polymorphic value applied to types: its instance (the value, for a
@@ -675,6 +706,15 @@ class Interpreter:
 
     def statement(self, s, frame: _Frame) -> Optional[tuple]:
         match s:
+            case ir.Let(value=ir.Call() as call) if id(s) in self.tail_calls:
+                self.check_descriptors(call.descriptors, call.type_args, frame)
+                f = self.callee(call.callee, call.module, call.member, frame)
+                if call.type_args:
+                    f = self.type_apply(f, tuple(frame.resolve(t) for t in call.type_args))
+                args = self.atoms(call.args, frame)
+                if isinstance(f, (_Closure, QClosure)):
+                    return ("tailcall", f, args)
+                frame.values[id(s.var)] = self.apply(f, args)
             case ir.Let(var=var, value=value):
                 v = self.operation(value, frame, var)
                 if id(var) in self.declared:
@@ -784,6 +824,52 @@ class Interpreter:
             case _:
                 raise IRInterpreterError(f"not a statement: {type(s).__name__}")
         return None
+
+
+def _find_tail_calls(body: ir.Body, returning: frozenset[str], out: set[int]) -> None:
+    """Adds to out the calls in tail position in body (docs/interpreter.md
+    §3.3): a call whose result the function returns, directly or through
+    representation changes (Convert) and jumps to joins (returning, by label)
+    that return their parameter. A call in a try's body or handler is not one,
+    nor one in another function's body."""
+    statements = body.statements
+    for i, s in enumerate(statements):
+        match s:
+            case ir.Let(var=var, value=ir.Call()) if _returns(statements, i + 1, var, returning):
+                out.add(id(s))
+            case ir.If(then_body=then_body, else_body=else_body):
+                _find_tail_calls(then_body, returning, out)
+                _find_tail_calls(else_body, returning, out)
+            case ir.Switch(cases=cases, else_body=else_body) | ir.Inspect(cases=cases, else_body=else_body):
+                for c in cases:
+                    _find_tail_calls(c.body, returning, out)
+                if else_body is not None:
+                    _find_tail_calls(else_body, returning, out)
+            case ir.Loop(body=loop_body) | ir.LetRec(body=loop_body):
+                _find_tail_calls(loop_body, returning, out)
+            case ir.Join(label=label, params=params, continuation=continuation, body=join_body):
+                _find_tail_calls(continuation, returning, out)
+                if len(params) == 1 and _returns(continuation.statements, 0, params[0], returning):
+                    _find_tail_calls(join_body, returning | {label}, out)
+                else:
+                    _find_tail_calls(join_body, returning, out)
+
+
+def _returns(statements: list, i: int, var: ir.Var, returning: frozenset[str]) -> bool:
+    """Whether statements, from the i-th on, return var: through Converts of
+    it, to a return of it or a jump with it to a join that returns it."""
+    while i < len(statements):
+        s = statements[i]
+        if isinstance(s, ir.Let) and isinstance(s.value, ir.Convert) and s.value.value is var:
+            var = s.var
+            i += 1
+            continue
+        if isinstance(s, ir.Return):
+            return s.value is var
+        if isinstance(s, ir.Jump):
+            return s.label in returning and len(s.args) == 1 and s.args[0] is var
+        return False
+    return False
 
 
 def _deref(v: QValue) -> QValue:

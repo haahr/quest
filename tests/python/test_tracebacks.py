@@ -26,6 +26,7 @@ M_INTERFACE = """interface M
 export
     fail(n: Int): Int
     apply(f(): Int): Int
+    pass(f(): Int): Int
 end;
 """
 
@@ -33,7 +34,8 @@ M_MODULE = """module m : M
 export
     let failure: Exception = exception failure end
     let fail(n: Int): Int = if n > 0 then n else raise failure end end
-    let apply(f(): Int): Int = f()
+    let apply(f(): Int): Int = f() + 0
+    let pass(f(): Int): Int = f()
 end;
 """
 
@@ -50,24 +52,26 @@ export
 end;
 """
 
-# Programs, and the frames each one's uncaught exception reports
+# Programs, and the frames each one's uncaught exception reports. Their calls
+# are not in tail position (+ 0), so that compiled code's frames are some of
+# the interpreters' (docs/exceptions.md §2.4).
 CASES = {
     "nested": (
         """exception Boom end;
-let rec inner(n: Int): Int = if n is 0 then raise Boom end else inner(n - 1) end;
+let rec inner(n: Int): Int = if n is 0 then raise Boom end else inner(n - 1) + 0 end;
 let outer(n: Int): Int = begin
-  let step(k: Int): Int = inner(k)
+  let step(k: Int): Int = inner(k) + 0
   step(n) + 1
 end;
 let twice(f(x: Int): Int n: Int): Int = f(f(n));
-twice(fun(x: Int): Int begin outer(x) end 3);
+twice(fun(x: Int): Int begin outer(x) + 0 end 3);
 """,
         ["in inner", "... inner repeated 3 more times", "in outer.step", "in outer", "in <anon>", "in twice",
          "in <main>"],
     ),
     "module": (
         """import m: M;
-let call(): Int = m.fail(0);
+let call(): Int = m.fail(0) + 0;
 m.apply(call);
 """,
         ["in m.fail", "in call", "in m.apply", "in <main>"],
@@ -125,6 +129,35 @@ broken.x;
 }
 
 
+# Programs whose calls in tail position replace their callers' frames in the
+# interpreters (docs/interpreter.md §3.3), and the frames left: inner's tail
+# calls, step's of inner, and <anon>'s of outer; and, between the two
+# interpreters (in the run_ir phases), m.pass's of call and call's of m.fail.
+# Compiled code lists the frames of inlined code as its caller's, which may be
+# one of those replaced, so it is not compared.
+TAIL_CASES = {
+    "tail_nested": (
+        """exception Boom end;
+let rec inner(n: Int): Int = if n is 0 then raise Boom end else inner(n - 1) end;
+let outer(n: Int): Int = begin
+  let step(k: Int): Int = inner(k)
+  step(n) + 1
+end;
+let twice(f(x: Int): Int n: Int): Int = f(f(n));
+twice(fun(x: Int): Int begin outer(x) end 3);
+""",
+        ["in inner", "in outer", "in twice", "in <main>"],
+    ),
+    "tail_module": (
+        """import m: M;
+let call(): Int = m.fail(0);
+m.pass(call);
+""",
+        ["in m.fail", "in <main>"],
+    ),
+}
+
+
 def _frames(stderr: str) -> list[str]:
     return [line.strip() for line in stderr.splitlines() if line.startswith(("  in ", "  ... "))]
 
@@ -168,7 +201,7 @@ class TestInterpreterTracebacks(unittest.TestCase):
         return err.getvalue()
 
     def test_frames_are_reported_alike_by_every_interpreter(self) -> None:
-        for name, (text, frames) in CASES.items():
+        for name, (text, frames) in {**CASES, **TAIL_CASES}.items():
             program = self.root / f"{name}.quest"
             program.write_text(text, encoding="utf-8")
             expected = self.stderr_of(program, "interpret")

@@ -151,6 +151,33 @@ class _LoopExit(Exception):
     pass
 
 
+class TailCallable(QBuiltinFun):
+    """A function of another interpreter (the IR interpreter's closures) that
+    run_call can run: activate runs one call of it, returning its value or the
+    TailCall its body ended with, in a frame named trace_name (None for none)
+    on call_stack."""
+
+    trace_name: Optional[str]
+
+    def activate(self, args: list[QValue]) -> Any:
+        raise NotImplementedError
+
+    def call_stack(self) -> list[str]:
+        raise NotImplementedError
+
+
+class TailCall:
+    """A call in tail position, which the call running (run_call) makes in its
+    place, so that it adds no active call (docs/interpreter.md §3.3)."""
+
+    __slots__ = ("callee", "args", "offset")
+
+    def __init__(self, callee: QValue, args: list[QValue], offset: Optional[int]) -> None:
+        self.callee = callee
+        self.args = args
+        self.offset = offset
+
+
 # ============================================================================
 # 2. Scoped Runtime Environment
 # ============================================================================
@@ -386,8 +413,10 @@ class RuntimeEnvironment:
 # 3. Expression Evaluator
 # ============================================================================
 
-def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
-    """Evaluates a typed expression in env and returns its value.
+def eval_expr(expr: TypedExpr, env: RuntimeEnvironment, tail: bool = False) -> QValue:
+    """Evaluates a typed expression in env and returns its value; in tail
+    position (tail), a call of a closure returns the TailCall that the call
+    running makes instead (run_call).
 
     This interpreter is the most direct reading of the typed AST: each node is
     evaluated by the case for its class, recursively, with Python's stack
@@ -557,6 +586,8 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                     if not isinstance(o, QOption):
                         raise QuestRuntimeError(f"ordinal expects Option, got {o.type_name}", offset=offset)
                     return QInt(option_case_names(args[0].type_val).index(o.tag))
+                case QClosure() | TailCallable() if tail:
+                    return TailCall(callee_val, arg_vals, offset)
                 case QBuiltinFun(fn=fn):
                     return fn(*arg_vals)
                 case QClosure():
@@ -647,9 +678,9 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             cond_val = eval_expr(cond, env)
             match cond_val:
                 case QBool(value=True):
-                    return eval_expr(then_b, env)
+                    return eval_expr(then_b, env, tail)
                 case QBool(value=False):
-                    return eval_expr(else_b, env)
+                    return eval_expr(else_b, env, tail)
                 case _:
                     raise QuestRuntimeError("Conditional expression must evaluate to Bool", offset=offset)
 
@@ -658,7 +689,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             block_env = env.push_scope()
             for b in bindings:
                 _, block_env = eval_scoped_binding(b, block_env)
-            return eval_expr(result, block_env)
+            return eval_expr(result, block_env, tail)
 
         # 7. Loops & Control Flow
         case TypedLoop(body=body):
@@ -889,13 +920,13 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                             target_val.payload if target_val.payload is not None else OK_VALUE,
                         )
                         try:
-                            return eval_expr(branch.body, child_env)
+                            return eval_expr(branch.body, child_env, tail)
                         finally:
                             env = child_env.pop_scope()
                     else:
-                        return eval_expr(branch.body, env)
+                        return eval_expr(branch.body, env, tail)
             if else_branch is not None:
-                return eval_expr(else_branch, env)
+                return eval_expr(else_branch, env, tail)
             raise QuestRuntimeError(f"Unhandled case tag '{target_val.tag}'", offset=offset)
 
         # 11. Exceptions
@@ -982,13 +1013,13 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                         for b_sym in branch.binders:
                             child_env.define(b_sym.name, target_dyn.value)
                         try:
-                            return eval_expr(branch.body, child_env)
+                            return eval_expr(branch.body, child_env, tail)
                         finally:
                             env = child_env.pop_scope()
                     else:
-                        return eval_expr(branch.body, env)
+                        return eval_expr(branch.body, env, tail)
             if else_branch is not None:
-                return eval_expr(else_branch, env)
+                return eval_expr(else_branch, env, tail)
             raise QuestException(DYNAMIC_ERROR_EXC, offset=offset)
 
         case _:
@@ -1072,17 +1103,54 @@ def note_frames(error: QuestCompilerError, env: RuntimeEnvironment) -> None:
 
 
 def run_closure(closure: QClosure, args: list[QValue], offset: Optional[int] = None) -> QValue:
-    """Applies a closure to its arguments, in its frame: an external's built-in
-    implementation, or the closure's body. An error raised inside is located in
-    the file the closure was made in, unless code it called located it already,
-    and records the frames running (docs/exceptions.md §3.2, §4). A call that
-    would make more than MAX_CALL_DEPTH calls active raises stack.overflow at
-    offset, the call's, which the caller's frame locates in its file; so does
-    one that exhausts Python's own stack first."""
-    env = closure.env
-    if len(env.call_stack) >= MAX_CALL_DEPTH:
+    """Applies a closure to its arguments (run_call)."""
+    return run_call(closure, args, offset)
+
+
+def run_call(callee: QValue, args: list[QValue], offset: Optional[int] = None) -> QValue:
+    """Applies a closure, of either interpreter (QClosure or TailCallable), to
+    its arguments, in its frame, and then each call its body makes in tail
+    position (TailCall), in that frame renamed, so that the calls run in a loop
+    and add no active call (docs/interpreter.md §3.3). A call that would make
+    more than MAX_CALL_DEPTH calls active raises stack.overflow at offset, the
+    call's, which the caller's frame locates in its file; so does one that
+    exhausts Python's own stack first."""
+    stack = callee.call_stack() if isinstance(callee, TailCallable) else callee.env.call_stack
+    if len(stack) >= MAX_CALL_DEPTH:
         raise QuestException(STACK_OVERFLOW_EXC, offset=offset)
-    env.call_stack.append(closure.trace_name)
+    name = callee.trace_name
+    if name is not None:
+        stack.append(name)
+    try:
+        while True:
+            result = callee.activate(args) if isinstance(callee, TailCallable) else _activate(callee, args)
+            if not isinstance(result, TailCall):
+                return result
+            callee, args = result.callee, result.args
+            # The frame running becomes the callee's (an IR function the
+            # passes made has none)
+            renamed = callee.trace_name
+            if name is not None and renamed is not None:
+                stack[-1] = renamed
+            elif name is not None:
+                stack.pop()
+            elif renamed is not None:
+                if len(stack) >= MAX_CALL_DEPTH:
+                    raise QuestException(STACK_OVERFLOW_EXC, offset=result.offset)
+                stack.append(renamed)
+            name = renamed
+    finally:
+        if name is not None:
+            stack.pop()
+
+
+def _activate(closure: QClosure, args: list[QValue]) -> Any:
+    """Runs one call of a closure, whose frame run_call has pushed: an
+    external's built-in implementation, or the closure's body, in tail
+    position. An error raised inside is located in the file the closure was
+    made in, unless code it called located it already, and records the frames
+    running (docs/exceptions.md §3.2, §4)."""
+    env = closure.env
     try:
         if isinstance(closure.body, TypedExternal):
             from quest.interpreter.builtins import call_external
@@ -1094,7 +1162,7 @@ def run_closure(closure: QClosure, args: list[QValue], offset: Optional[int] = N
         call_env.bind_types(closure.type_bindings)
         for param_name, arg_val in zip(closure.params, args):
             call_env.define(param_name, arg_val)
-        return eval_expr(closure.body, call_env)
+        return eval_expr(closure.body, call_env, tail=True)
     except QuestCompilerError as error:
         if error.source_map is None:
             error.source_map = env.source_map
@@ -1105,8 +1173,6 @@ def run_closure(closure: QClosure, args: list[QValue], offset: Optional[int] = N
         error.source_map = env.source_map
         note_frames(error, env)
         raise error from None
-    finally:
-        env.call_stack.pop()
 
 
 def run_module_init(name: str, bindings, mod_env: RuntimeEnvironment) -> RuntimeEnvironment:

@@ -94,7 +94,9 @@ gives a module it declares. Compiler-generated functions (closure environments' 
 ### 2.4. Compiled Code Lists Fewer Frames
 
 The exception and its raise site are the same in every backend (but a payload of an abstract type, §2.1). The frames
-are not: compiled code lists an ordered subsequence of the interpreters' frames, often far fewer, and that is accepted.
+are not: compiled code lists an ordered subsequence of the frames the interpreters would list without their tail calls,
+often far fewer, and that is accepted. The interpreters drop the frame of a function that calls in tail position
+([interpreter.md](interpreter.md) §3.3), where compiled code may list it as the frame of code inlined into it.
 The compiler's inliner ([inlining.md](inlining.md)), and the C compiler at `-O2` for generated C, inline functions
 into their callers, and the frames of functions inlined, or called by a jump in tail position, do not exist at run
 time; recovering them would need either a shadow stack (a cost on
@@ -193,8 +195,9 @@ The interpreters may keep per-call state, so they keep an explicit stack of fram
 - The interpret phase and the IR interpreter's `run` push `<main>` while running the program (the IR interpreter's
   around its imports too, which the source interpreter runs when the program's import phrase runs); both push
   `<module>.<init>` while initializing a module (`run_module_init`, `Interpreter.in_frame`); and both push a function's
-  name for the duration of each call (`run_closure` for closures, functions defined as externals included, and
-  `Interpreter.apply` for IR functions), popped in a `finally`. The functions the IR passes make push nothing.
+  name for the duration of each call (`run_call`, for closures of both kinds, functions defined as externals included),
+  popped in a `finally`. A call in tail position renames the frame on top to its callee's instead of pushing one
+  ([interpreter.md](interpreter.md) §3.3). The functions the IR passes make push nothing.
 - `QuestCompilerError.frames: Optional[tuple[str, ...]]`, rendered as `Diagnostic.trace`, is set the first time an
   error leaves a frame without them (`note_frames`), to the stack reversed. A re-raise keeps them. Fatal run-time
   errors (an option ordinal out of bounds) have frames as exceptions do.

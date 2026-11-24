@@ -119,7 +119,18 @@ export
         moduleValues: hashMap.T(String Value)
         (* The frames running, outermost first (docs/exceptions.md section 4) *)
         callStack: vector.T(String)
+        (* The call in tail position that the call running makes next, in its
+         * place (treewalk.runCall, docs/interpreter.md section 3.3) *)
+        var pendingCall: maybe.T(PendingCall)
+        (* The IR interpreter's closures, by their builtin values, which
+         * treewalk.runCall runs in its loop of tail calls *)
+        tailCallables: hashMap.T(Builtin TailCallable)
     end
+    and PendingCall = Tuple callee: Value args: Array(Value) offset: maybe.T(Int) end
+    (* A function run by treewalk.runCall: in the frame traceName, if any, one
+     * call of it, which leaves Root.pendingCall set if it ended with a call in
+     * tail position *)
+    and TailCallable = Tuple traceName: maybe.T(String) run: All(args: Array(Value)) Value end
     (* An error raised while running (Errors raised while running, below) *)
     and Cause = Option
         raised with exc: ExceptionValue payload: maybe.T(Value) payloadType: maybe.T(tm.Type) end

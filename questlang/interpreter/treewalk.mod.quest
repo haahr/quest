@@ -247,6 +247,9 @@ export
     let operatorFunction(op: String): Value =
         model.builtinValue(op fun(args: Array(Value)): Value infix(op args[0] args[1] at(0)))
 
+    let builtinEqual(a: model.Builtin b: model.Builtin): Bool = a is b
+    let builtinHash(b: model.Builtin) = hash.identityHash(b)
+
     let newRoot(units: graph.UnitGraph): Frame =
         begin
             let root: model.Root = tuple
@@ -255,6 +258,8 @@ export
                 let var units = units
                 let moduleValues = model.newFields()
                 let callStack = vector.new()
+                let var pendingCall = maybe.none()
+                let tailCallables = hashMap.new(builtinEqual builtinHash)
             end
             let f = newFrame(maybe.none() maybe.none() maybe.none() root)
             define(f "true" model.trueValue)
@@ -371,6 +376,7 @@ export
         end
 
     let popStack(f: Frame): Ok = begin vector.pop(f.root.callStack) ok end
+    let popFrame(stack: vector.T(String)): Ok = begin vector.pop(stack) ok end
 
     (* ======================================================================
      * 3. Expressions
@@ -548,8 +554,14 @@ export
      * replaces a type's parameters by their bindings. A polymorphic constant,
      * such as list.nil, is a closure whose type parameters are its only
      * parameters, so instantiating it, as list.nil() does, also runs it;
-     * instantiating a curried f(A::TYPE)() does not. *)
-    let rec evalExpr(e: Expr f: Frame): Value =
+     * instantiating a curried f(A::TYPE)() does not.
+     *
+     * In tail position (tail), a call of a closure, of either interpreter,
+     * sets the root's pendingCall and returns ok instead, for the call running
+     * to make (runCall). *)
+    let rec evalExpr(e: Expr f: Frame): Value = evalIn(e f false)
+
+    and evalIn(e: Expr f: Frame tail: Bool): Value =
         begin
             let offset = at(e.offset)
             case e.form
@@ -712,10 +724,13 @@ export
                                         model.internalError("ordinal expects Option, got "
                                             <> model.typeName(args[0]) offset)
                                 end
+                            elsif tail andif hashMap.contains(f.root.tailCallables b.b) then
+                                pend(f callee args offset)
                             else
                                 b.b.fn(args)
                             end
-                        when vClosure with c then runClosure(c.c args offset)
+                        when vClosure with c then
+                            if tail then pend(f callee args offset) else runClosure(c.c args offset) end
                         else model.internalError("Cannot call non-function of type " <> model.typeName(callee) offset)
                     end
                 when exprInfix with x then
@@ -733,13 +748,14 @@ export
                 (* Control *)
                 when exprIf with x then
                     case evalExpr(x.cond f)
-                        when vBool with b then if b.b then evalExpr(x.thenBranch f) else evalExpr(x.elseBranch f) end
+                        when vBool with b then
+                            if b.b then evalIn(x.thenBranch f tail) else evalIn(x.elseBranch f tail) end
                         else model.internalError("Conditional expression must evaluate to Bool" offset)
                     end
                 when exprBlock with x then
                     let var g = pushScope(f)
                     for i = 0 upto {extent x.bindings - 1} do g := evalScopedBinding(x.bindings[i] g).frame end
-                    evalExpr(x.result g)
+                    evalIn(x.result g tail)
                 when exprLoop with x then
                     try begin loop checkInterrupt(offset) evalExpr(x.body f) end ok end when loopExit then ok end
                     model.okValue
@@ -928,12 +944,12 @@ export
                             let child = pushScope(f)
                             define(child maybe.unwrap(b.binder).name
                                     maybe.unwrapOr(tagged.payload model.okValue))
-                            evalExpr(b.body child)
+                            evalIn(b.body child tail)
                         else
-                            evalExpr(b.body f)
+                            evalIn(b.body f tail)
                         end
                     elsif maybe.isSome(x.elseBranch) then
-                        evalExpr(maybe.unwrap(x.elseBranch) f)
+                        evalIn(maybe.unwrap(x.elseBranch) f tail)
                     else
                         model.internalError("Unhandled case tag '" <> tagged.tag <> "'" offset)
                     end
@@ -1041,9 +1057,9 @@ export
                                         for j = 0 upto {extent b.binders - 1} do
                                             define(child b.binders[j].name a.a.value)
                                         end
-                                        evalExpr(b.body child)
+                                        evalIn(b.body child tail)
                                     else
-                                        evalExpr(b.body f)
+                                        evalIn(b.body f tail)
                                     end)
                                 end
                                 i := i + 1
@@ -1051,7 +1067,7 @@ export
                             if maybe.isSome(result) then
                                 maybe.unwrap(result)
                             elsif maybe.isSome(x.elseBranch) then
-                                evalExpr(maybe.unwrap(x.elseBranch) f)
+                                evalIn(maybe.unwrap(x.elseBranch) f tail)
                             else
                                 model.raiseException(model.dynamicError offset)
                             end
@@ -1098,43 +1114,118 @@ export
             model.tupleValue(elems labels)
         end
 
-    and runClosure(c: model.Closure args: Array(Value) offset: maybe.T(Int)): Value =
+    (* A call in tail position, which the call running makes in its place *)
+    and pend(f: Frame callee: Value args: Array(Value) offset: maybe.T(Int)): Value =
         begin
-            let env = c.env
-            (* A call that would make more than maxCallDepth calls active raises
-             * stack.overflow at offset, which the caller locates in its file *)
-            if vector.length(env.root.callStack) >= primitives.maxCallDepth then
+            f.root.pendingCall := maybe.some(tuple let callee = callee let args = args let offset = offset end)
+            model.okValue
+        end
+
+    and runClosure(c: model.Closure args: Array(Value) offset: maybe.T(Int)): Value =
+        runCall(c.env.root closureCallable(c) args offset)
+
+    (* A closure run by runCall: one call of it, its body in tail position *)
+    and closureCallable(c: model.Closure): model.TailCallable =
+        tuple
+            let traceName = maybe.some(c.traceName)
+            let run = fun(args: Array(Value)): Value activate(c args)
+        end
+
+    (* Runs a function (callee), of either interpreter, in its frame, and then
+     * each call its body makes in tail position (root.pendingCall), in that
+     * frame renamed, so that the calls run in a loop and add no active call
+     * (docs/interpreter.md section 3.3). A call that would make more than
+     * maxCallDepth calls active raises stack.overflow at offset, the call's,
+     * which the caller locates in its file. *)
+    and runCall(root: model.Root callee: model.TailCallable args: Array(Value) offset: maybe.T(Int)): Value =
+        begin
+            let stack = root.callStack
+            if vector.length(stack) >= primitives.maxCallDepth then
                 model.raiseException(:Ok primitives.stackOverflow offset)
             end
             checkInterrupt(offset)
-            vector.append(env.root.callStack c.traceName)
-            let result =
-                try
-                    case c.body.form
-                        when exprExternal with x then
-                            (* The type parameters' types, which the type
-                             * applications bound, resolved *)
-                            let types = vector.new(:tm.Type)
-                            for i = 0 upto {extent c.typeParamIds - 1} do
-                                let t = hashMap.get(c.typeBindings c.typeParamIds[i])
-                                if maybe.isSome(t) then vector.append(types maybe.unwrap(t)) end
+            let var name = callee.traceName
+            if maybe.isSome(name) then vector.append(stack maybe.unwrap(name)) end
+            let var current = callee
+            let var currentArgs = args
+            let var result = model.okValue
+            let var going = true
+            try
+                while going do
+                    result := current.run(currentArgs)
+                    if maybe.isSome(root.pendingCall) then
+                        let p = maybe.unwrap(root.pendingCall)
+                        root.pendingCall := maybe.none()
+                        checkInterrupt(p.offset)
+                        current := callableOf(root p.callee)
+                        currentArgs := p.args
+                        (* The frame running becomes the callee's (an IR
+                         * function the passes made has none) *)
+                        let renamed = current.traceName
+                        if maybe.isSome(name) andif maybe.isSome(renamed) then
+                            vector.set(stack {vector.length(stack) - 1} maybe.unwrap(renamed))
+                        elsif maybe.isSome(name) then
+                            vector.pop(stack)
+                            ok
+                        elsif maybe.isSome(renamed) then
+                            if vector.length(stack) >= primitives.maxCallDepth then
+                                model.raiseException(:Ok primitives.stackOverflow p.offset)
                             end
-                            builtins.callExternal(x.symbol vector.toArray(types) args)
-                        else
-                            let callEnv = pushScope(env)
-                            bindTypes(callEnv c.typeBindings)
-                            for i = 0 upto {extent c.params - 1} do
-                                if i < extent args then define(callEnv c.params[i] args[i]) end
-                            end
-                            evalExpr(c.body callEnv)
+                            vector.append(stack maybe.unwrap(renamed))
+                        end
+                        name := renamed
+                    else
+                        going := false
                     end
-                when model.runError with err then
-                    leaving(err env)
-                    popStack(env)
-                    rethrow(:Value err)
                 end
-            popStack(env)
+            when model.runError with err then
+                if maybe.isSome(name) then popFrame(stack) end
+                rethrow(:Ok err)
+            end
+            if maybe.isSome(name) then popFrame(stack) end
             result
+        end
+
+    (* What runCall runs for a function value: a closure's body, or an IR
+     * closure's (root.tailCallables) *)
+    and callableOf(root: model.Root v: Value): model.TailCallable =
+        case v
+            when vClosure with c then closureCallable(c.c)
+            when vBuiltin with b then maybe.unwrap(hashMap.get(root.tailCallables b.b))
+            else model.internalError("Cannot call non-function of type " <> model.typeName(v) none)
+        end
+
+    (* One call of a closure, in the frame runCall has pushed: an external's
+     * built-in implementation, or the closure's body, in tail position. An
+     * error raised inside is located in the file the closure was made in,
+     * unless code it called located it already, and records the frames
+     * running (docs/exceptions.md sections 3.2 and 4). *)
+    and activate(c: model.Closure args: Array(Value)): Value =
+        begin
+            let env = c.env
+            try
+                case c.body.form
+                    when exprExternal with x then
+                        (* The type parameters' types, which the type
+                         * applications bound, resolved *)
+                        let types = vector.new(:tm.Type)
+                        for i = 0 upto {extent c.typeParamIds - 1} do
+                            let t = hashMap.get(c.typeBindings c.typeParamIds[i])
+                            if maybe.isSome(t) then vector.append(types maybe.unwrap(t)) end
+                        end
+                        builtins.callExternal(x.symbol vector.toArray(types) args)
+                    else
+                        let callEnv = pushScope(env)
+                        bindTypes(callEnv c.typeBindings)
+                        for i = 0 upto {extent c.params - 1} do
+                            if i < extent args then define(callEnv c.params[i] args[i]) end
+                        end
+                        evalIn(c.body callEnv true)
+                end
+            when model.runError with err then
+                leaving(err env)
+                rethrow(:Value err)
+            end
         end
 
     (* ======================================================================

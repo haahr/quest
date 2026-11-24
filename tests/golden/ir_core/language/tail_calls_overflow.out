@@ -1,0 +1,103 @@
+import conv = "conv" : Conv
+import writer = "writer" : Writer
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @8:45
+      let %2: String = prim <>(s, "\n") @8:59
+      let %3: Ok = call writer.putString(%1, %2) @8:28
+      return %3
+    }
+  }
+  let other: Exception = exception other @9:1
+  funs rec {
+    fun guarded(n: Int): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        try catching (other) {
+          let %4: Int = prim +(n, 1) @12:44
+          let %5: Int = call guarded(%4) @12:36
+          jump k1(%5) @12:32
+        } handle (e: Exception) {
+          let %6: Bool = prim is(e, other) @12:32
+          if %6 { @12:32
+            jump k1(0) @12:32
+          } else {
+            reraise e @12:32
+          }
+        }
+      }
+    }
+  }
+  join k2(r.1: String) {
+    do call print(r.1) @13:1
+    funs rec {
+      fun looping(n.1: Int): Int {
+        var r.2: Int = 0 @18:9
+        var i: Int = 0 @19:9
+        let %7: Bool = prim <=(i, 0) @19:9
+        if %7 { @19:9
+          loop L1 {
+            let i.1: Int = i @19:9
+            let %8: Int = prim +(n.1, 1) @19:42
+            let %9: Int = call looping(%8) @19:34
+            r.2 := %9 @19:29
+            let %10: Bool = prim is(i, 0) @19:9
+            if %10 { @19:9
+              break L1 @19:9
+            }
+            let %11: Int = prim +(i, 1) @19:9
+            i := %11 @19:9
+          }
+        }
+        return r.2
+      }
+    }
+    join k3(r.3: String) {
+      do call print(r.3) @22:1
+      funs {
+        fun next(n.2: Int): Int {
+          let %12: Int = prim +(n.2, 1) @27:25
+          return %12
+        }
+      }
+      funs rec {
+        fun nested(n.3: Int): Int {
+          let %13: Int = prim +(n.3, 1) @28:43
+          let %14: Int = call nested(%13) @28:36
+          let %15: Int = call next(%14) @28:31
+          return %15
+        }
+      }
+      join k4(r.4: String) {
+        do call print(r.4) @29:1
+      } in {
+        try catching all {
+          let %16: Int = call nested(0) @29:20
+          let %17: String = call conv.int(%16) @29:11
+          jump k4(%17) @29:7
+        } handle (e.1: Exception) {
+          jump k4("overflow in an argument") @29:7
+        }
+      }
+    } in {
+      try catching all {
+        let %18: Int = call looping(0) @22:20
+        let %19: String = call conv.int(%18) @22:11
+        jump k3(%19) @22:7
+      } handle (e.2: Exception) {
+        jump k3("overflow in a loop") @22:7
+      }
+    }
+  } in {
+    try catching all {
+      let %20: Int = call guarded(0) @13:20
+      let %21: String = call conv.int(%20) @13:11
+      jump k2(%21) @13:7
+    } handle (e.3: Exception) {
+      jump k2("overflow in a try") @13:7
+    }
+  }
+}
+
