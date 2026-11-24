@@ -27,7 +27,9 @@ compiler prints for a program.
   `.quest` files (§9).
 - **Other editors** start `quest lsp` as a language server for `*.quest`.
 - **Initialization options:** `buildDir`, where artifacts go, and `includePaths`, directories to search for imported
-  units besides a document's own and the standard library, relative to the workspace.
+  units besides a document's own and the standard library, relative to the workspace. VS Code's setting for them is
+  `quest.server.includePaths`; this repository's `.vscode/settings.json`, the one file of `.vscode/` it tracks, lists
+  `lib` and `questlang`.
 
 ## 2. Design
 
