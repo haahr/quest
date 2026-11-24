@@ -663,6 +663,14 @@ then one timing of the suite (§2), with the lock, on a quiet machine. Commits s
      the slot, and every exit (a raise's cold path included) stores it back; slot promotion then makes it a register.
      First non-pointer words only (Int, Real, Bool), so that no store moves past a barrier's reasoning; pointers only
      if a census finds them hot.
+   - **Steps 25 and its loops done** (`9fee62e7`, `ssa/passes/loops`, after `accumulate`): against step 10, unit by
+     unit, ssac and arm64: mandelbrot 0.895 and 0.891, DLXSimulator 0.987 through ssac, ratio-regions 0.993 and
+     0.984; no program worse by 1% (tailfib's 1.011 through ssac is of 20 million instructions). Found on the way:
+     two or more self tail calls in a function are left calls, since one header merged zern's nested loops (`lp1`
+     inlined into `lp2`) into a shape clang no longer split, 1.09 of its ssac instructions; marking immutable
+     globals' loads invariant in functions, for value numbering, cost tailmerge and hamlet 1 to 5% (longer live
+     ranges), so the cell pass reads a `g_` global's load as a base itself, where the loop stores nothing to it; and
+     the counts of programs that allocate much (tailmerge) vary by up to 4% from run to run on a loaded machine.
    - *Rotation (D6):* a loop whose header tests and exits becomes its test before the loop and a copy at the bottom,
      so the body runs at least once once entered, and its first pass's checks dominate the rest.
    - *Hoisting (8):* pure instructions, invariant loads, and the checks that depend only on them (null, bounds on an
