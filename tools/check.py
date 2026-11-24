@@ -402,6 +402,10 @@ def checks(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         # builds of the self-hosted driver compile N modules at once, as ./quest
         # does with it
         os.environ["QUEST_JOBS"] = str(args.jobs)
+    # So is the seed, for what runs ./quest rather than run_tests.py: the
+    # stress tier's driver and the format check build ./quest's stages with
+    # it, and past a gap only the bootstrap can build them
+    os.environ["QUEST_SEED"] = args.seed
 
     if args.light:
         return light(args.seed, cores)
