@@ -629,7 +629,47 @@ Also found, not about the recursive form: Quest's own `while` on a `var` flag co
 arm64 in mandelbrot (likely step 14's), and imp-for's nest, which clang computes without looping, retires 324 times
 ssac's instructions through arm64 in every form.
 
-## 5. Order and stopping
+## 5. Part 3: five steps, in order (2026-11-24)
+
+The user chose (2026-11-24) the next five, all of which gain unit by unit, in this order. Each is evaluated by counts
+on the loaded machine, without the lock (`--no-exclusive`): instructions and bytes of whole programs at a
+thirty-second of the suite's counts, unit by unit through arm64 and ssac, against the commit before it, with
+`run.py check` of every program through both and the suites the step touches. `tools/check` runs once, at the end;
+then one timing of the suite (§2), with the lock, on a quiet machine. Commits stay local until the user says to push.
+
+- **D6, loop rotation in the SSA** (the user, 2026-11-24): hoisting was tried on 2026-11-03 and found almost
+  nothing, since a loop's invariant loads sit behind its null and bounds checks (`dominatesExits` failed). So step 8
+  rotates loops in the SSA first, so that ssac and arm64 both gain, and step 14 keeps only arm64's back-edge moves.
+
+1. **Step 10, `real.int` as an SSA conversion.** A new pure opcode (`opIntToReal`): built for the external
+   `quest_real_from_int` in `ssa/build/calls`' `externalOperation`; printed, parsed, and verified; folded on a
+   constant; `(double)` in ssac's C, `scvtf` on arm64. mandelbrot's `real.int(j)` is the aim.
+2. **Steps 25 and 8, loops: memory promoted, rotated, invariants hoisted** (`ssa/passes/loops`, a new pass on
+   `ssa/cfg`'s dominators, natural loops from back edges):
+   - *Promotion (25):* a word at an address the loop does not change (a module cell's field: a global's invariant
+     load plus an offset), which the loop loads and stores, where nothing else in the loop can write it: no call but
+     runtime functions that write no memory (their effects), and no store but to that address, to the loop's own
+     allocations, and to stack slots. It is loaded before the loop into a stack slot, the loop's loads and stores use
+     the slot, and every exit (a raise's cold path included) stores it back; slot promotion then makes it a register.
+     First non-pointer words only (Int, Real, Bool), so that no store moves past a barrier's reasoning; pointers only
+     if a census finds them hot.
+   - *Rotation (D6):* a loop whose header tests and exits becomes its test before the loop and a copy at the bottom,
+     so the body runs at least once once entered, and its first pass's checks dominate the rest.
+   - *Hoisting (8):* pure instructions, invariant loads, and the checks that depend only on them (null, bounds on an
+     unchanging length) moved to the preheader of a rotated loop; constants left where they are used.
+   - Gate: mandelbrot (25), matrix-multiply, mpuz, lexgen (8); each part kept only if it saves 1% somewhere it aims
+     at, and the hoisting is watched for the spills value numbering once caused (ssa.md §4.1) and for broken `ldp`
+     pairs.
+3. **Steps 9 and 26, induction variables:** in a rotated loop, `base + i * 8` for an induction variable `i` becomes a
+   pointer stepping by 8, and indices that step together become one with offsets. matrix-multiply's 6 of 30, tensor's
+   3% (benchmarks.md §42.3).
+4. **Step 14, arm64's back-edge moves:** with loops rotated in the SSA, what is left is the moves of permuted
+   parameters on a back edge (mandelbrot's `fmov`s, mpuz's `mov`s). Probed first by counting the moves on the hot back
+   edges of mandelbrot, mpuz, and the `while`-on-a-flag loop of §42.3; built only if they are 1% of a program.
+5. **Step 18, conjunctions as `ccmp`:** counted first, how many of logic's 1,563 `cset`/`csel` are in its hot code
+   (`tools/perf` samples); built only if they are 1% of its instructions.
+
+## 6. Order and stopping
 
 Part 1's steps in order 1 to 7, then the part's counts and timings (§2) into benchmarks.md. Then Part 2: §4.1 and §4.2
 in order; then §4.3, starting with the census (step 19) and the two steps that change no ABI (24, then 22), then 23
