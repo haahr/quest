@@ -723,6 +723,14 @@ then one timing of the suite (§2), with the lock, on a quiet machine. Commits s
 5. **Step 18, conjunctions as `ccmp`:** counted first, how many of logic's 1,563 `cset`/`csel` are in its hot code
    (`tools/perf` samples); built only if they are 1% of its instructions.
 
+**Step 18 counted, not built** (2026-11-24): logic's five hottest functions through arm64 (`oc`, `unify1`, `cons`,
+`deref`, `unifys`, about 90% of its samples) hold one or two `cset`/`csel` each among 150 to 600 instructions, and the
+binary 608 in all, mostly in cold code (§38's 1,563 were before Parts 1 to 3): under the 1% this part asks. **Steps 26
+and 9's strength reduction not built:** merged indices are worth at most about 3% of tensor alone (benchmarks.md
+§42.3's hand-written loops, which merged them and more), whose index checks stay since the indices' ranges are not
+known; strength reduction trades a multiply for an add where the index is still needed for a check, and arm64 folds
+the scaling into the address already.
+
 **To investigate when Part 3 is done** (the user, 2026-11-24):
 
 - **Non-null facts:** a value freshly allocated, or already dereferenced, is not known to be non-null, so a later null
