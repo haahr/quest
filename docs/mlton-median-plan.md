@@ -24,7 +24,8 @@ whole program 1.64 (§35's 1.25, 1.79, 1.85).
 
 Part 2, analyzed and not made (local, not pushed): steps 11 and 24, under the plan's threshold; step 12, worth 6 to 9%
 on lexgen but needing a whole-program analysis of a field's values (the user to decide); step 19's census
-(`allocations.py --by-layout`), which supports steps 20 and 21. Not started: 6b, 8 to 10, 14, 17, 18, 20 to 23.
+(`allocations.py --by-layout`), which supports step 21; step 20, folded into 21, since alone it saves about 5% of
+logic's and raytrace's bytes and 0.6% of the compiler's. Not started: 6b, 8 to 10, 14, 17, 18, 21 to 23.
 
 ## 1. Decisions
 
@@ -459,11 +460,29 @@ the collector and the barrier find an object's size and pointers from its header
 
 Gain to check: logic's `Term`, a `ref` of 32 bytes to 16; the census over the suite.
 
-**Step 21, the tag in the header, not a word of its own (only after step 20).** With a layout per case, the tag is a
-property of the layout: the case's layouts for one option type are made consecutive (one table per option shape),
-so the tag is `(header & mask) - table` divided by the layout's size, a load, an `and`, a subtraction and a shift,
-where today it is a load. The object loses its tag word (a cons cell 24 bytes, as MLton's), and the payload is at the
-object's address:
+**Step 20 analyzed, not made on its own** (2026-11-23). The census gives each option's bytes by case, and a case's
+own size is its declaration's (in the compiler, a scratch build that named each case's layout with its word count).
+A case's saving is the union's size less its own: header, tag, and the case's words.
+
+- **The suite:** only seven programs put more than 3% of their bytes in options with several payload cases. logic's
+  `con` and `ref` (24 bytes in a 32-byte union) and raytrace's one- and two-word cases of `V` (in a 56-byte union)
+  save about 5% of each program's bytes; knuth-bendix and model-elimination at most 1.5%; boyer, hamlet, and mlyacc
+  almost nothing, since their bytes are in the largest case. Lists, most options' bytes, have one case with a payload
+  and gain nothing.
+- **The compiler** (the self-hosted one compiling `questlang/driver/main.quest`, 50 GB in 1.05 billion objects):
+  options are 14.6% of the bytes (`maybe.some` 4.3%), and step 20 saves 0.6%, no type more than 0.12%. Step 21 saves
+  3.1% from options made at a known case, and up to about 1% more from those made generically. Most of its bytes are
+  vectors (the tuple 8.3%, the arrays behind them about 16%), byte buffers, and strings.
+
+A 5% saving in bytes is unlikely to show in time: step 24's nucleic experiment saved 10% and moved instructions by
+under 1.3%. So step 20 is not made as a step of its own, for a full ABI change. It is folded into step 21: with the
+tag in a case's own layout, sizing each case to itself is a small addition there, if wanted.
+
+**Step 21, the tag in the header, not a word of its own.** Each case already has a layout of its own
+(`repr/objectlayout`; step 20 is folded in here). With a layout per case, the tag is a property of the layout: the
+case's layouts for one option type are made consecutive (one table per option shape), so the tag is `(header & mask) -
+table` divided by the layout's size, a load, an `and`, a subtraction and a shift, where today it is a load. The object
+loses its tag word (a cons cell 24 bytes, as MLton's), and the payload is at the object's address:
 
 - a case binder points to the object itself, which changes every case's offsets in the SSA builder, both C emitters,
   and the runtime;
