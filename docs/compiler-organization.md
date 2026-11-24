@@ -16,7 +16,7 @@ was ported from, builds it when there is no release and shares its behavior gold
 3. **Algebraic Data Types via `Option`:** Every AST and semantic model variant is defined as an `Option` type with
    case tags and payload records/tuples.
 4. **Valid Quest Identifier Syntax:** Quest type names cannot contain underscores (`_`). All type names use `CamelCase`
-   (e.g., `Expr`, `TypeExpr`, `TokenKind`, `AstPrint`).
+   (e.g., `Expr`, `TypeExpr`, `TokenKind`, `ASTPrint`).
 5. **Data-Driven PEG Parser:** The parser decouples grammar rules, PEG parsing engine, and AST construction actions.
 6. **Uncurried Value Arguments by Default:** Standard operations take uncurried value argument lists (`f(a b c)`),
    reserving currying for type parameter groups (`f(A::TYPE)(...)`) and higher-order combinators.
@@ -168,7 +168,7 @@ from Python's `hashlib`, for layout tags and type digests.)
 
 ## 3. AST Representation and Design
 
-The AST is one module, `questlang/syntax/ast` (interface `Ast`, in [ast.int.quest](../questlang/syntax/ast.int.quest)).
+The AST is one module, `questlang/syntax/ast` (interface `AST`, in [ast.int.quest](../questlang/syntax/ast.int.quest)).
 It mirrors the bootstrap parser's AST (`bootstrap/python/quest/syntax/ast.py`) node for node, so that
 `questlang/syntax/astprint` can print it in the same canonical S-expression form as the bootstrap `ast_dump`, and the
 two can be compared on every parseable Quest file ([testing.md](testing.md) §2.3). The interface declares its types with

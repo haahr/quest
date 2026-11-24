@@ -81,7 +81,7 @@ PRELUDE = """import
     questlang/common/diagbag : questlang/common/DiagBag
     questlang/syntax/tokenizer : questlang/syntax/Tokenizer
     questlang/syntax/parser : questlang/syntax/Parser
-    questlang/syntax/astprint : questlang/syntax/AstPrint
+    questlang/syntax/astprint : questlang/syntax/ASTPrint
     writer : Writer
     conv : Conv
 ;

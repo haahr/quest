@@ -317,7 +317,7 @@ import
     util/maybe : util/Maybe
 
     (* the AST *)
-    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/ast : questlang/syntax/AST
     support/bench : support/Bench
 export
     let x = 1

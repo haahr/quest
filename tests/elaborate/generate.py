@@ -72,7 +72,7 @@ PRELUDE = """import
     questlang/common/location : questlang/common/Location
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/diagbag : questlang/common/DiagBag
-    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/ast : questlang/syntax/AST
     questlang/syntax/tokenizer : questlang/syntax/Tokenizer
     questlang/syntax/parser : questlang/syntax/Parser
     questlang/syntax/desugar : questlang/syntax/Desugar
