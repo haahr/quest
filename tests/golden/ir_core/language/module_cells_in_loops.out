@@ -1,0 +1,161 @@
+import int = "int" : IntOp
+import conv = "conv" : Conv
+import writer = "writer" : Writer
+import real = "real" : RealOp
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @10:45
+      let %2: String = prim <>(s, "\n") @10:59
+      let %3: Ok = call writer.putString(%1, %2) @10:28
+      return %3
+    }
+  }
+  let n: Int = 0 @12:31
+  let count: Tuple var n: Int end = tuple(n) @12:13
+  funs rec {
+    fun inner(c: Int, z: Int): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        let %4: Bool = prim <(c, 50) @13:40
+        if %4 { @13:37
+          join k2(r.1: Int) {
+            jump k1(r.1) @13:37
+          } in {
+            let %5: Int = prim *(z, z) @13:56
+            let %6: Bool = prim >(%5, 1000) @13:56
+            if %6 { @13:52
+              jump k2(c) @13:52
+            } else {
+              let %7: Int = prim +(c, 1) @13:88
+              let %8: Int = prim +(z, c) @13:94
+              let %9: Int = call inner(%7, %8) @13:82
+              jump k2(%9) @13:52
+            }
+          }
+        } else {
+          jump k1(c) @13:37
+        }
+      }
+    }
+  }
+  funs rec {
+    fun outer(j: Int): Ok {
+      let %10: Bool = prim >=(j, 100) @14:32
+      if %10 { @14:29
+      } else {
+        let %11: Int = tuple_field(count, 0) @14:71
+        let %12: Int = call inner(0, j) @14:81
+        let %13: Int = prim +(%11, %12) @14:71
+        store count.#0 := %13 @14:60
+        let %14: Int = prim +(j, 1) @14:98
+        do call outer(%14) @14:92
+      }
+      return ok
+    }
+  }
+  do call outer(0) @15:1
+  do call outer(0) @16:1
+  let %15: Int = tuple_field(count, 0) @17:32
+  let %16: String = call conv.int(%15) @17:23
+  let %17: String = prim <>("int cell: ", %16) @17:7
+  do call print(%17) @17:1
+  let x: Real = 0.0 @19:31
+  let total: Tuple var x: Real end = tuple(x) @19:13
+  funs rec {
+    fun sum(i: Int): Ok {
+      let %18: Bool = prim >(i, 10) @20:30
+      if %18 { @20:27
+      } else {
+        let %19: Real = tuple_field(total, 0) @20:67
+        let %20: Real = call real.int(i) @20:79
+        let %21: Real = prim **(%20, 0.5) @20:79
+        let %22: Real = prim ++(%19, %21) @20:67
+        store total.#0 := %22 @20:56
+        let %23: Int = prim +(i, 1) @20:103
+        do call sum(%23) @20:99
+      }
+      return ok
+    }
+  }
+  do call sum(1) @21:1
+  do call sum(1) @22:1
+  let %24: Real = tuple_field(total, 0) @23:34
+  let %25: String = call conv.real(%24) @23:24
+  let %26: String = prim <>("real cell: ", %25) @23:7
+  do call print(%26) @23:1
+  let n.1: Int = 0 @25:30
+  let seen: Tuple var n: Int end = tuple(n.1) @25:12
+  funs {
+    fun peek(): Int {
+      let %27: Int = tuple_field(seen, 0) @26:19
+      return %27
+    }
+  }
+  funs rec {
+    fun watched(i.1: Int, acc: Int): Int {
+      join k3(r.2: Int) {
+        return r.2
+      } in {
+        let %28: Bool = prim >(i.1, 5) @27:44
+        if %28 { @27:41
+          jump k3(acc) @27:41
+        } else {
+          let %29: Int = tuple_field(seen, 0) @27:80
+          let %30: Int = prim +(%29, i.1) @27:80
+          store seen.#0 := %30 @27:70
+          let %31: Int = prim +(i.1, 1) @27:99
+          let %32: Int = call peek() @27:111
+          let %33: Int = prim +(acc, %32) @27:105
+          let %34: Int = call watched(%31, %33) @27:91
+          jump k3(%34) @27:41
+        }
+      }
+    }
+  }
+  let %35: Int = call watched(1, 0) @28:35
+  let %36: String = call conv.int(%35) @28:26
+  let %37: Int = call watched(1, 0) @28:68
+  let %38: String = call conv.int(%37) @28:59
+  let %39: String = prim <>(" ", %38) @28:52
+  let %40: String = prim <>(%36, %39) @28:26
+  let %41: String = prim <>("with a call: ", %40) @28:7
+  do call print(%41) @28:1
+  let n.2: Int = 0 @31:31
+  let steps: Tuple var n: Int end = tuple(n.2) @31:13
+  funs rec {
+    fun walk(i.2: Int): Ok {
+      let %42: Int = tuple_field(steps, 0) @32:45
+      let %43: Int = prim -(5, i.2) @32:63
+      let %44: Int = prim /(100, %43) @32:56
+      let %45: Int = prim +(%42, %44) @32:45
+      store steps.#0 := %45 @32:34
+      let %46: Int = prim +(i.2, 1) @32:76
+      let %47: Ok = call walk(%46) @32:71
+      return %47
+    }
+  }
+  funs rec {
+    fun walkTwice(): Ok {
+      do call walk(0) @33:33
+      let %48: Ok = call walk(0) @33:41
+      return %48
+    }
+  }
+  let %49: Exception = member int.error @34:22
+  try catching (%49) {
+    do call walkTwice() @34:5
+  } handle (e: Exception) {
+    let %50: Bool = prim is(e, %49) @34:1
+    if %50 { @34:1
+      let %51: Int = tuple_field(steps, 0) @34:73
+      let %52: String = call conv.int(%51) @34:64
+      let %53: String = prim <>("after a raise: ", %52) @34:43
+      do call print(%53) @34:37
+    } else {
+      reraise e @34:1
+    }
+  }
+}
+

@@ -1,0 +1,380 @@
+(* Quest Self-Hosted Compiler: The SSA's Loops Implementation *)
+
+module loops : Loops
+import
+    stringOp = string : StringOp
+
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+
+    questlang/ssa/cfg : questlang/ssa/CFG
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/passes/conditions : questlang/ssa/passes/Conditions
+    questlang/ssa/passes/promote : questlang/ssa/passes/Promote
+    questlang/ssa/passes/tailCalls : questlang/ssa/passes/TailCalls
+    questlang/ssa/passes/valueNumbers : questlang/ssa/passes/ValueNumbers
+    questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
+export
+    Let Function = ssa.Function
+
+    (* Whether vs and ws are the same values, in order *)
+    let same(vs: Array(Int) ws: Array(Int)): Bool =
+        begin
+            let var equal = extent vs is extent ws
+            for k = 0 upto {extent vs - 1} do if equal andif {vs[k] isnot ws[k]} then equal := false end end
+            equal
+        end
+
+    (* Whether blk ends in a call of f itself whose results blk returns,
+     * directly or through blocks that only pass them on *)
+    let selfTail(f: Function blk: ssa.Block): Bool =
+        begin
+            let n = vector.length(blk.insts)
+            if n is 0 then
+                false
+            else
+                let last = vector.get(blk.insts {n - 1})
+                if ssa.isOp(last ssa.opCall) andif stringOp.equal(last.symbol f.symbol)
+                        andif {extent last.args is vector.length(f.paramTypes)} then
+                    case blk.term
+                        when termReturn with x then same(x.values last.results)
+                        when termJump with x then tailCalls.returnsThrough(f x.target last.results)
+                        when termNone, termBranch, termSwitch, termTailCall, termTry, termUnreachable then false
+                    end
+                else
+                    false
+                end
+            end
+        end
+
+    let jump(block: Int args: Array(Int)): ssa.Terminator =
+        option termJump of ssa.Terminator with let target = ssa.target(block args) end
+
+    let loopFunction(f: Function): Bool =
+        begin
+            let sites = vector.new(:Int)
+            if not(tailCalls.slotsEscape(f)) then
+                for b = 0 upto {vector.length(f.blocks) - 1} do
+                    if selfTail(f ssa.block(f b)) then vector.append(sites b) end
+                end
+            end
+            (* Two or more sites are loops nested in one function (an outer
+             * one inlined into its inner one's, say), which one header would
+             * merge: clang keeps them apart from the calls, and the backends
+             * make each call a jump as before *)
+            if vector.length(sites) isnot 1 then
+                false
+            else
+                (* The header takes the entry's instructions and terminator,
+                 * with fresh parameters that replace the function's *)
+                let entry = ssa.block(f 0)
+                let header = ssa.newBlock(f)
+                let h = ssa.block(f header)
+                let params = vector.toArray(entry.params)
+                let fresh = array of(vector.length(f.types) ~1)
+                for k = 0 upto {extent params - 1} do
+                    fresh[params[k]] := ssa.addParam(f header ssa.typeOf(f params[k]))
+                end
+                for k = 0 upto {vector.length(entry.insts) - 1} do
+                    vector.append(h.insts vector.get(entry.insts k))
+                end
+                vector.clear(entry.insts)
+                h.term := entry.term
+                h.termLoc := entry.termLoc
+                entry.term := ssa.termNone
+                ssa.replaceUses(f fun(v: Int): Int if {v < extent fresh} andif {fresh[v] >= 0} then fresh[v] else v end)
+                (* Each site's call, its arguments renamed by replaceUses, is
+                 * a jump to the header; a site in the entry is now in the
+                 * header *)
+                for k = 0 upto {vector.length(sites) - 1} do
+                    let s = vector.get(sites k)
+                    let blk = ssa.block(f if s is 0 then header else s end)
+                    let call = vector.pop(blk.insts)
+                    blk.term := jump(header call.args)
+                    blk.termLoc := call.loc
+                end
+                entry.term := jump(header params)
+                entry.termLoc := h.termLoc
+                true
+            end
+        end
+
+    (* =========================================================================
+     * Module cells kept in registers across loops
+     * ====================================================================== *)
+
+    (* Whether a call i in a loop leaves its memory alone and returns: a direct
+     * call of a runtime function that writes no memory, cannot raise, and
+     * returns (quest_alloc writes only the object it makes) *)
+    let calm(i: ssa.Inst): Bool =
+        if ssa.isOp(i ssa.opCallIndirect) then
+            false
+        else
+            let var known = false
+            for k = 0 upto {extent runtimeFunctions.functions - 1} do
+                let r = runtimeFunctions.functions[k]
+                if stringOp.equal(r.name i.symbol) then
+                    known := case r.effects.memory when memoryWrites then false else true end
+                        andif not(r.effects.raises) andif not(r.effects.noReturn)
+                end
+            end
+            known
+        end
+
+    (* The blocks of the natural loop whose header is h: those that reach one
+     * of h's back edges' sources without passing h, h among them; none when h
+     * heads no loop *)
+    let body(g: cfg.Graph h: Int): Array(Bool) =
+        begin
+            let n = extent g.preds
+            let inside = array of(n false)
+            let work = vector.new(:Int)
+            for k = 0 upto {extent g.preds[h] - 1} do
+                let p = g.preds[h][k]
+                if cfg.reached(g p) andif cfg.dominates(g h p) then vector.append(work p) end
+            end
+            if not(vector.empty(work)) then inside[h] := true end
+            while not(vector.empty(work)) do
+                let b = vector.pop(work)
+                if not(inside[b]) then
+                    inside[b] := true
+                    for k = 0 upto {extent g.preds[b] - 1} do
+                        let p = g.preds[b][k]
+                        if cfg.reached(g p) andif not(inside[p]) then vector.append(work p) end
+                    end
+                end
+            end
+            inside
+        end
+
+    (* A module cell's word: the global symbol holding the cell's address, the
+     * offset of the address in it, and the word's offset in the cell *)
+    Let Cell = Tuple symbol: String at: Int offset: Int type: ssa.Type end
+
+    (* The global and offset whose load made address a, if one did: a global
+     * of the unit's (g_...) that the loop does not store to, which only its
+     * module's initialization writes, or a word an invariant load reads *)
+    Let Base = Tuple symbol: String at: Int end
+    let baseOf(defs: Array(maybe.T(ssa.Inst)) a: Int): maybe.T(Base) =
+        if maybe.isNone(defs[a]) then
+            maybe.none()
+        else
+            let d = maybe.unwrap(defs[a])
+            if ssa.isOp(d ssa.opLoad) andif {d.width is 8} andif maybe.isSome(defs[d.args[0]])
+                    andif ssa.isOp(maybe.unwrap(defs[d.args[0]]) ssa.opSymbol)
+                    andif {d.invariant orif strutil.startsWith(maybe.unwrap(defs[d.args[0]]).symbol "g_")} then
+                maybe.some(tuple let symbol = maybe.unwrap(defs[d.args[0]]).symbol let at = d.imm end)
+            else
+                maybe.none()
+            end
+        end
+
+    let sameBase(x: maybe.T(Base) y: Base): Bool =
+        maybe.isSome(x) andif stringOp.equal(maybe.unwrap(x).symbol y.symbol) andif {maybe.unwrap(x).at is y.at}
+
+    (* An access's address, offset, and width, if i is a load or a store *)
+    Let Access = Tuple address: Int offset: Int width: Int end
+    let accessOf(i: ssa.Inst): maybe.T(Access) =
+        if ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opStore) then
+            maybe.some(tuple let address = i.args[0] let offset = i.imm let width = i.width end)
+        else
+            maybe.none()
+        end
+
+    (* The type a load reads or a store writes *)
+    let accessType(f: Function i: ssa.Inst): ssa.Type =
+        if ssa.isOp(i ssa.opLoad) then ssa.typeOf(f i.results[0]) else ssa.typeOf(f i.args[1]) end
+
+    (* Whether access i cannot reach a cell's word, whatever its offset: an
+     * access of a stack slot or of a global's own word (g_..., a variable's
+     * word, never an object's), or an invariant load, which reads a word that
+     * nothing writes once made *)
+    let apart(defs: Array(maybe.T(ssa.Inst)) i: ssa.Inst): Bool =
+        if ssa.isOp(i ssa.opLoad) andif i.invariant then true
+        elsif maybe.isNone(defs[i.args[0]]) then false
+        else
+            let d = maybe.unwrap(defs[i.args[0]])
+            ssa.isOp(d ssa.opSlot) orif {ssa.isOp(d ssa.opSymbol) andif strutil.startsWith(d.symbol "g_")}
+        end
+
+    (* A cell the loop of h stores to and may keep in a register: its word is
+     * read and written only whole, as an Int or a Real, through the global's
+     * invariant load; no other access in the loop can reach the word (one at
+     * an overlapping offset through any other address, but a stack slot's);
+     * and the loop makes no call but calm ones, and enters no try *)
+    let candidate(f: Function g: cfg.Graph defs: Array(maybe.T(ssa.Inst)) inside: Array(Bool)): maybe.T(Cell) =
+        begin
+            let var fine = true
+            let cells = vector.new(:Cell)
+            let accesses = vector.new(:ssa.Inst)
+            for b = 0 upto {extent inside - 1} do
+                if inside[b] then
+                    let blk = ssa.block(f b)
+                    case blk.term when termTry then fine := false else ok end
+                    for k = 0 upto {vector.length(blk.insts) - 1} do
+                        let i = vector.get(blk.insts k)
+                        if ssa.isCall(i) then
+                            if not(calm(i)) then fine := false end
+                        elsif maybe.isSome(accessOf(i)) then
+                            vector.append(accesses i)
+                            let base = baseOf(defs i.args[0])
+                            let t = accessType(f i)
+                            if ssa.isOp(i ssa.opStore) andif maybe.isSome(base) andif {i.width is 8}
+                                    andif {{t is ssa.typeInt} orif {t is ssa.typeReal}} then
+                                let bb = maybe.unwrap(base)
+                                vector.append(cells tuple
+                                    let symbol = bb.symbol
+                                    let at = bb.at
+                                    let offset = i.imm
+                                    let type = t
+                                end)
+                            end
+                        end
+                    end
+                end
+            end
+            let var found = maybe.none(:Cell)
+            if fine then
+                for c = 0 upto {vector.length(cells) - 1} do
+                    if maybe.isNone(found) then
+                        let cell = vector.get(cells c)
+                        let base = tuple let symbol = cell.symbol let at = cell.at end
+                        let var clear = true
+                        (* The global itself is not written in the loop *)
+                        for k = 0 upto {vector.length(accesses) - 1} do
+                            let i = vector.get(accesses k)
+                            if ssa.isOp(i ssa.opStore) andif maybe.isSome(defs[i.args[0]])
+                                    andif ssa.isOp(maybe.unwrap(defs[i.args[0]]) ssa.opSymbol)
+                                    andif stringOp.equal(maybe.unwrap(defs[i.args[0]]).symbol cell.symbol) then
+                                clear := false
+                            end
+                        end
+                        for k = 0 upto {vector.length(accesses) - 1} do
+                            let i = vector.get(accesses k)
+                            let a = maybe.unwrap(accessOf(i))
+                            let overlaps = {a.offset < cell.offset + 8} andif {cell.offset < a.offset + a.width}
+                            if overlaps andif not(apart(defs i)) then
+                                if sameBase(baseOf(defs a.address) base) then
+                                    if {a.offset isnot cell.offset} orif {a.width isnot 8}
+                                            orif {accessType(f i) isnot cell.type} then
+                                        clear := false
+                                    end
+                                else
+                                    clear := false
+                                end
+                            end
+                        end
+                        if clear then found := maybe.some(cell) end
+                    end
+                end
+            end
+            found
+        end
+
+    (* Appends instructions to block b, which is terminated, before its
+     * terminator *)
+    let before(f: Function b: Int emitting: All() Ok): Ok =
+        begin
+            let blk = ssa.block(f b)
+            let t = blk.term
+            blk.term := ssa.termNone
+            emitting()
+            blk.term := t
+        end
+
+    (* The cell's address, loaded from its global in block b *)
+    let cellAddress(f: Function b: Int cell: Cell): Int =
+        ssa.invariantLoad(f b ssa.symbolAddress(f b cell.symbol) cell.at 8 false ssa.typePtr)
+
+    (* Keeps cell in a stack slot across the loop of h: each predecessor from
+     * outside loads the cell's word into it, the loop's accesses use it, and
+     * each edge that leaves the loop stores it back, in a block of its own *)
+    let keep(f: Function g: cfg.Graph defs: Array(maybe.T(ssa.Inst)) h: Int inside: Array(Bool) cell: Cell): Ok =
+        begin
+            let slot = ssa.newSlot(f 8 8)
+            let var address = 0
+            before(f 0 fun(): Ok address := ssa.slotAddress(f 0 slot))
+            let slotAt = address
+            for k = 0 upto {extent g.preds[h] - 1} do
+                let p = g.preds[h][k]
+                if not(inside[p]) then
+                    before(f p fun(): Ok
+                        ssa.store(f p slotAt 0 8 ssa.load(f p cellAddress(f p cell) cell.offset 8 false cell.type)))
+                end
+            end
+            let base = tuple let symbol = cell.symbol let at = cell.at end
+            for b = 0 upto {extent inside - 1} do
+                if inside[b] then
+                    let blk = ssa.block(f b)
+                    for k = 0 upto {vector.length(blk.insts) - 1} do
+                        let i = vector.get(blk.insts k)
+                        if maybe.isSome(accessOf(i)) andif sameBase(baseOf(defs i.args[0]) base)
+                                andif {i.imm is cell.offset} then
+                            i.args[0] := slotAt
+                            i.imm := 0
+                        end
+                    end
+                end
+            end
+            for b = 0 upto {extent inside - 1} do
+                if inside[b] then
+                    let blk = ssa.block(f b)
+                    blk.term := ssa.mapTargets(blk.term fun(t: ssa.Target): ssa.Target
+                        if inside[t.block] then
+                            t
+                        else
+                            let w = ssa.newBlock(f)
+                            let v = ssa.load(f w slotAt 0 8 false cell.type)
+                            ssa.store(f w cellAddress(f w cell) cell.offset 8 v)
+                            ssa.terminate(f w jump(t.block t.args))
+                            ssa.target(w array of :Int end)
+                        end)
+                end
+            end
+        end
+
+    (* Keeps the module cells that f's loops store to in registers, outermost
+     * loops first; whether it kept any *)
+    let keepCells(f: Function): Bool =
+        begin
+            let var kept = false
+            let var again = true
+            let var rounds = 0
+            while again andif {rounds < 16} do
+                again := false
+                rounds := rounds + 1
+                let g = cfg.graph(f)
+                let defs = ssa.definitions(f)
+                for r = 0 upto {extent g.order - 1} do
+                    if not(again) then
+                        let h = g.order[r]
+                        let inside = body(g h)
+                        if inside[h] then
+                            let c = candidate(f g defs inside)
+                            if maybe.isSome(c) then
+                                keep(f g defs h inside maybe.unwrap(c))
+                                kept := true
+                                again := true
+                            end
+                        end
+                    end
+                end
+            end
+            if kept then let ignored = promote.promoteFunction(f) end
+            kept
+        end
+
+    let loopUnit(u: ssa.Unit): Ok =
+        begin
+            for i = 0 upto {vector.length(u.functions) - 1} do
+                let f = vector.get(u.functions i)
+                let looped = loopFunction(f)
+                let kept = keepCells(f)
+                if looped orif kept then
+                    valueNumbers.numberFunction(f)
+                    let ignored = conditions.decideFunction(f)
+                end
+            end
+        end
+end

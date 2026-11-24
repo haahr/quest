@@ -1,0 +1,34 @@
+(* A module cell that a loop updates is kept in a register across the loop
+   and stored back when the loop leaves it (ssa/passes/loops, docs/ssa.md
+   section 4.1): a recursive loop that stays a function, called from two
+   places; one whose cell is a Real; one that calls Quest code, which might
+   read the cell, so the cell stays in memory; and one that raises partway,
+   whose handler sees the cell as the raise left it. *)
+import int : IntOp
+import conv : Conv
+import writer : Writer
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+
+let count = tuple let var n = 0 end
+let rec inner(c: Int z: Int): Int = if c < 50 then if {z * z} > 1000 then c else inner(c + 1 z + c) end else c end
+let rec outer(j: Int): Ok = if j >= 100 then ok else begin count.n := count.n + inner(0 j) outer(j + 1) end end
+outer(0)
+outer(0)
+print("int cell: " <> conv.int(count.n))
+
+let total = tuple let var x = 0.0 end
+let rec sum(i: Int): Ok = if i > 10 then ok else begin total.x := total.x ++ {real.int(i) ** 0.5} sum(i + 1) end end
+sum(1)
+sum(1)
+print("real cell: " <> conv.real(total.x))
+
+let seen = tuple let var n = 0 end
+let peek(): Int = seen.n
+let rec watched(i: Int acc: Int): Int = if i > 5 then acc else begin seen.n := seen.n + i watched(i + 1 acc + peek()) end end
+print("with a call: " <> conv.int(watched(1 0)) <> " " <> conv.int(watched(1 0)))
+
+(* walk divides by zero when i is 5, after adding 100 / 5, 100 / 4, ... *)
+let steps = tuple let var n = 0 end
+let rec walk(i: Int): Ok = begin steps.n := steps.n + {100 / {5 - i}} walk(i + 1) end
+let rec walkTwice(): Ok = begin walk(0) walk(0) end
+try walkTwice() when int.error then print("after a raise: " <> conv.int(steps.n)) end

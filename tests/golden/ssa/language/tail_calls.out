@@ -1,24 +1,27 @@
 function qf_swap(%0: ptr, %1: int, %2: int, %3: int): int {
 b0(%0: ptr, %1: int, %2: int, %3: int):
-  @19:46
-  %4: int = const 0
-  %5: int = eq %1, %4
   @19:43
-  branch %5, b1(), b2()
+  jump b3(%0, %1, %2, %3)
 b1():
   @19:59
   %6: int = const 10
-  %7: int = mul %2, %6
-  %8: int = add %7, %3
+  %7: int = mul %15, %6
+  %8: int = add %7, %16
   @19:43
   return %8
 b2():
   @19:82
   %9: int = const 1
-  %10: int = sub %1, %9
+  %10: int = sub %14, %9
   @19:76
   %11: ptr = null
-  tail %12: int = call qf_swap(%11, %10, %3, %2)
+  jump b3(%11, %10, %16, %15)
+b3(%13: ptr, %14: int, %15: int, %16: int):
+  @19:46
+  %4: int = const 0
+  %5: int = eq %14, %4
+  @19:43
+  branch %5, b1(), b2()
 }
 
 function qf_isEven(%0: ptr, %1: int): int result narrow {
@@ -97,24 +100,27 @@ b5():
 
 function qf_repeat(%0: ptr, %1: int, %2: ptr, %3: int): int {
 b0(%0: ptr, %1: int, %2: ptr, %3: int):
-  @28:60
-  %4: int = const 0
-  %5: int = eq %1, %4
   @28:57
-  branch %5, b1(), b2()
+  jump b3(%0, %1, %3)
 b1():
   @28:57
-  return %3
+  return %15
 b2():
   @28:87
   %6: int = const 1
-  %7: int = sub %1, %6
+  %7: int = sub %13, %6
   @28:96
   %8: ptr = load8 %2 + 0 invariant
-  %9: int = callIndirect %8, %2, %3
+  %9: int = callIndirect %8, %2, %15
   @28:79
   %10: ptr = null
-  tail %11: int = call qf_repeat(%10, %7, %2, %9)
+  jump b3(%10, %7, %9)
+b3(%12: ptr, %13: int, %15: int):
+  @28:60
+  %4: int = const 0
+  %5: int = eq %13, %4
+  @28:57
+  branch %5, b1(), b2()
 }
 
 function qr_register_dicts() {

@@ -1,0 +1,36 @@
+(* Quest Self-Hosted Compiler: The SSA's Loops Interface
+ *
+ * Makes the loops that recursion is visible to the SSA, and keeps module
+ * cells in registers across them (docs/ssa.md section 4.1).
+ *
+ * A recursive loop that stays a function, because the IR could not contify
+ * it (it is called from more than one place), is a self tail call in the
+ * SSA, which only the backends would make a jump. When a function calls
+ * itself in tail position once, this pass moves the entry block's
+ * instructions and terminator into a new header block whose parameters stand
+ * for the function's, and makes the call a jump to the header. A function
+ * that calls itself so twice or more is left: its calls are usually loops
+ * nested in one function (an outer one inlined into its inner one's), which
+ * one header would merge into a shape clang's loop analysis does not take
+ * apart. A function from which a stack slot's address may escape keeps its
+ * calls, as tail calls would (ssa/passes/tailCalls): a jump would reuse
+ * slots that a call would have made anew.
+ *
+ * A module cell's word that a loop stores to (a top-level tuple's var field,
+ * reached through its global's load) is then kept in a stack slot across the
+ * loop, which slot promotion makes a register: each predecessor from outside
+ * loads it, the loop's accesses use the slot, and each edge that leaves the
+ * loop stores it back, a raise's among them. The word is an Int or a Real,
+ * read and written only whole; nothing else in the loop can reach it (an
+ * access at an overlapping offset through another address); the loop stores
+ * nothing to the global, calls only runtime functions that write no memory
+ * and cannot raise, and enters no try. *)
+
+interface Loops
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* Each function's, numbering the values again and deciding the
+     * conditions again of each that changed *)
+    loopUnit(u: ssa.Unit): Ok
+end

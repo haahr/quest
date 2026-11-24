@@ -314,6 +314,21 @@ internal error.
   second; a runaway `1 + f(n + 1)` loops forever rather than overflowing the stack, as clang already made it in C
   ([exceptions.md](exceptions.md) §6), and a traceback through the loop's levels shows one frame, as through tail calls
   (`repl/module_errors` subtracts, to keep its frames). `ssa_accumulate` shows each case.
+- **`ssa/passes/loops`** makes the loop that recursion is visible to the SSA, and keeps module cells in registers
+  across loops (mlton-median-plan.md step 25). A recursive loop that stays a function, because the IR could not
+  contify it (mandelbrot's `loop1`, called from `doit` and the top level), is a self tail call, which only the backends
+  made a jump. A function that calls itself in tail position once, from which no slot's address escapes, gets a header
+  as `accumulate`'s, and the call becomes a jump to it. One that calls itself so twice or more is left to the backends:
+  its calls are usually nested loops in one function (zern's `lp2`, into which `lp1` is inlined), which one header
+  merges into a shape that clang does not take apart again (zern took 1.09 of its instructions through `ssac`). Then a
+  module cell's word that a loop stores to (a top-level tuple's `var` field, reached through its global's load, which
+  only its module's initialization writes) is kept in a stack slot across the loop, which promotion makes a register:
+  loaded where the loop is entered, stored back on every edge that leaves it (a raise's too, from the block before
+  the raise). It must be an `Int` or a `Real`, read and written whole; no other access in the loop can reach it (one
+  at an overlapping offset through another address but a slot's or a global's own word, or an invariant load); the
+  loop stores nothing to the global, calls only runtime functions that write no memory and cannot raise, and enters no
+  try. mandelbrot retires 0.90 of its instructions through `ssac` and 0.89 through arm64. `language/module_cells_in_loops`
+  shows each case.
 - **`ssa/passes/tailCalls`** marks calls in tail position (§3, arm64.md §3.7): a call whose block returns its results
   (or the extension of its byte), or jumps, through blocks that do nothing else, to one that does. A block's parameters
   are taken as what the jump passes them, so that a join's parameter that its block does not return (as a contified
