@@ -122,30 +122,34 @@ function qf_sum(%0: ptr, %1: int): int {
 b0(%0: ptr, %1: int):
   @33:36
   %15: int = const 0
-  jump b4(%0, %1, %15)
-b1():
+  jump b4()
+b1(%26: int):
   @33:36
   %4: int = const 1000
-  %14: int = add %12, %4
+  %14: int = add %26, %4
   return %14
-b2():
+b2(%27: int, %29: int):
   @33:66
   %5: int = const 1
-  %6: int = sub %11, %5
-  @33:62
-  %7: ptr = null
+  %6: int = sub %29, %5
   @33:58
-  %13: int = add %12, %11
-  jump b3(%7, %6, %13)
-b3(%10: ptr, %11: int, %12: int):
+  %13: int = add %27, %29
+  jump b3()
+b3():
   @33:39
   %2: int = const 0
-  %3: int = le %11, %2
+  %3: int = le %6, %2
   @33:36
-  branch %3, b1(), b2()
-b4(%16: ptr, %17: int, %18: int):
+  branch %3, b1(%13), b2(%13, %6)
+b4():
+  @33:39
+  %19: int = const 0
+  %20: int = le %1, %19
   @33:36
-  jump b3(%16, %17, %18)
+  branch %20, b1(%15), b5()
+b5():
+  @33:36
+  jump b2(%15, %1)
 }
 
 function qf_f(%0: ptr, %1: int): int {
@@ -415,7 +419,7 @@ b0(%0: int, %1: ptr):
   %17: int = const 1
   %18: int = const 0
   %166: int = select %15, %17, %18
-  jump b3(%166)
+  jump b3()
 b1():
   @19:11
   %21: ptr = null
@@ -426,14 +430,14 @@ b1():
   %26: int = const 1
   %27: int = const 0
   %167: int = select %24, %26, %27
-  jump b6(%167)
+  jump b6()
 b2():
   @11:9
   %158: int = const 0
   return %158
-b3(%16: int):
+b3():
   @10:31
-  %19: ptr = call qv_conv_int(%16)
+  %19: ptr = call qv_conv_int(%166)
   @10:9
   call quest_writer_put_string(%7, %19)
   @11:9
@@ -492,13 +496,13 @@ b4():
   call quest_writer_put_string(%7, %36)
   @53:10
   %60: int = const 7
-  jump b18(%60)
+  jump b18()
 b5():
   @11:9
   jump b2()
-b6(%25: int):
+b6():
   @10:31
-  %28: ptr = call qv_conv_int(%25)
+  %28: ptr = call qv_conv_int(%167)
   @10:9
   call quest_writer_put_string(%7, %28)
   @11:9
@@ -601,20 +605,20 @@ b7(%58: int):
 b8():
   @11:9
   jump b5()
-b9(%159: int):
+b9():
   @50:30
   %64: int = const 0
-  %65: int = eq %159, %64
+  %65: int = eq %86, %64
   @50:27
-  branch %65, b10(), b11()
+  branch %65, b10(), b11(%86)
 b10():
   @50:27
   %66: int = const 0
   jump b7(%66)
-b11():
+b11(%175: int):
   @50:52
   %67: int = const 1
-  %68: int = sub %159, %67
+  %68: int = sub %175, %67
   @50:49
   jump b12()
 b12():
@@ -648,10 +652,16 @@ b17():
   %85: int = const 1
   %86: int = sub %77, %85
   @52:45
-  jump b9(%86)
-b18(%168: int):
+  jump b9()
+b18():
+  @50:30
+  %169: int = const 0
+  %170: int = eq %60, %169
   @50:27
-  jump b9(%168)
+  branch %170, b10(), b19()
+b19():
+  @50:27
+  jump b11(%60)
 }
 
 data qs_1 text "tests/source/language/mutually_recursive_functions.quest:68:30"

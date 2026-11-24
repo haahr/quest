@@ -4,6 +4,7 @@ module loops : Loops
 import
     conv : Conv
     stringOp = string : StringOp
+    system : System
 
     collections/vector : collections/Vector
     util/maybe : util/Maybe
@@ -19,6 +20,9 @@ import
     questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
 export
     Let Function = ssa.Function
+
+    let settings = tuple let var rotateAll = true end
+    let setRotateAll(on: Bool): Ok = settings.rotateAll := on
 
     (* Whether vs and ws are the same values, in order *)
     let same(vs: Array(Int) ws: Array(Int)): Bool =
@@ -512,37 +516,48 @@ export
             end
         end
 
-    (* Replaces the uses of v in block b with w *)
+    (* Replaces the uses of v in block b with w. A terminator's arrays may be
+     * shared with other blocks' (two returns of one value, say), so they are
+     * made anew, never changed in place *)
     let replaceIn(f: Function b: Int v: Int w: Int): Ok =
         begin
             let blk = ssa.block(f b)
-            let swap = fun(vs: Array(Int)): Ok
-                for j = 0 upto {extent vs - 1} do if vs[j] is v then vs[j] := w end end
-            for k = 0 upto {vector.length(blk.insts) - 1} do swap(vector.get(blk.insts k).args) end
-            let ts = ssa.targets(blk.term)
-            for k = 0 upto {extent ts - 1} do swap(ts[k].args) end
-            case blk.term
-                when termBranch with x then
-                    if x.cond is v then
-                        blk.term := option termBranch of ssa.Terminator with
-                            let cond = w
+            let swapped = fun(vs: Array(Int)): Array(Int)
+                begin
+                    let r = array of(extent vs 0)
+                    for j = 0 upto {extent vs - 1} do r[j] := if vs[j] is v then w else vs[j] end end
+                    r
+                end
+            let one = fun(x: Int): Int if x is v then w else x end
+            for k = 0 upto {vector.length(blk.insts) - 1} do
+                let i = vector.get(blk.insts k)
+                i.args := swapped(i.args)
+            end
+            let mapped = ssa.mapTargets(blk.term fun(t: ssa.Target): ssa.Target ssa.target(t.block swapped(t.args)))
+            blk.term :=
+                case mapped
+                    when termBranch with x then
+                        option termBranch of ssa.Terminator with
+                            let cond = one(x.cond)
                             let ifTrue = x.ifTrue
                             let ifFalse = x.ifFalse
                         end
-                    end
-                when termSwitch with x then
-                    if x.value is v then
-                        blk.term := option termSwitch of ssa.Terminator with
-                            let value = w
+                    when termSwitch with x then
+                        option termSwitch of ssa.Terminator with
+                            let value = one(x.value)
                             let cases = x.cases
                             let targets = x.targets
                             let default = x.default
                         end
-                    end
-                when termReturn with x then swap(x.values)
-                when termTailCall with x then swap(x.call.args)
-                when termNone, termJump, termTry, termUnreachable then ok
-            end
+                    when termReturn with x then
+                        option termReturn of ssa.Terminator with let values = swapped(x.values) end
+                    when termTailCall with x then
+                        begin
+                            x.call.args := swapped(x.call.args)
+                            mapped
+                        end
+                    when termNone, termJump, termTry, termUnreachable then mapped
+                end
         end
 
     (* Inserts instructions at the start of block b *)
@@ -670,7 +685,11 @@ export
                     for k = 0 upto {vector.length(blk.insts) - 1} do
                         let i = vector.get(blk.insts k)
                         let load = steady(i)
-                        if {movable(i) orif load} andif not(calls andif ssa.isOp(i ssa.opPtrAdd))
+                        (* A Real constant takes two instructions to make (a
+                         * mov and an fmov), so one used in a loop that calls
+                         * nothing is made once before it *)
+                        let real = ssa.isOp(i ssa.opRealConst) andif not(calls)
+                        if {movable(i) orif load orif real} andif not(calls andif ssa.isOp(i ssa.opPtrAdd))
                                 andif argumentsReady(x defs i)
                                 andif {not(load) orif safeAddress(x defs i.args[0])} then
                             moved[i.results[0]] := true
@@ -706,8 +725,14 @@ export
                          * a check of what varies, or a join *)
                         let checks = vector.new(:Int)
                         let var cur = first
-                        let var walking = {vector.length(ssa.block(f first).params) is 0}
-                            andif {extent g.preds[first] is 1}
+                        (* The header's successor may take parameters, which the
+                         * guard binds as the header would, from its copies *)
+                        let var walking = extent g.preds[first] is 1
+                        (* Rotated whether or not it has checks to move, so
+                         * that each pass ends in the test, which branches
+                         * back, rather than in a jump to it *)
+                        let walking0 = walking
+                        let rotatable = walking andif settings.rotateAll
                         while walking do
                             let blk = ssa.block(f cur)
                             for k = 0 upto {vector.length(blk.insts) - 1} do
@@ -751,7 +776,7 @@ export
                                 end
                             end
                         end
-                        if not(vector.empty(checks)) then
+                        if rotatable orif {walking0 andif not(vector.empty(checks))} then
                             guarded := true
                             (* The guard: the header's test, of the preheader's
                              * parameters, leaving where the header would *)
@@ -925,7 +950,10 @@ export
                                         ok
                                 end
                             end
-                            ssa.block(f tail).term := jump(first array of :Int end)
+                            ssa.block(f tail).term :=
+                                    option termJump of ssa.Terminator with
+                                        let target = renameTarget(if leaves then tb.ifFalse else tb.ifTrue end)
+                                    end
                             ssa.block(f tail).termLoc := hb.termLoc
                         end
                     end

@@ -11,6 +11,7 @@ b0():
 
 function main exported(%0: int, %1: ptr) int32 [0]: int result int32 {
 b0(%0: int, %1: ptr):
+  %760: int = const 0
   call quest_gc_init()
   call quest_builtins_init(%0, %1) int32 [0]
   call qr_register_dicts()
@@ -100,8 +101,7 @@ b0(%0: int, %1: ptr):
   @8:37
   call quest_writer_put_string(%65, %71)
   @18:13
-  %72: int = const 0
-  %73: int = sub %72, %13
+  %73: int = sub %760, %13
   @18:1
   %74: ptr = symbol qso_8 + 8
   @8:54
@@ -135,7 +135,7 @@ b0(%0: int, %1: ptr):
   @20:24
   %104: int = eq %15, %13
   @20:20
-  %706: int = select %104, %14, %72
+  %706: int = select %104, %14, %760
   jump b1()
 b1():
   @20:1
@@ -604,7 +604,7 @@ b33(%391: int):
   branch %442, b34(), b35()
 b34():
   @50:9
-  jump b66()
+  jump b68()
 b35():
   @50:9
   jump b36(%432)
@@ -648,18 +648,16 @@ b36(%594: int):
   @62:9
   %510: int = le %500, %504
   branch %510, b45(), b46()
-b37(%595: int, %597: int):
+b37():
   @51:18
   %447: int = const 1099511628211
-  %448: int = mul %595, %447
+  %448: int = mul %465, %447
   @52:22
-  %450: ptr = null
-  %451: int = peq %409, %450
-  branch %451, b40(), b39()
+  jump b39(%473, %448)
 b38():
   @50:9
   jump b36(%465)
-b39():
+b39(%755: int, %758: int):
   @52:22
   jump b41()
 b40():
@@ -670,14 +668,14 @@ b40():
 b41():
   @52:22
   %456: int = const 8
-  %457: int = mul %597, %456
+  %457: int = mul %755, %456
   %460: ptr = ptrAdd %459, %457
   %461: val = load8 %460 + 0
   %462: int = fromVal %461
   @52:18
-  %465: int = add %448, %462
+  %465: int = add %758, %462
   @50:9
-  %469: int = eq %597, %436
+  %469: int = eq %755, %436
   branch %469, b42(), b43()
 b42():
   @50:9
@@ -688,11 +686,11 @@ b43():
 b44():
   @50:9
   %472: int = const 1
-  %473: int = add %597, %472
-  jump b37(%465, %473)
+  %473: int = add %755, %472
+  jump b37()
 b45():
   @62:9
-  jump b65()
+  jump b66()
 b46():
   @62:9
   jump b47(%500)
@@ -725,15 +723,13 @@ b47(%598: int):
   %562: int = const 5
   %563: int = le %558, %562
   branch %563, b56(), b57()
-b48(%599: int, %601: int):
+b48():
   @62:52
-  %513: ptr = null
-  %514: int = peq %492, %513
-  branch %514, b51(), b50()
+  jump b50(%536, %528)
 b49():
   @62:9
   jump b47(%528)
-b50():
+b50(%749: int, %752: int):
   @62:52
   jump b52()
 b51():
@@ -744,14 +740,14 @@ b51():
 b52():
   @62:52
   %519: int = const 8
-  %520: int = mul %601, %519
+  %520: int = mul %749, %519
   %523: ptr = ptrAdd %522, %520
   %524: val = load8 %523 + 0
   %525: int = fromVal %524
   @62:48
-  %528: int = add %599, %525
+  %528: int = add %752, %525
   @62:9
-  %532: int = eq %601, %504
+  %532: int = eq %749, %504
   branch %532, b53(), b54()
 b53():
   @62:9
@@ -762,8 +758,8 @@ b54():
 b55():
   @62:9
   %535: int = const 1
-  %536: int = add %601, %535
-  jump b48(%528, %536)
+  %536: int = add %749, %535
+  jump b48()
 b56():
   @69:1
   jump b64()
@@ -792,41 +788,63 @@ b58(%602: int):
   @8:37
   call quest_writer_put_string(%586, %592)
   jump b2()
-b59(%603: int, %605: int):
+b59():
   @69:26
   %566: int = const 1
-  %567: int = add %603, %566
+  %567: int = add %744, %566
   @69:1
   %571: int = const 5
-  %572: int = eq %605, %571
-  branch %572, b61(), b62()
+  %572: int = eq %576, %571
+  branch %572, b61(%567), b62(%567, %576)
 b60():
   @69:1
-  jump b58(%567)
-b61():
+  jump b58(%743)
+b61(%743: int):
   @69:1
   jump b60()
-b62():
+b62(%744: int, %747: int):
   @69:1
   jump b63()
 b63():
   @69:1
   %575: int = const 1
-  %576: int = add %605, %575
-  jump b59(%567, %576)
+  %576: int = add %747, %575
+  jump b59()
 b64():
+  @69:26
+  %709: int = const 1
+  %710: int = add %554, %709
   @69:1
-  jump b59(%554, %558)
+  %711: int = const 5
+  %712: int = eq %558, %711
+  branch %712, b61(%710), b65()
 b65():
-  @62:52
-  %711: int = const 8
-  %522: ptr = ptrAdd %492, %711
-  jump b48(%500, %500)
+  @69:1
+  jump b62(%710, %558)
 b66():
+  @62:52
+  %720: int = const 8
+  %522: ptr = ptrAdd %492, %720
+  %721: ptr = null
+  %722: int = peq %492, %721
+  branch %722, b51(), b67()
+b67():
+  @62:52
+  jump b50(%500, %500)
+b68():
   @52:22
-  %714: int = const 8
-  %459: ptr = ptrAdd %409, %714
-  jump b37(%432, %438)
+  %731: int = const 8
+  %459: ptr = ptrAdd %409, %731
+  @51:18
+  %732: int = const 1099511628211
+  %733: int = mul %432, %732
+  @52:22
+  %734: ptr = null
+  %735: int = peq %409, %734
+  branch %735, b40(), b69()
+b69():
+  @52:22
+  jump b39(%438, %733)
 }
 
 data qs_1 text "<main>"

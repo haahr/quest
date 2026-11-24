@@ -579,6 +579,20 @@ export
                     if machine.isKind(vector.get(insts j) machine.kindCall) then calls[b] := true end
                 end
             end
+            (* Each block's predecessors, by the branches that name it *)
+            let preds = array of(n 0)
+            let onlyPred = array of(n ~1)
+            for b = 0 upto {n - 1} do
+                let insts = machine.block(m b).insts
+                for j = 0 upto {vector.length(insts) - 1} do
+                    let t = vector.get(insts j).target
+                    if t >= 0 then
+                        let ft = final[t]
+                        preds[ft] := preds[ft] + 1
+                        onlyPred[ft] := b
+                    end
+                end
+            end
             let placed = array of(n false)
             let order = vector.new(:Int)
             let place(b: Int): Ok =
@@ -603,6 +617,22 @@ export
                     let t = vector.get(insts j).target
                     if {t >= 0} andif open(final[t]) andif {{best < 0} orif better(final[t] best)} then
                         best := final[t]
+                    end
+                end
+                (* A new chain does not start at a block that one block alone,
+                 * not yet placed and not cold, goes to: that block will place
+                 * it as what it falls through to, as a loop's latch does its
+                 * test at the loop's bottom, which placed first would put the
+                 * test ahead of the loop and a jump back to it at its end *)
+                let waits = fun(b: Int): Bool
+                    {preds[b] is 1} andif {onlyPred[b] >= 0} andif not(placed[onlyPred[b]]) andif not(cold[onlyPred[b]])
+                        andif {final[onlyPred[b]] is onlyPred[b]} andif {onlyPred[b] isnot b}
+                if best < 0 then
+                    let var k = next
+                    while {best < 0} andif {k < count} do
+                        let c = vector.get(s.layout k)
+                        if open(c) andif not(waits(c)) then best := c end
+                        k := k + 1
                     end
                 end
                 while {best < 0} andif {next < count} do

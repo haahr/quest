@@ -76,30 +76,34 @@ function qf_count(%0: ptr, %1: int): int {
 b0(%0: ptr, %1: int):
   @35:34
   %16: int = const 0
-  jump b4(%0, %1, %16)
-b1():
+  jump b4()
+b1(%27: int):
   @35:34
   %4: int = const 0
-  %15: int = add %13, %4
+  %15: int = add %27, %4
   return %15
-b2():
+b2(%28: int, %30: int):
   @35:71
   %5: int = const 1
-  %6: int = sub %12, %5
-  @35:65
-  %7: ptr = null
+  %6: int = sub %30, %5
   @35:61
-  %14: int = add %13, %5
-  jump b3(%7, %6, %14)
-b3(%11: ptr, %12: int, %13: int):
+  %14: int = add %28, %5
+  jump b3()
+b3():
   @35:37
   %2: int = const 3
-  %3: int = le %12, %2
+  %3: int = le %6, %2
   @35:34
-  branch %3, b1(), b2()
-b4(%17: ptr, %18: int, %19: int):
+  branch %3, b1(%14), b2(%14, %6)
+b4():
+  @35:37
+  %20: int = const 3
+  %21: int = le %1, %20
   @35:34
-  jump b3(%17, %18, %19)
+  branch %21, b1(%16), b5()
+b5():
+  @35:34
+  jump b2(%16, %1)
 }
 
 function qf_f(%0: ptr, %1: int): int {
@@ -147,6 +151,7 @@ b0():
 
 function main exported(%0: int, %1: ptr) int32 [0]: int result int32 {
 b0(%0: int, %1: ptr):
+  %471: int = const 0
   call quest_gc_init()
   call quest_builtins_init(%0, %1) int32 [0]
   call qr_register_dicts()
@@ -160,13 +165,12 @@ b0(%0: int, %1: ptr):
   @17:9
   %5: ptr = symbol qso_12 + 8
   @18:9
-  %8: int = const 0
   %12: int = const 20000
-  %13: int = le %8, %12
+  %13: int = le %471, %12
   branch %13, b1(), b2()
 b1():
   @18:9
-  jump b73(%5, %8)
+  jump b74()
 b2():
   @18:9
   jump b3()
@@ -250,7 +254,7 @@ b8():
   jump b4(%20, %29)
 b9():
   @18:9
-  jump b72(%74, %77)
+  jump b73()
 b10():
   @18:9
   jump b11()
@@ -337,7 +341,7 @@ b18():
   unreachable
 b19():
   @44:1
-  jump b71(%139)
+  jump b72()
 b20():
   @44:1
   jump b21()
@@ -410,7 +414,7 @@ b30():
   jump b22(%173)
 b31():
   @18:9
-  jump b70(%176, %179)
+  jump b71()
 b32():
   @18:9
   jump b33()
@@ -449,7 +453,7 @@ b38():
   jump b34(%191, %200)
 b39():
   @51:1
-  jump b69(%203, %203)
+  jump b69()
 b40():
   @51:1
   jump b41(%203)
@@ -479,18 +483,16 @@ b41(%403: int):
   %264: int = const 20000
   %265: int = le %260, %264
   branch %265, b51(), b52()
-b42(%404: int, %406: int):
+b42():
   @51:35
-  %214: ptr = null
-  %215: int = peq %137, %214
-  branch %215, b45(), b44()
+  jump b44(%241, %232)
 b43():
   @51:1
   jump b41(%232)
-b44():
+b44(%466: int, %469: int):
   @51:35
   %217: int = load8 %137 + 0 invariant
-  %218: int = ult %406, %217
+  %218: int = ult %466, %217
   branch %218, b46(), b47()
 b45():
   @51:35
@@ -500,7 +502,7 @@ b45():
 b46():
   @51:35
   %220: int = const 8
-  %221: int = mul %406, %220
+  %221: int = mul %466, %220
   %223: ptr = ptrAdd %137, %220
   %224: ptr = ptrAdd %223, %221
   %225: val = load8 %224 + 0
@@ -509,10 +511,10 @@ b46():
   %228: int = const 1
   %229: int = callIndirect %227, %226, %228
   @51:29
-  %232: int = add %404, %229
+  %232: int = add %469, %229
   @51:1
   %236: int = const 49
-  %237: int = eq %406, %236
+  %237: int = eq %466, %236
   branch %237, b48(), b49()
 b47():
   @51:35
@@ -528,11 +530,11 @@ b49():
 b50():
   @51:1
   %240: int = const 1
-  %241: int = add %406, %240
-  jump b42(%232, %241)
+  %241: int = add %466, %240
+  jump b42()
 b51():
   @18:9
-  jump b68(%257, %260)
+  jump b68()
 b52():
   @18:9
   jump b53()
@@ -599,7 +601,7 @@ b58():
   jump b54(%272, %281)
 b59():
   @18:9
-  jump b67(%304, %307)
+  jump b67()
 b60():
   @18:9
   jump b61()
@@ -694,27 +696,32 @@ b66():
   %327: int = const 1
   %328: int = add %414, %327
   jump b62(%319, %328)
-b67(%444: ptr, %445: int):
+b67():
   @18:9
-  jump b62(%444, %445)
-b68(%446: ptr, %447: int):
+  jump b62(%304, %307)
+b68():
   @18:9
-  jump b54(%446, %447)
-b69(%448: int, %449: int):
+  jump b54(%257, %260)
+b69():
   @51:35
-  jump b42(%448, %449)
-b70(%450: ptr, %451: int):
+  %450: ptr = null
+  %451: int = peq %137, %450
+  branch %451, b45(), b70()
+b70():
+  @51:35
+  jump b44(%203, %203)
+b71():
   @18:9
-  jump b34(%450, %451)
-b71(%452: int):
+  jump b34(%176, %179)
+b72():
   @47:5
-  jump b22(%452)
-b72(%453: ptr, %454: int):
+  jump b22(%139)
+b73():
   @18:9
-  jump b12(%453, %454)
-b73(%455: ptr, %456: int):
+  jump b12(%74, %77)
+b74():
   @18:9
-  jump b4(%455, %456)
+  jump b4(%5, %471)
 }
 
 data qf_even_closure words [qf_even]

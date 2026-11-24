@@ -350,8 +350,13 @@ internal error.
   `string.length`'s test for a null string counts as the length, since under its bound of 0 - 1 no index that is not
   negative reaches the check. Through arm64, vector32- and vector64-concat retire 0.83 of their instructions,
   matrix-multiply 0.91, smith-normal-form 0.93; through `ssac`, smith-normal-form 0.94 and the vector programs 0.95.
-  `language/module_cells_in_loops`, `language/hoisted_loop_checks`, and `language/decided_bounds_checks` show each
-  case.
+  Through arm64 (not `ssac`: clang rotates loops itself, and one rotated before it can compile worse, fib by 20%) a
+  loop is rotated whether or not it has checks to move, when its header only tests whether to leave, so that each pass
+  ends in the test rather than in a jump back to it (the guard binding the parameters of the header's successor from
+  its copies); and a Real constant used in a loop that calls nothing, which takes two instructions to make, is made
+  once before it (mlton-median-plan.md step 14): imp-for retires 0.77 of its instructions, fib, tak, and mandelbrot
+  0.87, the vector programs 0.90. `language/module_cells_in_loops`, `language/hoisted_loop_checks`, and
+  `language/decided_bounds_checks` show each case.
 - **`ssa/passes/tailCalls`** marks calls in tail position (§3, arm64.md §3.7): a call whose block returns its results
   (or the extension of its byte), or jumps, through blocks that do nothing else, to one that does. A block's parameters
   are taken as what the jump passes them, so that a join's parameter that its block does not return (as a contified

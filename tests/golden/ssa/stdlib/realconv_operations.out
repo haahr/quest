@@ -1,11 +1,11 @@
 function qf_randomReal(%0: ptr): real {
 b0(%0: ptr):
   @71:30
-  jump b12()
-b1():
+  jump b13()
+b1(%104: int):
   @71:30
   %7: int = load8 %2 + 0 invariant
-  %8: int = ult %3, %7
+  %8: int = ult %104, %7
   branch %8, b3(), b4()
 b2():
   @71:30
@@ -24,6 +24,7 @@ b3():
   @71:21
   %18: int = add %16, %17
   @71:9
+  %21: int = const 0
   jump b5()
 b4():
   @71:30
@@ -32,7 +33,8 @@ b4():
   unreachable
 b5():
   @71:9
-  jump b6()
+  %26: int = ult %21, %7
+  branch %26, b6(), b7()
 b6():
   @71:9
   %28: int = const 8
@@ -41,11 +43,16 @@ b6():
   %33: val = toVal %18
   store8 %32 + 0, %33
   @72:21
-  jump b7()
-b7():
-  @72:21
   jump b8()
+b7():
+  @71:9
+  %27: ptr = symbol qs_2
+  call quest_raise_array_error_at(%27)
+  unreachable
 b8():
+  @72:21
+  jump b9()
+b9():
   @72:21
   %49: int = fromVal %33
   @73:38
@@ -79,27 +86,30 @@ b8():
   %82: int = const 2047
   %83: int = eq %81, %82
   @82:9
-  branch %83, b9(), b10()
-b9():
-  @82:59
-  jump b11()
+  branch %83, b10(), b11()
 b10():
+  @82:59
+  jump b12()
+b11():
   @82:77
   tail %86: real = call quest_word_to_real_val(%78)
-b11():
+b12():
   @71:30
   %3: int = const 0
-  %4: ptr = null
-  %5: int = peq %2, %4
-  branch %5, b2(), b1()
-b12():
+  jump b1(%3)
+b13():
   @71:30
   %89: ptr = symbol g_state
   %2: ptr = load8 %89 + 0
   %90: int = const 0
   %91: int = const 8
   %11: int = mul %90, %91
-  jump b11()
+  %100: ptr = null
+  %101: int = peq %2, %100
+  branch %101, b2(), b14()
+b14():
+  @71:30
+  jump b1(%90)
 }
 
 function qr_register_dicts() {
@@ -115,7 +125,7 @@ b0():
 
 function main exported(%0: int, %1: ptr) int32 [0]: int result int32 {
 b0(%0: int, %1: ptr):
-  %1233: int = const 0
+  %1389: int = const 0
   call quest_gc_init()
   call quest_builtins_init(%0, %1) int32 [0]
   call qr_register_dicts()
@@ -159,7 +169,7 @@ b0(%0: int, %1: ptr):
   %22: ptr = symbol g_randomReal
   store8 %22 + 0, %21
   @26:61
-  %26: real = call qv_util__realconv_fromFields(%6, %1233, %1233) narrow [0]
+  %26: real = call qv_util__realconv_fromFields(%6, %1389, %1389) narrow [0]
   @90:43
   %27: real = realConst 4607182418800017408
   %28: real = realConst 4613937818241073152
@@ -467,7 +477,7 @@ b12():
   unreachable
 b13():
   @100:1
-  jump b184()
+  jump b187()
 b14():
   @100:1
   jump b15(%256)
@@ -636,15 +646,13 @@ b15(%1147: int):
   @134:1
   %632: int = le %622, %626
   branch %632, b79(), b80()
-b16(%1148: int, %1151: int):
+b16():
   @101:13
-  %269: ptr = null
-  %270: int = peq %107, %269
-  branch %270, b19(), b18()
+  jump b18(%511, %1149)
 b17():
   @100:1
   jump b15(%1149)
-b18():
+b18(%1384: int, %1387: int):
   @101:13
   jump b20()
 b19():
@@ -655,7 +663,7 @@ b19():
 b20():
   @101:13
   %275: int = const 8
-  %276: int = mul %1151, %275
+  %276: int = mul %1384, %275
   %278: ptr = ptrAdd %107, %275
   %279: ptr = ptrAdd %278, %276
   %280: real = load8 %279 + 0
@@ -695,7 +703,7 @@ b21(%289: int):
   branch %288, b27(), b28()
 b22():
   @100:1
-  jump b16(%1149, %511)
+  jump b16()
 b23():
   @104:20
   %294: int = const 1
@@ -762,7 +770,7 @@ b33():
   jump b29(%459)
 b34():
   @53:9
-  jump b183()
+  jump b185()
 b35():
   @53:9
   jump b36(%324)
@@ -771,15 +779,13 @@ b36(%1155: int):
   %458: int = zext8 %1155
   @108:20
   jump b29(%458)
-b37(%1156: int, %1162: int):
+b37():
   @54:21
-  %337: ptr = null
-  %338: int = peq %4, %337
-  branch %338, b40(), b39()
+  jump b39(%455, %1274)
 b38():
   @53:9
   jump b36(%1274)
-b39():
+b39(%1374: int, %1381: int):
   @54:21
   jump b41()
 b40():
@@ -790,7 +796,7 @@ b40():
 b41():
   @54:21
   %343: int = const 8
-  %344: int = mul %1162, %343
+  %344: int = mul %1374, %343
   %346: ptr = ptrAdd %4, %343
   %347: ptr = ptrAdd %346, %344
   %348: val = load8 %347 + 0
@@ -819,11 +825,11 @@ b42():
   @55:98
   %447: int = const 0
   @55:13
-  %1274: int = select %446, %447, %1156
+  %1274: int = select %446, %447, %1381
   jump b64()
 b43():
   @53:9
-  jump b37(%1274, %455)
+  jump b37()
 b44():
   @33:30
   %357: int = load8 %352 + 0 invariant
@@ -881,7 +887,7 @@ b50(%1168: ptr):
   jump b61()
 b51():
   @36:13
-  jump b182()
+  jump b184()
 b52():
   @36:13
   jump b53(%376)
@@ -951,7 +957,7 @@ b63():
   jump b42()
 b64():
   @53:9
-  %451: int = eq %1162, %328
+  %451: int = eq %1374, %328
   branch %451, b65(), b66()
 b65():
   @53:9
@@ -962,7 +968,7 @@ b66():
 b67():
   @53:9
   %454: int = const 1
-  %455: int = add %1162, %454
+  %455: int = add %1374, %454
   jump b43()
 b68(%460: int):
   @109:5
@@ -1006,11 +1012,11 @@ b73():
   @22:9
   %479: ptr = symbol qso_11 + 8
   call quest_writer_put_string(%478, %479)
-  jump b75(%1148)
+  jump b75(%1387)
 b74():
   @112:19
   %482: int = const 1
-  %483: int = add %1148, %482
+  %483: int = add %1387, %482
   @113:22
   %485: ptr = call qv_util__realconv_toString(%280)
   @113:68
@@ -1043,7 +1049,7 @@ b74():
   jump b75(%483)
 b75(%1149: int):
   @100:1
-  %507: int = eq %1151, %260
+  %507: int = eq %1384, %260
   branch %507, b76(), b77()
 b76():
   @100:1
@@ -1054,11 +1060,11 @@ b77():
 b78():
   @100:1
   %510: int = const 1
-  %511: int = add %1151, %510
+  %511: int = add %1384, %510
   jump b69()
 b79():
   @134:1
-  jump b181()
+  jump b182()
 b80():
   @134:1
   jump b81(%622)
@@ -1111,15 +1117,13 @@ b81(%1179: int):
   %751: int = const 12
   %752: int = le %747, %751
   branch %752, b93(), b94()
-b82(%1180: int, %1183: int):
+b82():
   @135:13
-  %635: ptr = null
-  %636: int = peq %533, %635
-  branch %636, b85(), b84()
+  jump b84(%709, %1181)
 b83():
   @134:1
   jump b81(%1181)
-b84():
+b84(%1364: int, %1367: int):
   @135:13
   jump b86()
 b85():
@@ -1130,7 +1134,7 @@ b85():
 b86():
   @135:13
   %641: int = const 8
-  %642: int = mul %1183, %641
+  %642: int = mul %1364, %641
   %644: ptr = ptrAdd %533, %641
   %645: ptr = ptrAdd %644, %642
   %646: val = load8 %645 + 0
@@ -1177,11 +1181,11 @@ b87():
   @22:9
   %672: ptr = symbol qso_11 + 8
   call quest_writer_put_string(%671, %672)
-  jump b89(%1180)
+  jump b89(%1367)
 b88():
   @139:19
   %675: int = const 1
-  %676: int = add %1180, %675
+  %676: int = add %1367, %675
   @140:61
   %678: real = call qv_util__realconv_toReal(%647)
   @140:43
@@ -1220,7 +1224,7 @@ b88():
   jump b89(%676)
 b89(%1181: int):
   @134:1
-  %705: int = eq %1183, %626
+  %705: int = eq %1364, %626
   branch %705, b90(), b91()
 b90():
   @134:1
@@ -1231,11 +1235,11 @@ b91():
 b92():
   @134:1
   %708: int = const 1
-  %709: int = add %1183, %708
-  jump b82(%1181, %709)
+  %709: int = add %1364, %708
+  jump b82()
 b93():
   @152:1
-  jump b180()
+  jump b181()
 b94():
   @152:1
   jump b95(%744)
@@ -1383,15 +1387,13 @@ b110(%1193: int):
   %917: int = zext8 %1193
   @156:35
   jump b105(%917)
-b111(%1194: int, %1201: int):
+b111():
   @54:21
-  %796: ptr = null
-  %797: int = peq %4, %796
-  branch %797, b114(), b113()
+  jump b113(%914, %1279)
 b112():
   @53:9
   jump b110(%1279)
-b113():
+b113(%1354: int, %1361: int):
   @54:21
   jump b115()
 b114():
@@ -1402,7 +1404,7 @@ b114():
 b115():
   @54:21
   %802: int = const 8
-  %803: int = mul %1201, %802
+  %803: int = mul %1354, %802
   %805: ptr = ptrAdd %4, %802
   %806: ptr = ptrAdd %805, %803
   %807: val = load8 %806 + 0
@@ -1431,11 +1433,11 @@ b116():
   @55:98
   %906: int = const 0
   @55:13
-  %1279: int = select %905, %906, %1194
+  %1279: int = select %905, %906, %1361
   jump b138()
 b117():
   @53:9
-  jump b111(%1279, %914)
+  jump b111()
 b118():
   @33:30
   %816: int = load8 %811 + 0 invariant
@@ -1563,7 +1565,7 @@ b137():
   jump b116()
 b138():
   @53:9
-  %910: int = eq %1201, %787
+  %910: int = eq %1354, %787
   branch %910, b139(), b140()
 b139():
   @53:9
@@ -1574,7 +1576,7 @@ b140():
 b141():
   @53:9
   %913: int = const 1
-  %914: int = add %1201, %913
+  %914: int = add %1354, %913
   jump b117()
 b142():
   @157:19
@@ -1903,30 +1905,50 @@ b178():
   jump b128(%835, %838)
 b179():
   @54:21
-  jump b111(%783, %789)
+  %1295: ptr = null
+  %1296: int = peq %4, %1295
+  branch %1296, b114(), b180()
 b180():
+  @54:21
+  jump b113(%789, %783)
+b181():
   @33:30
-  %1297: int = const 0
-  %1298: int = const 8
-  %820: int = mul %1297, %1298
+  %1306: int = const 0
+  %1307: int = const 8
+  %820: int = mul %1306, %1307
   @62:5
   jump b96(%744, %747)
-b181():
-  @135:13
-  jump b82(%622, %622)
 b182():
+  @135:13
+  %1310: ptr = null
+  %1311: int = peq %533, %1310
+  branch %1311, b85(), b183()
+b183():
+  @135:13
+  jump b84(%622, %622)
+b184():
   @36:64
   jump b54(%376, %379)
-b183():
+b185():
   @54:21
-  jump b37(%324, %330)
-b184():
+  %1326: ptr = null
+  %1327: int = peq %4, %1326
+  branch %1327, b40(), b186()
+b186():
+  @54:21
+  jump b39(%330, %324)
+b187():
   @33:30
-  %1309: int = const 0
-  %1310: int = const 8
-  %361: int = mul %1309, %1310
+  %1337: int = const 0
+  %1338: int = const 8
+  %361: int = mul %1337, %1338
   @101:13
-  jump b16(%256, %256)
+  %1339: ptr = null
+  %1340: int = peq %107, %1339
+  branch %1340, b19(), b188()
+b188():
+  @101:13
+  jump b18(%256, %256)
 }
 
 data g_state writable zero 8

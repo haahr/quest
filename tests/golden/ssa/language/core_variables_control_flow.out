@@ -2,30 +2,34 @@ function qf_fact(%0: ptr, %1: int): int {
 b0(%0: ptr, %1: int):
   @71:5
   %15: int = const 1
-  jump b4(%0, %1, %15)
-b1():
+  jump b4()
+b1(%26: int):
   @71:5
   %4: int = const 1
-  %14: int = mul %12, %4
+  %14: int = mul %26, %4
   return %14
-b2():
+b2(%27: int, %29: int):
   @74:18
   %5: int = const 1
-  %6: int = sub %11, %5
-  @74:13
-  %7: ptr = null
+  %6: int = sub %29, %5
   @74:9
-  %13: int = mul %12, %11
-  jump b3(%7, %6, %13)
-b3(%10: ptr, %11: int, %12: int):
+  %13: int = mul %27, %29
+  jump b3()
+b3():
   @71:8
   %2: int = const 1
-  %3: int = le %11, %2
+  %3: int = le %6, %2
   @71:5
-  branch %3, b1(), b2()
-b4(%16: ptr, %17: int, %18: int):
+  branch %3, b1(%13), b2(%13, %6)
+b4():
+  @71:8
+  %19: int = const 1
+  %20: int = le %1, %19
   @71:5
-  jump b3(%16, %17, %18)
+  branch %20, b1(%15), b5()
+b5():
+  @71:5
+  jump b2(%15, %1)
 }
 
 function qr_register_dicts() {
@@ -41,46 +45,45 @@ b0():
 
 function main exported(%0: int, %1: ptr) int32 [0]: int result int32 {
 b0(%0: int, %1: ptr):
+  %194: int = const 0
   call quest_gc_init()
   call quest_builtins_init(%0, %1) int32 [0]
   call qr_register_dicts()
-  @8:1
-  %3: int = const 0
   @39:1
-  jump b41(%3)
-b1(%119: int):
+  jump b45()
+b1():
   @40:7
   %23: int = const 5
-  %24: int = lt %119, %23
+  %24: int = lt %28, %23
   @40:1
-  branch %24, b3(), b4()
+  branch %24, b3(%28), b4(%28)
 b2():
   @40:1
   jump b6()
-b3():
+b3(%192: int):
   @41:10
   %27: int = const 1
-  %28: int = add %119, %27
+  %28: int = add %192, %27
   @41:5
   jump b5()
-b4():
+b4(%193: int):
   @40:1
   jump b2()
 b5():
   @40:1
-  jump b1(%28)
+  jump b1()
 b6():
   @44:15
   jump b7()
 b7():
   @44:15
-  jump b40(%119)
-b8(%120: int):
+  jump b43()
+b8():
   @46:8
   %32: int = const 7
-  %33: int = eq %120, %32
+  %33: int = eq %37, %32
   @46:5
-  branch %33, b10(), b11()
+  branch %33, b10(), b11(%37)
 b9():
   @53:1
   %40: int = const 0
@@ -92,18 +95,18 @@ b9():
 b10():
   @47:9
   jump b9()
-b11():
+b11(%191: int):
   @49:14
   %36: int = const 1
-  %37: int = add %120, %36
+  %37: int = add %191, %36
   @49:9
   jump b12()
 b12():
   @49:9
-  jump b8(%37)
+  jump b8()
 b13():
   @54:1
-  jump b39(%40, %43)
+  jump b41()
 b14():
   @54:1
   jump b15()
@@ -114,30 +117,30 @@ b15():
   %68: int = const 4
   %73: int = ge %68, %65
   branch %73, b21(), b22()
-b16(%122: int, %124: int):
+b16():
   @55:14
-  %53: int = add %122, %124
+  %53: int = add %189, %62
   @54:1
   %57: int = const 5
-  %58: int = eq %124, %57
-  branch %58, b18(), b19()
+  %58: int = eq %62, %57
+  branch %58, b18(), b19(%62, %53)
 b17():
   @54:1
   jump b15()
 b18():
   @54:1
   jump b17()
-b19():
+b19(%186: int, %189: int):
   @54:1
   jump b20()
 b20():
   @54:1
   %61: int = const 1
-  %62: int = add %124, %61
-  jump b16(%53, %62)
+  %62: int = add %186, %61
+  jump b16()
 b21():
   @59:1
-  jump b38(%65, %68)
+  jump b39()
 b22():
   @59:1
   jump b23()
@@ -149,30 +152,30 @@ b23():
   %97: int = const 5
   %98: int = le %93, %97
   branch %98, b29(), b30()
-b24(%126: int, %128: int):
+b24():
   @60:13
-  %78: int = mul %126, %128
+  %78: int = mul %183, %87
   @59:1
   %82: int = const 1
-  %83: int = eq %128, %82
-  branch %83, b26(), b27()
+  %83: int = eq %87, %82
+  branch %83, b26(), b27(%87, %78)
 b25():
   @59:1
   jump b23()
 b26():
   @59:1
   jump b25()
-b27():
+b27(%180: int, %183: int):
   @59:1
   jump b28()
 b28():
   @59:1
   %86: int = const 1
-  %87: int = sub %128, %86
-  jump b24(%78, %87)
+  %87: int = sub %180, %86
+  jump b24()
 b29():
   @64:1
-  jump b37(%90, %93)
+  jump b37()
 b30():
   @64:1
   jump b31()
@@ -187,43 +190,77 @@ b31():
   %117: int = call qf_fact(%115, %116)
   %118: int = const 0
   return %118
-b32(%130: int, %132: int):
+b32():
   @65:19
   %101: int = const 1
-  %102: int = add %130, %101
+  %102: int = add %177, %101
   @64:1
   %106: int = const 5
-  %107: int = eq %132, %106
-  branch %107, b34(), b35()
+  %107: int = eq %111, %106
+  branch %107, b34(), b35(%111, %102)
 b33():
   @64:1
   jump b31()
 b34():
   @64:1
   jump b33()
-b35():
+b35(%174: int, %177: int):
   @64:1
   jump b36()
 b36():
   @64:1
   %110: int = const 1
-  %111: int = add %132, %110
-  jump b32(%102, %111)
-b37(%133: int, %134: int):
+  %111: int = add %174, %110
+  jump b32()
+b37():
+  @65:19
+  %135: int = const 1
+  %136: int = add %90, %135
   @64:1
-  jump b32(%133, %134)
-b38(%135: int, %136: int):
+  %137: int = const 5
+  %138: int = eq %93, %137
+  branch %138, b34(), b38()
+b38():
+  @64:1
+  jump b35(%93, %136)
+b39():
+  @60:13
+  %145: int = mul %65, %68
   @59:1
-  jump b24(%135, %136)
-b39(%137: int, %138: int):
+  %146: int = const 1
+  %147: int = eq %68, %146
+  branch %147, b26(), b40()
+b40():
+  @59:1
+  jump b27(%68, %145)
+b41():
+  @55:14
+  %154: int = add %40, %43
   @54:1
-  jump b16(%137, %138)
-b40(%139: int):
+  %155: int = const 5
+  %156: int = eq %43, %155
+  branch %156, b18(), b42()
+b42():
+  @54:1
+  jump b19(%43, %154)
+b43():
+  @46:8
+  %162: int = const 7
+  %163: int = eq %193, %162
   @46:5
-  jump b8(%139)
-b41(%140: int):
+  branch %163, b10(), b44()
+b44():
+  @46:5
+  jump b11(%193)
+b45():
+  @40:7
+  %167: int = const 5
+  %168: int = lt %194, %167
   @40:1
-  jump b1(%140)
+  branch %168, b46(), b4(%194)
+b46():
+  @40:1
+  jump b3(%194)
 }
 
 data qf_fact_closure words [qf_fact]

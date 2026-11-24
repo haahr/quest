@@ -708,6 +708,18 @@ then one timing of the suite (§2), with the lock, on a quiet machine. Commits s
 4. **Step 14, arm64's back-edge moves:** with loops rotated in the SSA, what is left is the moves of permuted
    parameters on a back edge (mandelbrot's `fmov`s, mpuz's `mov`s). Probed first by counting the moves on the hot back
    edges of mandelbrot, mpuz, and the `while`-on-a-flag loop of §42.3; built only if they are 1% of a program.
+   **Done in the SSA** (in `ssa/passes/loops`; arm64 only, `setRotateAll`): every loop whose header only tests is
+   rotated, not only one with checks to move (through ssac it made fib 1.20, clang rotating loops itself); the
+   header's successor may take parameters, bound by the guard from its copies; a Real constant used in a loop that
+   calls nothing moves before it; and arm64's block layout no longer starts a chain at a block that one unplaced
+   block alone goes to (a loop's bottom test, which its latch then falls into; tensor 0.992 of it). Against step 9,
+   through arm64: imp-for 0.769, fib, tak, and mandelbrot 0.87, vector32- and vector64-concat 0.90, string-concat
+   0.914, vector-rev 0.931, output1 0.957, smith-normal-form and wc-scanStream 0.96, fft 0.974, tensor 0.984; through
+   ssac, nothing moved by 1% but imp-for's and tailfib's 20 million instructions. Tried and not kept: merging a block
+   into its one predecessor that jumps to it (so that a header's test ends it), which made tensor 1.04 and helped
+   nothing. Found: a terminator's arrays may be shared between blocks (two returns of one value), so the pass's
+   replacement of a value made them anew (the JIT's verifier caught `module_cells_in_loops`). Left: the back edge's
+   `fmov`s in mandelbrot's inner loop, which register assignment makes (a permuted pair).
 5. **Step 18, conjunctions as `ccmp`:** counted first, how many of logic's 1,563 `cset`/`csel` are in its hot code
    (`tools/perf` samples); built only if they are 1% of its instructions.
 

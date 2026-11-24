@@ -2,50 +2,60 @@ function qf_last(%0: ptr, %1: ptr, %2: val, %3: val, %4: int): val {
 b0(%0: ptr, %1: ptr, %2: val, %3: val, %4: int):
   @47:53
   jump b4()
-b1():
+b1(%32: val):
   @47:53
-  return %13
-b2():
+  return %32
+b2(%33: val, %35: int, %39: val):
   @47:87
   %7: int = const 1
-  %8: int = sub %15, %7
+  %8: int = sub %35, %7
   @47:75
-  %9: ptr = null
-  jump b3(%9, %14, %13, %8)
-b3(%11: ptr, %13: val, %14: val, %15: int):
+  jump b3()
+b3():
   @47:56
   %5: int = const 0
-  %6: int = eq %15, %5
+  %6: int = eq %8, %5
   @47:53
-  branch %6, b1(), b2()
+  branch %6, b1(%39), b2(%39, %8, %33)
 b4():
+  @47:56
+  %21: int = const 0
+  %22: int = eq %4, %21
   @47:53
-  jump b3(%0, %2, %3, %4)
+  branch %22, b1(%2), b5()
+b5():
+  @47:53
+  jump b2(%2, %4, %3)
 }
 
 function qf_last_spec(%0: ptr, %1: ptr, %2: ptr, %3: ptr, %4: ptr, %5: int) pairs [1 3]: ptr, ptr {
 b0(%0: ptr, %1: ptr, %2: ptr, %3: ptr, %4: ptr, %5: int):
   @47:53
   jump b4()
-b1():
+b1(%39: ptr, %41: ptr):
   @47:53
-  return %14, %15
-b2():
+  return %39, %41
+b2(%40: ptr, %42: ptr, %44: int, %46: ptr, %48: ptr):
   @47:87
   %8: int = const 1
-  %9: int = sub %18, %8
+  %9: int = sub %44, %8
   @47:75
-  %10: ptr = null
-  jump b3(%10, %16, %17, %14, %15, %9)
-b3(%13: ptr, %14: ptr, %15: ptr, %16: ptr, %17: ptr, %18: int):
+  jump b3()
+b3():
   @47:56
   %6: int = const 0
-  %7: int = eq %18, %6
+  %7: int = eq %9, %6
   @47:53
-  branch %7, b1(), b2()
+  branch %7, b1(%46, %48), b2(%46, %48, %9, %40, %42)
 b4():
+  @47:56
+  %25: int = const 0
+  %26: int = eq %5, %25
   @47:53
-  jump b3(%0, %1, %2, %3, %4, %5)
+  branch %26, b1(%1, %2), b5()
+b5():
+  @47:53
+  jump b2(%1, %2, %5, %3, %4)
 }
 
 function qr_register_dicts() {
@@ -64,6 +74,7 @@ b0():
 
 function main exported(%0: int, %1: ptr) int32 [0]: int result int32 {
 b0(%0: int, %1: ptr):
+  %155: int = const 0
   call quest_gc_init()
   call quest_builtins_init(%0, %1) int32 [0]
   call qr_register_dicts()
@@ -144,18 +155,16 @@ b0(%0: int, %1: ptr):
   %65: ptr = call quest_string_concat(%63, %24)
   @9:28
   call quest_writer_put_string(%7, %65)
-  @34:9
-  %67: int = const 0
   @36:9
   %74: int = const 3
   %75: int = le %41, %74
   branch %75, b1(), b2()
 b1():
   @36:9
-  jump b9(%67, %41)
+  jump b9()
 b2():
   @36:9
-  jump b3(%67)
+  jump b3(%155)
 b3(%135: int):
   @42:7
   %93: ptr = call qv_conv_int(%135)
@@ -211,30 +220,37 @@ b3(%135: int):
   call quest_writer_put_string(%7, %133)
   %134: int = const 0
   return %134
-b4(%136: int, %138: int):
+b4():
   @38:22
-  %80: int = add %136, %138
+  %80: int = add %151, %89
   @36:9
   %84: int = const 3
-  %85: int = eq %138, %84
-  branch %85, b6(), b7()
+  %85: int = eq %89, %84
+  branch %85, b6(%80), b7(%80, %89)
 b5():
   @36:9
-  jump b3(%80)
-b6():
+  jump b3(%150)
+b6(%150: int):
   @36:9
   jump b5()
-b7():
+b7(%151: int, %154: int):
   @36:9
   jump b8()
 b8():
   @36:9
   %88: int = const 1
-  %89: int = add %138, %88
-  jump b4(%80, %89)
-b9(%139: int, %140: int):
+  %89: int = add %154, %88
+  jump b4()
+b9():
+  @38:22
+  %141: int = add %155, %41
   @36:9
-  jump b4(%139, %140)
+  %142: int = const 3
+  %143: int = eq %41, %142
+  branch %143, b6(%141), b10()
+b10():
+  @36:9
+  jump b7(%141, %41)
 }
 
 data qf_last_closure words [qf_last]
