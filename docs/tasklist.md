@@ -53,22 +53,3 @@ lib/string.mod.quest, as runtime/wasm/core.mod.quest already writes `catSub` and
 
 **Done when.** The three are Quest, a micro-benchmark of each on long strings shows no loss against the C versions,
 and their runtime functions and interpreter builtins are gone; or the primitive is judged not worth adding.
-
----
-
-## The JIT's "a use of variable qj_1_record, which nothing binds"
-
-**Problem.** A review of the wasm backend (2026-11-15) reported the JIT failing with "a use of variable qj_1_record
-(423), which nothing binds", the SSA builder's message for a variable with no binding
-(questlang/ssa/build/values.mod.quest, `read`), and gave no program. Its other two reports were found and fixed
-on 2026-11-21: an out argument the callee leaves unassigned (`language/out_converted_unassigned`,
-`language/out_generic_unassigned`) and an auto value whose record component mentions its type, which made an
-invalid wasm module (`language/auto_record_components`). Probes of records through the JIT (out arguments, auto
-values, record views, closures) did not show this one.
-
-**Where to start.** A program with a record bound by a let that the JIT's unit boundary or module rollback
-(docs/jit.md) may separate from its use: a REPL session that redefines a record-typed value, or `-e` with a record
-captured by a function compiled in a later unit.
-
-**Done when.** A program shows it and it is fixed with that program as its test, or a review of the JIT's binding
-of variables across units finds it cannot happen.

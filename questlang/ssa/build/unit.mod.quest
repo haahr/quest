@@ -26,6 +26,7 @@ import
     control = questlang/ssa/build/control : questlang/ssa/build/Control
     descriptors = questlang/ssa/build/descriptors : questlang/ssa/build/Descriptors
     vals = questlang/ssa/build/values : questlang/ssa/build/Values
+    questlang/ssa/cfg : questlang/ssa/Cfg
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/statics : questlang/ssa/Statics
     questlang/types/model : questlang/types/Model
@@ -140,8 +141,14 @@ export
 
     (* Builds a top-level SSA function (main, a JIT phrase entry, or a module
      * initializer) by emitting before, lowering body b, and emitting after if
-     * control does not already terminate. Variables bound outside loops and
-     * referenced by other bodies become unit globals (walk.globalVariables). *)
+     * control reaches the body's end. Variables bound outside loops and
+     * referenced by other bodies become unit globals (walk.globalVariables).
+     *
+     * A construct's block for after it is left open even when nothing jumps
+     * to it (a try whose body and handler both jump to an enclosing join),
+     * so an open block at the end may still be unreached, and after must
+     * not run there: a JIT phrase module's after reads its record, whose let
+     * follows a raise that ended the body and so was never built. *)
     let topLevel(u: vals.UnitBuilder symbol: String b: ir.Body before: All(fn: vals.Fn) Ok after: All(fn: vals.Fn) Ok
             results: Array(ssa.Type) params: Array(ssa.Type) exported: Bool): Function =
         begin
@@ -149,7 +156,7 @@ export
             let fn = vals.newFn(u sf maybe.none())
             before(fn)
             control.body(fn b)
-            if not(vals.terminated(fn)) then after(fn) end
+            if not(vals.terminated(fn)) andif cfg.reached(cfg.graph(sf) fn.cur) then after(fn) end
             vals.finish(fn)
             sf
         end
