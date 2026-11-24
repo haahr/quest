@@ -311,7 +311,7 @@ def install(prefix: Path) -> None:
                          '"$@"\n', encoding="utf-8")
     temporary.chmod(0o755)
     os.replace(temporary, command)
-    print(f"Installed {commit[:8]} in {installed}, run as {command}")
+    print(f"Installed {commit[:8]} in {installed}, run as {command}", flush=True)
     if str(command.parent) not in os.environ.get("PATH", "").split(os.pathsep):
         print(f"{command.parent} is not on PATH")
 
