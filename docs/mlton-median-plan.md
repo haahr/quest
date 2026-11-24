@@ -660,14 +660,24 @@ then one timing of the suite (§2), with the lock, on a quiet machine. Commits s
    - Gate: mandelbrot (25), matrix-multiply, mpuz, lexgen (8); each part kept only if it saves 1% somewhere it aims
      at, and the hoisting is watched for the spills value numbering once caused (ssa.md §4.1) and for broken `ldp`
      pairs.
-3. **Steps 9 and 26, induction variables:** in a rotated loop, `base + i * 8` for an induction variable `i` becomes a
-   pointer stepping by 8, and indices that step together become one with offsets. matrix-multiply's 6 of 30, tensor's
-   3% (benchmarks.md §42.3).
+3. **Steps 9 and 26, induction variables and bounds checks:** in a rotated loop, `base + i * 8` for an induction
+   variable `i` becomes a pointer stepping by 8, and indices that step together become one with offsets.
+   matrix-multiply's 6 of 30, tensor's 3% (benchmarks.md §42.3). With each induction variable's range known (its
+   start, step, and the test that bounds it), a bounds check it implies goes (the user, 2026-11-24): `0 <= i <
+   length` for a loop over an array's indices whose length does not change in it, and checks of `i + c` that the
+   range covers. Today only a check that an identical dominating one decides is removed (`ssa/passes/conditions`);
+   a check implied by a different comparison is not.
 4. **Step 14, arm64's back-edge moves:** with loops rotated in the SSA, what is left is the moves of permuted
    parameters on a back edge (mandelbrot's `fmov`s, mpuz's `mov`s). Probed first by counting the moves on the hot back
    edges of mandelbrot, mpuz, and the `while`-on-a-flag loop of §42.3; built only if they are 1% of a program.
 5. **Step 18, conjunctions as `ccmp`:** counted first, how many of logic's 1,563 `cset`/`csel` are in its hot code
    (`tools/perf` samples); built only if they are 1% of its instructions.
+
+**To investigate when Part 3 is done** (the user, 2026-11-24):
+
+- **Non-null facts:** a value freshly allocated, or already dereferenced, is not known to be non-null, so a later null
+  check of it stays unless an identical one dominates it. How many such checks the suite's hot code runs, and what
+  knowing them would save.
 
 ## 6. Order and stopping
 
