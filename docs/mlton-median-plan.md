@@ -644,8 +644,18 @@ then one timing of the suite (§2), with the lock, on a quiet machine. Commits s
 1. **Step 10, `real.int` as an SSA conversion.** A new pure opcode (`opIntToReal`): built for the external
    `quest_real_from_int` in `ssa/build/calls`' `externalOperation`; printed, parsed, and verified; folded on a
    constant; `(double)` in ssac's C, `scvtf` on arm64. mandelbrot's `real.int(j)` is the aim.
+   **Done** (`405a3fab`): in `calls.inlineExternal`, which every path to a runtime external reaches (the direct
+   externals' `opCallExternal` too, which `externalOperation` is not); not folded on constants, which none of the
+   suite's are. Against the baseline (`32c8690d`), unit by unit, ssac and arm64: mandelbrot 0.878 and 0.925, zern
+   0.899 and 0.950, ray 0.957 and 0.988, fft 0.987 and 0.991; the rest within 1%.
 2. **Steps 25 and 8, loops: memory promoted, rotated, invariants hoisted** (`ssa/passes/loops`, a new pass on
    `ssa/cfg`'s dominators, natural loops from back edges):
+   - *Self tail calls as loops first:* a recursive loop that stays a function (mandelbrot's `loop1`, called from
+     `doit` and the top level, so not contified) is a self tail call in the SSA, which only the backends make a jump
+     (`ssa/passes/tailJumps` leaves them), so the SSA sees no loop in it. The pass first makes the entry a header
+     whose parameters are the function's and each self tail call a jump to it, after `tailCalls` has marked them,
+     then numbers the values and decides the conditions again of each function it changed. Contified loops and
+     `accumulate`'s are loops already.
    - *Promotion (25):* a word at an address the loop does not change (a module cell's field: a global's invariant
      load plus an offset), which the loop loads and stores, where nothing else in the loop can write it: no call but
      runtime functions that write no memory (their effects), and no store but to that address, to the loop's own
