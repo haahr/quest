@@ -1,0 +1,92 @@
+(* Standard library: util/uri. parse and toString on RFC 3986's examples and
+ * edge cases, encode and decode over every byte, file URIs to and from paths
+ * with spaces, '%', '#', '?', and UTF-8, and the errors. The expected output
+ * was checked against Python 3.11: RFC 3986 appendix B's expression for
+ * parse, urllib.parse's quote and unquote_to_bytes for encode and decode,
+ * and pathlib's as_uri for fromPath. *)
+
+import stringOp = string : StringOp
+import ascii : Ascii
+import writer : Writer
+
+import util/maybe : util/Maybe
+import util/uri : util/URI
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+let shown(m: maybe.T(String)): String = if maybe.isSome(m) then "\"" <> maybe.unwrap(m) <> "\"" else "none" end
+let attempt(f: All() String): String = try f() when uri.error with e then "error: " <> e end
+
+(* parse, and toString giving the text back *)
+let parsed(text: String): Ok =
+    print(attempt(fun(): String
+        begin
+            let p = uri.parse(text)
+            let same = if stringOp.equal(uri.toString(p) text) then "" else " (toString differs)" end
+            p.scheme <> " " <> shown(p.authority) <> " \"" <> p.path <> "\" " <> shown(p.query) <> " "
+                <> shown(p.fragment) <> same
+        end))
+parsed("ftp://ftp.is.co.za/rfc/rfc1808.txt")
+parsed("http://www.ietf.org/rfc/rfc2396.txt")
+parsed("ldap://[2001:db8::7]/c=GB?objectClass?one")
+parsed("mailto:John.Doe@example.com")
+parsed("news:comp.infosystems.www.servers.unix")
+parsed("tel:+1-816-555-1212")
+parsed("telnet://192.0.2.16:80/")
+parsed("urn:oasis:names:specification:docbook:dtd:xml:4.1.2")
+parsed("foo://example.com:8042/over/there?name=ferret#nose")
+parsed("file:///Users/x/a%20b.quest")
+parsed("file:/a")
+parsed("file://localhost/a")
+parsed("a:")
+parsed("a:?#")
+parsed("a://?q#f?g#h")
+parsed("x+y-z.1:path")
+parsed("C%3A:x")
+parsed("/no/scheme")
+parsed(":empty")
+parsed("1a:x")
+parsed("a b:x")
+parsed("http://x/%2")
+parsed("http://x/%zz")
+parsed("")
+
+(* encode and decode over every byte *)
+let all = stringOp.new(256 ' ')
+for i = 0 upto 255 do stringOp.setChar(all i ascii.char(i)) end
+let encoded = uri.encode(all "")
+print(encoded)
+print(uri.encode(all "/:@"))
+print(if stringOp.equal(uri.decode(encoded) all) then "decode inverts encode" else "decode differs" end)
+print(uri.decode("%41%62c%2f%2F%e4%B8%AD"))
+print(attempt(fun(): String uri.decode("100%")))
+print(attempt(fun(): String uri.decode("%4")))
+print(attempt(fun(): String uri.decode("%g0")))
+
+(* File URIs *)
+let paths = array of
+    "/"
+    "/Users/x/a.quest"
+    "/a b/c%d#e?f;g=h&i+j,k:l@m!n$o'p(q)r*s"
+    "/\xe4\xb8\xad\xe6\x96\x87/\xc3\xa9"
+    "/tab\there"
+    "/~user/a_b-c.d"
+end
+for i = 0 upto {extent paths - 1} do
+    let u = uri.fromPath(paths[i])
+    let back = uri.toPath(u)
+    print(u <> if stringOp.equal(back paths[i]) then "" else " (toPath differs)" end)
+end
+let toPathOf(text: String): Ok = print(attempt(fun(): String uri.toPath(text)))
+toPathOf("file:///Users/x/a%3Ab.quest")
+toPathOf("FILE://LocalHost/a")
+toPathOf("file:/a")
+toPathOf("file://other/a")
+toPathOf("http://x/a")
+toPathOf("file:a")
+toPathOf("file://")
+toPathOf("file:///a?q")
+toPathOf("file:///a#f")
+toPathOf("file:///a%00b")
+toPathOf("file:///a%2")
+print(attempt(fun(): String uri.fromPath("relative/path")))
+print(attempt(fun(): String uri.fromPath("")))

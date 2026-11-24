@@ -40,14 +40,29 @@ It has three kinds of user:
    zeros, and anything but whitespace after the value. A repeated member name keeps its last value in its first
    place, as Python's does, unless the options are `parsingDynamic` (`unique`), which refuses it, as the dynamic
    format requires ([dynamic.md](dynamic.md) §2.1).
-5. **Strings are bytes, and a byte is the code point of the same number** (Latin-1). A byte that isn't printable
-   ASCII (a control character, DEL, or a byte above 127) is written as `\u00XX`, and an escape above `ÿ` is an
-   error. Every Quest string round-trips exactly. There is no UTF-8 mode (user, 2026-11-18), as Quest has no UTF-8.
-   So for JSON from elsewhere, which is almost always UTF-8:
+5. **Strings are bytes, and by default a byte is the code point of the same number** (Latin-1). A byte that isn't
+   printable ASCII (a control character, DEL, or a byte above 127) is written as `\u00XX`, and an escape above `ÿ` is
+   an error. Every Quest string round-trips exactly. In this default mode, for JSON from elsewhere, which is almost
+   always UTF-8:
    - raw bytes above 127 are read unchanged;
    - an escape such as `é` is read as the one byte E9, not the bytes C3 A9, and `中` is an error;
    - bytes above 127 are written as escapes, so a reader that isn't Quest sees each byte of a UTF-8 sequence as a
      character of its own.
+
+   **The UTF-8 mode** (user, 2026-11-23, which lifted "no UTF-8 mode" of 2026-11-18 for an opt-in mode only) is for
+   JSON exchanged with programs that aren't Quest, such as an editor talking to the language server
+   ([lsp-plan.md](lsp-plan.md)). It is the `utf8` field of `ParseOptions` and `PrintOptions` (`parsingUtf8`,
+   `compactUtf8`):
+   - an escape gives its code point's UTF-8 encoding; a high surrogate's escape must be followed by a low one's, the
+     two giving the pair's code point, and a surrogate's escape without its partner is an error, though Python
+     accepts it;
+   - raw bytes are read unchanged, and are not checked;
+   - output is what `json.dumps(ensure_ascii=False)` writes, encoded as UTF-8: only control characters, `"` and `\`
+     are escaped, a well-formed UTF-8 sequence is written as it is, and each maximal subpart of an ill-formed one
+     (Unicode's rule for U+FFFD substitution, which Python's `errors="replace"` follows) as U+FFFD. The text is then
+     always UTF-8, but a string that wasn't doesn't round-trip.
+
+   `tests/python/test_json.py` checks the mode against Python reading the text as UTF-8 with `errors="replace"`.
 6. **`Object` is manifest, though callers should treat it as abstract.** Its operations are `newObject`, `put`,
    `get`, `remove`, `names`, `size`, and `forEach`. It would be abstract, but an interface's manifest type can't
    name an abstract type of the same interface: a module is checked against its interface by comparing each manifest

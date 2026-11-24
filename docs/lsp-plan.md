@@ -6,7 +6,8 @@ hazards (§5), and open questions (§6). Self-hosted compiler only, as the Jupyt
 ([jupyter-kernel.md](jupyter-kernel.md) §1): the bootstrap is untouched, and nothing here changes what either compiler
 prints for a program.
 
-**Status (2026-11-23):** not started.
+**Status (2026-11-23):** L1 and L2 (§3.0) are built and wait to be pushed and released; steps 1–10 are not
+started.
 
 ## 1. What exists already
 
@@ -85,8 +86,9 @@ interpreters run them unchanged, and the WebAssembly backend needs nothing of it
 
 **L1. A UTF-8 mode for `util/json`.**
 
-- **The decision it reverses.** json.md §5 records "no UTF-8 mode (user, 2026-11-18)". This step needs the user to
-  lift that, for this mode only: the Latin-1 behavior stays the default, and every existing caller is unchanged.
+- **The decision it reverses.** json.md §5 recorded "no UTF-8 mode (user, 2026-11-18)". The user lifted that on
+  2026-11-23, for this opt-in mode only: the Latin-1 behavior stays the default, and every existing caller is
+  unchanged.
 - **The interface.** `ParseOptions` and `PrintOptions` each gain a field, `utf8: Bool`, which is false in `parsing`,
   `parsingDynamic`, `compact` and `indented(n)`. Two new values cover what the server needs: `parsingUtf8` (not
   unique) and `compactUtf8`. Nothing outside `util/json` builds these records, so the new field breaks no caller.
@@ -95,8 +97,10 @@ interpreters run them unchanged, and the WebAssembly backend needs nothing of it
   - control characters (below 32), `"` and `\` are escaped as they are now;
   - every other byte, DEL and bytes above 127 included, is written unchanged when it is part of a well-formed UTF-8
     sequence;
-  - a byte that isn't (a stray continuation byte, a truncated sequence, an overlong form, a surrogate's encoding) is
-    written as `�`. The text is then always valid UTF-8, which a client's JSON parser requires. Such a string
+  - each maximal subpart of an ill-formed sequence (a stray continuation byte, a truncated sequence, an overlong
+    form, a surrogate's encoding) is written as U+FFFD, its bytes EF BF BD, as Python's `errors="replace"` and
+    `ensure_ascii=False` would write it. The text is then always valid UTF-8, which a client's JSON parser
+    requires. Such a string
     does not round-trip, and the mode's comment says so.
 - **Reading in UTF-8 mode.**
   - Raw bytes are read unchanged, as now, and are not checked.
@@ -109,7 +113,7 @@ interpreters run them unchanged, and the WebAssembly backend needs nothing of it
   follows. `read` collects a value's text by counting brackets and is unaffected.
 - **Tests.**
   - New cases in `tests/source/stdlib/json_*`: two-, three- and four-byte characters both ways, surrogate pairs,
-    lone surrogates, malformed bytes written as `�`, and DEL.
+    lone surrogates, malformed bytes written as U+FFFD, and DEL.
   - The expected output is checked once against Python 3.11's `json.dumps(ensure_ascii=False)` and `json.loads`.
   - The existing Latin-1 goldens stay as they are, which shows the default didn't move.
 - **Done when:** the new cases pass in every mode, json.md §5 describes both modes, and libraries.md §1.13 lists the
@@ -175,7 +179,8 @@ interpreters run them unchanged, and the WebAssembly backend needs nothing of it
 
 **Not a library: UTF-16 columns.** The server converts columns in `questlang/lsp/positions`, step 2. It is not
 lib, for two reasons:
-- future-libraries.md and the regexp decision keep Unicode out of the libraries for now;
+- future-libraries.md and the regexp decision keep Unicode out of the libraries for now, `util/json`'s opt-in
+  mode aside;
 - nothing but the server needs the conversion.
 
 Since it lives in `questlang/`, it also needs no release first. The conversion, over one line's bytes:

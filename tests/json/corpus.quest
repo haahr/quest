@@ -2,13 +2,15 @@
  * docs/json.md section 5). Its argument is a file of cases, one a line:
  *
  *     parse TEXT UNIQUE COMPACT INDENTED
+ *     parse8 TEXT UNIQUE COMPACT INDENTED
  *     real TEXT EXPECTED
  *     int TEXT EXPECTED
  *
  * each field but UNIQUE (0 or 1) in hexadecimal, two digits a byte, - for
  * empty. parse parses TEXT, with unique as UNIQUE says, and prints it compact
  * and indented by 2: COMPACT and INDENTED are those texts, or "error" (in
- * plain text) when TEXT is to be rejected. real reads the number TEXT with
+ * plain text) when TEXT is to be rejected. parse8 is the same with the
+ * options' utf8, reading and printing UTF-8. real reads the number TEXT with
  * toReal and writes it back with real, EXPECTED being Python's repr of
  * float(TEXT), or "error" for one past a real's range; int is the same with
  * toInt and int, "error" for one past an Int's. It prints each case that
@@ -69,10 +71,14 @@ for i = 0 upto {vector.length(cases) - 1} do
         let mode = vector.get(fields 0)
         let text = unhex(vector.get(fields 1))
         count := count + 1
-        if stringOp.equal(mode "parse") then
-            let options = if stringOp.equal(vector.get(fields 2) "1") then json.parsingDynamic else json.parsing end
-            let compact = attempt(fun(): String json.dump(json.parseWith(text options)))
-            let indented = attempt(fun(): String json.dumpWith(json.parseWith(text options) json.indented(2)))
+        if stringOp.equal(mode "parse") orif stringOp.equal(mode "parse8") then
+            let utf8 = stringOp.equal(mode "parse8")
+            let unique = stringOp.equal(vector.get(fields 2) "1")
+            let options: json.ParseOptions = record unique = unique utf8 = utf8 end
+            let compactOptions: json.PrintOptions = record indent = 0 utf8 = utf8 end
+            let indentedOptions: json.PrintOptions = record indent = 2 utf8 = utf8 end
+            let compact = attempt(fun(): String json.dumpWith(json.parseWith(text options) compactOptions))
+            let indented = attempt(fun(): String json.dumpWith(json.parseWith(text options) indentedOptions))
             let wantCompact = field(vector.get(fields 3))
             let wantIndented = if stringOp.equal(wantCompact "error") then "error" else field(vector.get(fields 4)) end
             if not(stringOp.equal(compact wantCompact)) orif not(stringOp.equal(indented wantIndented)) then

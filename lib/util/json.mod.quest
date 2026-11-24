@@ -200,11 +200,12 @@ export
      * 2. Parsing
      * ====================================================================== *)
 
-    Let ParseOptions = Record unique: Bool end
-    let parsing: ParseOptions = record unique = false end
-    let parsingDynamic: ParseOptions = record unique = true end
+    Let ParseOptions = Record unique: Bool utf8: Bool end
+    let parsing: ParseOptions = record unique = false utf8 = false end
+    let parsingDynamic: ParseOptions = record unique = true utf8 = false end
+    let parsingUtf8: ParseOptions = record unique = false utf8 = true end
 
-    Let Scanner = Tuple text: String var pos: Int unique: Bool end
+    Let Scanner = Tuple text: String var pos: Int unique: Bool utf8: Bool end
 
     let atEnd(s: Scanner): Bool = s.pos >= stringOp.length(s.text)
     let peek(s: Scanner): Char = if atEnd(s) then '\x00' else stringOp.getChar(s.text s.pos) end
@@ -267,6 +268,69 @@ export
             end
         end
 
+    (* The four hexadecimal digits at offset at, as a number *)
+    let hex4(s: Scanner at: Int): Int =
+        begin
+            if {at + 4} > stringOp.length(s.text) then failAt(:Ok "unterminated escape" at) end
+            let var code = 0
+            for i = 0 upto 3 do code := {code * 16} + hexValue(s stringOp.getChar(s.text {at + i})) end
+            code
+        end
+
+    (* The UTF-8 encoding of the code point code *)
+    let putUtf8(b: sb.T code: Int): Ok =
+        if code < 128 then
+            sb.char(b ascii.char(code))
+        elsif code < 2048 then
+            sb.char(b ascii.char(192 + {code / 64}))
+            sb.char(b ascii.char(128 + {code % 64}))
+        elsif code < 65536 then
+            sb.char(b ascii.char(224 + {code / 4096}))
+            sb.char(b ascii.char(128 + {{code / 64} % 64}))
+            sb.char(b ascii.char(128 + {code % 64}))
+        else
+            sb.char(b ascii.char(240 + {code / 262144}))
+            sb.char(b ascii.char(128 + {{code / 4096} % 64}))
+            sb.char(b ascii.char(128 + {{code / 64} % 64}))
+            sb.char(b ascii.char(128 + {code % 64}))
+        end
+
+    let isHighSurrogate(code: Int): Bool = {code >= 55296} andif {code <= 56319}
+    let isLowSurrogate(code: Int): Bool = {code >= 56320} andif {code <= 57343}
+
+    (* A \u escape, whose u is at the scanner's position, which is left at
+     * the escape's last digit. In Latin-1 a character is a byte, so an escape
+     * past 255 gives none. In UTF-8 an escape gives its code point's
+     * encoding, and a high surrogate's escape must be followed by a low one's,
+     * the two giving the code point of the pair *)
+    let scanEscape(s: Scanner b: sb.T): Ok =
+        begin
+            let start = s.pos - 1
+            if {s.pos + 5} > stringOp.length(s.text) then fail(:Ok s "unterminated escape") end
+            let var code = hex4(s s.pos + 1)
+            s.pos := s.pos + 4
+            if not(s.utf8) then
+                if code > 255 then failAt(:Ok "an escape past \\u00ff" start) end
+                sb.char(b ascii.char(code))
+            else
+                if isHighSurrogate(code) then
+                    let at = s.pos + 1
+                    if {{at + 6} > stringOp.length(s.text)}
+                            orif {stringOp.getChar(s.text at) isnot '\\'}
+                            orif {stringOp.getChar(s.text at + 1) isnot 'u'} then
+                        failAt(:Ok "a surrogate escape without its pair" start)
+                    end
+                    let low = hex4(s at + 2)
+                    if not(isLowSurrogate(low)) then failAt(:Ok "a surrogate escape without its pair" start) end
+                    code := 65536 + {{code - 55296} * 1024} + {low - 56320}
+                    s.pos := s.pos + 6
+                elsif isLowSurrogate(code) then
+                    failAt(:Ok "a surrogate escape without its pair" start)
+                end
+                putUtf8(b code)
+            end
+        end
+
     let scanString(s: Scanner): String =
         begin
             advance(s)
@@ -290,15 +354,7 @@ export
                     elsif e is 'n' then sb.char(b '\n')
                     elsif e is 'r' then sb.char(b '\r')
                     elsif e is 't' then sb.char(b '\t')
-                    elsif e is 'u' then
-                        if {s.pos + 5} > stringOp.length(s.text) then fail(:Ok s "unterminated escape") end
-                        let var code = 0
-                        for i = 1 upto 4 do code := {code * 16} + hexValue(s stringOp.getChar(s.text {s.pos + i})) end
-                        (* A character is a byte, so an escape past 255 gives
-                         * none *)
-                        if code > 255 then failAt(:Ok "an escape past \\u00ff" s.pos - 1) end
-                        s.pos := s.pos + 4
-                        sb.char(b ascii.char(code))
+                    elsif e is 'u' then scanEscape(s b)
                     else failAt(:Ok "unknown escape" s.pos - 1)
                     end
                     advance(s)
@@ -378,7 +434,8 @@ export
 
     let parseWith(text: String options: ParseOptions): Value =
         begin
-            let s: Scanner = tuple let text = text let var pos = 0 let unique = options.unique end
+            let s: Scanner =
+                tuple let text = text let var pos = 0 let unique = options.unique let utf8 = options.utf8 end
             let v = scanValue(s)
             skipSpace(s)
             if not(atEnd(s)) then fail(:Ok s "text after the value") end
@@ -389,7 +446,7 @@ export
 
     let number(text: String): Value =
         begin
-            let s: Scanner = tuple let text = text let var pos = 0 let unique = false end
+            let s: Scanner = tuple let text = text let var pos = 0 let unique = false let utf8 = false end
             if atEnd(s) then fail(:Ok s "expected a number") end
             let v = scanNumber(s)
             if not(atEnd(s)) then fail(:Ok s "text after the number") end
@@ -460,18 +517,77 @@ export
      * 3. Printing
      * ====================================================================== *)
 
-    Let PrintOptions = Record indent: Int end
-    let compact: PrintOptions = record indent = 0 end
-    let indented(n: Int): PrintOptions = record indent = n end
+    Let PrintOptions = Record indent: Int utf8: Bool end
+    let compact: PrintOptions = record indent = 0 utf8 = false end
+    let compactUtf8: PrintOptions = record indent = 0 utf8 = true end
+    let indented(n: Int): PrintOptions = record indent = n utf8 = false end
 
     let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n)
 
-    let quoted(b: sb.T text: String): Ok =
+    (* The length of the well-formed UTF-8 sequence at offset i of text, or,
+     * if there is none, minus the length of the maximal subpart there: the
+     * longest prefix of a well-formed sequence, or else the one byte.
+     * Unicode's practice for U+FFFD substitution, which Python's "replace"
+     * follows, replaces each maximal subpart with one U+FFFD *)
+    let sequenceAt(text: String i: Int): Int =
+        begin
+            let n = stringOp.length(text)
+            let lead = ascii.val(stringOp.getChar(text i))
+            (* need is how many continuation bytes the lead byte asks for, ~1
+             * if it is not a lead byte. lo and hi bound the next byte, which
+             * excludes overlong forms, surrogates, and code points past
+             * U+10FFFF *)
+            let var need = ~1
+            let var lo = 128
+            let var hi = 191
+            if lead < 128 then
+                need := 0
+            elsif {lead >= 194} andif {lead < 224} then
+                need := 1
+            elsif {lead >= 224} andif {lead < 240} then
+                need := 2
+                if lead is 224 then lo := 160 elsif lead is 237 then hi := 159 end
+            elsif {lead >= 240} andif {lead < 245} then
+                need := 3
+                if lead is 240 then lo := 144 elsif lead is 244 then hi := 143 end
+            end
+            if need < 0 then
+                ~1
+            else
+                let var k = 1
+                let var good = true
+                while good andif {k <= need} do
+                    if {i + k} < n then
+                        let c = ascii.val(stringOp.getChar(text i + k))
+                        if {c >= lo} andif {c <= hi} then
+                            k := k + 1
+                            lo := 128
+                            hi := 191
+                        else
+                            good := false
+                        end
+                    else
+                        good := false
+                    end
+                end
+                if good then k else 0 - k end
+            end
+        end
+
+    (* text as a JSON string. In Latin-1 (not utf8), each byte that is not
+     * printable ASCII is escaped as \u00XX. In UTF-8, as Python's
+     * ensure_ascii=False writes it, only control characters are escaped: a
+     * well-formed UTF-8 sequence is written as it is, and each maximal
+     * subpart of an ill-formed one as U+FFFD, so the text is always UTF-8 *)
+    let quoted(b: sb.T text: String utf8: Bool): Ok =
         begin
             sb.char(b '"')
-            for i = 0 upto {stringOp.length(text) - 1} do
+            let n = stringOp.length(text)
+            let var i = 0
+            while i < n do
                 let c = stringOp.getChar(text i)
                 let v = ascii.val(c)
+                let var next = i + 1
                 if c is '"' then sb.str(b "\\\"")
                 elsif c is '\\' then sb.str(b "\\\\")
                 elsif c is '\n' then sb.str(b "\\n")
@@ -479,13 +595,23 @@ export
                 elsif c is '\t' then sb.str(b "\\t")
                 elsif v is 8 then sb.str(b "\\b")
                 elsif v is 12 then sb.str(b "\\f")
-                elsif {v < 32} orif {v > 126} then
+                elsif {v < 32} orif {{v > 126} andif not(utf8)} then
                     sb.str(b "\\u00")
                     sb.char(b hexDigit(v / 16))
                     sb.char(b hexDigit(v % 16))
-                else
+                elsif v < 128 then
                     sb.char(b c)
+                else
+                    let size = sequenceAt(text i)
+                    if size > 0 then
+                        sb.sub(b text i size)
+                        next := i + size
+                    else
+                        sb.str(b "\xef\xbf\xbd")
+                        next := i - size
+                    end
                 end
+                i := next
             end
             sb.char(b '"')
             ok
@@ -501,12 +627,12 @@ export
         end
 
     (* v, at depth levels of indentation *)
-    let rec print(b: sb.T v: Value indent: Int depth: Int): Ok =
+    let rec print(b: sb.T v: Value indent: Int utf8: Bool depth: Int): Ok =
         case v
             when jNull then sb.str(b "null")
             when jBool with x then sb.str(b if x.b then "true" else "false" end)
             when jNumber with x then sb.str(b x.text)
-            when jString with x then quoted(b x.s)
+            when jString with x then quoted(b x.s utf8)
             when jArray with x then
                 if vector.empty(x.items) then
                     sb.str(b "[]")
@@ -515,7 +641,7 @@ export
                     for i = 0 upto {vector.length(x.items) - 1} do
                         if i > 0 then sb.char(b ',') end
                         newline(b indent depth + 1)
-                        print(b vector.get(x.items i) indent {depth + 1})
+                        print(b vector.get(x.items i) indent utf8 {depth + 1})
                     end
                     newline(b indent depth)
                     sb.char(b ']')
@@ -528,9 +654,9 @@ export
                     for i = 0 upto {x.o.count - 1} do
                         if i > 0 then sb.char(b ',') end
                         newline(b indent depth + 1)
-                        quoted(b x.o.names[i])
+                        quoted(b x.o.names[i] utf8)
                         sb.str(b if indent > 0 then ": " else ":" end)
-                        print(b x.o.values[i] indent {depth + 1})
+                        print(b x.o.values[i] indent utf8 {depth + 1})
                     end
                     newline(b indent depth)
                     sb.char(b '}')
@@ -540,7 +666,7 @@ export
     let dumpWith(v: Value options: PrintOptions): String =
         begin
             let b = sb.new()
-            print(b v options.indent 0)
+            print(b v options.indent options.utf8 0)
             sb.toString(b)
         end
 
@@ -666,6 +792,7 @@ export
         wr: writer.T
         b: sb.T
         indent: Int
+        utf8: Bool
         frames: vector.T(Frame)
         var done: Bool
     end
@@ -677,6 +804,7 @@ export
             let wr = wr
             let b = sb.new()
             let indent = options.indent
+            let utf8 = options.utf8
             let frames = vector.new(:Frame)
             let var done = false
         end
@@ -748,7 +876,7 @@ export
             if not(f.isObject) orif f.named then failWith(:Ok "a member name where a value belongs") end
             if f.count > 0 then sb.char(e.b ',') end
             newline(e.b e.indent depth(e))
-            quoted(e.b n)
+            quoted(e.b n e.utf8)
             sb.str(e.b if e.indent > 0 then ": " else ":" end)
             f.named := true
         end
@@ -756,7 +884,7 @@ export
     let value(e: Emitter v: Value): Ok =
         begin
             beforeValue(e)
-            print(e.b v e.indent depth(e))
+            print(e.b v e.indent e.utf8 depth(e))
             afterValue(e)
         end
 
@@ -776,7 +904,7 @@ export
     let stringValue(e: Emitter s: String): Ok =
         begin
             beforeValue(e)
-            quoted(e.b s)
+            quoted(e.b s e.utf8)
             afterValue(e)
         end
 

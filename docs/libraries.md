@@ -726,10 +726,14 @@ files, the build workers' messages, the Jupyter kernel), and for the interpreter
 is a `Value` tree; `dump`, `dumpWith`, and `write` print one, and an `Emitter` writes a value to a writer as its
 parts are given, with no tree, exactly as `write` would print it.
 
-- **Strings are bytes,** each the code point of the same number (Latin-1), as Quest has no UTF-8: a byte that is not
-  printable ASCII is written as `\u00XX`, and an escape above `ÿ` is an error. Every string round-trips exactly.
-- **Output is Python's,** for the same value read as Latin-1: compact (`separators=(",", ":")`) or indented
-  (`indent=n`), members in the order first put, a real as `repr` writes it.
+- **Strings are bytes,** each the code point of the same number (Latin-1) by default: a byte that is not printable
+  ASCII is written as `\u00XX`, and an escape above `ÿ` is an error. Every string round-trips exactly.
+- **A UTF-8 mode, opt-in,** for JSON exchanged with other programs (the language server, docs/lsp-plan.md): options
+  with `utf8` (`parsingUtf8`, `compactUtf8`) read an escape as its code point's UTF-8 encoding, a surrogate pair's as
+  the pair's, and write strings as UTF-8, each ill-formed sequence as U+FFFD, so the text is always UTF-8.
+- **Output is Python's,** for the same value read as Latin-1, or with `utf8`, `ensure_ascii=False`'s encoded as UTF-8:
+  compact (`separators=(",", ":")`) or indented (`indent=n`), members in the order first put, a real as `repr` writes
+  it.
 - **A number keeps its text,** so an integer of any size reads exactly; `toInt`, `toWord`, and `toReal` convert,
   raising `error` when it does not fit.
 - **Parsing is strict:** no comments, trailing commas, `NaN`, infinities, or leading zeros. A repeated member name
@@ -786,11 +790,13 @@ export
     forEach(o: Object action: All(name: String v: Value) Ok): Ok
     equal(a: Value b: Value): Bool
 
-    Def ParseOptions = Record unique: Bool end
+    Def ParseOptions = Record unique: Bool utf8: Bool end
     parsing: ParseOptions
     parsingDynamic: ParseOptions
-    Def PrintOptions = Record indent: Int end
+    parsingUtf8: ParseOptions
+    Def PrintOptions = Record indent: Int utf8: Bool end
     compact: PrintOptions
+    compactUtf8: PrintOptions
     indented(n: Int): PrintOptions
 
     Def Failure = Tuple message: String offset: Int end
@@ -1477,6 +1483,49 @@ end
 ```
 
 ---
+
+### 1.23. `util/uri : util/URI`
+
+URIs (RFC 3986) as text, for the language server's document names (docs/lsp-plan.md) and anything else that needs
+them: a URI split into its five parts and put back together, percent-encoding, and file URIs to and from POSIX paths.
+It does no networking, resolves no relative references, and normalizes nothing beyond what `toPath` needs.
+
+- **`parse`** splits a URI as RFC 3986's appendix B does, nothing decoded: the scheme (a letter, then letters,
+  digits, `+`, `-`, `.`), the authority if `//` follows, the path, the query if `?`, the fragment if `#`. Each `%`
+  must be followed by two hexadecimal digits; nothing else is checked. `toString(parse(t))` is `t`.
+- **`encode(s keep)`** writes each byte that is neither unreserved (`A-Z a-z 0-9 - . _ ~`) nor in `keep` as `%XX`, in
+  upper case, as Python's `urllib.parse.quote` does; `decode` undoes it, byte for byte.
+- **`fromPath`** is `pathlib`'s `as_uri`: `file://` and the absolute path, encoded with `/` kept.
+- **`toPath`** takes a `file` URI (any case) with no authority, an empty one, or `localhost`, an absolute path, and
+  no query or fragment, and gives its path, decoded.
+- **Compare paths, not URIs:** two clients may write the same file's URI differently (`:` as `%3A`, or not).
+- **`error`** carries a message quoting the text.
+
+`tests/source/stdlib/uri_operations.quest` tests it; its expected output was checked against Python 3.11.
+
+#### Interface Summary
+
+```quest
+interface URI
+import
+    util/maybe : util/Maybe
+export
+    error: Exception(String)
+    Def Parts = Tuple
+        scheme: String
+        authority: maybe.T(String)
+        path: String
+        query: maybe.T(String)
+        fragment: maybe.T(String)
+    end
+    parse(text: String): Parts
+    toString(parts: Parts): String
+    encode(s: String keep: String): String
+    decode(s: String): String
+    fromPath(path: String): String
+    toPath(uri: String): String
+end
+```
 
 ## 2. Collections (`lib/collections/`)
 

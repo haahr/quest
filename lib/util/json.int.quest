@@ -1,14 +1,16 @@
 (* Standard Library: JSON (RFC 8259)
  *
  * JSON text parsed into Value trees and printed from them, or written straight
- * to a writer by an Emitter (docs/json.md). A string is bytes, each the
- * code point of the same number (Latin-1): a byte above 127 or a control
- * character is written as \u00XX, and an escape above ÿ is an error.
- * Output is deterministic and is what Python's json.dumps writes for the same
- * value, read as Latin-1: compact (separators "," and ":") or indented
- * (indent=n), an object's members in the order first put, a real as Python's
- * repr writes it. Parsing is strict: no comments, trailing commas, NaN,
- * infinities, or leading zeros. *)
+ * to a writer by an Emitter (docs/json.md). By default a string is bytes,
+ * each the code point of the same number (Latin-1): a byte above 126 or a
+ * control character is written as \u00XX, and an escape above ÿ is an
+ * error. Options with utf8 read and write UTF-8 instead (see ParseOptions and
+ * PrintOptions). Output is deterministic and is what Python's json.dumps
+ * writes for the same value, read as Latin-1, or, with utf8, what
+ * json.dumps(ensure_ascii=False) writes, encoded as UTF-8: compact
+ * (separators "," and ":") or indented (indent=n), an object's members in the
+ * order first put, a real as Python's repr writes it. Parsing is strict: no
+ * comments, trailing commas, NaN, infinities, or leading zeros. *)
 
 interface JSON
 import
@@ -83,19 +85,38 @@ export
         (* Whether a repeated member name is an error, rather than its last
          * value winning *)
         unique: Bool
+        (* Whether a \u escape gives the UTF-8 encoding of its code point (a
+         * surrogate pair's escapes giving the pair's), rather than one byte.
+         * A surrogate's escape without its partner is an error, though
+         * Python accepts it. Raw bytes are read as they are, either way, and
+         * are not checked *)
+        utf8: Bool
     end
-    (* Not unique, as Python's json.loads *)
+    (* Not unique, Latin-1, as Python's json.loads *)
     parsing: ParseOptions
-    (* Unique: the dynamic format's (docs/dynamic.md section 2.1) *)
+    (* Unique, Latin-1: the dynamic format's (docs/dynamic.md section 2.1) *)
     parsingDynamic: ParseOptions
+    (* Not unique, UTF-8 *)
+    parsingUtf8: ParseOptions
 
     Def PrintOptions = Record
         (* 0 for compact text (separators "," and ":"); else spaces a level,
          * each element and member on a line of its own, as Python's
          * json.dumps(indent=n) writes them *)
         indent: Int
+        (* Whether strings are written as UTF-8, as Python's
+         * ensure_ascii=False writes them: only control characters are
+         * escaped, a well-formed UTF-8 sequence is written as it is, and each
+         * maximal subpart of an ill-formed one as U+FFFD (its bytes EF BF BD).
+         * The text is then always UTF-8, but such a string does not read back
+         * as it was *)
+        utf8: Bool
     end
+    (* Compact, Latin-1 *)
     compact: PrintOptions
+    (* Compact, UTF-8 *)
+    compactUtf8: PrintOptions
+    (* Indented by n, Latin-1 *)
     indented(n: Int): PrintOptions
 
     (* =========================================================================

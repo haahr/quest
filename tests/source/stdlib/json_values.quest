@@ -121,3 +121,22 @@ parsed("[1] 2")
 parsed("01")
 print(failure(fun(): String json.dump(json.parseWith("{\"a\": 1, \"a\": 2}" json.parsingDynamic))))
 print(failure(fun(): String json.dump(json.parseWith("{\"a\": 1, \"a\": 2}" json.parsing))))
+
+(* The UTF-8 mode: escapes past \u00ff and surrogate pairs read as UTF-8,
+ * strings written as they are, an ill-formed sequence written as U+FFFD, and
+ * the emitter writing as dump does *)
+let parsed8(text: String): Ok =
+    print(failure(fun(): String json.dumpWith(json.parseWith(text json.parsingUtf8) json.compactUtf8)))
+parsed8("[\"\\u00e9\\u4e2d\\ud83d\\ude00\", \"\xc3\xa9\x7f\"]")
+parsed8("\"\\ud83d\"")
+parsed8("\"x\\ude00\"")
+parsed8("\"\\ud83d\\u0041\"")
+parsed8("\"\xff \xe4\xb8 \xed\xa0\x80\"")
+print(json.dump(json.parseWith("\"\\u4e2d\"" json.parsingUtf8)))
+let e8 = json.emitter(writer.output json.compactUtf8)
+json.beginObject(e8)
+json.name(e8 "\xc3\xa9")
+json.stringValue(e8 "\xe4\xb8\xad\xff")
+json.endObject(e8)
+json.finish(e8)
+print("")

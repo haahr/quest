@@ -1,0 +1,60 @@
+(* Standard Library: URIs (RFC 3986)
+ *
+ * A URI split into its five parts and put back together, percent-encoding
+ * and decoding, and file URIs to and from POSIX paths. A URI is text, and
+ * Quest strings are its bytes: encoding works on bytes, so a path's UTF-8
+ * bytes are encoded one %XX each, as Python's urllib.parse.quote and
+ * pathlib's as_uri encode them. There is no networking here, no resolution of
+ * a relative reference against a base, and no normalization beyond what
+ * toPath needs.
+ *
+ * Two file URIs can name one file and differ as text (one client writes ':'
+ * as %3A, another leaves it as it is), so compare the paths toPath gives, not
+ * the URIs. *)
+
+interface URI
+import
+    util/maybe : util/Maybe
+export
+    (* Raised on text that is not a URI, a malformed %XX, a relative path
+     * given to fromPath, or a URI that toPath cannot make a local path of;
+     * its payload says which, and quotes the text *)
+    error: Exception(String)
+
+    (* A URI's five parts (RFC 3986 section 3), as written: nothing is
+     * decoded. The authority is present when the URI has "//" after its
+     * scheme, even if it is empty, as in file:///a; a query or fragment is
+     * present when its "?" or "#" is, even if empty *)
+    Def Parts = Tuple
+        scheme: String
+        authority: maybe.T(String)
+        path: String
+        query: maybe.T(String)
+        fragment: maybe.T(String)
+    end
+
+    (* text split into its parts, as RFC 3986's appendix B splits it. The
+     * scheme must be a letter followed by letters, digits, '+', '-' and
+     * '.', then ':'; each '%' must be followed by two hexadecimal digits.
+     * Nothing else is checked *)
+    parse(text: String): Parts
+    (* The text of parts, so that toString(parse(t)) is t *)
+    toString(parts: Parts): String
+
+    (* s with each byte that is neither unreserved (A-Z a-z 0-9 - . _ ~) nor
+     * in keep written as %XX, with upper-case hexadecimal digits *)
+    encode(s: String keep: String): String
+    (* s with each %XX replaced by its byte; raises error on a '%' not
+     * followed by two hexadecimal digits *)
+    decode(s: String): String
+
+    (* The file URI of an absolute path: "file://" and the path encoded with
+     * '/' kept, as pathlib's as_uri writes it (file:///a%20b). Raises error
+     * on a path that does not start with '/' *)
+    fromPath(path: String): String
+    (* The path a file URI names: its path decoded. The scheme must be "file"
+     * in any case, the authority absent, empty, or "localhost" in any case,
+     * the path absolute, with neither a query nor a fragment, and the
+     * decoded path must not hold a NUL byte; raises error otherwise *)
+    toPath(uri: String): String
+end

@@ -1,0 +1,216 @@
+(* Standard Library: URIs (RFC 3986) Implementation
+ *
+ * parse is a scan in the order of RFC 3986's appendix B: the scheme to the
+ * first ':', the authority after "//" to the next '/', '?' or '#', the path
+ * to the next '?' or '#', the query to the next '#', and the fragment to the
+ * end. *)
+
+module uri : URI
+import
+    ascii : Ascii
+    stringOp = string : StringOp
+
+    util/maybe : util/Maybe
+    sb = util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+export
+    let error: Exception(String) = exception error: String end
+
+    let fail(A::TYPE)(message: String text: String): A = raise error with message <> ": \"" <> text <> "\"" end
+
+    Let Parts = Tuple
+        scheme: String
+        authority: maybe.T(String)
+        path: String
+        query: maybe.T(String)
+        fragment: maybe.T(String)
+    end
+
+    let isHex(c: Char): Bool =
+        begin
+            let v = ascii.val(c)
+            {{v >= 48} andif {v <= 57}} orif {{v >= 65} andif {v <= 70}} orif {{v >= 97} andif {v <= 102}}
+        end
+
+    let hexValue(c: Char): Int =
+        begin
+            let v = ascii.val(c)
+            if v <= 57 then v - 48 elsif v <= 70 then v - 55 else v - 87 end
+        end
+
+    (* Raises error unless each '%' in text is followed by two hexadecimal
+     * digits *)
+    let checkPercents(text: String): Ok =
+        begin
+            let n = stringOp.length(text)
+            for i = 0 upto {n - 1} do
+                if stringOp.getChar(text i) is '%' then
+                    if {{i + 2} >= n} orif not(isHex(stringOp.getChar(text i + 1)))
+                            orif not(isHex(stringOp.getChar(text i + 2))) then
+                        fail(:Ok "a malformed percent-encoding" text)
+                    end
+                end
+            end
+            ok
+        end
+
+    (* The first offset at or after start of a character of stops, or the
+     * text's length *)
+    let scanTo(text: String start: Int stops: String): Int =
+        begin
+            let n = stringOp.length(text)
+            let var i = start
+            while {i < n} andif {strutil.find(stops stringOp.getSub(text i 1)) < 0} do i := i + 1 end
+            i
+        end
+
+    let slice(text: String from: Int to: Int): String = stringOp.getSub(text from to - from)
+
+    let parse(text: String): Parts =
+        begin
+            let n = stringOp.length(text)
+            let colon = scanTo(text 0 ":/?#")
+            if {colon is n} orif {stringOp.getChar(text colon) isnot ':'} orif {colon is 0}
+                    orif not(strutil.isAlpha(stringOp.getChar(text 0))) then
+                fail(:Ok "not a URI" text)
+            end
+            for i = 1 upto {colon - 1} do
+                let c = stringOp.getChar(text i)
+                if not(strutil.isAlnum(c)) andif {c isnot '+'} andif {c isnot '-'} andif {c isnot '.'} then
+                    fail(:Ok "not a URI" text)
+                end
+            end
+            checkPercents(text)
+            let var at = colon + 1
+            let authority =
+                if {{at + 1} < n} andif {stringOp.getChar(text at) is '/'} andif {stringOp.getChar(text at + 1) is '/'} then
+                    let ends = scanTo(text at + 2 "/?#")
+                    let a = slice(text at + 2 ends)
+                    at := ends
+                    maybe.some(a)
+                else
+                    maybe.none(:String)
+                end
+            let pathEnds = scanTo(text at "?#")
+            let path = slice(text at pathEnds)
+            at := pathEnds
+            let query =
+                if {at < n} andif {stringOp.getChar(text at) is '?'} then
+                    let ends = scanTo(text at + 1 "#")
+                    let q = slice(text at + 1 ends)
+                    at := ends
+                    maybe.some(q)
+                else
+                    maybe.none(:String)
+                end
+            let fragment = if at < n then maybe.some(slice(text at + 1 n)) else maybe.none(:String) end
+            tuple
+                let scheme = slice(text 0 colon)
+                let authority = authority
+                let path = path
+                let query = query
+                let fragment = fragment
+            end
+        end
+
+    let toString(parts: Parts): String =
+        begin
+            let b = sb.new()
+            sb.str(b parts.scheme)
+            sb.char(b ':')
+            if maybe.isSome(parts.authority) then
+                sb.str(b "//")
+                sb.str(b maybe.unwrap(parts.authority))
+            end
+            sb.str(b parts.path)
+            if maybe.isSome(parts.query) then
+                sb.char(b '?')
+                sb.str(b maybe.unwrap(parts.query))
+            end
+            if maybe.isSome(parts.fragment) then
+                sb.char(b '#')
+                sb.str(b maybe.unwrap(parts.fragment))
+            end
+            sb.toString(b)
+        end
+
+    let isUnreserved(c: Char): Bool = strutil.isAlnum(c) orif {c is '-'} orif {c is '.'} orif {c is '_'} orif {c is '~'}
+
+    let hexDigit(n: Int): Char = stringOp.getChar("0123456789ABCDEF" n)
+
+    let encode(s: String keep: String): String =
+        begin
+            let b = sb.new()
+            for i = 0 upto {stringOp.length(s) - 1} do
+                let c = stringOp.getChar(s i)
+                if isUnreserved(c) orif {strutil.find(keep stringOp.getSub(s i 1)) >= 0} then
+                    sb.char(b c)
+                else
+                    let v = ascii.val(c)
+                    sb.char(b '%')
+                    sb.char(b hexDigit(v / 16))
+                    sb.char(b hexDigit(v % 16))
+                end
+            end
+            sb.toString(b)
+        end
+
+    let decode(s: String): String =
+        begin
+            checkPercents(s)
+            let b = sb.new()
+            let n = stringOp.length(s)
+            let var i = 0
+            while i < n do
+                let c = stringOp.getChar(s i)
+                if c is '%' then
+                    sb.char(b ascii.char({hexValue(stringOp.getChar(s i + 1)) * 16} + hexValue(stringOp.getChar(s i + 2))))
+                    i := i + 3
+                else
+                    sb.char(b c)
+                    i := i + 1
+                end
+            end
+            sb.toString(b)
+        end
+
+    let fromPath(path: String): String =
+        begin
+            if {stringOp.length(path) is 0} orif {stringOp.getChar(path 0) isnot '/'} then
+                fail(:Ok "not an absolute path" path)
+            end
+            "file://" <> encode(path "/")
+        end
+
+    (* s in lower case, ASCII letters only *)
+    let lower(s: String): String =
+        begin
+            let t = stringOp.new(stringOp.length(s) ' ')
+            for i = 0 upto {stringOp.length(s) - 1} do
+                let v = ascii.val(stringOp.getChar(s i))
+                stringOp.setChar(t i ascii.char(if {v >= 65} andif {v <= 90} then v + 32 else v end))
+            end
+            t
+        end
+
+    let toPath(text: String): String =
+        begin
+            let parts = parse(text)
+            if not(stringOp.equal(lower(parts.scheme) "file")) then fail(:Ok "not a file URI" text) end
+            if maybe.isSome(parts.authority) then
+                let a = maybe.unwrap(parts.authority)
+                if {stringOp.length(a) > 0} andif not(stringOp.equal(lower(a) "localhost")) then
+                    fail(:Ok "a file URI for another host" text)
+                end
+            end
+            if maybe.isSome(parts.query) orif maybe.isSome(parts.fragment) then
+                fail(:Ok "a file URI with a query or fragment" text)
+            end
+            if {stringOp.length(parts.path) is 0} orif {stringOp.getChar(parts.path 0) isnot '/'} then
+                fail(:Ok "a file URI without an absolute path" text)
+            end
+            let path = decode(parts.path)
+            if strutil.contains(path "\x00") then fail(:Ok "a file URI whose path holds a NUL byte" text) end
+            path
+        end
+end
