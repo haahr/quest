@@ -129,20 +129,34 @@ export
                         vector.append(bodies arm.body)
                     end
                     let elseTyped = checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
-                    let types = checker.branchTypes(maybe.none() vector.toArray(bodies) elseTyped)
-                    let resultType =
+                    let joined: checker.JoinedBodies =
                         if maybe.isSome(expected) then
-                            maybe.unwrap(expected)
-                        elsif extent types > 0 then
-                            checks.joinTypes(types e expr.span.startOffset
-                                    maybe.some("Cannot find common supertype join for inspect branch types '{t1}' and '{t2}'"))
+                            tuple
+                                let type = maybe.unwrap(expected)
+                                let initial = maybe.none()
+                                let bodies = vector.toArray(bodies)
+                                let elseBranch = elseTyped
+                            end
                         else
-                            model.okType
+                            checker.joinBodies(maybe.none() vector.toArray(bodies) elseTyped e expr.span.startOffset
+                                    "Cannot find common supertype join for inspect branch types '{t1}' and '{t2}'")
                         end
-                    typedAst.expr(expr.span.startOffset resultType option exprInspect of typedAst.ExprForm with
+                    let typedBranches = vector.toArray(branches)
+                    let joinedBranches = vector.new(:typedAst.InspectBranch)
+                    for i = 0 upto {extent typedBranches - 1} do
+                        let b = typedBranches[i]
+                        vector.append(joinedBranches tuple
+                            let offset = b.offset
+                            let matchType = b.matchType
+                            let binders = b.binders
+                            let body = joined.bodies[i]
+                            let exact = b.exact
+                        end)
+                    end
+                    typedAst.expr(expr.span.startOffset joined.type option exprInspect of typedAst.ExprForm with
                         let target = targetTyped
-                        let branches = vector.toArray(branches)
-                        let elseBranch = elseTyped
+                        let branches = vector.toArray(joinedBranches)
+                        let elseBranch = joined.elseBranch
                         let autoType = inspectedAutoType(targetTyped)
                     end)
                 end

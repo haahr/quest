@@ -712,14 +712,14 @@ export
                                     diagnostics.fail(:Ok
                                             "Cannot infer element type of empty array; type annotation required" offset)
                                 end
-                                let types = vector.new(:Type)
+                                let synthesized = vector.new(:typedAst.Expr)
                                 for i = 0 upto {extent elements - 1} do
-                                    let t = checker.synthExpr(c elements[i] e loopDepth)
-                                    vector.append(typed t)
-                                    vector.append(types t.type)
+                                    vector.append(synthesized checker.synthExpr(c elements[i] e loopDepth))
                                 end
-                                checks.joinTypes(vector.toArray(types) e offset
+                                let joined = checks.joinBranches(vector.toArray(synthesized) e offset
                                         maybe.some("Incompatible array element types '{t1}' and '{t2}'"))
+                                for i = 0 upto {extent joined.parts - 1} do vector.append(typed joined.parts[i]) end
+                                joined.type
                             end
                         expr(offset model.arrayType(finalElem) option exprArray of typedAst.ExprForm with
                             let elements = vector.toArray(typed)

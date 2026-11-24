@@ -45,7 +45,6 @@ from quest.typechecker.typed_ast import (
 )
 from quest.typechecker.checks import (
     describe_kind,
-    join_types,
 )
 from quest.typechecker.escape import check_no_package_types
 
@@ -123,15 +122,14 @@ class AutoValueMixin(Checker):
 
         if expected_type is not None:
             result_type = expected_type
-        elif branch_types := self._collect_branch_types(typed_branches, else_typed):
-            result_type = join_types(
-                branch_types,
+        else:
+            result_type, _, typed_branches, else_typed = self._join_branches(
+                typed_branches,
+                else_typed,
                 env,
                 expr.offset,
-                error_msg="Cannot find common supertype join for inspect branch types '{t1}' and '{t2}'",
+                "Cannot find common supertype join for inspect branch types '{t1}' and '{t2}'",
             )
-        else:
-            result_type = OK_TYPE
 
         return TypedInspect(
             target=target_typed,

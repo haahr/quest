@@ -76,10 +76,18 @@ export
     elaborateOptionalBranch(
             c: T expr: maybe.T(ast.Expr) expected: maybe.T(model.Type) e: env.T loopDepth: Int
             ): maybe.T(typedAst.Expr)
-    (* The types of branch bodies and an else branch, after initial if there is
-     * one *)
-    branchTypes(initial: maybe.T(model.Type) bodies: Array(typedAst.Expr)
-            elseBranch: maybe.T(typedAst.Expr)): Array(model.Type)
+    (* The join of a case's, inspect's, or try's branch bodies, its else
+     * branch, and a try's body before them (checks.joinBranches: the
+     * divergent ones are left out and retyped): its type (Ok if there are no
+     * parts), and the parts, retyped *)
+    Def JoinedBodies = Tuple
+        type: model.Type
+        initial: maybe.T(typedAst.Expr)
+        bodies: Array(typedAst.Expr)
+        elseBranch: maybe.T(typedAst.Expr)
+    end
+    joinBodies(initial: maybe.T(typedAst.Expr) bodies: Array(typedAst.Expr) elseBranch: maybe.T(typedAst.Expr)
+            e: env.T offset: Int errorMessage: String): JoinedBodies
     (* Synthesizes expr and requires its type to be a subtype of expected *)
     checkSubsumption(
             c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int typeDesc: maybe.T(String)

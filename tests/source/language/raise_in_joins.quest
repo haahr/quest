@@ -1,0 +1,85 @@
+(* Language: A branch that cannot finish (a raise or an exit, or a block or
+   construct that ends in one on every path) is left out of the join that gives
+   a construct with no expected type its type, and has that type
+   (docs/type-system.md §6.1) *)
+
+import conv : Conv
+import writer : Writer
+
+let wOut = writer.output
+let say(s: String): Ok = begin writer.putString(wOut s) writer.putString(wOut "\n") end
+
+exception bad: String end
+
+Let Match = Option miss elsewhere exact end
+
+let show(m: Match): String = case m when miss then "miss" when elsewhere then "elsewhere" when exact then "exact" end
+
+let attempt(f: All() String): String = try f() when bad with why then "raised " <> why end
+
+(* 1. An elsif chain whose else raises: the function's result type is Match *)
+let charToMatch(c: Char) =
+    if c is 'X' then option exact of Match end
+    elsif c is '?' then option elsewhere of Match end
+    elsif c is '.' then option miss of Match end
+    else raise bad with "char" end
+    end
+say(show(charToMatch('X')))
+say(attempt(fun() show(charToMatch('Z'))))
+
+(* 2. The raise first, and a raise with an as clause the other branch decides *)
+let half(n: Int) = if n < 0 then raise bad with "negative" as Real end else n / 2 end
+say(conv.int(half(9) + 1))
+say(attempt(fun() conv.int(half(~1))))
+
+(* 3. A block that ends in a raise, and an if whose branches both raise, inside
+   a case *)
+let describe(m: Match) =
+    case m
+        when exact then 3
+        when elsewhere then begin say("elsewhere") raise bad with "elsewhere" end end
+        when miss then if true then raise bad with "miss" end else raise bad with "never" end end
+    end
+say(conv.int(describe(option exact of Match end) * 2))
+say(attempt(fun() conv.int(describe(option elsewhere of Match end))))
+say(attempt(fun() conv.int(describe(option miss of Match end))))
+
+(* 4. A try whose body raises, and a try whose handler raises again *)
+let parse(s: String) = try raise bad with s end when bad with why then string.length(why) end
+say(conv.int(parse("four") + 1))
+let checked(n: Int) = try 100 / n when int.error then raise bad with "zero" end end
+say(conv.int(checked(4)))
+say(attempt(fun() conv.int(checked(0))))
+
+(* 5. A raise among an array's elements *)
+let elements(fail: Bool) = array of 1 if fail then raise bad with "element" end else 2 end 3 end
+say(conv.int(extent elements(false)))
+say(attempt(fun() conv.int(extent elements(true))))
+
+(* 6. An exit as a branch, joined with Int, and under an expected type *)
+let sumUntilZero(xs: Array(Int)) =
+    begin
+        let var total = 0
+        let var i = 0
+        loop
+            let x = if {i >= extent xs} orif {xs[i] is 0} then exit else xs[i] end
+            total := total + x
+            i := i + 1
+        end
+        total
+    end
+say(conv.int(sumUntilZero(array of 1 2 3 0 5 end)))
+let firstNegative(xs: Array(Int)): Int =
+    begin
+        let var found = 0
+        for i = 0 upto {extent xs - 1} do
+            let x: Int = if xs[i] < 0 then begin found := xs[i] exit end else xs[i] end
+            if x > 1000 then found := x end
+        end
+        found
+    end
+say(conv.int(firstNegative(array of 4 ~7 2 end)))
+
+(* 7. Every branch raises: the type is Ok, as before *)
+let always(b: Bool) = if b then raise bad with "yes" end else raise bad with "no" end end
+say(attempt(fun() begin always(true) "unreached" end))

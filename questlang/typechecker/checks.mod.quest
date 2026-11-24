@@ -5,6 +5,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -83,6 +84,133 @@ export
                 end
             end
             join
+        end
+
+    Let Joined = Tuple type: model.Type parts: Array(typedAst.Expr) end
+
+    let mapArray(A::TYPE xs: Array(A) g: All(x: A) A): Array(A) =
+        begin
+            let result = vector.new(:A)
+            for i = 0 upto {extent xs - 1} do vector.append(result g(xs[i])) end
+            vector.toArray(result)
+        end
+
+    let rec isDivergent(x: typedAst.Expr): Bool =
+        case x.form
+            when exprRaise, exprExit then true
+            when exprBlock with b then isDivergent(b.result)
+            when exprIf with i then isDivergent(i.thenBranch) andif isDivergent(i.elseBranch)
+            when exprCase with k then
+                begin
+                    let var every = {{extent k.branches} > 0} orif maybe.isSome(k.elseBranch)
+                    for i = 0 upto {extent k.branches - 1} do
+                        if not(isDivergent(k.branches[i].body)) then every := false end
+                    end
+                    every andif maybeDivergent(k.elseBranch)
+                end
+            when exprInspect with k then
+                begin
+                    let var every = {{extent k.branches} > 0} orif maybe.isSome(k.elseBranch)
+                    for i = 0 upto {extent k.branches - 1} do
+                        if not(isDivergent(k.branches[i].body)) then every := false end
+                    end
+                    every andif maybeDivergent(k.elseBranch)
+                end
+            when exprTry with t then
+                begin
+                    let var every = isDivergent(t.body)
+                    for i = 0 upto {extent t.branches - 1} do
+                        if not(isDivergent(t.branches[i].body)) then every := false end
+                    end
+                    every andif maybeDivergent(t.elseBranch)
+                end
+            else false
+        end
+
+    (* Whether an optional branch is absent or divergent *)
+    and maybeDivergent(x: maybe.T(typedAst.Expr)): Bool = maybe.isNone(x) orif isDivergent(maybe.unwrap(x))
+
+    let rec retypeDivergent(x: typedAst.Expr t: model.Type): typedAst.Expr =
+        begin
+            let r(y: typedAst.Expr): typedAst.Expr = retypeDivergent(y t)
+            let rm(y: maybe.T(typedAst.Expr)): maybe.T(typedAst.Expr) =
+                if maybe.isSome(y) then maybe.some(r(maybe.unwrap(y))) else y end
+            let form =
+                case x.form
+                    when exprRaise, exprExit then x.form
+                    when exprBlock with b then
+                        option exprBlock of typedAst.ExprForm with
+                            let bindings = b.bindings
+                            let result = r(b.result)
+                        end
+                    when exprIf with i then
+                        option exprIf of typedAst.ExprForm with
+                            let cond = i.cond
+                            let thenBranch = r(i.thenBranch)
+                            let elseBranch = r(i.elseBranch)
+                        end
+                    when exprCase with k then
+                        option exprCase of typedAst.ExprForm with
+                            let target = k.target
+                            let branches = mapArray(k.branches fun(b: typedAst.CaseBranch): typedAst.CaseBranch
+                                tuple
+                                    let offset = b.offset
+                                    let tags = b.tags
+                                    let body = r(b.body)
+                                    let binder = b.binder
+                                end)
+                            let elseBranch = rm(k.elseBranch)
+                        end
+                    when exprInspect with k then
+                        option exprInspect of typedAst.ExprForm with
+                            let target = k.target
+                            let branches = mapArray(k.branches fun(b: typedAst.InspectBranch): typedAst.InspectBranch
+                                tuple
+                                    let offset = b.offset
+                                    let matchType = b.matchType
+                                    let binders = b.binders
+                                    let body = r(b.body)
+                                    let exact = b.exact
+                                end)
+                            let elseBranch = rm(k.elseBranch)
+                            let autoType = k.autoType
+                        end
+                    when exprTry with k then
+                        option exprTry of typedAst.ExprForm with
+                            let body = r(k.body)
+                            let branches = mapArray(k.branches fun(b: typedAst.TryBranch): typedAst.TryBranch
+                                tuple
+                                    let offset = b.offset
+                                    let excPattern = b.excPattern
+                                    let body = r(b.body)
+                                    let binder = b.binder
+                                end)
+                            let elseBranch = rm(k.elseBranch)
+                            let elseBinder = k.elseBinder
+                        end
+                    else diagnostics.fail(:typedAst.ExprForm "internal: retyping an expression that is not divergent"
+                            x.offset)
+                end
+            typedAst.expr(x.offset t form)
+        end
+
+    let joinBranches(parts: Array(typedAst.Expr) e: env.T offset: Int errorMessage: maybe.T(String)): Joined =
+        begin
+            let all = vector.new(:model.Type)
+            let live = vector.new(:model.Type)
+            for i = 0 upto {extent parts - 1} do
+                vector.append(all parts[i].type)
+                if not(isDivergent(parts[i])) then vector.append(live parts[i].type) end
+            end
+            let liveTypes = vector.toArray(live)
+            if extent liveTypes is 0 then
+                tuple let type = joinTypes(vector.toArray(all) e offset errorMessage) let parts = parts end
+            else
+                let t = joinTypes(liveTypes e offset errorMessage)
+                let retyped = mapArray(parts fun(p: typedAst.Expr): typedAst.Expr
+                    if isDivergent(p) then retypeDivergent(p t) else p end)
+                tuple let type = t let parts = retyped end
+            end
         end
 
     let requireSubtype(offset: Int typed: typedAst.Expr expected: model.Type e: env.T

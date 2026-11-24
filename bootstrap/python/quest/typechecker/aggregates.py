@@ -57,7 +57,7 @@ from quest.typechecker.typed_ast import (
     TypedVariantCheck,
 )
 from quest.typechecker.checks import (
-    join_types,
+    join_branches,
 )
 # Internal convenience alias for typechecking error raises
 TypeError = QuestTypeError
@@ -550,8 +550,8 @@ class AggregateMixin(Checker):
                     offset=expr.offset,
                 )
             elem_typeds = [self.synth_expr(e, env, loop_depth) for e in expr.elements]
-            elem_type = join_types(
-                [e.type_val for e in elem_typeds],
+            elem_type, elem_typeds = join_branches(
+                elem_typeds,
                 env,
                 expr.offset,
                 error_msg="Incompatible array element types '{t1}' and '{t2}'",

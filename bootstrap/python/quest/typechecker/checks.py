@@ -7,12 +7,22 @@ The self-hosted counterpart is questlang/typechecker/checks."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Optional
 
 import quest.syntax.ast as ast
 from quest.common.diagnostics import QuestCompilerError, QuestTypeError
 from quest.types.env import Environment
-from quest.typechecker.typed_ast import TypedExpr
+from quest.typechecker.typed_ast import (
+    TypedBlock,
+    TypedCase,
+    TypedExit,
+    TypedExpr,
+    TypedIf,
+    TypedInspect,
+    TypedRaise,
+    TypedTry,
+)
 from quest.types import (
     KindError,
     OK_TYPE,
@@ -99,6 +109,87 @@ def join_types(
                 msg = msg.format(t1=join_type, t2=bt)
             raise QuestTypeError(msg, offset=offset)
     return join_type
+
+
+def is_divergent(typed: TypedExpr) -> bool:
+    """Whether an expression cannot finish normally, as its form shows: a
+    raise or an exit, a block whose result is divergent, or a conditional,
+    case, inspect, or try whose branches (and body) all are. A call of a
+    function that always raises is not: its type says what it returns."""
+    match typed:
+        case TypedRaise() | TypedExit():
+            return True
+        case TypedBlock(result=result):
+            return is_divergent(result)
+        case TypedIf(then_branch=then_branch, else_branch=else_branch):
+            return is_divergent(then_branch) and is_divergent(else_branch)
+        case TypedCase(branches=branches, else_branch=else_branch) | TypedInspect(
+            branches=branches, else_branch=else_branch
+        ):
+            bodies = [b.body for b in branches] + ([else_branch] if else_branch is not None else [])
+            return bool(bodies) and all(is_divergent(b) for b in bodies)
+        case TypedTry(body=body, branches=branches, else_branch=else_branch):
+            parts = [body] + [b.body for b in branches] + ([else_branch] if else_branch is not None else [])
+            return all(is_divergent(p) for p in parts)
+        case _:
+            return False
+
+
+def retype_divergent(typed: TypedExpr, t: QType) -> TypedExpr:
+    """A divergent expression (is_divergent) given type t, as checking it
+    against t would have typed it: the raise or exit it ends in, and each
+    block, conditional, case, inspect, and try on the way to it, have type
+    t."""
+    match typed:
+        case TypedRaise() | TypedExit():
+            return replace(typed, type_val=t)
+        case TypedBlock(result=result):
+            return replace(typed, result=retype_divergent(result, t), type_val=t)
+        case TypedIf(then_branch=then_branch, else_branch=else_branch):
+            return replace(
+                typed,
+                then_branch=retype_divergent(then_branch, t),
+                else_branch=retype_divergent(else_branch, t),
+                type_val=t,
+            )
+        case TypedCase(branches=branches, else_branch=else_branch) | TypedInspect(
+            branches=branches, else_branch=else_branch
+        ):
+            return replace(
+                typed,
+                branches=tuple(replace(b, body=retype_divergent(b.body, t)) for b in branches),
+                else_branch=retype_divergent(else_branch, t) if else_branch is not None else None,
+                type_val=t,
+            )
+        case TypedTry(body=body, branches=branches, else_branch=else_branch):
+            return replace(
+                typed,
+                body=retype_divergent(body, t),
+                branches=tuple(replace(b, body=retype_divergent(b.body, t)) for b in branches),
+                else_branch=retype_divergent(else_branch, t) if else_branch is not None else None,
+                type_val=t,
+            )
+        case _:
+            raise QuestCompilerError(f"retyping {type(typed).__name__}, which is not divergent")
+
+
+def join_branches(
+    parts: list[TypedExpr],
+    env: Environment,
+    offset: int,
+    error_msg: Optional[str] = None,
+) -> tuple[QType, list[TypedExpr]]:
+    """Joins the types of a construct's parts (its branches, or an array's
+    elements) when it has no expected type, leaving out the divergent ones
+    (is_divergent), which never produce a value; if all are divergent, it
+    joins them all. Returns the joined type and the parts, the divergent ones
+    retyped to it, as checking them against it would have typed them
+    (docs/type-system.md §6.1)."""
+    live = [p for p in parts if not is_divergent(p)]
+    if not live:
+        return join_types([p.type_val for p in parts], env, offset, error_msg), parts
+    t = join_types([p.type_val for p in live], env, offset, error_msg)
+    return t, [retype_divergent(p, t) if is_divergent(p) else p for p in parts]
 
 
 def require_subtype(

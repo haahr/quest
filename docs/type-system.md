@@ -448,7 +448,7 @@ their operands are checked against Bool, so `true andif 3` reports that `3` is n
   for the constructs the expected type flows into. Each of those has one method, `_elaborate_X_expr(expr,
   expected_type, env, loop_depth)` with `expected_type: Optional[QType]`, which `check_expr` calls with the expected
   type and `synth_expr` with `None`: conditionals, blocks, functions, records, tuples, arrays and array
-  repetitions, case, raise, try, inspect, auto values (which cannot be synthesized), and applications (whose
+  repetitions, case, raise, exit, try, inspect, auto values (which cannot be synthesized), and applications (whose
   expected type only helps infer implicit type arguments, after which `check_expr` requires a subtype). Against an
   expected type, a construct passes it, or its components (a tuple's or record's fields, a function's parameter
   and result types, an array's element type), into its parts and has that type; a record, tuple, function, or
@@ -468,6 +468,18 @@ their operands are checked against Bool, so `true andif 3` reports that `3` is n
   field's type, and a phrase a tuple cannot hold is rejected either way. A raise is the exception: its `as` clause
   must be well formed, but checked against an expected type it has that type whatever the clause says, since it
   diverges. Errors are reported at the annotation (a mode mismatch at the parameter).
+- **Divergent parts in joins:** a raise or an exit has the expected type, if there is one (synthesized, a raise has
+  its `as` clause's type, or Ok, and an exit has Ok). An expression is *divergent* when its form shows it cannot
+  finish: a raise or an exit, a block whose result is divergent, or a conditional with an else branch, case,
+  inspect, or try whose branches (and a try's body) all are. A call is never divergent, whatever its function does,
+  and neither is a loop. Synthesized, a conditional, case, inspect, try, or array joins only the types of its parts
+  that are not divergent (`checks.join_branches`), so `if c then x else raise e end` has x's type; each divergent
+  part is then retyped to the join (`checks.retype_divergent`), its raise or exit and each construct on the way to
+  it, as checking it against the join would have typed it. When every part is divergent, all are joined, so
+  `if c then raise e end else raise f end` has type Ok, and clashing `as` types are an error. This is a bottom type
+  confined to joins: a divergent part's type never becomes a binding's, a result's, or a type argument's, and Quest
+  has no type to name it. Cardelli gives `exit` no type of its own, "`raise exit as A end`, where A is inferred"
+  (Typeful Programming §4.8), and a raise's `as` clause names the type where nothing else does.
 
 ### 6.2. Mutability, Assignment, and Reference Parameters
 Mutable locations are declared with `var`:

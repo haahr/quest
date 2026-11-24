@@ -247,6 +247,12 @@ class TypeElaborator(
             case ast.ExprRaise():
                 return self._elaborate_raise_expr(expr, expected_type, env, loop_depth)
 
+            # An exit diverges too: it has the expected type, as a raise does
+            case ast.ExprExit(offset=off):
+                if loop_depth <= 0:
+                    raise TypeError("Exit statement outside of any loop", offset=off)
+                return TypedExit(type_val=expected_type, offset=off)
+
             # 9. Phase 5: Try expression
             case ast.ExprTry():
                 return self._elaborate_try_expr(expr, expected_type, env, loop_depth)

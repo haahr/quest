@@ -175,20 +175,34 @@ export
                         else
                             checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
                         end
-                    let resultType =
+                    let joined: checker.JoinedBodies =
                         if maybe.isSome(expected) then
-                            maybe.unwrap(expected)
+                            tuple
+                                let type = maybe.unwrap(expected)
+                                let initial = maybe.some(bodyTyped)
+                                let bodies = vector.toArray(bodies)
+                                let elseBranch = elseTyped
+                            end
                         else
-                            checks.joinTypes(
-                                    checker.branchTypes(maybe.some(bodyTyped.type) vector.toArray(bodies)
-                                            elseTyped)
-                                    e expr.span.startOffset
-                                    maybe.some("Cannot find common supertype join for try expression branch types '{t1}' and '{t2}'"))
+                            checker.joinBodies(maybe.some(bodyTyped) vector.toArray(bodies) elseTyped e
+                                    expr.span.startOffset
+                                    "Cannot find common supertype join for try expression branch types '{t1}' and '{t2}'")
                         end
-                    typedAst.expr(expr.span.startOffset resultType option exprTry of typedAst.ExprForm with
-                        let body = bodyTyped
-                        let branches = vector.toArray(branches)
-                        let elseBranch = elseTyped
+                    let typedBranches = vector.toArray(branches)
+                    let joinedBranches = vector.new(:typedAst.TryBranch)
+                    for i = 0 upto {extent typedBranches - 1} do
+                        let b = typedBranches[i]
+                        vector.append(joinedBranches tuple
+                            let offset = b.offset
+                            let excPattern = b.excPattern
+                            let body = joined.bodies[i]
+                            let binder = b.binder
+                        end)
+                    end
+                    typedAst.expr(expr.span.startOffset joined.type option exprTry of typedAst.ExprForm with
+                        let body = maybe.unwrap(joined.initial)
+                        let branches = vector.toArray(joinedBranches)
+                        let elseBranch = joined.elseBranch
                         let elseBinder = elseBinder
                     end)
                 end

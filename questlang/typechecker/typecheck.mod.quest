@@ -133,6 +133,15 @@ export
                 when exprArray then aggregates.elaborateArray(c x0 exp e loopDepth)
                 when exprArrayRep then aggregates.elaborateArrayRep(c x0 exp e loopDepth)
                 when exprRaise then exceptions.elaborateRaise(c x0 exp e loopDepth)
+                (* An exit diverges too: it has the expected type, as a raise
+                 * does *)
+                when exprExit then
+                    begin
+                        if loopDepth <= 0 then
+                            diagnostics.fail(:Ok "Exit statement outside of any loop" x0.span.startOffset)
+                        end
+                        expr(x0.span.startOffset expected option exprExit of typedAst.ExprForm end)
+                    end
                 when exprTry then exceptions.elaborateTry(c x0 exp e loopDepth)
                 when exprInspect then autoValues.elaborateInspect(c x0 exp e loopDepth)
                 when exprAuto then autoValues.elaborateAuto(c x0 exp e loopDepth)

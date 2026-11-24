@@ -49,7 +49,7 @@ from quest.typechecker.typed_ast import (
     TypedSelect,
     TypedVar,
 )
-from quest.typechecker.checks import join_types, not_desugared
+from quest.typechecker.checks import join_branches, not_desugared
 from quest.typechecker.escape import check_no_escaping_path_types
 
 # Internal convenience alias for typechecking error raises
@@ -87,15 +87,14 @@ class ControlMixin(Checker):
 
         if expected_type is not None:
             result_type = expected_type
-        elif branch_types := self._collect_branch_types(typed_branches, else_typed):
-            result_type = join_types(
-                branch_types,
+        else:
+            result_type, _, typed_branches, else_typed = self._join_branches(
+                typed_branches,
+                else_typed,
                 env,
                 expr.offset,
-                error_msg="Cannot find common supertype join for case branch types '{t1}' and '{t2}'",
+                "Cannot find common supertype join for case branch types '{t1}' and '{t2}'",
             )
-        else:
-            result_type = OK_TYPE
 
         return TypedCase(
             target=target_typed,
@@ -470,8 +469,8 @@ class ControlMixin(Checker):
         if expected_type is not None:
             result_type = expected_type
         else:
-            result_type = join_types(
-                [then_typed.type_val, else_typed.type_val],
+            result_type, (then_typed, else_typed) = join_branches(
+                [then_typed, else_typed],
                 env,
                 expr.offset,
                 error_msg="Cannot find common supertype for conditional branches '{t1}' and '{t2}'",

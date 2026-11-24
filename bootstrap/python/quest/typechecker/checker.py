@@ -16,14 +16,15 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import replace
 from typing import Any, Optional
 
 import quest.syntax.ast as ast
 from quest.common.diagnostics import QuestTypeError
 from quest.modules.stdlib import BuiltinModuleRegistry
-from quest.typechecker.checks import require_subtype
+from quest.typechecker.checks import join_branches, require_subtype
 from quest.typechecker.typed_ast import TypedExpr
-from quest.types import QQuantifier, QType, QTypeMeta
+from quest.types import OK_TYPE, QQuantifier, QType, QTypeMeta
 from quest.types.env import Environment, Scope, ValueSymbol
 
 # Internal convenience alias for typechecking error raises
@@ -115,20 +116,30 @@ class Checker:
             return None
         return self._elaborate_subexpr(expr, expected_type, env, loop_depth)
 
-    def _collect_branch_types(
+    def _join_branches(
         self,
         branches: Sequence[Any],
-        else_branch: Optional[TypedExpr] = None,
-        initial_type: Optional[QType] = None,
-    ) -> list[QType]:
-        """Collects body/result types from typed branch nodes and an optional
-        else branch."""
-        types: list[QType] = [initial_type] if initial_type is not None else []
-        for b in branches:
-            types.append(b.body.type_val)
+        else_branch: Optional[TypedExpr],
+        env: Environment,
+        offset: int,
+        error_msg: str,
+        body: Optional[TypedExpr] = None,
+    ) -> tuple[QType, Optional[TypedExpr], list[Any], Optional[TypedExpr]]:
+        """Joins the types of a case's, inspect's, or try's branch bodies, its
+        else branch, and a try's body (checks.join_branches: divergent ones
+        are left out and retyped). Returns the joined type (Ok if there are
+        no parts) and the body, branches, and else branch, retyped."""
+        parts: list[TypedExpr] = ([body] if body is not None else []) + [b.body for b in branches]
         if else_branch is not None:
-            types.append(else_branch.type_val)
-        return types
+            parts.append(else_branch)
+        if not parts:
+            return OK_TYPE, body, list(branches), else_branch
+        joined_type, joined = join_branches(parts, env, offset, error_msg)
+        rest = iter(joined)
+        new_body = next(rest) if body is not None else None
+        new_branches = [replace(b, body=next(rest)) for b in branches]
+        new_else = next(rest) if else_branch is not None else None
+        return joined_type, new_body, new_branches, new_else
 
     def _check_subsumption(
         self,

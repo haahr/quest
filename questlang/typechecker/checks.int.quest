@@ -43,6 +43,26 @@ export
      * replaced by those two types. *)
     joinTypes(types: Array(model.Type) e: env.T offset: Int errorMessage: maybe.T(String)): model.Type
 
+    (* Whether an expression cannot finish normally, as its form shows: a
+     * raise or an exit, a block whose result is divergent, or a conditional,
+     * case, inspect, or try whose branches (and body) all are. A call of a
+     * function that always raises is not: its type says what it returns. *)
+    isDivergent(x: typedAst.Expr): Bool
+    (* A divergent expression given type t, as checking it against t would
+     * have typed it: the raise or exit it ends in, and each block,
+     * conditional, case, inspect, and try on the way to it, have type t *)
+    retypeDivergent(x: typedAst.Expr t: model.Type): typedAst.Expr
+
+    (* A join's type, and the parts it joined *)
+    Def Joined = Tuple type: model.Type parts: Array(typedAst.Expr) end
+    (* Joins the types of a construct's parts (its branches, or an array's
+     * elements) when it has no expected type, leaving out the divergent ones,
+     * which never produce a value; if all are divergent, it joins them all
+     * (joinTypes). The parts come back with the divergent ones retyped to the
+     * join, as checking them against it would have typed them
+     * (docs/type-system.md §6.1). *)
+    joinBranches(parts: Array(typedAst.Expr) e: env.T offset: Int errorMessage: maybe.T(String)): Joined
+
     (* typed itself, if its type is a subtype of expected; typeDesc, if given,
      * begins the error's message *)
     requireSubtype(offset: Int typed: typedAst.Expr expected: model.Type e: env.T

@@ -238,20 +238,32 @@ export
                     let elseTyped = checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
                     let bodies = vector.new(:typedAst.Expr)
                     for i = 0 upto {extent branches - 1} do vector.append(bodies branches[i].body) end
-                    let types = checker.branchTypes(maybe.none() vector.toArray(bodies) elseTyped)
-                    let resultType =
+                    let joined: checker.JoinedBodies =
                         if maybe.isSome(expected) then
-                            maybe.unwrap(expected)
-                        elsif extent types > 0 then
-                            checks.joinTypes(types e x0.span.startOffset
-                                    maybe.some("Cannot find common supertype join for case branch types '{t1}' and '{t2}'"))
+                            tuple
+                                let type = maybe.unwrap(expected)
+                                let initial = maybe.none()
+                                let bodies = vector.toArray(bodies)
+                                let elseBranch = elseTyped
+                            end
                         else
-                            model.okType
+                            checker.joinBodies(maybe.none() vector.toArray(bodies) elseTyped e x0.span.startOffset
+                                    "Cannot find common supertype join for case branch types '{t1}' and '{t2}'")
                         end
-                    expr(x0.span.startOffset resultType option exprCase of typedAst.ExprForm with
+                    let joinedBranches = vector.new(:typedAst.CaseBranch)
+                    for i = 0 upto {extent branches - 1} do
+                        let b = branches[i]
+                        vector.append(joinedBranches tuple
+                            let offset = b.offset
+                            let tags = b.tags
+                            let body = joined.bodies[i]
+                            let binder = b.binder
+                        end)
+                    end
+                    expr(x0.span.startOffset joined.type option exprCase of typedAst.ExprForm with
                         let target = targetTyped
-                        let branches = branches
-                        let elseBranch = elseTyped
+                        let branches = vector.toArray(joinedBranches)
+                        let elseBranch = joined.elseBranch
                     end)
                 end
             else internal("a case" x0)
@@ -484,14 +496,13 @@ export
                     else
                         let thenTyped = checker.elaborateSubexpr(c x.thenBranch expected e loopDepth)
                         let elseTyped = checker.elaborateSubexpr(c maybe.unwrap(x.elseBranch) expected e loopDepth)
-                        let resultType =
-                            if maybe.isSome(expected) then
-                                maybe.unwrap(expected)
-                            else
-                                checks.joinTypes(array of thenTyped.type elseTyped.type end e offset
-                                        maybe.some("Cannot find common supertype for conditional branches '{t1}' and '{t2}'"))
-                            end
-                        expr(offset resultType ifForm(thenTyped elseTyped))
+                        if maybe.isSome(expected) then
+                            expr(offset maybe.unwrap(expected) ifForm(thenTyped elseTyped))
+                        else
+                            let joined = checks.joinBranches(array of thenTyped elseTyped end e offset
+                                    maybe.some("Cannot find common supertype for conditional branches '{t1}' and '{t2}'"))
+                            expr(offset joined.type ifForm(joined.parts[0] joined.parts[1]))
+                        end
                     end
                 end
             else internal("a conditional" x0)

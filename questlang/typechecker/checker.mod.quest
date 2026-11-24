@@ -99,17 +99,45 @@ export
             maybe.none()
         end
 
-    let branchTypes(
-            initial: maybe.T(model.Type) bodies: Array(typedAst.Expr) elseBranch: maybe.T(typedAst.Expr)
-            ): Array(model.Type) =
+    Let JoinedBodies = Tuple
+        type: model.Type
+        initial: maybe.T(typedAst.Expr)
+        bodies: Array(typedAst.Expr)
+        elseBranch: maybe.T(typedAst.Expr)
+    end
+
+    let joinBodies(initial: maybe.T(typedAst.Expr) bodies: Array(typedAst.Expr) elseBranch: maybe.T(typedAst.Expr)
+            e: env.T offset: Int errorMessage: String): JoinedBodies =
         begin
-            let types = vector.new(:model.Type)
-            if maybe.isSome(initial) then vector.append(types maybe.unwrap(initial)) end
-            for i = 0 upto {extent bodies - 1} do vector.append(types bodies[i].type) end
-            if maybe.isSome(elseBranch) then
-                vector.append(types maybe.unwrap(elseBranch).type)
+            let parts = vector.new(:typedAst.Expr)
+            if maybe.isSome(initial) then vector.append(parts maybe.unwrap(initial)) end
+            for i = 0 upto {extent bodies - 1} do vector.append(parts bodies[i]) end
+            if maybe.isSome(elseBranch) then vector.append(parts maybe.unwrap(elseBranch)) end
+            let partArray = vector.toArray(parts)
+            if extent partArray is 0 then
+                tuple
+                    let type = model.okType
+                    let initial = initial
+                    let bodies = bodies
+                    let elseBranch = elseBranch
+                end
+            else
+                let joined = checks.joinBranches(partArray e offset maybe.some(errorMessage))
+                let first = if maybe.isSome(initial) then 1 else 0 end
+                let newBodies = vector.new(:typedAst.Expr)
+                for i = 0 upto {extent bodies - 1} do vector.append(newBodies joined.parts[first + i]) end
+                tuple
+                    let type = joined.type
+                    let initial = if maybe.isSome(initial) then maybe.some(joined.parts[0]) else initial end
+                    let bodies = vector.toArray(newBodies)
+                    let elseBranch =
+                        if maybe.isSome(elseBranch) then
+                            maybe.some(joined.parts[extent partArray - 1])
+                        else
+                            elseBranch
+                        end
+                end
             end
-            vector.toArray(types)
         end
 
     let checkSubsumption(

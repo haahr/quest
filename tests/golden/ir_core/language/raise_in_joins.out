@@ -1,0 +1,366 @@
+import conv = "conv" : Conv
+import writer = "writer" : Writer
+import string = "string" : StringOp
+import int = "int" : IntOp
+main {
+  let wOut: writer.T = member writer.output @9:12
+  funs {
+    fun say(s: String): Ok {
+      do call writer.putString(wOut, s) @10:32
+      let %1: Ok = call writer.putString(wOut, "\n") @10:57
+      return %1
+    }
+  }
+  let bad: Exception(String) = exception bad: String @12:1
+  funs {
+    fun show(m: Match): String {
+      join k1(r: String) {
+        return r
+      } in {
+        switch tag(m) { @16:30
+          case miss: {
+            jump k1("miss") @16:30
+          }
+          case elsewhere: {
+            jump k1("elsewhere") @16:30
+          }
+          case exact: {
+            jump k1("exact") @16:30
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun attempt(f: Fun(): String): String {
+      join k2(r.1: String) {
+        return r.1
+      } in {
+        try catching (bad) {
+          let %2: String = call f() @18:44
+          jump k2(%2) @18:40
+        } handle (e: Exception) {
+          let %3: Bool = prim is(e, bad) @18:40
+          if %3 { @18:40
+            let why: String = exception_payload(e) @18:40
+            let %4: String = prim <>("raised ", why) @18:71
+            jump k2(%4) @18:40
+          } else {
+            reraise e @18:40
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun charToMatch(c: Char): Match {
+      join k3(r.2: Match) {
+        return r.2
+      } in {
+        let %5: Bool = prim is(c, 'X') @22:8
+        if %5 { @22:5
+          let %6: Match = option(exact) @22:22
+          jump k3(%6) @22:5
+        } else {
+          join k4(r.3: Match) {
+            jump k3(r.3) @22:5
+          } in {
+            let %7: Bool = prim is(c, '?') @23:11
+            if %7 { @23:11
+              let %8: Match = option(elsewhere) @23:25
+              jump k4(%8) @23:11
+            } else {
+              join k5(r.4: Match) {
+                jump k4(r.4) @23:11
+              } in {
+                let %9: Bool = prim is(c, '.') @24:11
+                if %9 { @24:11
+                  let %10: Match = option(miss) @24:25
+                  jump k5(%10) @24:11
+                } else {
+                  raise bad with "char" : "String" @25:10
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  let %11: Match = call charToMatch('X') @27:10
+  let %12: String = call show(%11) @27:5
+  do call say(%12) @27:1
+  funs {
+    fun f.1(): String {
+      let %13: Match = call charToMatch('Z') @28:24
+      let %14: String = call show(%13) @28:19
+      return %14
+    }
+  }
+  let %15: String = call attempt(f.1) @28:5
+  do call say(%15) @28:1
+  funs {
+    fun half(n: Int): Int {
+      join k6(r.5: Int) {
+        return r.5
+      } in {
+        let %16: Bool = prim <(n, 0) @31:23
+        if %16 { @31:20
+          raise bad with "negative" : "String" @31:34
+        } else {
+          let %17: Int = prim /(n, 2) @31:77
+          jump k6(%17) @31:20
+        }
+      }
+    }
+  }
+  let %18: Int = call half(9) @32:14
+  let %19: Int = prim +(%18, 1) @32:14
+  let %20: String = call conv.int(%19) @32:5
+  do call say(%20) @32:1
+  funs {
+    fun f.2(): String {
+      let %21: Int = call half(-1) @33:28
+      let %22: String = call conv.int(%21) @33:19
+      return %22
+    }
+  }
+  let %23: String = call attempt(f.2) @33:5
+  do call say(%23) @33:1
+  funs {
+    fun describe(m.1: Match): Int {
+      join k7(r.6: Int) {
+        return r.6
+      } in {
+        switch tag(m.1) { @38:5
+          case exact: {
+            jump k7(3) @38:5
+          }
+          case elsewhere: {
+            do call say("elsewhere") @40:35
+            raise bad with "elsewhere" : "String" @40:52
+          }
+          case miss: {
+            join k8(r.7: Int) {
+              jump k7(r.7) @38:5
+            } in {
+              if true { @41:24
+                raise bad with "miss" : "String" @41:37
+              } else {
+                raise bad with "never" : "String" @41:68
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  let %24: Match = option(exact) @43:23
+  let %25: Int = call describe(%24) @43:14
+  let %26: Int = prim *(%25, 2) @43:14
+  let %27: String = call conv.int(%26) @43:5
+  do call say(%27) @43:1
+  funs {
+    fun f.3(): String {
+      let %28: Match = option(elsewhere) @44:37
+      let %29: Int = call describe(%28) @44:28
+      let %30: String = call conv.int(%29) @44:19
+      return %30
+    }
+  }
+  let %31: String = call attempt(f.3) @44:5
+  do call say(%31) @44:1
+  funs {
+    fun f.4(): String {
+      let %32: Match = option(miss) @45:37
+      let %33: Int = call describe(%32) @45:28
+      let %34: String = call conv.int(%33) @45:19
+      return %34
+    }
+  }
+  let %35: String = call attempt(f.4) @45:5
+  do call say(%35) @45:1
+  funs {
+    fun parse(s.1: String): Int {
+      join k9(r.8: Int) {
+        return r.8
+      } in {
+        try catching (bad) {
+          raise bad with s.1 : "String" @48:28
+        } handle (e.1: Exception) {
+          let %36: Bool = prim is(e.1, bad) @48:24
+          if %36 { @48:24
+            let why.1: String = exception_payload(e.1) @48:24
+            let %37: Int = call string.length(why.1) @48:72
+            jump k9(%37) @48:24
+          } else {
+            reraise e.1 @48:24
+          }
+        }
+      }
+    }
+  }
+  let %38: Int = call parse("four") @49:14
+  let %39: Int = prim +(%38, 1) @49:14
+  let %40: String = call conv.int(%39) @49:5
+  do call say(%40) @49:1
+  funs {
+    fun checked(n.1: Int): Int {
+      join k10(r.9: Int) {
+        return r.9
+      } in {
+        let %41: Exception = member int.error @50:40
+        try catching (%41) {
+          let %42: Int = prim /(100, n.1) @50:27
+          jump k10(%42) @50:23
+        } handle (e.2: Exception) {
+          let %43: Bool = prim is(e.2, %41) @50:23
+          if %43 { @50:23
+            raise bad with "zero" : "String" @50:55
+          } else {
+            reraise e.2 @50:23
+          }
+        }
+      }
+    }
+  }
+  let %44: Int = call checked(4) @51:14
+  let %45: String = call conv.int(%44) @51:5
+  do call say(%45) @51:1
+  funs {
+    fun f.5(): String {
+      let %46: Int = call checked(0) @52:28
+      let %47: String = call conv.int(%46) @52:19
+      return %47
+    }
+  }
+  let %48: String = call attempt(f.5) @52:5
+  do call say(%48) @52:1
+  funs {
+    fun elements(fail: Bool): Array(Int) {
+      join k11(r.10: Int) {
+        let %49: Array(Int) = array(1, r.10, 3) @55:28
+        return %49
+      } in {
+        if fail { @55:39
+          raise bad with "element" : "String" @55:52
+        } else {
+          jump k11(2) @55:39
+        }
+      }
+    }
+  }
+  let %50: Array(Int) = call elements(false) @56:21
+  let %51: Int = prim extent(%50) @56:14
+  let %52: String = call conv.int(%51) @56:5
+  do call say(%52) @56:1
+  funs {
+    fun f.6(): String {
+      let %53: Array(Int) = call elements(true) @57:35
+      let %54: Int = prim extent(%53) @57:28
+      let %55: String = call conv.int(%54) @57:19
+      return %55
+    }
+  }
+  let %56: String = call attempt(f.6) @57:5
+  do call say(%56) @57:1
+  funs {
+    fun sumUntilZero(xs: Array(Int)): Int {
+      var total: Int = 0 @62:9
+      var i: Int = 0 @63:9
+      loop L1 {
+        join k12(x: Int) {
+          let %57: Int = prim +(total, x) @66:22
+          total := %57 @66:13
+          let %58: Int = prim +(i, 1) @67:18
+          i := %58 @67:13
+        } in {
+          join k13(r.11: Bool) {
+            if r.11 { @65:21
+              break L1 @65:64
+            } else {
+              let %59: Int = index(xs, i) @65:74
+              jump k12(%59) @65:21
+            }
+          } in {
+            let %60: Int = prim extent(xs) @65:30
+            let %61: Bool = prim >=(i, %60) @65:25
+            if %61 { @65:25
+              jump k13(true) @65:25
+            } else {
+              let %62: Int = index(xs, i) @65:47
+              let %63: Bool = prim is(%62, 0) @65:47
+              jump k13(%63) @65:25
+            }
+          }
+        }
+      }
+      return total
+    }
+  }
+  let %64: Array(Int) = array(1, 2, 3, 0, 5) @71:27
+  let %65: Int = call sumUntilZero(%64) @71:14
+  let %66: String = call conv.int(%65) @71:5
+  do call say(%66) @71:1
+  funs {
+    fun firstNegative(xs.1: Array(Int)): Int {
+      var found: Int = 0 @74:9
+      let %67: Int = prim extent(xs.1) @75:25
+      let %68: Int = prim -(%67, 1) @75:25
+      var i.1: Int = 0 @75:9
+      let %69: Bool = prim <=(i.1, %68) @75:9
+      if %69 { @75:9
+        loop L2 {
+          let i.2: Int = i.1 @75:9
+          join k14(x.1: Int) {
+            let %70: Bool = prim >(x.1, 1000) @77:16
+            if %70 { @77:13
+              found := x.1 @77:30
+            }
+            let %71: Bool = prim is(i.1, %68) @75:9
+            if %71 { @75:9
+              break L2 @75:9
+            }
+            let %72: Int = prim +(i.1, 1) @75:9
+            i.1 := %72 @75:9
+          } in {
+            let %73: Int = index(xs.1, i.2) @76:29
+            let %74: Bool = prim <(%73, 0) @76:29
+            if %74 { @76:26
+              let %75: Int = index(xs.1, i.2) @76:59
+              found := %75 @76:50
+              break L2 @76:65
+            } else {
+              let %76: Int = index(xs.1, i.2) @76:79
+              jump k14(%76) @76:26
+            }
+          }
+        }
+      }
+      return found
+    }
+  }
+  let %77: Array(Int) = array(4, -7, 2) @81:28
+  let %78: Int = call firstNegative(%77) @81:14
+  let %79: String = call conv.int(%78) @81:5
+  do call say(%79) @81:1
+  funs {
+    fun always(b: Bool): Ok {
+      if b { @84:23
+        raise bad with "yes" : "String" @84:33
+      } else {
+        raise bad with "no" : "String" @84:63
+      }
+      return ok
+    }
+  }
+  funs {
+    fun f.7(): String {
+      do call always(true) @85:25
+      return "unreached"
+    }
+  }
+  let %80: String = call attempt(f.7) @85:5
+  do call say(%80) @85:1
+}
+

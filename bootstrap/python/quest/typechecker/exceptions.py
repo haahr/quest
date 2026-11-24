@@ -27,7 +27,6 @@ from quest.typechecker.typed_ast import (
     TypedTry,
     TypedTryBranch,
 )
-from quest.typechecker.checks import join_types
 
 # Internal convenience alias for typechecking error raises
 TypeError = QuestTypeError
@@ -183,12 +182,16 @@ class ExceptionMixin(Checker):
         if expected_type is not None:
             result_type = expected_type
         else:
-            result_type = join_types(
-                self._collect_branch_types(typed_branches, else_typed, initial_type=body_typed.type_val),
+            result_type, joined_body, typed_branches, else_typed = self._join_branches(
+                typed_branches,
+                else_typed,
                 env,
                 expr.offset,
-                error_msg="Cannot find common supertype join for try expression branch types '{t1}' and '{t2}'",
+                "Cannot find common supertype join for try expression branch types '{t1}' and '{t2}'",
+                body=body_typed,
             )
+            assert joined_body is not None
+            body_typed = joined_body
         return TypedTry(
             body=body_typed,
             branches=tuple(typed_branches),
