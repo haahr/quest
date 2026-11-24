@@ -1,6 +1,6 @@
-// The Quest extension: starts the Quest language server (tools/lsp/quest-lsp,
-// docs/lsp.md) for .quest documents. The server is found from the
-// quest.server.path setting, else in the checkout the extension was
+// The Quest extension: starts the Quest language server (`quest lsp`,
+// docs/lsp.md) for .quest documents. The quest command is the
+// quest.server.path setting, else ./quest in the checkout the extension was
 // installed from (tools/vscode/install records it in checkout.json).
 
 const fs = require("fs");
@@ -18,9 +18,9 @@ function serverPath(context) {
     const recorded = path.join(context.extensionPath, "checkout.json");
     if (fs.existsSync(recorded)) {
         const checkout = JSON.parse(fs.readFileSync(recorded, "utf8")).checkout;
-        return path.join(checkout, "tools", "lsp", "quest-lsp");
+        return path.join(checkout, "quest");
     }
-    return path.join(context.extensionPath, "..", "lsp", "quest-lsp");
+    return path.join(context.extensionPath, "..", "..", "quest");
 }
 
 function activate(context) {
@@ -29,7 +29,7 @@ function activate(context) {
     client = new LanguageClient(
         "quest",
         "Quest",
-        { run: { command }, debug: { command } },
+        { run: { command, args: ["lsp"] }, debug: { command, args: ["lsp"] } },
         {
             documentSelector: [{ scheme: "file", language: "quest" }],
             initializationOptions: { includePaths },

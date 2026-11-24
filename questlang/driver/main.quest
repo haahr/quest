@@ -95,6 +95,7 @@ import
     questlang/ir/unbox : questlang/ir/Unbox
     questlang/ir/verify : questlang/ir/Verify
     questlang/jit/session : questlang/jit/Session
+    questlang/lsp/server : questlang/lsp/Server
     questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
     questlang/modules/artifacts/moduleCompiler : questlang/modules/artifacts/ModuleCompiler
     questlang/modules/graph : questlang/modules/Graph
@@ -134,6 +135,13 @@ if commandLine.fmtMode then
     let rest = array of(extent(system.args) - 2 "")
     for i = 2 upto {extent(system.args) - 1} do rest[i - 2] := system.args[i] end
     format.main(rest)
+end
+
+(* quest lsp serves the Language Server Protocol on standard input and output
+ * until the client exits it (docs/lsp.md) *)
+if commandLine.lspMode then
+    if extent(system.args) > 2 then usage("lsp takes no arguments") end
+    system.sysexit(server.run())
 end
 
 (* A whole program's modules are one unit, so their abstract types are laid out

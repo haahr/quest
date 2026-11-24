@@ -106,20 +106,34 @@ export
     (* `fmt` formats source files (questlang/format), with options of its own *)
     let fmtMode = {extent system.args > 1} andif stringOp.equal(system.args[1] "fmt")
 
+    (* `lsp` serves the Language Server Protocol on standard input and output
+     * (questlang/lsp/server), and takes no arguments *)
+    let lspMode = {extent system.args > 1} andif stringOp.equal(system.args[1] "lsp")
+
     (* The program's name in errors that are not diagnostics *)
-    let programName = if compileMode then "quest compile" elsif fmtMode then "quest fmt" else "quest" end
+    let programName =
+        if compileMode then
+            "quest compile"
+        elsif fmtMode then
+            "quest fmt"
+        elsif lspMode then
+            "quest lsp"
+        else
+            "quest"
+        end
 
     (* The command line's forms, options, and phases, one to a line *)
     let usageText = strutil.joinArray("\n" array of
         "usage: quest [OPTION...] [OBJECT...] [FILE|- [ARG...] | -e PROGRAM [-- ARG...] | -- ARG...]"
         "       quest compile [OPTION...] [OBJECT...] [FILE|- | -e PROGRAM]"
         "       quest fmt [-w | --check] [FILE|DIRECTORY...]"
+        "       quest lsp"
         ""
         "quest runs a program, compiled by the JIT; with neither FILE nor -e, it enters the REPL at a"
         "terminal, and otherwise runs standard input. quest compile writes a binary: FILE without its"
         ".quest, or -o's. OBJECTs (.o, .a, .dylib, .so) are linked with the program. quest fmt lays out"
         "Quest source in the standard style: it prints each file formatted, rewrites it with -w, or with"
-        "--check names the files that would change."
+        "--check names the files that would change. quest lsp is the language server, for editors."
         ""
         "Options:"
         "  --stop-after PHASE   run through PHASE and print its output"
@@ -223,7 +237,7 @@ export
             let compiling = fun(arg: String): Ok if not(compileMode) then usage(arg <> " is an option of compile") end
             (* A worker's command line is the worker's to read *)
             let var i =
-                if workers.isUnitMode(system.args) orif fmtMode then
+                if workers.isUnitMode(system.args) orif fmtMode orif lspMode then
                     extent system.args
                 elsif compileMode then
                     2

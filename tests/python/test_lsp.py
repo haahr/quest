@@ -1,9 +1,9 @@
 """The Quest language server (docs/lsp.md section 10), driven through its
 protocol as an editor drives it: tests/python/lsp_client.py starts
-questlang/lsp/main.quest, built with ./quest (or the server QUEST_LSP_SERVER
-names, with QUEST_LSP_COMPILER for quest fmt), on documents in a scratch
-directory that import the standard library. Each test checks what a request answers, not its whole text, since
-paths and the order of some lists vary."""
+`./quest lsp` (or `quest lsp` with the quest QUEST_LSP_COMPILER names), on
+documents in a scratch directory that import the standard library. Each test
+checks what a request answers, not its whole text, since paths and the order
+of some lists vary."""
 
 import json
 import os
@@ -56,17 +56,12 @@ class LanguageServerTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
-        tmp = Path(cls.tmp.name)
-        given = os.environ.get("QUEST_LSP_SERVER")
-        if given:
-            cls.server = given
-        else:
-            cls.server = str(tmp / "quest-lsp")
-            built = subprocess.run([str(ROOT_DIR / "quest"), "--build-dir", str(tmp / "build"), "-o", cls.server,
-                                    str(ROOT_DIR / "questlang" / "lsp" / "main.quest")],
-                                   capture_output=True, text=True)
-            if built.returncode != 0:
-                raise RuntimeError(f"the server did not compile:\n{built.stdout}{built.stderr}")
+        cls.quest = os.environ.get("QUEST_LSP_COMPILER", str(ROOT_DIR / "quest"))
+        # Builds the stages first, if they are stale, so that no test's
+        # server waits for the build
+        built = subprocess.run([cls.quest, "-e", "1"], capture_output=True, text=True)
+        if built.returncode != 0:
+            raise RuntimeError(f"quest did not build:\n{built.stdout}{built.stderr}")
 
     @classmethod
     def tearDownClass(cls):
@@ -75,7 +70,7 @@ class LanguageServerTest(unittest.TestCase):
     def setUp(self):
         self.work = Path(tempfile.mkdtemp(dir=self.tmp.name))
         env = dict(os.environ, QUEST_HOME=str(ROOT_DIR))
-        self.client = Client([self.server], env=env, cwd=str(self.work))
+        self.client = Client([self.quest, "lsp"], env=env, cwd=str(self.work))
         self.addCleanup(self._stop)
 
     def _stop(self):
@@ -215,8 +210,7 @@ class LanguageServerTest(unittest.TestCase):
         text = "let a   =  1\nlet b=a\n"
         uri = self.open("f.quest", text)
         edits = self.client.result("textDocument/formatting", {"textDocument": {"uri": uri}, "options": {}})
-        quest = os.environ.get("QUEST_LSP_COMPILER", str(ROOT_DIR / "quest"))
-        expected = subprocess.run([quest, "fmt"], input=text, capture_output=True, text=True,
+        expected = subprocess.run([self.quest, "fmt"], input=text, capture_output=True, text=True,
                                   env=dict(os.environ, QUEST_HOME=str(ROOT_DIR))).stdout
         self.assertEqual(len(edits), 1)
         self.assertEqual(edits[0]["newText"], expected)

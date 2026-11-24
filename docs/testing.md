@@ -263,9 +263,9 @@ request, completion and inspection, an interrupt that keeps the session and one 
 and the Pygments lexer (§6). It runs itself again under jupyterlab's Python, which has `jupyter_client` and ipykernel,
 and is skipped, saying so, when there is none.
 
-**The language server:** `tests/python/test_lsp.py`, in the unit suite, builds `questlang/lsp/main.quest` with
-`./quest` and drives it through the Language Server Protocol with `tests/python/lsp_client.py`
-([lsp.md](lsp.md) §10). `QUEST_LSP_SERVER` and `QUEST_LSP_COMPILER` name a prebuilt server and compiler instead.
+**The language server:** `tests/python/test_lsp.py`, in the unit suite, starts `./quest lsp` and drives it
+through the Language Server Protocol with `tests/python/lsp_client.py` ([lsp.md](lsp.md) §10).
+`QUEST_LSP_COMPILER` names another quest to run instead.
 
 **The SSA's backends:** `--self-hosted --backend MODE` runs the self-hosted suite's compiled tests (`run_c_compiled`,
 golden and error) with the driver's units compiled by another backend ([arm64.md](arm64.md) §4): `ssac` compiles every

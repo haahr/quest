@@ -1,7 +1,7 @@
 # The Quest Language Server
 
-A Language Server Protocol server for Quest, written in Quest: `questlang/lsp/`, run by `tools/lsp/quest-lsp`, with
-a VS Code extension in `tools/vscode/`. It answers:
+A Language Server Protocol server for Quest, written in Quest: `questlang/lsp/`, run as `quest lsp`, with a VS Code
+extension in `tools/vscode/`. It answers:
 - diagnostics, as a document is edited;
 - hover, with the declaration's comment;
 - go to definition, in the document or in an imported module's interface;
@@ -18,14 +18,14 @@ compiler prints for a program.
 
 ## 1. Running It
 
-- **`tools/lsp/quest-lsp`** builds `questlang/lsp/main.quest` with `./quest` into `.build/lsp/` and runs it on
-  standard input and output, with `QUEST_HOME` set to the checkout. The build engine compiles only what is stale,
-  so a start after the first costs little. The build's output goes to standard error, since standard output is the
-  protocol's.
+- **`quest lsp`** serves the protocol on standard input and output; it takes no arguments. In a checkout,
+  `./quest lsp` first rebuilds the stages if they are stale, as any `./quest` command does, with the build's
+  messages on standard error, since standard output is the protocol's. `tools/lsp/quest-lsp` runs `./quest lsp`, for
+  editors that want one command.
 - **VS Code:** `tools/vscode/install` fetches the extension's one dependency (`vscode-languageclient`, with npm),
-  records the checkout, and links the extension into `~/.vscode/extensions`. VS Code then starts the server for
+  records the checkout, and links the extension into `~/.vscode/extensions`. VS Code then starts `./quest lsp` for
   `.quest` files (§9).
-- **Other editors** start `tools/lsp/quest-lsp` as a language server for `*.quest`, with no arguments.
+- **Other editors** start `quest lsp` as a language server for `*.quest`.
 - **Initialization options:** `buildDir`, where artifacts go, and `includePaths`, directories to search for imported
   units besides a document's own and the standard library, relative to the workspace.
 
@@ -37,10 +37,10 @@ compiler prints for a program.
   only marks documents to be checked. They are checked when no message is waiting (`reader.ready`, which never
   blocks, §11), so a burst of keystrokes costs one check. A request that needs a document checks it first, if it is
   stale.
-- **A program of its own, not a mode of the driver.** The release never compiles it
-  ([release-compiler.md](release-compiler.md) §2), so it may use library functions newer than the release's, such
-  as `util/uri` and `util/json`'s UTF-8 mode, without a release first. It could become `quest --lsp` once a release
-  has what it uses.
+- **A command of the driver, like `quest fmt`.** It runs in the compiler that checks documents, so the two never
+  disagree. The release compiles the driver ([release-compiler.md](release-compiler.md) §2), so a library function
+  the server uses must be in the release before the server can use it; `util/uri` and `util/json`'s UTF-8 mode were
+  released (7a6f57a4) before the server moved into the driver.
 - **Full document sync.** Each change carries the whole text.
 - **Positions:** every offset inside the server is a byte offset. The protocol's columns are UTF-16 code units by
   default, so `questlang/lsp/positions` converts at the edge:
@@ -165,8 +165,8 @@ so its golden tests and the bootstrap's agreement are untouched.
 ## 9. The VS Code Extension
 
 `tools/vscode/` is a plain-JavaScript extension:
-- **`extension.js`** starts the server through `vscode-languageclient`. The server is found from the
-  `quest.server.path` setting, else in the checkout `install` recorded.
+- **`extension.js`** runs `quest lsp` through `vscode-languageclient`. The quest command is the
+  `quest.server.path` setting, else `./quest` in the checkout `install` recorded.
 - **`syntaxes/quest.tmLanguage.json`** is a TextMate grammar with the Pygments lexer's tokens
   (`tools/jupyter/quest_lexer.py`).
 - **`language-configuration.json`** has comments, brackets, and indentation.
@@ -189,8 +189,8 @@ answers, not whole texts, since paths vary:
 - an open interface's unsaved text seen by its importer;
 - recovery in a program and in a module.
 
-`QUEST_LSP_SERVER` and `QUEST_LSP_COMPILER` name a prebuilt server and compiler, to try changes while `./quest`'s
-stage build waits for the lock.
+`QUEST_LSP_COMPILER` names a quest to run instead of `./quest`, to try changes while `./quest`'s stage build waits
+for the lock.
 
 ## 11. What It Needed of the Libraries and Runtime
 
@@ -213,4 +213,3 @@ stage build waits for the lock.
 - **Caching per binding:** if large documents check too slowly, reuse unchanged bindings' results. The one
   measurement (§3) does not ask for it yet.
 - **Incremental document sync:** worth it only if copying whole texts ever shows up.
-- **`quest --lsp`:** fold the server into the driver once a release has `util/uri` and `util/json`'s UTF-8 mode.
