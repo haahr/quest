@@ -1,4 +1,4 @@
-"""The Quest language server (docs/lsp-plan.md section 4), driven through its
+"""The Quest language server (docs/lsp.md section 10), driven through its
 protocol as an editor drives it: tests/python/lsp_client.py starts
 questlang/lsp/main.quest, built with ./quest (or the server QUEST_LSP_SERVER
 names, with QUEST_LSP_COMPILER for quest fmt), on documents in a scratch

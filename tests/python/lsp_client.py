@@ -1,4 +1,4 @@
-"""A client of the Quest language server (docs/lsp-plan.md section 4), for
+"""A client of the Quest language server (docs/lsp.md section 10), for
 tests/python/test_lsp.py and for trying the server by hand: it starts the
 server, frames and unframes messages, answers nothing the server asks, and
 keeps the notifications it is sent."""

@@ -728,7 +728,7 @@ parts are given, with no tree, exactly as `write` would print it.
 
 - **Strings are bytes,** each the code point of the same number (Latin-1) by default: a byte that is not printable
   ASCII is written as `\u00XX`, and an escape above `ÿ` is an error. Every string round-trips exactly.
-- **A UTF-8 mode, opt-in,** for JSON exchanged with other programs (the language server, docs/lsp-plan.md): options
+- **A UTF-8 mode, opt-in,** for JSON exchanged with other programs (the language server, docs/lsp.md): options
   with `utf8` (`parsingUtf8`, `compactUtf8`) read an escape as its code point's UTF-8 encoding, a surrogate pair's as
   the pair's, and write strings as UTF-8, each ill-formed sequence as U+FFFD, so the text is always UTF-8.
 - **Output is Python's,** for the same value read as Latin-1, or with `utf8`, `ensure_ascii=False`'s encoded as UTF-8:
@@ -1486,7 +1486,7 @@ end
 
 ### 1.23. `util/uri : util/URI`
 
-URIs (RFC 3986) as text, for the language server's document names (docs/lsp-plan.md) and anything else that needs
+URIs (RFC 3986) as text, for the language server's document names (docs/lsp.md) and anything else that needs
 them: a URI split into its five parts and put back together, percent-encoding, and file URIs to and from POSIX paths.
 It does no networking, resolves no relative references, and normalizes nothing beyond what `toPath` needs.
 

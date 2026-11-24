@@ -1,5 +1,5 @@
 // The Quest extension: starts the Quest language server (tools/lsp/quest-lsp,
-// docs/lsp-plan.md) for .quest documents. The server is found from the
+// docs/lsp.md) for .quest documents. The server is found from the
 // quest.server.path setting, else in the checkout the extension was
 // installed from (tools/vscode/install records it in checkout.json).
 

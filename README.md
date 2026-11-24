@@ -353,6 +353,8 @@ C runtime), which link to the rest.
 - [docs/interpreter.md](docs/interpreter.md): the tree-walking interpreter and its evaluation rules.
 - [docs/repl.md](docs/repl.md): the REPL, its continuation lines, and how it undoes a phrase that fails.
 - [docs/jupyter-kernel.md](docs/jupyter-kernel.md): the Jupyter kernel, its protocol, interrupts, and installing it.
+- [docs/lsp.md](docs/lsp.md): the language server, its checks, navigation, and recovery from syntax errors, and the
+  VS Code extension.
 - [docs/formatter.md](docs/formatter.md): `quest fmt`, the layout style it writes for Quest source, and how it works.
 
 ### 3. IR, Runtime, and Code Generation

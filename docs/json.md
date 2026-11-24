@@ -51,7 +51,7 @@ It has three kinds of user:
 
    **The UTF-8 mode** (user, 2026-11-23, which lifted "no UTF-8 mode" of 2026-11-18 for an opt-in mode only) is for
    JSON exchanged with programs that aren't Quest, such as an editor talking to the language server
-   ([lsp-plan.md](lsp-plan.md)). It is the `utf8` field of `ParseOptions` and `PrintOptions` (`parsingUtf8`,
+   ([lsp.md](lsp.md)). It is the `utf8` field of `ParseOptions` and `PrintOptions` (`parsingUtf8`,
    `compactUtf8`):
    - an escape gives its code point's UTF-8 encoding; a high surrogate's escape must be followed by a low one's, the
      two giving the pair's code point, and a surrogate's escape without its partner is an error, though Python
