@@ -1,0 +1,36 @@
+(* A loop's checks of what does not change in it run once, before it, when
+   its first pass would run them before doing anything else (ssa/passes/loops,
+   docs/ssa.md section 4.1): behind a copy of the loop's test, so that a loop
+   that does not run raises nothing, and before the first pass, so that a loop
+   that does raises as that pass would have; a check after a store is left in
+   the loop, so the store happens first. *)
+import ascii : Ascii
+import conv : Conv
+import int : IntOp
+import writer : Writer
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+
+let numbers = array of 3 1 4 1 5 9 2 6 end
+let rec sum(a: Array(Int) i: Int acc: Int): Int = if i >= extent a then acc else sum(a i + 1 acc + a[i]) end
+print("sum: " <> conv.int(sum(numbers 0 0)) <> " " <> conv.int(sum(numbers 5 0)))
+
+(* ascii.char checks that its argument is under 256 *)
+let rec chars(n: Int code: Int acc: Int): Int =
+    if n is 0 then acc else chars(n - 1 code acc + ascii.val(ascii.char(code))) end
+print("no passes: " <> conv.int(chars(0 300 0)))
+print("passes: " <> conv.int(chars(3 65 0)))
+print("raises: " <> try conv.int(chars(3 300 0)) when ascii.error then "ascii.error" end)
+
+let stores = tuple let var n = 0 end
+let marks = array of(4 0)
+let rec marked(i: Int code: Int): Int =
+    if i >= 4 then 0
+    else begin marks[i] := 1 stores.n := stores.n + 1 ascii.val(ascii.char(code)) + marked(i + 1 code) end
+    end
+print("after a store: " <> try conv.int(marked(0 300)) when ascii.error then "ascii.error" end <> " "
+    <> conv.int(marks[0]) <> " " <> conv.int(stores.n))
+
+let quotient = tuple let var q = 0 end
+let rec divide(i: Int d: Int): Ok = if i >= 3 then ok else begin quotient.q := quotient.q + {12 / d} divide(i + 1 d) end end
+divide(0 4)
+print("divided: " <> conv.int(quotient.q) <> " " <> try begin divide(0 0) "no" end when int.error then "int.error" end)

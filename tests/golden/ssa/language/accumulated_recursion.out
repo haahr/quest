@@ -2,7 +2,7 @@ function qf_sum(%0: ptr, %1: int): int {
 b0(%0: ptr, %1: int):
   @12:28
   %15: int = const 0
-  jump b3(%0, %1, %15)
+  jump b4(%0, %1, %15)
 b1():
   @12:28
   %4: int = const 0
@@ -23,13 +23,16 @@ b3(%10: ptr, %11: int, %12: int):
   %3: int = eq %11, %2
   @12:28
   branch %3, b1(), b2()
+b4(%16: ptr, %17: int, %18: int):
+  @12:28
+  jump b3(%16, %17, %18)
 }
 
 function qf_factorial(%0: ptr, %1: int): int {
 b0(%0: ptr, %1: int):
   @15:34
   %15: int = const 1
-  jump b3(%0, %1, %15)
+  jump b4(%0, %1, %15)
 b1():
   @15:34
   %4: int = const 1
@@ -49,13 +52,16 @@ b3(%10: ptr, %11: int, %12: int):
   %3: int = le %11, %2
   @15:34
   branch %3, b1(), b2()
+b4(%16: ptr, %17: int, %18: int):
+  @15:34
+  jump b3(%16, %17, %18)
 }
 
 function qf_fib(%0: ptr, %1: int): int {
 b0(%0: ptr, %1: int):
   @18:28
   %18: int = const 0
-  jump b3(%0, %1, %18)
+  jump b4(%0, %1, %18)
 b1():
   @18:28
   %17: int = add %15, %14
@@ -79,13 +85,16 @@ b3(%13: ptr, %14: int, %15: int):
   %3: int = lt %14, %2
   @18:28
   branch %3, b1(), b2()
+b4(%19: ptr, %20: int, %21: int):
+  @18:28
+  jump b3(%19, %20, %21)
 }
 
 function qf_xors(%0: ptr, %1: ptr, %2: int): int {
 b0(%0: ptr, %1: ptr, %2: int):
   @22:5
   %30: int = const 0
-  jump b7(%0, %1, %2, %30)
+  jump b8(%0, %1, %2, %30)
 b1():
   @22:27
   %5: int = const 0
@@ -134,25 +143,28 @@ b7(%24: ptr, %25: ptr, %26: int, %27: int):
   %4: int = eq %26, %3
   @22:5
   branch %4, b1(), b2()
+b8(%31: ptr, %32: ptr, %33: int, %34: int):
+  @22:5
+  jump b7(%31, %32, %33, %34)
 }
 
 function qf_bits(%0: ptr, %1: int): int {
 b0(%0: ptr, %1: int):
   @25:32
   %23: int = const 0
-  jump b8(%0, %1, %23)
-b1():
+  jump b9()
+b1(%39: int):
   @25:47
   %4: int = const 1
   @25:32
-  %22: int = or %20, %4
+  %22: int = or %39, %4
   return %22
-b2():
+b2(%40: int, %43: int):
   @25:85
   %5: int = const 2
   %6: int = const 0
   %7: int = ne %5, %6
-  branch %7, b3(), b4()
+  jump b3()
 b3():
   @25:85
   %9: int = const ~1
@@ -166,42 +178,55 @@ b4():
 b5():
   @25:85
   %12: int = const 0
-  %13: int = sub %12, %19
+  %13: int = sub %12, %43
   jump b7(%13)
 b6():
   @25:85
-  %14: int = div %19, %5
+  %14: int = div %43, %5
   jump b7(%14)
 b7(%11: int):
-  @25:80
-  %15: ptr = null
   @25:68
-  %21: int = or %20, %19
-  jump b8(%15, %11, %21)
-b8(%18: ptr, %19: int, %20: int):
+  %21: int = or %40, %43
+  jump b8()
+b8():
   @25:35
   %2: int = const 0
-  %3: int = eq %19, %2
+  %3: int = eq %11, %2
   @25:32
-  branch %3, b1(), b2()
+  branch %3, b1(%21), b2(%21, %11)
+b9():
+  @25:35
+  %27: int = const 0
+  %28: int = eq %1, %27
+  @25:32
+  branch %28, b1(%23), b10()
+b10():
+  @25:85
+  %37: int = const 2
+  %38: int = const 0
+  %36: int = ne %37, %38
+  branch %36, b11(), b4()
+b11():
+  @25:32
+  jump b2(%23, %1)
 }
 
 function qf_odds(%0: ptr, %1: int): int {
 b0(%0: ptr, %1: int):
   @29:5
   %33: int = const 0
-  jump b10(%0, %1, %33)
-b1():
+  jump b11()
+b1(%52: int):
   @29:5
   %4: int = const 0
-  %32: int = add %30, %4
+  %32: int = add %52, %4
   return %32
-b2():
+b2(%53: int, %56: int):
   @30:13
   %5: int = const 2
   %6: int = const 0
   %7: int = ne %5, %6
-  branch %7, b3(), b4()
+  jump b3()
 b3():
   @30:13
   %9: int = const ~1
@@ -215,40 +240,52 @@ b4():
 b5():
   @30:13
   %12: int = const 0
-  %13: int = sub %12, %29
+  %13: int = sub %12, %56
   jump b7(%13)
 b6():
   @30:13
-  %14: int = div %29, %5
+  %14: int = div %56, %5
   jump b7(%14)
 b7(%11: int):
   @30:13
   %15: int = const 2
   %16: int = mul %11, %15
-  %17: int = eq %16, %29
+  %17: int = eq %16, %56
   branch %17, b8(), b9()
 b8():
   @30:40
   %18: int = const 1
-  %19: int = sub %29, %18
+  %19: int = sub %56, %18
   @30:35
-  %20: ptr = null
-  jump b10(%20, %19, %30)
+  jump b10(%19, %53)
 b9():
   @31:19
   %22: int = const 1
-  %23: int = sub %29, %22
-  @31:14
-  %24: ptr = null
+  %23: int = sub %56, %22
   @31:10
-  %31: int = add %30, %22
-  jump b10(%24, %23, %31)
-b10(%28: ptr, %29: int, %30: int):
+  %31: int = add %53, %22
+  jump b10(%23, %31)
+b10(%29: int, %30: int):
   @29:8
   %2: int = const 0
   %3: int = eq %29, %2
   @29:5
-  branch %3, b1(), b2()
+  branch %3, b1(%30), b2(%30, %29)
+b11():
+  @29:8
+  %37: int = const 0
+  %38: int = eq %1, %37
+  @29:5
+  branch %38, b1(%33), b12()
+b12():
+  @30:13
+  %50: int = const 2
+  %51: int = const 0
+  %49: int = ne %50, %51
+  branch %49, b13(), b4()
+b13():
+  @29:5
+  jump b2(%33, %1)
 }
 
 function qf_alternating(%0: ptr, %1: int): int {

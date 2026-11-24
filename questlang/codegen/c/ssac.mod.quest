@@ -302,7 +302,11 @@ export
             when termNone then raise unsupported with "ssac: a block without a terminator" end
             when termJump with x then line(p jumpText(p x.target))
             when termBranch with x then
-                line(p "if (" <> v(x.cond) <> ") " <> jumpText(p x.ifTrue) <> " else " <> jumpText(p x.ifFalse))
+                (* A jump that assigns parameters is a block followed by a
+                 * goto, so each arm that is one is braced *)
+                let arm = fun(t: ssa.Target): String
+                    if extent t.args is 0 then jumpText(p t) else "{ " <> jumpText(p t) <> " }" end
+                line(p "if (" <> v(x.cond) <> ") " <> arm(x.ifTrue) <> " else " <> arm(x.ifFalse))
             when termSwitch with x then
                 line(p "switch (" <> v(x.value) <> ") {")
                 for k = 0 upto {extent x.cases - 1} do

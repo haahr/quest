@@ -1,0 +1,179 @@
+import ascii = "ascii" : Ascii
+import conv = "conv" : Conv
+import int = "int" : IntOp
+import writer = "writer" : Writer
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @11:45
+      let %2: String = prim <>(s, "\n") @11:59
+      let %3: Ok = call writer.putString(%1, %2) @11:28
+      return %3
+    }
+  }
+  let numbers: Array(Int) = array(3, 1, 4, 1, 5, 9, 2, 6) @13:15
+  funs rec {
+    fun sum(a: Array(Int), i: Int, acc: Int): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        let %4: Int = prim extent(a) @14:59
+        let %5: Bool = prim >=(i, %4) @14:54
+        if %5 { @14:51
+          jump k1(acc) @14:51
+        } else {
+          let %6: Int = prim +(i, 1) @14:88
+          let %7: Int = index(a, i) @14:100
+          let %8: Int = prim +(acc, %7) @14:94
+          let %9: Int = call sum(a, %6, %8) @14:82
+          jump k1(%9) @14:51
+        }
+      }
+    }
+  }
+  let %10: Int = call sum(numbers, 0, 0) @15:27
+  let %11: String = call conv.int(%10) @15:18
+  let %12: Int = call sum(numbers, 5, 0) @15:64
+  let %13: String = call conv.int(%12) @15:55
+  let %14: String = prim <>(" ", %13) @15:48
+  let %15: String = prim <>(%11, %14) @15:18
+  let %16: String = prim <>("sum: ", %15) @15:7
+  do call print(%16) @15:1
+  funs rec {
+    fun chars(n: Int, code: Int, acc.1: Int): Int {
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        let %17: Bool = prim is(n, 0) @19:8
+        if %17 { @19:5
+          jump k2(acc.1) @19:5
+        } else {
+          let %18: Int = prim -(n, 1) @19:35
+          let %19: Char = call ascii.char(code) @19:62
+          let %20: Int = call ascii.val(%19) @19:52
+          let %21: Int = prim +(acc.1, %20) @19:46
+          let %22: Int = call chars(%18, code, %21) @19:29
+          jump k2(%22) @19:5
+        }
+      }
+    }
+  }
+  let %23: Int = call chars(0, 300, 0) @20:33
+  let %24: String = call conv.int(%23) @20:24
+  let %25: String = prim <>("no passes: ", %24) @20:7
+  do call print(%25) @20:1
+  let %26: Int = call chars(3, 65, 0) @21:30
+  let %27: String = call conv.int(%26) @21:21
+  let %28: String = prim <>("passes: ", %27) @21:7
+  do call print(%28) @21:1
+  join k3(r.2: String) {
+    let %29: String = prim <>("raises: ", r.2) @22:7
+    do call print(%29) @22:1
+    let n.1: Int = 0 @24:32
+    let stores: Tuple var n: Int end = tuple(n.1) @24:14
+    let marks: Array(Int) = array_rep(4, 0) @25:13
+    funs rec {
+      fun marked(i.1: Int, code.1: Int): Int {
+        join k4(r.3: Int) {
+          return r.3
+        } in {
+          let %30: Bool = prim >=(i.1, 4) @27:8
+          if %30 { @27:5
+            jump k4(0) @27:5
+          } else {
+            store marks[i.1] := 1 @28:16
+            let %31: Int = tuple_field(stores, 0) @28:42
+            let %32: Int = prim +(%31, 1) @28:42
+            store stores.#0 := %32 @28:30
+            let %33: Char = call ascii.char(code.1) @28:65
+            let %34: Int = call ascii.val(%33) @28:55
+            let %35: Int = prim +(i.1, 1) @28:92
+            let %36: Int = call marked(%35, code.1) @28:85
+            let %37: Int = prim +(%34, %36) @28:55
+            jump k4(%37) @27:5
+          }
+        }
+      }
+    }
+    join k5(r.4: String) {
+      let %38: Int = index(marks, 0) @31:17
+      let %39: String = call conv.int(%38) @31:8
+      let %40: Int = tuple_field(stores, 0) @31:46
+      let %41: String = call conv.int(%40) @31:37
+      let %42: String = prim <>(" ", %41) @31:30
+      let %43: String = prim <>(%39, %42) @31:8
+      let %44: String = prim <>(" ", %43) @30:99
+      let %45: String = prim <>(r.4, %44) @30:28
+      let %46: String = prim <>("after a store: ", %45) @30:7
+      do call print(%46) @30:1
+      let q: Int = 0 @33:34
+      let quotient: Tuple var q: Int end = tuple(q) @33:16
+      funs rec {
+        fun divide(i.2: Int, d: Int): Ok {
+          let %47: Bool = prim >=(i.2, 3) @34:40
+          if %47 { @34:37
+          } else {
+            let %48: Int = tuple_field(quotient, 0) @34:80
+            let %49: Int = prim /(12, d) @34:94
+            let %50: Int = prim +(%48, %49) @34:80
+            store quotient.#0 := %50 @34:66
+            let %51: Int = prim +(i.2, 1) @34:109
+            do call divide(%51, d) @34:102
+          }
+          return ok
+        }
+      }
+      do call divide(0, 4) @35:1
+      let %52: Int = tuple_field(quotient, 0) @36:31
+      let %53: String = call conv.int(%52) @36:22
+      join k6(r.5: String) {
+        let %54: String = prim <>(" ", r.5) @36:46
+        let %55: String = prim <>(%53, %54) @36:22
+        let %56: String = prim <>("divided: ", %55) @36:7
+        do call print(%56) @36:1
+      } in {
+        let %57: Exception = member int.error @36:89
+        try catching (%57) {
+          do call divide(0, 0) @36:63
+          jump k6("no") @36:53
+        } handle (e: Exception) {
+          let %58: Bool = prim is(e, %57) @36:53
+          if %58 { @36:53
+            jump k6("int.error") @36:53
+          } else {
+            reraise e @36:53
+          }
+        }
+      }
+    } in {
+      let %59: Exception = member ascii.error @30:61
+      try catching (%59) {
+        let %60: Int = call marked(0, 300) @30:41
+        let %61: String = call conv.int(%60) @30:32
+        jump k5(%61) @30:28
+      } handle (e.1: Exception) {
+        let %62: Bool = prim is(e.1, %59) @30:28
+        if %62 { @30:28
+          jump k5("ascii.error") @30:28
+        } else {
+          reraise e.1 @30:28
+        }
+      }
+    }
+  } in {
+    let %63: Exception = member ascii.error @22:55
+    try catching (%63) {
+      let %64: Int = call chars(3, 300, 0) @22:34
+      let %65: String = call conv.int(%64) @22:25
+      jump k3(%65) @22:21
+    } handle (e.2: Exception) {
+      let %66: Bool = prim is(e.2, %63) @22:21
+      if %66 { @22:21
+        jump k3("ascii.error") @22:21
+      } else {
+        reraise e.2 @22:21
+      }
+    }
+  }
+}
+

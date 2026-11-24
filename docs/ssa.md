@@ -266,7 +266,8 @@ internal error.
   without uses are removed. `ssa_valuenumbers` shows each case.
   Hoisting loop-invariant pure values and invariant loads to preheaders was tried after it (2026-11-03) and not kept:
   it found almost nothing to move, since a loop's invariant loads sit behind null and bounds checks inside the loop,
-  and its constants are rematerialized.
+  and its constants are rematerialized. `ssa/passes/loops` hoists them now, by rotating the loop so that those checks
+  run once before it.
 - **`ssa/passes/conditions`** decides a branch on a comparison that a dominating branch on the same comparison has
   decided: a block that only one edge of a branch enters knows the comparison's value, and so does every block it
   dominates, where a branch on the same comparison becomes a jump to the target that value chooses, and the blocks no
@@ -327,8 +328,21 @@ internal error.
   the raise). It must be an `Int` or a `Real`, read and written whole; no other access in the loop can reach it (one
   at an overlapping offset through another address but a slot's or a global's own word, or an invariant load); the
   loop stores nothing to the global, calls only runtime functions that write no memory and cannot raise, and enters no
-  try. mandelbrot retires 0.90 of its instructions through `ssac` and 0.89 through arm64. `language/module_cells_in_loops`
-  shows each case.
+  try. mandelbrot retires 0.90 of its instructions through `ssac` and 0.89 through arm64. Last, what a loop computes
+  the same on every pass moves before it, into a preheader (mlton-median-plan.md step 8): pure operations (constants,
+  symbols, and nulls copied, not moved, and comparisons left with the branches arm64 fuses them into) and loads that
+  cannot fault there (a slot's, a global's the loop does not store to, an invariant load of an object a check before
+  the loop found not null). When the loop's header only tests whether to leave and its first pass checks invariant
+  values before it stores, calls, or tests what varies, the loop is rotated: a copy of the header's test leaves where
+  the header would, or runs those checks once and enters the header's successor, and the header becomes the test at
+  the loop's bottom. The checks raise as the first pass would have, `conditions` decides the loop's own copies, and
+  the loads they guarded move too; the header's values used elsewhere are kept in slots, stored by the header and the
+  guard, which promotion joins; and the block parameters promotion leaves unused are dropped (a loop's dead closure
+  argument among them). A derived pointer (`ptrAdd`) moves only out of a loop that calls nothing, so that none is live
+  across a collection without its object's own pointer. Through arm64, matrix-multiply retires 0.84 of its
+  instructions, fft 0.87, pidigits and vector-rev 0.88, smith-normal-form 0.90; through `ssac`, whose clang hoisted
+  most of it already, tensor 0.95. `language/module_cells_in_loops` and `language/hoisted_loop_checks` show each
+  case.
 - **`ssa/passes/tailCalls`** marks calls in tail position (§3, arm64.md §3.7): a call whose block returns its results
   (or the extension of its byte), or jumps, through blocks that do nothing else, to one that does. A block's parameters
   are taken as what the jump passes them, so that a join's parameter that its block does not return (as a contified

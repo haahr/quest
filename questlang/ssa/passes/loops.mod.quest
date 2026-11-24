@@ -365,13 +365,698 @@ export
             kept
         end
 
+    (* =========================================================================
+     * Loop-invariant instructions and checks moved before their loops
+     * ====================================================================== *)
+
+    (* Whether i may run before its loop whatever the loop does, its arguments
+     * being invariant: an operation that cannot trap and touches no memory.
+     * Comparisons stay with the branches that arm64 fuses them into, and
+     * constants, symbols, and nulls where they are used (rematerialized, as
+     * value numbering keeps them), copied before the loop for what moves *)
+    let movable(i: ssa.Inst): Bool =
+        case i.op
+            when opAdd, opSub, opMul, opAnd, opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv,
+                    opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opIntToReal, opSext8, opZext8, opPtrAdd,
+                    opToVal, opFromVal, opMulHiU, opSelect then
+                true
+            else false
+        end
+
+    let remade(i: ssa.Inst): Bool = case i.op when opConst, opRealConst, opSymbol, opNull then true else false end
+
+    let comparison(i: ssa.Inst): Bool =
+        case i.op
+            when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge then true
+            else false
+        end
+
+    (* Whether block r only raises: no parameters, instructions that make the
+     * raise's constants and call a runtime function that never returns, and
+     * no successor *)
+    let raises(f: Function r: Int): Bool =
+        begin
+            let blk = ssa.block(f r)
+            let var only = vector.empty(blk.params) andif not(vector.empty(blk.insts))
+            for k = 0 upto {vector.length(blk.insts) - 1} do
+                let i = vector.get(blk.insts k)
+                if k is {vector.length(blk.insts) - 1} then
+                    let var noReturn = false
+                    if ssa.isOp(i ssa.opCall) then
+                        for j = 0 upto {extent runtimeFunctions.functions - 1} do
+                            let fn = runtimeFunctions.functions[j]
+                            if stringOp.equal(fn.name i.symbol) andif fn.effects.noReturn then noReturn := true end
+                        end
+                    end
+                    if not(noReturn) then only := false end
+                elsif not(remade(i)) then
+                    only := false
+                end
+            end
+            case blk.term when termUnreachable then only else false end
+        end
+
+    (* What one loop's hoisting knows: the loop's blocks, the block that
+     * defines each value (~1 for none), and the values that are invariant:
+     * defined outside the loop, or moved before it, by value *)
+    Let Hoist = Tuple
+        f: Function
+        inside: Array(Bool)
+        home: Array(Int)
+        var invariant: Array(Bool)
+        (* Values known not to be null before the loop: checked there *)
+        var nonNull: Array(Bool)
+        (* Copies made before the loop of rematerialized values the loop
+         * defines, by value (~1 for none) *)
+        var copies: Array(Int)
+    end
+
+    (* Grows the per-value arrays to the function's values, which moving and
+     * copying add to *)
+    let grow(x: Hoist): Ok =
+        begin
+            let n = vector.length(x.f.types)
+            if extent x.invariant < n then
+                let widen = fun(a: Array(Bool)): Array(Bool)
+                    begin
+                        let r = array of(n true)
+                        for k = 0 upto {extent a - 1} do r[k] := a[k] end
+                        r
+                    end
+                x.invariant := widen(x.invariant)
+                let nn = array of(n false)
+                for k = 0 upto {extent x.nonNull - 1} do nn[k] := x.nonNull[k] end
+                x.nonNull := nn
+                let c = array of(n ~1)
+                for k = 0 upto {extent x.copies - 1} do c[k] := x.copies[k] end
+                x.copies := c
+            end
+        end
+
+    (* Whether every argument of i is invariant or rematerialized *)
+    let argumentsReady(x: Hoist defs: Array(maybe.T(ssa.Inst)) i: ssa.Inst): Bool =
+        begin
+            let var ready = true
+            for k = 0 upto {extent i.args - 1} do
+                let a = i.args[k]
+                if not(x.invariant[a]) then
+                    if {a < extent defs} andif maybe.isSome(defs[a]) andif remade(maybe.unwrap(defs[a])) then ok
+                    else ready := false
+                    end
+                end
+            end
+            ready
+        end
+
+    let copied(vs: Array(Int)): Array(Int) =
+        begin
+            let r = array of(extent vs 0)
+            for k = 0 upto {extent vs - 1} do r[k] := vs[k] end
+            r
+        end
+
+    (* Moves i to the end of block b (unterminated), copying there the
+     * rematerialized values the loop defines that it uses *)
+    let moveTo(x: Hoist defs: Array(maybe.T(ssa.Inst)) b: Int i: ssa.Inst): Ok =
+        begin
+            for k = 0 upto {extent i.args - 1} do
+                let a = i.args[k]
+                if not(x.invariant[a]) then
+                    if x.copies[a] < 0 then
+                        let d = maybe.unwrap(defs[a])
+                        let v = ssa.newValue(x.f ssa.typeOf(x.f a))
+                        let c = ssa.instruction(d.op array of :Int end array of v end d.imm d.symbol d.width d.signed
+                                d.signature)
+                        c.loc := d.loc
+                        ssa.append(x.f b c)
+                        grow(x)
+                        x.copies[a] := v
+                    end
+                    i.args[k] := x.copies[a]
+                end
+            end
+            ssa.append(x.f b i)
+            grow(x)
+            for k = 0 upto {extent i.results - 1} do x.invariant[i.results[k]] := true end
+        end
+
+    (* Removes the instructions in moved from the loop's blocks *)
+    let removeMoved(f: Function inside: Array(Bool) moved: Array(Bool)): Ok =
+        for b = 0 upto {extent inside - 1} do
+            if inside[b] then
+                let blk = ssa.block(f b)
+                let kept = vector.new(:ssa.Inst)
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
+                    let gone = {extent i.results > 0} andif {i.results[0] < extent moved} andif moved[i.results[0]]
+                    if not(gone) then vector.append(kept i) end
+                end
+                vector.clear(blk.insts)
+                for k = 0 upto {vector.length(kept) - 1} do vector.append(blk.insts vector.get(kept k)) end
+            end
+        end
+
+    (* Replaces the uses of v in block b with w *)
+    let replaceIn(f: Function b: Int v: Int w: Int): Ok =
+        begin
+            let blk = ssa.block(f b)
+            let swap = fun(vs: Array(Int)): Ok
+                for j = 0 upto {extent vs - 1} do if vs[j] is v then vs[j] := w end end
+            for k = 0 upto {vector.length(blk.insts) - 1} do swap(vector.get(blk.insts k).args) end
+            let ts = ssa.targets(blk.term)
+            for k = 0 upto {extent ts - 1} do swap(ts[k].args) end
+            case blk.term
+                when termBranch with x then
+                    if x.cond is v then
+                        blk.term := option termBranch of ssa.Terminator with
+                            let cond = w
+                            let ifTrue = x.ifTrue
+                            let ifFalse = x.ifFalse
+                        end
+                    end
+                when termSwitch with x then
+                    if x.value is v then
+                        blk.term := option termSwitch of ssa.Terminator with
+                            let value = w
+                            let cases = x.cases
+                            let targets = x.targets
+                            let default = x.default
+                        end
+                    end
+                when termReturn with x then swap(x.values)
+                when termTailCall with x then swap(x.call.args)
+                when termNone, termJump, termTry, termUnreachable then ok
+            end
+        end
+
+    (* Inserts instructions at the start of block b *)
+    let prepend(f: Function b: Int emitting: All() Ok): Ok =
+        begin
+            let blk = ssa.block(f b)
+            let old = vector.toArray(blk.insts)
+            let t = blk.term
+            vector.clear(blk.insts)
+            blk.term := ssa.termNone
+            emitting()
+            for k = 0 upto {extent old - 1} do vector.append(blk.insts old[k]) end
+            blk.term := t
+        end
+
+    (* Whether a load at address a, invariant, cannot fault before the loop:
+     * of a symbol's word, a stack slot's, or an object checked not null *)
+    let safeAddress(x: Hoist defs: Array(maybe.T(ssa.Inst)) a: Int): Bool =
+        if x.nonNull[a] then true
+        elsif {a >= extent defs} orif maybe.isNone(defs[a]) then false
+        else
+            let d = maybe.unwrap(defs[a])
+            ssa.isOp(d ssa.opSymbol) orif ssa.isOp(d ssa.opSlot)
+        end
+
+    (* Moves before the loop of header h, into a new preheader, what of it is
+     * invariant: pure operations and loads that cannot fault, anywhere in the
+     * loop; and, when the loop's header tests whether to leave it and its
+     * first pass then checks invariant values before doing anything else,
+     * those checks, behind a copy of the header's test, so that they run once
+     * for the loop and raise as the first pass would have, and the loads
+     * they make safe. Value numbering and the conditions pass then decide the
+     * loop's own copies of the checks. Whether it moved anything *)
+    let hoistLoop(f: Function g: cfg.Graph h: Int inside: Array(Bool)): Bool =
+        begin
+            let defs = ssa.definitions(f)
+            let n = vector.length(f.types)
+            let home = array of(n ~1)
+            for b = 0 upto {vector.length(f.blocks) - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(blk.params) - 1} do home[vector.get(blk.params k)] := b end
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
+                    for j = 0 upto {extent i.results - 1} do home[i.results[j]] := b end
+                end
+            end
+            let invariant = array of(n true)
+            for v = 0 upto {n - 1} do if {home[v] >= 0} andif inside[home[v]] then invariant[v] := false end end
+            let x = tuple
+                let f = f
+                let inside = inside
+                let home = home
+                let var invariant = invariant
+                let var nonNull = array of(n false)
+                let var copies = array of(n ~1)
+            end
+            (* The preheader, taking the header's parameters from outside *)
+            let hb = ssa.block(f h)
+            let pre = ssa.newBlock(f)
+            let preParams = array of(vector.length(hb.params) 0)
+            for k = 0 upto {vector.length(hb.params) - 1} do
+                preParams[k] := ssa.addParam(f pre ssa.typeOf(f vector.get(hb.params k)))
+            end
+            grow(x)
+            for k = 0 upto {extent g.preds[h] - 1} do
+                let p = g.preds[h][k]
+                if not(inside[p]) then
+                    let pb = ssa.block(f p)
+                    pb.term := ssa.mapTargets(pb.term fun(t: ssa.Target): ssa.Target
+                        if t.block is h then ssa.target(pre t.args) else t end)
+                end
+            end
+            let moved = array of(n false)
+            let var any = false
+            (* The globals (g_...) the loop stores to: a load of any other
+             * reads what nothing changes during the loop, since only its
+             * module's initialization writes a global *)
+            let written = vector.new(:String)
+            for b = 0 upto {extent inside - 1} do
+                if inside[b] then
+                    let blk = ssa.block(f b)
+                    for k = 0 upto {vector.length(blk.insts) - 1} do
+                        let i = vector.get(blk.insts k)
+                        if ssa.isOp(i ssa.opStore) andif maybe.isSome(defs[i.args[0]])
+                                andif ssa.isOp(maybe.unwrap(defs[i.args[0]]) ssa.opSymbol) then
+                            vector.append(written maybe.unwrap(defs[i.args[0]]).symbol)
+                        end
+                    end
+                end
+            end
+            let steady = fun(i: ssa.Inst): Bool
+                if not(ssa.isOp(i ssa.opLoad)) then false
+                elsif i.invariant then true
+                elsif {i.args[0] >= extent defs} orif maybe.isNone(defs[i.args[0]]) then false
+                else
+                    let d = maybe.unwrap(defs[i.args[0]])
+                    if ssa.isOp(d ssa.opSymbol) andif strutil.startsWith(d.symbol "g_") then
+                        let var stored = false
+                        for k = 0 upto {vector.length(written) - 1} do
+                            if stringOp.equal(vector.get(written k) d.symbol) then stored := true end
+                        end
+                        not(stored)
+                    else
+                        false
+                    end
+                end
+            (* A derived pointer (ptrAdd) moves only out of a loop that calls
+             * nothing, so that none is live across a collection without its
+             * object's own pointer *)
+            let var calls = false
+            for b = 0 upto {extent inside - 1} do
+                if inside[b] then
+                    let blk = ssa.block(f b)
+                    for k = 0 upto {vector.length(blk.insts) - 1} do
+                        if ssa.isCall(vector.get(blk.insts k)) then calls := true end
+                    end
+                end
+            end
+            (* Anywhere in the loop: pure operations, and invariant loads of
+             * what cannot fault *)
+            for r = 0 upto {extent g.order - 1} do
+                let b = g.order[r]
+                if inside[b] then
+                    let blk = ssa.block(f b)
+                    for k = 0 upto {vector.length(blk.insts) - 1} do
+                        let i = vector.get(blk.insts k)
+                        let load = steady(i)
+                        if {movable(i) orif load} andif not(calls andif ssa.isOp(i ssa.opPtrAdd))
+                                andif argumentsReady(x defs i)
+                                andif {not(load) orif safeAddress(x defs i.args[0])} then
+                            moved[i.results[0]] := true
+                            moveTo(x defs pre i)
+                            any := true
+                        end
+                    end
+                end
+            end
+            (* The first pass's checks, when the header only tests whether to
+             * leave the loop *)
+            let var guarded = false
+            case hb.term
+                when termBranch with tb then
+                    let leaves = not(inside[tb.ifTrue.block])
+                    let stays = inside[tb.ifFalse.block]
+                    let leavesOther = not(inside[tb.ifFalse.block]) andif inside[tb.ifTrue.block]
+                    let var pure = true
+                    for k = 0 upto {vector.length(hb.insts) - 1} do
+                        let i = vector.get(hb.insts k)
+                        if {extent i.results is 0} orif {not(moved[i.results[0]])
+                                andif not(movable(i) orif remade(i) orif comparison(i))} then
+                            pure := false
+                        end
+                    end
+                    if pure andif {{leaves andif stays} orif leavesOther} then
+                        let first = if leaves then tb.ifFalse.block else tb.ifTrue.block end
+                        (* Walk the first pass from the header's successor while
+                         * it does nothing a check could not come before:
+                         * collect the invariant checks (a branch on an
+                         * invariant comparison to a block that only raises)
+                         * and the invariant loads, stopping at a store, a call,
+                         * a check of what varies, or a join *)
+                        let checks = vector.new(:Int)
+                        let var cur = first
+                        let var walking = {vector.length(ssa.block(f first).params) is 0}
+                            andif {extent g.preds[first] is 1}
+                        while walking do
+                            let blk = ssa.block(f cur)
+                            for k = 0 upto {vector.length(blk.insts) - 1} do
+                                let i = vector.get(blk.insts k)
+                                if walking then
+                                    if ssa.isCall(i) orif ssa.isOp(i ssa.opStore) orif ssa.isOp(i ssa.opDiv)
+                                            orif ssa.isOp(i ssa.opRem) orif ssa.isOp(i ssa.opUnproxy) then
+                                        walking := false
+                                    end
+                                end
+                            end
+                            if walking then
+                                case blk.term
+                                    when termJump with tj then
+                                        let next = tj.target.block
+                                        if inside[next] andif {extent g.preds[next] is 1}
+                                                andif {vector.length(ssa.block(f next).params) is 0} then
+                                            cur := next
+                                        else
+                                            walking := false
+                                        end
+                                    when termBranch with tc then
+                                        let c = tc.cond
+                                        let cd = if c < extent defs then defs[c] else maybe.none(:ssa.Inst) end
+                                        let raisesTrue = {not(inside[tc.ifTrue.block])} andif raises(f tc.ifTrue.block)
+                                        let raisesFalse =
+                                            {not(inside[tc.ifFalse.block])} andif raises(f tc.ifFalse.block)
+                                        let next = if raisesTrue then tc.ifFalse.block else tc.ifTrue.block end
+                                        if maybe.isSome(cd) andif comparison(maybe.unwrap(cd))
+                                                andif argumentsReady(x defs maybe.unwrap(cd))
+                                                andif {raisesTrue orif raisesFalse} andif inside[next]
+                                                andif {extent g.preds[next] is 1}
+                                                andif {vector.length(ssa.block(f next).params) is 0} then
+                                            vector.append(checks cur)
+                                            cur := next
+                                        else
+                                            walking := false
+                                        end
+                                    when termNone, termSwitch, termReturn, termTailCall, termTry, termUnreachable then
+                                        walking := false
+                                end
+                            end
+                        end
+                        if not(vector.empty(checks)) then
+                            guarded := true
+                            (* The guard: the header's test, of the preheader's
+                             * parameters, leaving where the header would *)
+                            let var rename = array of(vector.length(f.types) ~1)
+                            for k = 0 upto {vector.length(hb.params) - 1} do
+                                rename[vector.get(hb.params k)] := preParams[k]
+                            end
+                            let renamed =
+                                fun(v: Int): Int if {v < extent rename} andif {rename[v] >= 0} then rename[v] else v end
+                            for k = 0 upto {vector.length(hb.insts) - 1} do
+                                let i = vector.get(hb.insts k)
+                                if not(moved[i.results[0]]) then
+                                    let args = array of(extent i.args 0)
+                                    for j = 0 upto {extent i.args - 1} do args[j] := renamed(i.args[j]) end
+                                    let results = array of(extent i.results 0)
+                                    for j = 0 upto {extent i.results - 1} do
+                                        results[j] := ssa.newValue(f ssa.typeOf(f i.results[j]))
+                                    end
+                                    let c =
+                                        ssa.instruction(i.op args results i.imm i.symbol i.width i.signed i.signature)
+                                    c.loc := i.loc
+                                    c.invariant := i.invariant
+                                    ssa.append(f pre c)
+                                    let wider = array of(vector.length(f.types) ~1)
+                                    for j = 0 upto {extent rename - 1} do wider[j] := rename[j] end
+                                    for j = 0 upto {extent i.results - 1} do wider[i.results[j]] := results[j] end
+                                    rename := wider
+                                end
+                            end
+                            grow(x)
+                            (* The loop is rotated: the guard leaves where the
+                             * header would, and its checks enter the header's
+                             * successor, so that the header is the loop's test
+                             * at its bottom and no longer dominates the rest.
+                             * Each of the header's values used elsewhere is
+                             * kept in a stack slot, stored by the header and
+                             * by the guard, which slot promotion then makes a
+                             * block parameter where the two meet *)
+                            let fromHeader = array of(vector.length(f.types) false)
+                            for k = 0 upto {vector.length(hb.params) - 1} do
+                                fromHeader[vector.get(hb.params k)] := true
+                            end
+                            for k = 0 upto {vector.length(hb.insts) - 1} do
+                                let i = vector.get(hb.insts k)
+                                for j = 0 upto {extent i.results - 1} do
+                                    if not(moved[i.results[j]]) then fromHeader[i.results[j]] := true end
+                                end
+                            end
+                            let outside = vector.length(f.blocks)
+                            let slotAt = array of(vector.length(f.types) ~1)
+                            for b = 0 upto {outside - 1} do
+                                if {b isnot pre} andif {b isnot h} then
+                                    let blk = ssa.block(f b)
+                                    let used = vector.new(:Int)
+                                    let note = fun(v: Int): Ok
+                                        if {v < extent fromHeader} andif fromHeader[v] then
+                                            let var seen = false
+                                            for j = 0 upto {vector.length(used) - 1} do
+                                                if vector.get(used j) is v then seen := true end
+                                            end
+                                            if not(seen) then vector.append(used v) end
+                                        end
+                                    for k = 0 upto {vector.length(blk.insts) - 1} do
+                                        let args = vector.get(blk.insts k).args
+                                        for j = 0 upto {extent args - 1} do note(args[j]) end
+                                    end
+                                    let tu = ssa.terminatorUses(blk.term)
+                                    for j = 0 upto {extent tu - 1} do note(tu[j]) end
+                                    for k = 0 upto {vector.length(used) - 1} do
+                                        let v = vector.get(used k)
+                                        if slotAt[v] < 0 then
+                                            let slot = ssa.newSlot(f 8 8)
+                                            let var at = 0
+                                            before(f 0 fun(): Ok at := ssa.slotAddress(f 0 slot))
+                                            slotAt[v] := at
+                                            before(f h fun(): Ok ssa.store(f h slotAt[v] 0 8 v))
+                                            ssa.store(f pre slotAt[v] 0 8 renamed(v))
+                                        end
+                                        let address = slotAt[v]
+                                        let var w = 0
+                                        prepend(f b fun(): Ok w := ssa.load(f b address 0 8 false ssa.typeOf(f v)))
+                                        replaceIn(f b v w)
+                                    end
+                                end
+                            end
+                            grow(x)
+                            let renameTarget = fun(t: ssa.Target): ssa.Target
+                                begin
+                                    let args = array of(extent t.args 0)
+                                    for j = 0 upto {extent t.args - 1} do args[j] := renamed(t.args[j]) end
+                                    ssa.target(t.block args)
+                                end
+                            let leaving = if leaves then tb.ifTrue else tb.ifFalse end
+                            let var tail = ssa.newBlock(f)
+                            let cond = renamed(tb.cond)
+                            ssa.block(f pre).term :=
+                                if leaves then
+                                    option termBranch of ssa.Terminator with
+                                        let cond = cond
+                                        let ifTrue = renameTarget(leaving)
+                                        let ifFalse = ssa.target(tail array of :Int end)
+                                    end
+                                else
+                                    option termBranch of ssa.Terminator with
+                                        let cond = cond
+                                        let ifTrue = ssa.target(tail array of :Int end)
+                                        let ifFalse = renameTarget(leaving)
+                                    end
+                                end
+                            ssa.block(f pre).termLoc := hb.termLoc
+                            (* Each check, of a copy of its comparison, then the
+                             * invariant loads it makes safe *)
+                            for k = 0 upto {vector.length(checks) - 1} do
+                                let cb = ssa.block(f vector.get(checks k))
+                                case cb.term
+                                    when termBranch with tc then
+                                        let d = maybe.unwrap(defs[tc.cond])
+                                        let v = ssa.newValue(f ssa.typeInt)
+                                        let copy = ssa.instruction(d.op copied(d.args)
+                                                array of v end d.imm d.symbol d.width d.signed d.signature)
+                                        copy.loc := d.loc
+                                        grow(x)
+                                        moveTo(x defs tail copy)
+                                        let next = ssa.newBlock(f)
+                                        let raisesTrue = not(inside[tc.ifTrue.block])
+                                        ssa.block(f tail).term :=
+                                            if raisesTrue then
+                                                option termBranch of ssa.Terminator with
+                                                    let cond = v
+                                                    let ifTrue = ssa.target(tc.ifTrue.block copied(tc.ifTrue.args))
+                                                    let ifFalse = ssa.target(next array of :Int end)
+                                                end
+                                            else
+                                                option termBranch of ssa.Terminator with
+                                                    let cond = v
+                                                    let ifTrue = ssa.target(next array of :Int end)
+                                                    let ifFalse = ssa.target(tc.ifFalse.block copied(tc.ifFalse.args))
+                                                end
+                                            end
+                                        ssa.block(f tail).termLoc := cb.termLoc
+                                        (* A null test passed: its pointer is
+                                         * not null after it *)
+                                        if {ssa.isOp(d ssa.opPeq) andif raisesTrue}
+                                                orif {ssa.isOp(d ssa.opPne) andif not(raisesTrue)} then
+                                            for j = 0 upto 1 do
+                                                let a = d.args[j]
+                                                let other = d.args[1 - j]
+                                                if maybe.isSome(defs[other])
+                                                        andif ssa.isOp(maybe.unwrap(defs[other]) ssa.opNull)
+                                                        andif x.invariant[a] then
+                                                    x.nonNull[a] := true
+                                                end
+                                            end
+                                        end
+                                        tail := next
+                                        (* The loads this check's block and
+                                         * the next make safe *)
+                                        let after = ssa.block(f
+                                                if raisesTrue then tc.ifFalse.block else tc.ifTrue.block end)
+                                        for j = 0 upto {vector.length(after.insts) - 1} do
+                                            let i = vector.get(after.insts j)
+                                            if steady(i) andif not(moved[i.results[0]])
+                                                    andif argumentsReady(x defs i)
+                                                    andif safeAddress(x defs i.args[0]) then
+                                                moved[i.results[0]] := true
+                                                moveTo(x defs tail i)
+                                            end
+                                        end
+                                    when termNone, termJump, termSwitch, termReturn, termTailCall, termTry,
+                                            termUnreachable then
+                                        ok
+                                end
+                            end
+                            ssa.block(f tail).term := jump(first array of :Int end)
+                            ssa.block(f tail).termLoc := hb.termLoc
+                        end
+                    end
+                when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then ok
+            end
+            if not(guarded) then
+                ssa.block(f pre).term := jump(h preParams)
+                ssa.block(f pre).termLoc := hb.termLoc
+            end
+            removeMoved(f inside moved)
+            any orif guarded
+        end
+
+    (* Moves what is invariant out of f's loops, innermost first, so that an
+     * outer loop then sees what an inner one moved; whether it moved any *)
+    let hoistLoops(f: Function): Bool =
+        begin
+            let g = cfg.graph(f)
+            let headers = vector.new(:Int)
+            for r = 0 upto {extent g.order - 1} do vector.append(headers g.order[r]) end
+            let var any = false
+            let var k = vector.length(headers) - 1
+            while k >= 0 do
+                let h = vector.get(headers k)
+                let now = cfg.graph(f)
+                if cfg.reached(now h) then
+                    let inside = body(now h)
+                    if inside[h] then if hoistLoop(f now h inside) then any := true end end
+                end
+                k := k - 1
+            end
+            any
+        end
+
+    (* Drops the block parameters that nothing uses, but jumps to them,
+     * which promotion leaves where slots met (at a loop's header, where a
+     * parameter would be moved on every pass) *)
+    let dropDeadParams(f: Function): Ok =
+        begin
+            let n = vector.length(f.types)
+            let live = array of(n false)
+            (* Each parameter's block and position, for the jumps' arguments *)
+            let paramBlock = array of(n ~1)
+            let paramIndex = array of(n ~1)
+            for b = 1 upto {vector.length(f.blocks) - 1} do
+                let ps = ssa.block(f b).params
+                for k = 0 upto {vector.length(ps) - 1} do
+                    paramBlock[vector.get(ps k)] := b
+                    paramIndex[vector.get(ps k)] := k
+                end
+            end
+            let markAll = fun(vs: Array(Int)): Ok for j = 0 upto {extent vs - 1} do live[vs[j]] := true end
+            for b = 0 upto {vector.length(f.blocks) - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(blk.insts) - 1} do markAll(vector.get(blk.insts k).args) end
+                case blk.term
+                    when termBranch with x then live[x.cond] := true
+                    when termSwitch with x then live[x.value] := true
+                    when termReturn with x then markAll(x.values)
+                    when termTailCall with x then markAll(x.call.args)
+                    when termTry with x then markAll(x.body.args)
+                    when termNone, termJump, termUnreachable then ok
+                end
+            end
+            (* An argument is live when the parameter it binds is *)
+            let var changed = true
+            while changed do
+                changed := false
+                for b = 0 upto {vector.length(f.blocks) - 1} do
+                    let ts = ssa.targets(ssa.block(f b).term)
+                    for t = 0 upto {extent ts - 1} do
+                        let params = ssa.block(f ts[t].block).params
+                        for j = 0 upto {extent ts[t].args - 1} do
+                            if {j < vector.length(params)} andif live[vector.get(params j)]
+                                    andif not(live[ts[t].args[j]]) then
+                                live[ts[t].args[j]] := true
+                                changed := true
+                            end
+                        end
+                    end
+                end
+            end
+            (* The entry's parameters are the function's *)
+            for b = 1 upto {vector.length(f.blocks) - 1} do
+                let blk = ssa.block(f b)
+                let var dead = false
+                for k = 0 upto {vector.length(blk.params) - 1} do
+                    if not(live[vector.get(blk.params k)]) then dead := true end
+                end
+                if dead then
+                    let keep = array of(vector.length(blk.params) true)
+                    for k = 0 upto {vector.length(blk.params) - 1} do keep[k] := live[vector.get(blk.params k)] end
+                    let kept = vector.new(:Int)
+                    for k = 0 upto {vector.length(blk.params) - 1} do
+                        if keep[k] then vector.append(kept vector.get(blk.params k)) end
+                    end
+                    vector.clear(blk.params)
+                    for k = 0 upto {vector.length(kept) - 1} do vector.append(blk.params vector.get(kept k)) end
+                    for p = 0 upto {vector.length(f.blocks) - 1} do
+                        let pb = ssa.block(f p)
+                        pb.term := ssa.mapTargets(pb.term fun(t: ssa.Target): ssa.Target
+                            if t.block isnot b then
+                                t
+                            else
+                                let args = vector.new(:Int)
+                                for j = 0 upto {extent t.args - 1} do
+                                    if keep[j] then vector.append(args t.args[j]) end
+                                end
+                                ssa.target(b vector.toArray(args))
+                            end)
+                    end
+                end
+            end
+        end
+
     let loopUnit(u: ssa.Unit): Ok =
         begin
             for i = 0 upto {vector.length(u.functions) - 1} do
                 let f = vector.get(u.functions i)
                 let looped = loopFunction(f)
                 let kept = keepCells(f)
-                if looped orif kept then
+                let hoisted = hoistLoops(f)
+                if hoisted then
+                    let ignored = promote.promoteFunction(f)
+                    dropDeadParams(f)
+                end
+                if looped orif kept orif hoisted then
                     valueNumbers.numberFunction(f)
                     let ignored = conditions.decideFunction(f)
                 end

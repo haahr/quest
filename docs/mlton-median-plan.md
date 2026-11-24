@@ -675,6 +675,15 @@ then one timing of the suite (§2), with the lock, on a quiet machine. Commits s
      so the body runs at least once once entered, and its first pass's checks dominate the rest.
    - *Hoisting (8):* pure instructions, invariant loads, and the checks that depend only on them (null, bounds on an
      unchanging length) moved to the preheader of a rotated loop; constants left where they are used.
+   - **Step 8 done** (in `ssa/passes/loops`, after the cells): against step 25, unit by unit, through arm64:
+     matrix-multiply 0.840, fft 0.873, pidigits 0.879, vector-rev 0.879, vector32- and vector64-concat 0.886,
+     smith-normal-form 0.899, tensor 0.938, mandelbrot 0.939, ray 0.943, zern 0.967, psdes-random 0.973; through ssac,
+     whose clang hoisted most of it already, tensor 0.952, ratio-regions 0.969, flat-array 0.988; no program worse by
+     1%. Rotation is full: the guard's checks enter the header's successor and the header becomes the loop's bottom
+     test, since a guard that entered the header again tested twice per entry, and mpuz's loops over three to five
+     characters took 1.026 of their arm64 instructions. Loads of a global the loop stores nothing to count as
+     invariant here (only the module's initialization writes one). Found on the way: ssac printed a branch whose arm
+     passes arguments as invalid C (`if (c) { ... } goto b; else ...`), which no pass had made before.
    - Gate: mandelbrot (25), matrix-multiply, mpuz, lexgen (8); each part kept only if it saves 1% somewhere it aims
      at, and the hoisting is watched for the spills value numbering once caused (ssa.md §4.1) and for broken `ldp`
      pairs.

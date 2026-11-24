@@ -1,7 +1,7 @@
 function qf_fold(%0: ptr, %1: ptr, %2: int, %3: val, %4: ptr): val {
 b0(%0: ptr, %1: ptr, %2: int, %3: val, %4: ptr):
   @31:63
-  jump b3(%0, %2, %3)
+  jump b4()
 b1():
   @31:63
   return %16
@@ -21,6 +21,9 @@ b3(%13: ptr, %15: int, %16: val):
   %6: int = eq %15, %5
   @31:63
   branch %6, b1(), b2()
+b4():
+  @31:63
+  jump b3(%0, %2, %3)
 }
 
 function qr_register_dicts() {
@@ -112,7 +115,7 @@ b1():
   %56: ptr = call quest_array_new(%49, %54, %55)
   @34:1
   %58: int = const 4
-  jump b5(%58)
+  jump b18()
 b2():
   @32:13
   %52: ptr = symbol qs_9
@@ -128,27 +131,26 @@ b4():
   @11:26
   %124: int = const 0
   return %124
-b5(%125: int):
+b5():
   @31:66
   %65: int = const 0
-  %66: int = eq %125, %65
+  %66: int = eq %68, %65
   @31:63
-  branch %66, b6(), b7()
+  branch %66, b6(), b7(%68)
 b6():
   @31:63
   jump b3()
-b7():
+b7(%155: int):
   @31:94
   %67: int = const 1
-  %68: int = sub %125, %67
+  %68: int = sub %155, %67
   @34:50
   %69: int = const 0
   %70: ptr = null
   %71: int = peq %56, %70
-  branch %71, b9(), b8()
+  jump b8()
 b8():
   @34:50
-  %73: int = load8 %56 + 0 invariant
   %74: int = ult %69, %73
   branch %74, b10(), b11()
 b9():
@@ -158,15 +160,10 @@ b9():
   unreachable
 b10():
   @34:50
-  %76: int = const 8
-  %77: int = mul %69, %76
-  %79: ptr = ptrAdd %56, %76
-  %80: ptr = ptrAdd %79, %77
   %81: val = load8 %80 + 0
   %82: int = fromVal %81
-  %83: int = add %82, %125
+  %83: int = add %82, %155
   @34:38
-  %84: int = const 0
   jump b12()
 b11():
   @34:50
@@ -178,14 +175,10 @@ b12():
   jump b13()
 b13():
   @34:38
-  %91: int = const 8
-  %92: int = mul %84, %91
-  %94: ptr = ptrAdd %56, %91
-  %95: ptr = ptrAdd %94, %92
   %96: val = toVal %83
-  store8 %95 + 0, %96
+  store8 %80 + 0, %96
   @31:85
-  jump b5(%68)
+  jump b5()
 b14():
   @35:26
   %103: int = load8 %56 + 0 invariant
@@ -228,6 +221,27 @@ b17():
   %105: ptr = symbol qs_12
   call quest_raise_array_error_at(%105)
   unreachable
+b18():
+  @34:50
+  %143: int = const 0
+  %144: int = const 8
+  %77: int = mul %143, %144
+  %79: ptr = ptrAdd %56, %144
+  %80: ptr = ptrAdd %79, %77
+  @31:66
+  %148: int = eq %58, %143
+  @31:63
+  branch %148, b6(), b19()
+b19():
+  @34:50
+  %153: ptr = null
+  %152: int = peq %56, %153
+  branch %152, b9(), b20()
+b20():
+  @34:50
+  %73: int = load8 %56 + 0 invariant
+  @31:63
+  jump b7(%58)
 }
 
 data qf_fold_closure words [qf_fold]
