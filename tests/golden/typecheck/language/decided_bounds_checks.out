@@ -1,0 +1,323 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('arrayOp') : 'ArrayOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('ascii') : 'Ascii')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('stringOp') : 'StringOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'a' :type Array(Int)
+      :value (TypedArray :type Array(Int)
+        :elements (
+          (TypedInt 3 :type Int)
+          (TypedInt 1 :type Int)
+          (TypedInt 4 :type Int)
+          (TypedInt 1 :type Int)
+          (TypedInt 5 :type Int)
+          (TypedInt 9 :type Int)
+          (TypedInt 2 :type Int)
+          (TypedInt 6 :type Int)
+        )))
+    (TypedLetValue 'short' :type Array(Int)
+      :value (TypedArray :type Array(Int)
+        :elements (
+          (TypedInt 1 :type Int)
+          (TypedInt 2 :type Int)
+        )))
+    (TypedLetValue 'sumFor' :type Fun(v: Array(Int)): Int
+      :value (TypedFun :params (('v' : Array(Int))) :type Fun(v: Array(Int)): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 's' :type Int
+              :value (TypedInt 0 :type Int))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedVar 'v' :type Array(Int))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedAssign
+                  :target (TypedVar 's' :type Var(Int))
+                  :value (TypedInfix '+' :type Int
+                    :left (TypedDerefCell :type Int
+                      :target (TypedVar 's' :type Var(Int)))
+                    :right (TypedIndex :type Int
+                      :target (TypedVar 'v' :type Array(Int))
+                      :index (TypedVar 'i' :type Int))))))
+          )
+          :result (TypedDerefCell :type Int
+            :target (TypedVar 's' :type Var(Int))))))
+    (TypedLetValue 'sumRec' :rec :type Fun(v: Array(Int) i: Int acc: Int): Int
+      :value (TypedFun :params (('v' : Array(Int)) ('i' : Int) ('acc' : Int)) :type Fun(v: Array(Int) i: Int acc: Int): Int
+        :body (TypedIf :type Int
+          :cond (TypedInfix '>=' :type Bool
+            :left (TypedVar 'i' :type Int)
+            :right (TypedApp :type Int
+              :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+              :args (
+                (TypedVar 'v' :type Array(Int))
+              )))
+          :then (TypedVar 'acc' :type Int)
+          :else (TypedApp :type Int
+            :func (TypedVar 'sumRec' :type Fun(v: Array(Int) i: Int acc: Int): Int)
+            :args (
+              (TypedVar 'v' :type Array(Int))
+              (TypedInfix '+' :type Int
+                :left (TypedVar 'i' :type Int)
+                :right (TypedInt 1 :type Int))
+              (TypedInfix '+' :type Int
+                :left (TypedVar 'acc' :type Int)
+                :right (TypedIndex :type Int
+                  :target (TypedVar 'v' :type Array(Int))
+                  :index (TypedVar 'i' :type Int)))
+            )))))
+    (TypedLetValue 'codes' :type Fun(t: String): Int
+      :value (TypedFun :params (('t' : String)) :type Fun(t: String): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 's' :type Int
+              :value (TypedInt 0 :type Int))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedSelect 'length' :type Fun(string: String): Int
+                      :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                    :args (
+                      (TypedVar 't' :type String)
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedAssign
+                  :target (TypedVar 's' :type Var(Int))
+                  :value (TypedInfix '+' :type Int
+                    :left (TypedDerefCell :type Int
+                      :target (TypedVar 's' :type Var(Int)))
+                    :right (TypedApp :type Int
+                      :func (TypedSelect 'val' :type Fun(c: Char): Int
+                        :target (TypedVar 'ascii' :type Module 'ascii'))
+                      :args (
+                        (TypedApp :type Char
+                          :func (TypedSelect 'getChar' :type Fun(string: String index: Int): Char
+                            :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                          :args (
+                            (TypedVar 't' :type String)
+                            (TypedVar 'i' :type Int)
+                          ))
+                      ))))))
+          )
+          :result (TypedDerefCell :type Int
+            :target (TypedVar 's' :type Var(Int))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'decided: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedVar 'sumFor' :type Fun(v: Array(Int)): Int)
+                    :args (
+                      (TypedVar 'a' :type Array(Int))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Int
+                        :func (TypedVar 'sumRec' :type Fun(v: Array(Int) i: Int acc: Int): Int)
+                        :args (
+                          (TypedVar 'a' :type Array(Int))
+                          (TypedInt 0 :type Int)
+                          (TypedInt 0 :type Int)
+                        ))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ' ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedApp :type Int
+                          :func (TypedVar 'codes' :type Fun(t: String): Int)
+                          :args (
+                            (TypedString 'abc' :type String)
+                          ))
+                      )))))))
+        )))
+    (TypedLetValue 'pastEnd' :type Fun(v: Array(Int)): Int
+      :value (TypedFun :params (('v' : Array(Int))) :type Fun(v: Array(Int)): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 's' :type Int
+              :value (TypedInt 0 :type Int))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedVar 'v' :type Array(Int))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedAssign
+                  :target (TypedVar 's' :type Var(Int))
+                  :value (TypedInfix '+' :type Int
+                    :left (TypedDerefCell :type Int
+                      :target (TypedVar 's' :type Var(Int)))
+                    :right (TypedIndex :type Int
+                      :target (TypedVar 'v' :type Array(Int))
+                      :index (TypedInfix '+' :type Int
+                        :left (TypedVar 'i' :type Int)
+                        :right (TypedInt 1 :type Int)))))))
+          )
+          :result (TypedDerefCell :type Int
+            :target (TypedVar 's' :type Var(Int))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'one past: ' :type String)
+            :right (TypedTry :type String
+              :body (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedVar 'pastEnd' :type Fun(v: Array(Int)): Int)
+                    :args (
+                      (TypedVar 'a' :type Array(Int))
+                    ))
+                ))
+              :branches (
+                (TypedTryBranch
+                  :exc_pattern (TypedSelect 'error' :type Exception
+                    :target (TypedVar 'arrayOp' :type Module 'arrayOp'))
+                  :body (TypedString 'array.error' :type String))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'negative start: ' :type String)
+            :right (TypedTry :type String
+              :body (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedVar 'sumRec' :type Fun(v: Array(Int) i: Int acc: Int): Int)
+                    :args (
+                      (TypedVar 'a' :type Array(Int))
+                      (TypedInfix '-' :type Int
+                        :left (TypedInt 0 :type Int)
+                        :right (TypedInt 2 :type Int))
+                      (TypedInt 0 :type Int)
+                    ))
+                ))
+              :branches (
+                (TypedTryBranch
+                  :exc_pattern (TypedSelect 'error' :type Exception
+                    :target (TypedVar 'arrayOp' :type Module 'arrayOp'))
+                  :body (TypedString 'array.error' :type String))
+              )))
+        )))
+    (TypedLetValue 'other' :type Fun(v: Array(Int) w: Array(Int)): Int
+      :value (TypedFun :params (('v' : Array(Int)) ('w' : Array(Int))) :type Fun(v: Array(Int) w: Array(Int)): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 's' :type Int
+              :value (TypedInt 0 :type Int))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedVar 'v' :type Array(Int))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedAssign
+                  :target (TypedVar 's' :type Var(Int))
+                  :value (TypedInfix '+' :type Int
+                    :left (TypedDerefCell :type Int
+                      :target (TypedVar 's' :type Var(Int)))
+                    :right (TypedIndex :type Int
+                      :target (TypedVar 'w' :type Array(Int))
+                      :index (TypedVar 'i' :type Int))))))
+          )
+          :result (TypedDerefCell :type Int
+            :target (TypedVar 's' :type Var(Int))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'another length: ' :type String)
+            :right (TypedTry :type String
+              :body (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedVar 'other' :type Fun(v: Array(Int) w: Array(Int)): Int)
+                    :args (
+                      (TypedVar 'a' :type Array(Int))
+                      (TypedVar 'short' :type Array(Int))
+                    ))
+                ))
+              :branches (
+                (TypedTryBranch
+                  :exc_pattern (TypedSelect 'error' :type Exception
+                    :target (TypedVar 'arrayOp' :type Module 'arrayOp'))
+                  :body (TypedString 'array.error' :type String))
+              )))
+        )))
+  ))

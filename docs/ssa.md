@@ -341,7 +341,16 @@ internal error.
   argument among them). A derived pointer (`ptrAdd`) moves only out of a loop that calls nothing, so that none is live
   across a collection without its object's own pointer. Through arm64, matrix-multiply retires 0.84 of its
   instructions, fft 0.87, pidigits and vector-rev 0.88, smith-normal-form 0.90; through `ssac`, whose clang hoisted
-  most of it already, tensor 0.95. `language/module_cells_in_loops` and `language/hoisted_loop_checks` show each
+  most of it already, tensor 0.95. Then a bounds check goes when the comparisons before it decide it
+  (mlton-median-plan.md step 9): its index is never negative (a constant, a length, either plus a small constant, or a
+  block parameter that every jump binds such a value to) and at most the length less one, by a comparison on a branch
+  that dominates it or, for a block parameter, on every jump into the block, by the value bound there or, for a jump
+  binding x + 1, by a test there that x is not the bound (a `for` loop's, by induction). Values compare by form, a base
+  and a constant offset, loads by address and symbols by name, so the guard's copy of `len - 1` is the header's; and
+  `string.length`'s test for a null string counts as the length, since under its bound of 0 - 1 no index that is not
+  negative reaches the check. Through arm64, vector32- and vector64-concat retire 0.83 of their instructions,
+  matrix-multiply 0.91, smith-normal-form 0.93; through `ssac`, smith-normal-form 0.94 and the vector programs 0.95.
+  `language/module_cells_in_loops`, `language/hoisted_loop_checks`, and `language/decided_bounds_checks` show each
   case.
 - **`ssa/passes/tailCalls`** marks calls in tail position (§3, arm64.md §3.7): a call whose block returns its results
   (or the extension of its byte), or jumps, through blocks that do nothing else, to one that does. A block's parameters

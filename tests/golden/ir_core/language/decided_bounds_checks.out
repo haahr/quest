@@ -1,0 +1,202 @@
+import arrayOp = "arrayOp" : ArrayOp
+import ascii = "ascii" : Ascii
+import conv = "conv" : Conv
+import stringOp = "string" : StringOp
+import writer = "writer" : Writer
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @12:45
+      let %2: String = prim <>(s, "\n") @12:59
+      let %3: Ok = call writer.putString(%1, %2) @12:28
+      return %3
+    }
+  }
+  let a: Array(Int) = array(3, 1, 4, 1, 5, 9, 2, 6) @14:9
+  let short: Array(Int) = array(1, 2) @15:13
+  funs {
+    fun sumFor(v: Array(Int)): Int {
+      var s.1: Int = 0 @16:40
+      let %4: Int = prim extent(v) @16:69
+      let %5: Int = prim -(%4, 1) @16:69
+      var i: Int = 0 @16:54
+      let %6: Bool = prim <=(i, %5) @16:54
+      if %6 { @16:54
+        loop L1 {
+          let i.1: Int = i @16:54
+          let %7: Int = index(v, i.1) @16:94
+          let %8: Int = prim +(s.1, %7) @16:90
+          s.1 := %8 @16:85
+          let %9: Bool = prim is(i, %5) @16:54
+          if %9 { @16:54
+            break L1 @16:54
+          }
+          let %10: Int = prim +(i, 1) @16:54
+          i := %10 @16:54
+        }
+      }
+      return s.1
+    }
+  }
+  funs rec {
+    fun sumRec(v.1: Array(Int), i.2: Int, acc: Int): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        let %11: Int = prim extent(v.1) @17:62
+        let %12: Bool = prim >=(i.2, %11) @17:57
+        if %12 { @17:54
+          jump k1(acc) @17:54
+        } else {
+          let %13: Int = prim +(i.2, 1) @17:94
+          let %14: Int = index(v.1, i.2) @17:106
+          let %15: Int = prim +(acc, %14) @17:100
+          let %16: Int = call sumRec(v.1, %13, %15) @17:85
+          jump k1(%16) @17:54
+        }
+      }
+    }
+  }
+  funs {
+    fun codes(t: String): Int {
+      var s.2: Int = 0 @19:11
+      let %17: Int = call stringOp.length(t) @19:40
+      let %18: Int = prim -(%17, 1) @19:40
+      var i.3: Int = 0 @19:25
+      let %19: Bool = prim <=(i.3, %18) @19:25
+      if %19 { @19:25
+        loop L2 {
+          let i.4: Int = i.3 @19:25
+          let %20: Char = call stringOp.getChar(t, i.4) @19:85
+          let %21: Int = call ascii.val(%20) @19:75
+          let %22: Int = prim +(s.2, %21) @19:71
+          s.2 := %22 @19:66
+          let %23: Bool = prim is(i.3, %18) @19:25
+          if %23 { @19:25
+            break L2 @19:25
+          }
+          let %24: Int = prim +(i.3, 1) @19:25
+          i.3 := %24 @19:25
+        }
+      }
+      return s.2
+    }
+  }
+  let %25: Int = call sumFor(a) @20:31
+  let %26: String = call conv.int(%25) @20:22
+  let %27: Int = call sumRec(a, 0, 0) @20:61
+  let %28: String = call conv.int(%27) @20:52
+  let %29: Int = call codes("abc") @20:95
+  let %30: String = call conv.int(%29) @20:86
+  let %31: String = prim <>(" ", %30) @20:79
+  let %32: String = prim <>(%28, %31) @20:52
+  let %33: String = prim <>(" ", %32) @20:45
+  let %34: String = prim <>(%26, %33) @20:22
+  let %35: String = prim <>("decided: ", %34) @20:7
+  do call print(%35) @20:1
+  funs {
+    fun pastEnd(v.2: Array(Int)): Int {
+      var s.3: Int = 0 @22:41
+      let %36: Int = prim extent(v.2) @22:70
+      let %37: Int = prim -(%36, 1) @22:70
+      var i.5: Int = 0 @22:55
+      let %38: Bool = prim <=(i.5, %37) @22:55
+      if %38 { @22:55
+        loop L3 {
+          let i.6: Int = i.5 @22:55
+          let %39: Int = prim +(i.6, 1) @22:97
+          let %40: Int = index(v.2, %39) @22:95
+          let %41: Int = prim +(s.3, %40) @22:91
+          s.3 := %41 @22:86
+          let %42: Bool = prim is(i.5, %37) @22:55
+          if %42 { @22:55
+            break L3 @22:55
+          }
+          let %43: Int = prim +(i.5, 1) @22:55
+          i.5 := %43 @22:55
+        }
+      }
+      return s.3
+    }
+  }
+  join k2(r.1: String) {
+    let %44: String = prim <>("one past: ", r.1) @23:7
+    do call print(%44) @23:1
+    join k3(r.2: String) {
+      let %45: String = prim <>("negative start: ", r.2) @24:7
+      do call print(%45) @24:1
+      funs {
+        fun other(v.3: Array(Int), w: Array(Int)): Int {
+          var s.4: Int = 0 @25:53
+          let %46: Int = prim extent(v.3) @25:82
+          let %47: Int = prim -(%46, 1) @25:82
+          var i.7: Int = 0 @25:67
+          let %48: Bool = prim <=(i.7, %47) @25:67
+          if %48 { @25:67
+            loop L4 {
+              let i.8: Int = i.7 @25:67
+              let %49: Int = index(w, i.8) @25:107
+              let %50: Int = prim +(s.4, %49) @25:103
+              s.4 := %50 @25:98
+              let %51: Bool = prim is(i.7, %47) @25:67
+              if %51 { @25:67
+                break L4 @25:67
+              }
+              let %52: Int = prim +(i.7, 1) @25:67
+              i.7 := %52 @25:67
+            }
+          }
+          return s.4
+        }
+      }
+      join k4(r.3: String) {
+        let %53: String = prim <>("another length: ", r.3) @26:7
+        do call print(%53) @26:1
+      } in {
+        let %54: Exception = member arrayOp.error @26:63
+        try catching (%54) {
+          let %55: Int = call other(a, short) @26:42
+          let %56: String = call conv.int(%55) @26:33
+          jump k4(%56) @26:29
+        } handle (e: Exception) {
+          let %57: Bool = prim is(e, %54) @26:29
+          if %57 { @26:29
+            jump k4("array.error") @26:29
+          } else {
+            reraise e @26:29
+          }
+        }
+      }
+    } in {
+      let %58: Exception = member arrayOp.error @24:66
+      try catching (%58) {
+        let %59: Int = prim -(0, 2) @24:51
+        let %60: Int = call sumRec(a, %59, 0) @24:42
+        let %61: String = call conv.int(%60) @24:33
+        jump k3(%61) @24:29
+      } handle (e.1: Exception) {
+        let %62: Bool = prim is(e.1, %58) @24:29
+        if %62 { @24:29
+          jump k3("array.error") @24:29
+        } else {
+          reraise e.1 @24:29
+        }
+      }
+    }
+  } in {
+    let %63: Exception = member arrayOp.error @23:53
+    try catching (%63) {
+      let %64: Int = call pastEnd(a) @23:36
+      let %65: String = call conv.int(%64) @23:27
+      jump k2(%65) @23:23
+    } handle (e.2: Exception) {
+      let %66: Bool = prim is(e.2, %63) @23:23
+      if %66 { @23:23
+        jump k2("array.error") @23:23
+      } else {
+        reraise e.2 @23:23
+      }
+    }
+  }
+}
+

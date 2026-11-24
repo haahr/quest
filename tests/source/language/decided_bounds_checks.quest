@@ -1,0 +1,26 @@
+(* A bounds check that the comparisons before it decide goes
+   (ssa/passes/loops, docs/ssa.md section 4.1): an index never negative and
+   at most the length less one, by a loop's own test, over an array or a
+   string. One that they do not decide stays, and raises: an index one past
+   the loop's bound, a start that may be negative, or a bound that is another
+   array's length. *)
+import arrayOp : ArrayOp
+import ascii : Ascii
+import conv : Conv
+import stringOp = string : StringOp
+import writer : Writer
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+
+let a = array of 3 1 4 1 5 9 2 6 end
+let short = array of 1 2 end
+let sumFor(v: Array(Int)): Int = begin let var s = 0 for i = 0 upto extent v - 1 do s := s + v[i] end s end
+let rec sumRec(v: Array(Int) i: Int acc: Int): Int = if i >= extent v then acc else sumRec(v i + 1 acc + v[i]) end
+let codes(t: String): Int =
+    begin let var s = 0 for i = 0 upto stringOp.length(t) - 1 do s := s + ascii.val(stringOp.getChar(t i)) end s end
+print("decided: " <> conv.int(sumFor(a)) <> " " <> conv.int(sumRec(a 0 0)) <> " " <> conv.int(codes("abc")))
+
+let pastEnd(v: Array(Int)): Int = begin let var s = 0 for i = 0 upto extent v - 1 do s := s + v[i + 1] end s end
+print("one past: " <> try conv.int(pastEnd(a)) when arrayOp.error then "array.error" end)
+print("negative start: " <> try conv.int(sumRec(a 0 - 2 0)) when arrayOp.error then "array.error" end)
+let other(v: Array(Int) w: Array(Int)): Int = begin let var s = 0 for i = 0 upto extent v - 1 do s := s + w[i] end s end
+print("another length: " <> try conv.int(other(a short)) when arrayOp.error then "array.error" end)

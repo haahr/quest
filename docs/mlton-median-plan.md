@@ -694,6 +694,17 @@ then one timing of the suite (§2), with the lock, on a quiet machine. Commits s
    length` for a loop over an array's indices whose length does not change in it, and checks of `i + c` that the
    range covers. Today only a check that an identical dominating one decides is removed (`ssa/passes/conditions`);
    a check implied by a different comparison is not.
+   **Bounds checks done** (in `ssa/passes/loops`, last): measured first by a build with no bounds checks at all,
+   unsound, against step 8: through arm64 0.75 to 0.88 of the instructions of a dozen programs (tensor, checksum,
+   the vector programs, string-concat, matrix-multiply, pidigits, zern, mpuz, smith-normal-form), through ssac as
+   little as 0.18 (clang vectorizes the vector programs' loops). Built: an index never negative and at most the
+   length less one, by dominating comparisons or, for a block parameter, on every jump into its block (a `for`
+   loop's `i isnot hi` by induction); values compared by form. Against step 8, through arm64: vector32- and
+   vector64-concat 0.83, matrix-multiply 0.905, smith-normal-form 0.925, pidigits 0.949, checksum 0.950, tensor,
+   psdes-random, and mpuz 0.96, zern 0.964, ratio-regions 0.968; through ssac, smith-normal-form 0.941, the vector
+   programs 0.95; no program worse (tailmerge's 1.05 was noise: its binaries' code is the same, and two counts of
+   each are 32.7 billion). Also: after the checks the conditions pass decides, value numbering runs again, which
+   removes their comparisons (matrix-multiply's loop kept a dead `peq`).
 4. **Step 14, arm64's back-edge moves:** with loops rotated in the SSA, what is left is the moves of permuted
    parameters on a back edge (mandelbrot's `fmov`s, mpuz's `mov`s). Probed first by counting the moves on the hot back
    edges of mandelbrot, mpuz, and the `while`-on-a-flag loop of §42.3; built only if they are 1% of a program.

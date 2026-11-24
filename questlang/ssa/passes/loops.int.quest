@@ -42,7 +42,19 @@
  * other blocks use are kept in stack slots, stored by the header and the
  * guard, which promotion makes block parameters where the two meet. A
  * derived pointer (ptrAdd) moves only out of a loop that calls nothing, so
- * that none is live across a collection without its object's pointer. *)
+ * that none is live across a collection without its object's pointer.
+ *
+ * Then a bounds check (a branch on x <u len to a block that raises) goes
+ * when the comparisons before it decide it: x is never negative (a constant,
+ * a length, such a value plus a small constant, or a block parameter every
+ * jump binds such a value to) and x <= len - 1, by a comparison on a branch
+ * that dominates the check or, for a block parameter, on every jump into its
+ * block: by the value the jump binds, or, for one that binds x + 1, by a test
+ * there that x isnot len - 1 (a for loop's, by induction). Values compare by
+ * form (a base and a constant offset, with loads by address and symbols by
+ * name), so that len - 1 copied for a guard is the header's; string.length's
+ * test for a null string is the length, since under a bound of 0 - 1 no index
+ * that is not negative reaches the check. *)
 
 interface Loops
 import
