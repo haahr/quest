@@ -53,3 +53,31 @@ lib/string.mod.quest, as runtime/wasm/core.mod.quest already writes `catSub` and
 
 **Done when.** The three are Quest, a micro-benchmark of each on long strings shows no loss against the C versions,
 and their runtime functions and interpreter builtins are gone; or the primitive is judged not worth adding.
+
+## An array copy in arrayOp
+
+**Problem.** lib/arrayop.int.quest offers only `new`, `extent`, `get`, and `set`, so a program that needs a copy of an
+array writes the loop itself. The first element supplies the fill value, so an empty array needs its own case.
+
+**Where to start.** A `copy` in lib/arrayop.mod.quest, along these lines:
+
+```quest
+let copy(A::TYPE a: Array(A)) =
+  begin
+    let n = extent(a)
+    if n is 0 then array of :A end
+    else
+      let b = array of(n a[0])
+      for i = 1 upto {n - 1} do
+        b[i] := a[i]
+      end
+      b
+    end
+  end
+```
+
+A runtime primitive (a `memcpy` on the C and arm64 backends, `array.copy` on WebAssembly) would avoid filling `b`
+before overwriting it, as with the string task above.
+
+**Done when.** `copy` is in the interface, with a test, and the hand-written copies in lib/ and questlang/ use it; or
+it is judged not worth adding.
