@@ -25,7 +25,8 @@ whole program 1.64 (§35's 1.25, 1.79, 1.85).
 Part 2, analyzed and not made (local, not pushed): steps 11 and 24, under the plan's threshold; step 12, worth 6 to 9%
 on lexgen but needing a whole-program analysis of a field's values (the user to decide); step 19's census
 (`allocations.py --by-layout`), which supports step 21; step 20, folded into 21, since alone it saves about 5% of
-logic's and raytrace's bytes and 0.6% of the compiler's. Not started: 6b, 8 to 10, 14, 17, 18, 21 to 23.
+logic's and raytrace's bytes and 0.6% of the compiler's. Step 23 analyzed: 4 to 10% on mpuz and logic, nothing
+elsewhere (the user to decide). Not started: 6b, 8 to 10, 14, 17, 18, 21, 22.
 
 ## 1. Decisions
 
@@ -514,6 +515,24 @@ pointer that the start bitmap resolves. When the field is immutable and every ow
 the same expression), `outer.r` is always `outer + k`, so `outer.r.used` is a load at a constant offset from `outer`,
 with no load of the inner tuple's address. The step first finds how often the pattern occurs in the suite (a census of
 such fields); it is designed further only if more than mpuz has it.
+
+**Step 23 analyzed** (2026-11-23). The pattern is a ref (a tuple of one `var` field) made fresh with its owner and
+reached through it. A census of 16-byte objects (one-word tuples) over the suite and the compiler finds it allocated
+in bulk only in logic (`Ref`, inside `Term`'s `ref` case: 10.7 million, 3.5% of its bytes) and in ratio-regions
+(`QueueRef`, 7.8% of a small total); mpuz makes its ten once per solve but reads them on every step of its search.
+The compiler's 16-byte objects are almost all empty arrays. Hand-made variants with the ref folded into its owner,
+written as step 23 would make them (mpuz's `used` a field of `Value`; logic's `ref` case holding `var v` itself, a
+`Ref` being the case's payload, so that `x.r.v` is `x.v`), whole programs, with their output and logic's `testit`
+unchanged:
+
+| Program | Instructions, arm64 | ssac | Bytes |
+|---|--:|--:|--:|
+| mpuz (count 32) | 0.940 | 0.896 | |
+| logic (count 64) | 0.955 | 0.954 | 0.965 |
+
+So it is worth 4 to 10% on two programs and nothing measurable elsewhere. Both are refs translated from SML, and the
+source form above (a `var` field in the owner, or in an option's case) already gets the gain without the compiler's
+help; the step is the compiler finding it for code written the nested way. Not made yet: the user to decide.
 
 **Step 24, tuple results returned in registers.** `tfoCombine` allocates its 12-real result (43 of its 287
 instructions); workers ([inlining.md](inlining.md) step 5) already return tuples unboxed, as several results. The
