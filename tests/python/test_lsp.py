@@ -51,6 +51,11 @@ def line_of(text: str, needle: str, nth: int = 0) -> tuple:
     return line, column
 
 
+def key(position: dict) -> tuple:
+    """A position, ordered"""
+    return position["line"], position["character"]
+
+
 class LanguageServerTest(unittest.TestCase):
 
     @classmethod
@@ -184,6 +189,38 @@ class LanguageServerTest(unittest.TestCase):
         self.assertEqual(symbols[0]["name"], "Shapes")
         self.assertEqual([c["name"] for c in symbols[0]["children"]], ["area", "sides"])
         self.assertEqual(symbols[0]["children"][1]["selectionRange"]["start"], {"line": 3, "character": 4})
+        self.client.close()
+
+    def test_symbol_ranges(self):
+        """Each symbol's name is inside its range, and each child's range
+        inside its parent's, as VS Code requires: an interface's members,
+        whose offsets lie past their names (long parameter lists, operators),
+        and a module's lets, whose names are used before them"""
+        self.start()
+        interface = ("interface Long export\n"
+                     "    T::TYPE\n"
+                     "    join(a: Array(String) b: Array(String) c: Array(String) d: Array(String) e: Array(String)\n"
+                     "            f: Array(String)): String\n"
+                     "    <+>(a: T b: T): T\n"
+                     "end\n")
+        module = ("module long : Long export\n"
+                  "    let size(a: Int): Int = a\n"
+                  "    let twice(a: Int): Int = size(a) * 2\n"
+                  "    let size2(a: Int): Int = twice(a)\n"
+                  "end\n")
+        for name, text, names in (("long.int.quest", interface, ["T", "join", "<+>"]),
+                                  ("long.mod.quest", module, ["size", "twice", "size2"])):
+            uri = self.open(name, text)
+            symbols = self.client.result("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
+            children = symbols[0]["children"]
+            self.assertEqual([c["name"] for c in children], names)
+            for c in children:
+                for s, outer in ((c["selectionRange"], c["range"]), (c["range"], symbols[0]["range"])):
+                    self.assertLessEqual(key(outer["start"]), key(s["start"]), (name, c))
+                    self.assertLessEqual(key(s["end"]), key(outer["end"]), (name, c))
+                start = c["selectionRange"]["start"]
+                line = text.splitlines()[start["line"]]
+                self.assertEqual(line[start["character"]:start["character"] + len(c["name"])], c["name"])
         self.client.close()
 
     def test_completion(self):

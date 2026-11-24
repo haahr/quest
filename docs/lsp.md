@@ -141,7 +141,9 @@ last check that typed anything, with the current text.
 
 - **The outline** (document symbols) comes from the syntax tree alone, so a document that does not type-check still
   has one: an interface and its members, a module and its bindings, and a program's bindings, each with its whole
-  span and its name's.
+  span and its name's. A binding's name is the first token after its keyword that spells it. A member's signature
+  has only an offset, which may lie past its name, so the name is the nearest before it, within 128 tokens, and the
+  member's span runs from its name to its offset. The protocol requires the name inside the span.
 - **Formatting** returns `quest fmt`'s text as one edit of the whole document, or no edit when the text is already
   formatted, does not parse, or the formatter fails, which is logged.
 
@@ -171,7 +173,9 @@ so its golden tests and the bootstrap's agreement are untouched.
   (`tools/jupyter/quest_lexer.py`).
 - **`language-configuration.json`** has comments, brackets, and indentation.
 
-`test_lsp.py` checks that the grammar's keywords are the lexer's. The extension has not yet been run in VS Code (§12).
+`test_lsp.py` checks that the grammar's keywords are the lexer's. The extension's first run in VS Code turned up
+outline symbols whose names lay outside their ranges, which VS Code rejects (fixed; §7); the rest has yet to be tried
+by hand (§12).
 
 ## 10. Testing
 
@@ -183,6 +187,7 @@ answers, not whole texts, since paths vary:
 - diagnostics appearing and clearing;
 - hover, definition, and references, locally and into `util/Maybe`'s interface;
 - the outline of a program and of an interface;
+- each outline symbol's name inside its range, and each range inside its parent's;
 - completion after `maybe.` and of a local name;
 - formatting against `quest fmt`;
 - a module whose member fails;
@@ -205,8 +210,8 @@ for the lock.
 
 ## 12. Open Work
 
-- **Run the extension in VS Code:** install it, then try highlighting, diagnostics, hover, definition, completion,
-  the outline, and formatting by hand. Record here what doesn't work.
+- **Try the extension in VS Code:** it starts, and its outline works (§9); try highlighting, diagnostics, hover,
+  definition, completion, and formatting by hand. Record here what doesn't work.
 - **References across the workspace:** they are found in the open document only. Workspace-wide references, and a
   rename built on them, need an index of every unit under the root, or of those the open documents import.
 - **Signature help and code actions:** not built.

@@ -114,7 +114,7 @@ export
             found
         end
 
-    (* The identifier spelling name nearest before offset, within a few
+    (* The name (an identifier or operator) nearest before offset, within 128
      * tokens, else the first after it: a signature's offset may be its
      * type's, past its name and parameters *)
     let findNear(toks: vector.T(tokens.Token) offset: Int name: String): maybe.T(tokens.Token) =
@@ -122,9 +122,9 @@ export
             let i = tokenFrom(toks offset)
             let var j = if i < vector.length(toks) then i else vector.length(toks) - 1 end
             let var found = maybe.none(:tokens.Token)
-            while maybe.isNone(found) andif {j >= 0} andif {j > i - 32} do
+            while maybe.isNone(found) andif {j >= 0} andif {j > i - 128} do
                 let t = vector.get(toks j)
-                if isIdent(t) andif stringOp.equal(t.lexeme name) then found := maybe.some(t) end
+                if not(tokens.isLiteral(t.kind)) andif stringOp.equal(t.lexeme name) then found := maybe.some(t) end
                 j := j - 1
             end
             if maybe.isSome(found) then found else findName(toks offset name false) end
