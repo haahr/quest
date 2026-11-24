@@ -1,0 +1,211 @@
+(* Quest Language Server: Checking a Document Implementation *)
+
+module analysis : Analysis
+import
+    stringOp = string : StringOp
+
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/files : questlang/common/Files
+    questlang/common/location : questlang/common/Location
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/modules/stdlib : questlang/modules/Stdlib
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/desugar : questlang/syntax/Desugar
+    questlang/syntax/parser : questlang/syntax/Parser
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    questlang/typechecker/typecheck : questlang/typechecker/Typecheck
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/symbols : questlang/types/Symbols
+export
+    Let Settings = Tuple buildDir: String includePaths: Array(String) end
+    Let Place = Tuple file: String start: Int finish: Int end
+    Let Problem = Tuple
+        place: Place
+        message: String
+        isWarning: Bool
+        related: Array(Tuple place: Place message: String end)
+    end
+    Let T = Tuple
+        path: String
+        text: String
+        sm: location.SourceMap
+        problems: Array(Problem)
+        tokens: maybe.T(vector.T(tokens.Token))
+        comments: vector.T(location.Span)
+        syntax: maybe.T(ast.Program)
+        typed: Array(typedAst.Binding)
+        scope: maybe.T(symbols.Scope)
+        env: maybe.T(env.T)
+    end
+
+    let installed = tuple let var done = false end
+
+    (* The registry of the standard library, once for the process *)
+    let install(): Ok =
+        if not(installed.done) then
+            stdlib.install()
+            installed.done := true
+        end
+
+    (* A span's file as an absolute path: diagnostics name a unit's file as
+     * the user is shown it, relative to the current directory *)
+    let placeOf(sp: location.Span path: String): Place =
+        tuple
+            let file = if stringOp.length(sp.file) is 0 then path else files.absolute(sp.file) end
+            let start = if sp.startOffset < 0 then 0 else sp.startOffset end
+            let finish = if sp.endOffset < sp.startOffset then sp.startOffset else sp.endOffset end
+        end
+
+    (* A diagnostic as a problem: its message followed by its help and notes *)
+    let problemOf(d: diagnostics.Diagnostic path: String): Problem =
+        begin
+            let var message = diagnostics.message(d)
+            let help = diagnostics.help(d)
+            if maybe.isSome(help) then message := message <> "\nhelp: " <> maybe.unwrap(help) end
+            let notes = diagnostics.notes(d)
+            for i = 0 upto {vector.length(notes) - 1} do message := message <> "\nnote: " <> vector.get(notes i) end
+            let related = vector.new(:Tuple place: Place message: String end)
+            let labels = diagnostics.labels(d)
+            for i = 0 upto {vector.length(labels) - 1} do
+                let l = vector.get(labels i)
+                if not(l.isPrimary) then
+                    vector.append(related tuple let place = placeOf(l.sp path) let message = l.message end)
+                end
+            end
+            let isWarning = case diagnostics.severity(d) when warning then true when info then true else false end
+            tuple
+                let place = placeOf(diagnostics.span(d) path)
+                let message = message
+                let isWarning = isWarning
+                let related = vector.toArray(related)
+            end
+        end
+
+    (* The environment a document is checked in, as the driver makes one to
+     * compile a program: imports through their interfaces, with artifacts in
+     * the build directory, which is searched first *)
+    let newEnv(path: String settings: Settings): env.T =
+        begin
+            let e = env.new()
+            let dir = files.parent(path)
+            e.currentDir := maybe.some(dir)
+            e.programDir := maybe.some(dir)
+            e.sourceFile := path
+            e.compilingC := true
+            e.buildDir := maybe.some(settings.buildDir)
+            vector.append(e.includePaths settings.buildDir)
+            for i = 0 upto {extent settings.includePaths - 1} do
+                vector.append(e.includePaths settings.includePaths[i])
+            end
+            e
+        end
+
+    (* The name of the module a program declares, if it declares one *)
+    let declaredModule(program: ast.Program): maybe.T(String) =
+        begin
+            let var found = maybe.none(:String)
+            for i = 0 upto {vector.length(program.form.phrases) - 1} do
+                case vector.get(program.form.phrases i).form
+                    when phraseModule with x then found := maybe.some(x.modDecl.name)
+                    else ok
+                end
+            end
+            found
+        end
+
+    let check(path: String text: String settings: Settings): T =
+        begin
+            install()
+            let sm = location.newSourceMap(path text)
+            diagnostics.registerSource(sm)
+            let bag = diagbag.new()
+            let problems = vector.new(:Problem)
+            let typed = vector.new(:typedAst.Binding)
+            let state = tuple
+                let var tokens = maybe.none(:vector.T(tokens.Token))
+                let var comments = vector.new(:location.Span)
+                let var syntax = maybe.none(:ast.Program)
+                let var scope = maybe.none(:symbols.Scope)
+                let var env = maybe.none(:env.T)
+            end
+            let kept = tuple
+                let var members = maybe.none(:Array(typedAst.Binding))
+                let var scope = maybe.none(:symbols.Scope)
+            end
+            let saved = elaboration.hooks.keepMembers
+            try
+                let tz = tokenizer.new(sm bag)
+                let toks = tokenizer.tokenizeAll(tz)
+                state.comments := tokenizer.comments(tz)
+                if not(diagbag.hasErrors(bag)) then
+                    state.tokens := maybe.some(toks)
+                    let program = parser.parseProgram(toks sm bag)
+                    state.syntax := maybe.some(program)
+                    let moduleName = declaredModule(program)
+                    let e = newEnv(path settings)
+                    state.env := maybe.some(e)
+                    elaboration.hooks.keepMembers := fun(name: String members: Array(typedAst.Binding)
+                            scope: symbols.Scope): Ok
+                        if maybe.isSome(moduleName) andif stringOp.equal(name maybe.unwrap(moduleName))
+                                andif maybe.isNone(kept.members) then
+                            kept.members := maybe.some(members)
+                            kept.scope := maybe.some(scope)
+                        end
+                    let result = typecheck.elaborateProgram(desugar.program(program) e)
+                    for i = 0 upto {extent result.errors - 1} do
+                        diagbag.add(bag diagnostics.errorDiagnostic(result.errors[i] path))
+                    end
+                    for i = 0 upto {extent result.warnings - 1} do
+                        diagbag.add(bag diagnostics.warningDiagnostic(result.warnings[i] path))
+                    end
+                    let phrases = result.partial.phrases
+                    let var moduleChecked = false
+                    for i = 0 upto {extent phrases - 1} do
+                        vector.append(typed phrases[i])
+                        case phrases[i].form
+                            when bindModule then moduleChecked := true
+                            when bindInterface with x then state.scope := maybe.some(x.scope)
+                            else ok
+                        end
+                    end
+                    (* A module that failed gives its members that checked *)
+                    if not(moduleChecked) andif maybe.isSome(kept.members) then
+                        let members = maybe.unwrap(kept.members)
+                        for i = 0 upto {extent members - 1} do vector.append(typed members[i]) end
+                    end
+                    if maybe.isSome(kept.scope) then
+                        state.scope := kept.scope
+                    elsif maybe.isNone(state.scope) then
+                        state.scope := maybe.some(e.currentScope)
+                    end
+                end
+            when diagbag.fatalError then
+                ok
+            when diagnostics.compilerError with err then
+                diagbag.add(bag diagnostics.errorDiagnostic(err path))
+            else
+                diagbag.add(bag diagnostics.error("internal error in the language server's check"
+                        location.span(path 0 0)))
+            end
+            elaboration.hooks.keepMembers := saved
+            for i = 0 upto {diagbag.count(bag) - 1} do vector.append(problems problemOf(diagbag.get(bag i) path)) end
+            tuple
+                let path = path
+                let text = text
+                let sm = sm
+                let problems = vector.toArray(problems)
+                let tokens = state.tokens
+                let comments = state.comments
+                let syntax = state.syntax
+                let typed = vector.toArray(typed)
+                let scope = state.scope
+                let env = state.env
+            end
+        end
+end

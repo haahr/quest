@@ -1,0 +1,43 @@
+(* Quest Language Server: Messages
+ *
+ * The base protocol of the Language Server Protocol: each message is a header
+ * (lines "Name: value" ended by "\r\n", then an empty line) whose
+ * Content-Length gives the size in bytes of the JSON body that follows. Bodies
+ * are read and written in util/json's UTF-8 mode, since the editor's text is
+ * UTF-8 (docs/lsp-plan.md section 2). *)
+
+interface Protocol
+import
+    reader : Reader
+    writer : Writer
+
+    util/json : util/Json
+    util/maybe : util/Maybe
+export
+    (* Raised on a header without a Content-Length, or a body that is not
+     * JSON *)
+    error: Exception(String)
+
+    (* The next message's body from rd, or none at the end of the stream *)
+    readMessage(rd: reader.T): maybe.T(json.Value)
+    (* Writes a message whose body is v, and flushes wr *)
+    writeMessage(wr: writer.T v: json.Value): Ok
+
+    (* The bodies of JSON-RPC 2.0 messages: a response to request id with its
+     * result or its error, and a notification *)
+    response(id: json.Value result: json.Value): json.Value
+    errorResponse(id: json.Value code: Int message: String): json.Value
+    notification(method: String params: json.Value): json.Value
+
+    (* JSON-RPC's and the protocol's error codes *)
+    parseErrorCode: Int
+    invalidRequestCode: Int
+    methodNotFoundCode: Int
+    invalidParamsCode: Int
+    internalErrorCode: Int
+    serverNotInitializedCode: Int
+    requestCancelledCode: Int
+
+    (* An object built from names and values, in order *)
+    objectOf(names: Array(String) values: Array(json.Value)): json.Value
+end

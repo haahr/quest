@@ -1,0 +1,66 @@
+(* Quest Language Server: Checking a Document
+ *
+ * A document (a program, an interface, or a module, by its file's name) is
+ * tokenized, parsed, and type-checked as the driver checks a program, in an
+ * environment of its own that sees the units it imports through their
+ * interfaces, whose artifacts are kept in the server's build directory
+ * (docs/lsp-plan.md steps 1 and 3). An open document's text comes from the
+ * editor, through common/overlays, for the document itself and for any unit
+ * that imports it.
+ *
+ * What is kept for the other requests: the tokens, the syntax tree, the
+ * typed phrases that checked (with a module's members that checked, though
+ * the module failed), and the document's own scope. *)
+
+interface Analysis
+import
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+
+    questlang/common/location : questlang/common/Location
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/symbols : questlang/types/Symbols
+export
+    (* Where artifacts go, and the directories to search besides the
+     * document's own and the standard library *)
+    Def Settings = Tuple buildDir: String includePaths: Array(String) end
+
+    (* A place in a file: its absolute path, and byte offsets [start, finish) *)
+    Def Place = Tuple file: String start: Int finish: Int end
+
+    (* A problem found, with the places it also names *)
+    Def Problem = Tuple
+        place: Place
+        message: String
+        isWarning: Bool
+        related: Array(Tuple place: Place message: String end)
+    end
+
+    Def T = Tuple
+        path: String
+        text: String
+        sm: location.SourceMap
+        problems: Array(Problem)
+        (* None if the text did not tokenize *)
+        tokens: maybe.T(vector.T(tokens.Token))
+        (* The comments' spans, in order *)
+        comments: vector.T(location.Span)
+        (* None if it did not parse *)
+        syntax: maybe.T(ast.Program)
+        (* The bindings that checked: the program's phrases, or a module's
+         * members *)
+        typed: Array(typedAst.Binding)
+        (* The scope the document's names are declared in: a program's, a
+         * module's internal scope (its imports and members), or an
+         * interface's *)
+        scope: maybe.T(symbols.Scope)
+        (* The environment the document was checked in *)
+        env: maybe.T(env.T)
+    end
+
+    (* Checks the document at path (absolute) whose text is text *)
+    check(path: String text: String settings: Settings): T
+end

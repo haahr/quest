@@ -1,0 +1,122 @@
+(* Quest Language Server: Messages Implementation *)
+
+module protocol : Protocol
+import
+    ascii : Ascii
+    conv : Conv
+    reader : Reader
+    stringOp = string : StringOp
+    writer : Writer
+
+    util/json : util/Json
+    util/maybe : util/Maybe
+    sb = util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+export
+    let error: Exception(String) = exception error: String end
+
+    let fail(A::TYPE)(message: String): A = raise error with message end
+
+    (* A header line without its "\r\n", or none at the end of the stream
+     * before any character *)
+    let readLine(rd: reader.T): maybe.T(String) =
+        if not(reader.more(rd)) then
+            maybe.none()
+        else
+            let b = sb.new()
+            let var going = true
+            while going andif reader.more(rd) do
+                let c = reader.getChar(rd)
+                if c is '\n' then going := false else sb.char(b c) end
+            end
+            let line = sb.toString(b)
+            let n = stringOp.length(line)
+            maybe.some(if {n > 0} andif {stringOp.getChar(line n - 1) is '\r'} then stringOp.getSub(line 0 n - 1)
+                else line end)
+        end
+
+    (* s in lower case, ASCII letters only *)
+    let lower(s: String): String =
+        begin
+            let t = stringOp.new(stringOp.length(s) ' ')
+            for i = 0 upto {stringOp.length(s) - 1} do
+                let v = ascii.val(stringOp.getChar(s i))
+                stringOp.setChar(t i ascii.char(if {v >= 65} andif {v <= 90} then v + 32 else v end))
+            end
+            t
+        end
+
+    let readMessage(rd: reader.T): maybe.T(json.Value) =
+        begin
+            let var size = ~1
+            let var done = false
+            let var ended = false
+            while not(done) do
+                let line = readLine(rd)
+                if maybe.isNone(line) then
+                    done := true
+                    ended := true
+                elsif stringOp.length(maybe.unwrap(line)) is 0 then
+                    done := true
+                else
+                    let text = maybe.unwrap(line)
+                    let colon = strutil.find(text ":")
+                    if {colon > 0} andif stringOp.equal(lower(stringOp.getSub(text 0 colon)) "content-length") then
+                        let value = strutil.strip(stringOp.getSub(text colon + 1 {stringOp.length(text) - colon} - 1))
+                        let n = strutil.tryToInt(value)
+                        if maybe.isNone(n) orif {maybe.unwrap(n) < 0} then
+                            fail(:Ok "a bad Content-Length: " <> value)
+                        end
+                        size := maybe.unwrap(n)
+                    end
+                end
+            end
+            if ended then
+                maybe.none()
+            else
+                if size < 0 then fail(:Ok "a header without a Content-Length") end
+                let body = reader.getString(rd size)
+                if stringOp.length(body) < size then fail(:Ok "the end of the stream in a message's body") end
+                try maybe.some(json.parseWith(body json.parsingUtf8))
+                when json.error with f then fail(:maybe.T(json.Value) "a body that is not JSON: " <> f.message)
+                end
+            end
+        end
+
+    let writeMessage(wr: writer.T v: json.Value): Ok =
+        begin
+            let body = json.dumpWith(v json.compactUtf8)
+            writer.putString(wr "Content-Length: " <> conv.int(stringOp.length(body)) <> "\r\n\r\n")
+            writer.putString(wr body)
+            writer.flush(wr)
+        end
+
+    let objectOf(names: Array(String) values: Array(json.Value)): json.Value =
+        begin
+            let o = json.newObject()
+            for i = 0 upto {extent names - 1} do json.put(o names[i] values[i]) end
+            json.object(o)
+        end
+
+    let response(id: json.Value result: json.Value): json.Value =
+        objectOf(array of "jsonrpc" "id" "result" end array of json.string("2.0") id result end)
+
+    let errorResponse(id: json.Value code: Int message: String): json.Value =
+        objectOf(array of "jsonrpc" "id" "error" end
+                array of
+                    json.string("2.0")
+                    id
+                    objectOf(array of "code" "message" end array of json.int(code) json.string(message) end)
+                end)
+
+    let notification(method: String params: json.Value): json.Value =
+        objectOf(array of "jsonrpc" "method" "params" end array of json.string("2.0") json.string(method) params end)
+
+    let parseErrorCode: Int = ~32700
+    let invalidRequestCode: Int = ~32600
+    let methodNotFoundCode: Int = ~32601
+    let invalidParamsCode: Int = ~32602
+    let internalErrorCode: Int = ~32603
+    let serverNotInitializedCode: Int = ~32002
+    let requestCancelledCode: Int = ~32800
+end

@@ -1,0 +1,155 @@
+(* Quest Language Server: A Document's Outline Implementation *)
+
+module outline : Outline
+import
+    stringOp = string : StringOp
+
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/tokens : questlang/syntax/Tokens
+export
+    Let Rec Symbol = Tuple
+        name: String
+        kind: Int
+        detail: String
+        start: Int
+        finish: Int
+        nameStart: Int
+        nameFinish: Int
+        children: Array(Symbol)
+    end
+
+    (* The protocol's SymbolKind *)
+    let moduleKind: Int = 2
+    let classKind: Int = 5
+    let fieldKind: Int = 8
+    let interfaceKind: Int = 11
+    let functionKind: Int = 12
+    let variableKind: Int = 13
+    let typeParameterKind: Int = 26
+
+    let noSymbols = array of :Symbol end
+
+    (* The first identifier spelling name at or after offset, as [start,
+     * finish), else the offset itself *)
+    let nameSpan(toks: vector.T(tokens.Token) offset: Int name: String): Tuple start: Int finish: Int end =
+        begin
+            let var lo = 0
+            let var hi = vector.length(toks)
+            while lo < hi do
+                let mid = {lo + hi} / 2
+                if vector.get(toks mid).span.startOffset < offset then lo := mid + 1 else hi := mid end
+            end
+            let var found = maybe.none(:tokens.Token)
+            (* A few tokens back: a signature's offset may be its type's *)
+            let var i = if lo >= 4 then lo - 4 else 0 end
+            while maybe.isNone(found) andif {i < vector.length(toks)} andif {i < lo + 400} do
+                let t = vector.get(toks i)
+                let isIdent = case t.kind when ident then true else false end
+                if isIdent andif stringOp.equal(t.lexeme name) then found := maybe.some(t) end
+                i := i + 1
+            end
+            if maybe.isSome(found) then
+                tuple
+                    let start = maybe.unwrap(found).span.startOffset
+                    let finish = maybe.unwrap(found).span.endOffset
+                end
+            else
+                tuple let start = offset let finish = offset end
+            end
+        end
+
+    let symbol(toks: vector.T(tokens.Token) name: String kind: Int detail: String start: Int finish: Int
+            children: Array(Symbol)): Symbol =
+        begin
+            let n = nameSpan(toks start name)
+            tuple
+                let name = name
+                let kind = kind
+                let detail = detail
+                let start = start
+                let finish = if finish < n.finish then n.finish else finish end
+                let nameStart = n.start
+                let nameFinish = n.finish
+                let children = children
+            end
+        end
+
+    (* A declaration's symbols: a let's, a group's members', a type's *)
+    let rec declSymbols(toks: vector.T(tokens.Token) d: ast.Decl acc: vector.T(Symbol)): Ok =
+        case d.form
+            when declLetVal with x then
+                let isFunction =
+                    {
+                    vector.length(x.params) > 0} orif case x.value.form when exprFun then true else false end
+                vector.append(acc symbol(toks x.name if isFunction then functionKind else variableKind end ""
+                        d.span.startOffset d.span.endOffset noSymbols))
+            when declLetValGroup with x then
+                for i = 0 upto {vector.length(x.bindings) - 1} do declSymbols(toks vector.get(x.bindings i) acc) end
+            when declTypeBinding with x then
+                vector.append(acc symbol(toks x.name classKind "" d.span.startOffset d.span.endOffset noSymbols))
+            when declTypeBindingGroup with x then
+                for i = 0 upto {vector.length(x.bindings) - 1} do declSymbols(toks vector.get(x.bindings i) acc) end
+            when declDefKind with x then
+                vector.append(acc
+                        symbol(toks x.name typeParameterKind "" d.span.startOffset d.span.endOffset noSymbols))
+            else ok
+        end
+
+    let signatureSymbols(toks: vector.T(tokens.Token) sig: ast.Signature acc: vector.T(Symbol)): Ok =
+        case sig
+            when sigValue with x then
+                if maybe.isSome(x.val.name) then
+                    let isFunction =
+                        if maybe.isSome(x.val.typeSig) then
+                            case maybe.unwrap(x.val.typeSig).form when typeFun then true else false end
+                        else
+                            false
+                        end
+                    vector.append(acc
+                            symbol(toks maybe.unwrap(x.val.name) if isFunction then functionKind else fieldKind end
+                                    "" x.val.offset x.val.offset noSymbols))
+                end
+            when sigType with x then
+                vector.append(acc symbol(toks x.val.name classKind "" x.val.offset x.val.offset noSymbols))
+            when sigTypeBinding with x then
+                vector.append(acc symbol(toks x.val.name classKind "" x.val.offset x.val.offset noSymbols))
+            when sigTypeBindingGroup with x then
+                for i = 0 upto {vector.length(x.val) - 1} do
+                    let b = vector.get(x.val i)
+                    vector.append(acc symbol(toks b.name classKind "" b.offset b.offset noSymbols))
+                end
+            when sigKindBinding with x then
+                vector.append(acc symbol(toks x.val.name typeParameterKind "" x.val.offset x.val.offset noSymbols))
+        end
+
+    let symbols(program: ast.Program toks: vector.T(tokens.Token)): Array(Symbol) =
+        begin
+            let acc = vector.new(:Symbol)
+            for i = 0 upto {vector.length(program.form.phrases) - 1} do
+                let p = vector.get(program.form.phrases i)
+                case p.form
+                    when phraseInterface with x then
+                        let members = vector.new(:Symbol)
+                        for j = 0 upto {vector.length(x.iface.signatures) - 1} do
+                            signatureSymbols(toks vector.get(x.iface.signatures j) members)
+                        end
+                        vector.append(acc symbol(toks x.iface.name interfaceKind "" p.span.startOffset p.span.endOffset
+                                vector.toArray(members)))
+                    when phraseModule with x then
+                        let members = vector.new(:Symbol)
+                        for j = 0 upto {vector.length(x.modDecl.bindings) - 1} do
+                            declSymbols(toks vector.get(x.modDecl.bindings j) members)
+                        end
+                        vector.append(acc
+                                symbol(toks x.modDecl.name moduleKind x.modDecl.interfaceName p.span.startOffset
+                                        p.span.endOffset vector.toArray(members)))
+                    when phraseDecl with x then declSymbols(toks x.decl acc)
+                    else ok
+                end
+            end
+            vector.toArray(acc)
+        end
+end

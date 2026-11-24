@@ -1,0 +1,913 @@
+(* Quest Language Server: Hover, Definition, and References Implementation
+ *
+ * The typed nodes give offsets of their syntax, not of their names: a let's
+ * offset is its keyword's, a selection's its target's. So each name is found
+ * among the tokens at or after its node's offset: the first identifier that
+ * spells it (after a '.' for a selection's field). *)
+
+module navigation : Navigation
+import
+    stringOp = string : StringOp
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/common/files : questlang/common/Files
+    questlang/common/location : questlang/common/Location
+    questlang/interpreter/formatting : questlang/interpreter/Formatting
+    questlang/lsp/analysis : questlang/lsp/Analysis
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/parser : questlang/syntax/Parser
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/env : questlang/types/Env
+    questlang/types/symbols : questlang/types/Symbols
+export
+    (* What an occurrence names *)
+    Let Kind = Option
+        value
+        typeName
+        (* A field selected from a value (m.f, r.f): of an imported module
+         * when module is its name *)
+        member
+        (* An imported or declared module, or an interface *)
+        unitName
+    end
+
+    (* A name in the document: [start, finish) its token, id its symbol's
+     * (~1 for none), hover its declaration as shown, module the module a
+     * member is selected from or a unit's own name *)
+    Let Occurrence = Tuple
+        start: Int
+        finish: Int
+        name: String
+        kind: Kind
+        id: Int
+        isBinder: Bool
+        hover: String
+        unit: maybe.T(String)
+    end
+
+    (* A parsed interface file: its text, tokens, comments, and syntax *)
+    Let Unit = Tuple
+        file: String
+        text: String
+        toks: vector.T(tokens.Token)
+        comments: vector.T(location.Span)
+        syntax: maybe.T(ast.Program)
+    end
+
+    Let T = Tuple
+        a: analysis.T
+        toks: vector.T(tokens.Token)
+        occurrences: vector.T(Occurrence)
+        (* The interface path each imported module's local name was imported
+         * through, and each declared module's interface name *)
+        imports: hashMap.T(String String)
+        units: hashMap.T(String maybe.T(Unit))
+    end
+
+    (* ======================================================================
+     * Tokens
+     * ====================================================================== *)
+
+    let noTokens = vector.new(:tokens.Token)
+
+    let isIdent(t: tokens.Token): Bool = case t.kind when ident then true else false end
+
+    (* The first token at or after offset *)
+    let tokenFrom(toks: vector.T(tokens.Token) offset: Int): Int =
+        begin
+            let var lo = 0
+            let var hi = vector.length(toks)
+            while lo < hi do
+                let mid = {lo + hi} / 2
+                if vector.get(toks mid).span.startOffset < offset then lo := mid + 1 else hi := mid end
+            end
+            lo
+        end
+
+    (* How far past a node's offset its name is looked for *)
+    let window: Int = 400
+
+    (* The first identifier token spelling name at or after offset (after a
+     * '.' if dotted) *)
+    let findName(toks: vector.T(tokens.Token) offset: Int name: String dotted: Bool): maybe.T(tokens.Token) =
+        begin
+            let var i = tokenFrom(toks offset)
+            let last = i + window
+            let var found = maybe.none(:tokens.Token)
+            while maybe.isNone(found) andif {i < vector.length(toks)} andif {i < last} do
+                let t = vector.get(toks i)
+                if isIdent(t) andif stringOp.equal(t.lexeme name)
+                        andif {not(dotted) orif {{i > 0} andif stringOp.equal(vector.get(toks i - 1).lexeme ".")}} then
+                    found := maybe.some(t)
+                end
+                i := i + 1
+            end
+            found
+        end
+
+    (* The identifier spelling name nearest after offset, starting a few
+     * tokens before it: a signature's offset may be its type's *)
+    let findNear(toks: vector.T(tokens.Token) offset: Int name: String): maybe.T(tokens.Token) =
+        begin
+            let i = tokenFrom(toks offset)
+            let back = if i >= 4 then i - 4 else 0 end
+            let from = if back < vector.length(toks) then vector.get(toks back).span.startOffset else offset end
+            findName(toks from name false)
+        end
+
+    (* The identifier token at offset, or ending there (a cursor just after a
+     * name), with its index *)
+    let identAt(toks: vector.T(tokens.Token) offset: Int): maybe.T(Tuple t: tokens.Token i: Int end) =
+        begin
+            let var i = tokenFrom(toks offset)
+            let var found = maybe.none(:Tuple t: tokens.Token i: Int end)
+            for j = i - 1 upto i do
+                if {j >= 0} andif {j < vector.length(toks)} then
+                    let t = vector.get(toks j)
+                    if isIdent(t) andif {t.span.startOffset <= offset} andif {offset <= t.span.endOffset} then
+                        found := maybe.some(tuple let t = t let i = j end)
+                    end
+                end
+            end
+            found
+        end
+
+    (* ======================================================================
+     * Building the index
+     * ====================================================================== *)
+
+    let add(ix: T t: tokens.Token kind: Kind id: Int isBinder: Bool hover: String owner: maybe.T(String)): Ok =
+        vector.append(ix.occurrences
+                tuple
+                    let start = t.span.startOffset
+                    let finish = t.span.endOffset
+                    let name = t.lexeme
+                    let kind = kind
+                    let id = id
+                    let isBinder = isBinder
+                    let hover = hover
+                    let unit = owner
+                end)
+
+    let addValue(ix: T offset: Int name: String sym: symbols.ValueSymbol isBinder: Bool): Ok =
+        begin
+            let t = findName(ix.toks offset name false)
+            if maybe.isSome(t) then
+                let shown = maybe.unwrapOr(hashMap.get(ix.imports name) "")
+                if {stringOp.length(shown) > 0} andif not(isBinder) then
+                    add(ix maybe.unwrap(t) option unitName of Kind end sym.symbolId isBinder
+                            "module " <> name <> " : " <> shown maybe.some(name))
+                else
+                    add(ix maybe.unwrap(t) option value of Kind end sym.symbolId isBinder
+                            formatting.valueDeclaration(name sym) maybe.none())
+                end
+            end
+        end
+
+    let addType(ix: T offset: Int name: String sym: symbols.TypeSymbol): Ok =
+        begin
+            let t = findName(ix.toks offset name false)
+            if maybe.isSome(t) then
+                add(ix maybe.unwrap(t) option typeName of Kind end sym.symbolId true
+                        formatting.typeDeclaration(name sym) maybe.none())
+            end
+        end
+
+    let addUnit(ix: T offset: Int name: String shown: String): Ok =
+        begin
+            let t = findName(ix.toks offset name false)
+            if maybe.isSome(t) then
+                add(ix maybe.unwrap(t) option unitName of Kind end ~1 true shown maybe.some(name))
+            end
+        end
+
+    (* m.f, or r.f: a module's member if the target names an imported
+     * module *)
+    let addMember(ix: T e: typedAst.Expr target: typedAst.Expr field: String): Ok =
+        begin
+            let t = findName(ix.toks e.offset field true)
+            if maybe.isSome(t) then
+                let owner =
+                    case target.form
+                        when exprVar with x then
+                            if hashMap.contains(ix.imports x.name) then maybe.some(x.name) else maybe.none(:String) end
+                        else maybe.none(:String)
+                    end
+                let shownName = if maybe.isSome(owner) then maybe.unwrap(owner) <> "." <> field else field end
+                add(ix maybe.unwrap(t) option member of Kind end ~1 false
+                        formatting.valueDeclaration(shownName symbols.valueSymbol(field e.type)) owner)
+            end
+        end
+
+    let maybeBinder(ix: T offset: Int binder: maybe.T(symbols.ValueSymbol)): Ok =
+        if maybe.isSome(binder) then
+            let sym = maybe.unwrap(binder)
+            addValue(ix offset sym.name sym true)
+        end
+
+    let rec walkExpr(ix: T e: typedAst.Expr): Ok =
+        begin
+            case e.form
+                when exprVar with x then addValue(ix e.offset x.name x.symbol false)
+                when exprFun with x then
+                    for i = 0 upto {extent x.params - 1} do
+                        let p = x.params[i]
+                        addValue(ix p.offset p.name p.symbol true)
+                    end
+                when exprSelect with x then addMember(ix e x.target x.field)
+                when exprSelectRef with x then addMember(ix e x.target x.field)
+                when exprFor with x then addValue(ix e.offset x.varName x.symbol true)
+                when exprCase with x then
+                    for i = 0 upto {extent x.branches - 1} do
+                        maybeBinder(ix x.branches[i].offset x.branches[i].binder)
+                    end
+                when exprTry with x then
+                    for i = 0 upto {extent x.branches - 1} do
+                        maybeBinder(ix x.branches[i].offset x.branches[i].binder)
+                    end
+                    maybeBinder(ix e.offset x.elseBinder)
+                when exprInspect with x then
+                    for i = 0 upto {extent x.branches - 1} do
+                        let b = x.branches[i]
+                        for j = 0 upto {extent b.binders - 1} do
+                            addValue(ix b.offset b.binders[j].name b.binders[j] true)
+                        end
+                    end
+                when exprException with x then maybeBinder(ix e.offset x.symbol)
+                else ok
+            end
+            let kids = typedAst.children(e)
+            for i = 0 upto {extent kids - 1} do
+                case kids[i]
+                    when childExpr with k then walkExpr(ix k.e)
+                    when childBinding with k then walkBinding(ix k.b)
+                end
+            end
+        end
+
+    and walkLet(ix: T v: typedAst.LetValue): Ok = addValue(ix v.offset v.name v.symbol true)
+
+    and walkBinding(ix: T b: typedAst.Binding): Ok =
+        begin
+            case b.form
+                when bindLetValue with x then walkLet(ix x.value)
+                when bindLetValueGroup with x then for i = 0 upto {extent x.members - 1} do walkLet(ix x.members[i]) end
+                when bindLetType with x then addType(ix x.value.offset x.value.name x.value.symbol)
+                when bindLetTypeGroup with x then
+                    for i = 0 upto {extent x.members - 1} do
+                        addType(ix x.members[i].offset x.members[i].name x.members[i].symbol)
+                    end
+                when bindModule with x then addUnit(ix b.offset x.name "module " <> x.name <> " : " <> x.interfaceName)
+                when bindInterface with x then addUnit(ix b.offset x.name "interface " <> x.name)
+                when bindImport with x then
+                    for i = 0 upto {extent x.items - 1} do
+                        let item = x.items[i]
+                        let path = typedAst.effectiveInterfacePath(item)
+                        for j = 0 upto {extent item.names - 1} do
+                            addUnit(ix item.offset item.names[j] "module " <> item.names[j] <> " : " <> path)
+                        end
+                    end
+                else ok
+            end
+            let kids = typedAst.bindingChildren(b)
+            for i = 0 upto {extent kids - 1} do
+                case kids[i]
+                    when childExpr with k then walkExpr(ix k.e)
+                    when childBinding with k then walkBinding(ix k.b)
+                end
+            end
+        end
+
+    (* The imports' local names, first, so that uses of them are known as
+     * modules wherever they come *)
+    let rec gatherImports(ix: T b: typedAst.Binding): Ok =
+        case b.form
+            when bindImport with x then
+                for i = 0 upto {extent x.items - 1} do
+                    let item = x.items[i]
+                    for j = 0 upto {extent item.names - 1} do
+                        hashMap.insert(ix.imports item.names[j] typedAst.effectiveInterfacePath(item))
+                    end
+                end
+            when bindModule with x then for i = 0 upto {extent x.bindings - 1} do gatherImports(ix x.bindings[i]) end
+            else ok
+        end
+
+    let index(a: analysis.T): T =
+        begin
+            let ix: T = tuple
+                let a = a
+                let toks = maybe.unwrapOr(a.tokens noTokens)
+                let occurrences = vector.new(:Occurrence)
+                let imports = hashMap.new(:String :String stringOp.equal hash.string)
+                let units = hashMap.new(:String :maybe.T(Unit) stringOp.equal hash.string)
+            end
+            for i = 0 upto {extent a.typed - 1} do gatherImports(ix a.typed[i]) end
+            for i = 0 upto {extent a.typed - 1} do walkBinding(ix a.typed[i]) end
+            ix
+        end
+
+    (* ======================================================================
+     * Interfaces of imported modules
+     * ====================================================================== *)
+
+    (* The file the interface path, imported by the document, is in *)
+    let interfaceFile(ix: T path: String): maybe.T(String) =
+        if maybe.isNone(ix.a.env) then
+            maybe.none()
+        else
+            try env.resolveInterface(maybe.unwrap(ix.a.env) path).source
+            else maybe.none(:String)
+            end
+        end
+
+    let loadUnit(file: String): maybe.T(Unit) =
+        begin
+            let text = files.readText(file)
+            if maybe.isNone(text) then
+                maybe.none()
+            else
+                let sm = location.newSourceMap(file maybe.unwrap(text))
+                let bag = diagbag.new()
+                let tz = tokenizer.new(sm bag)
+                let toks = tokenizer.tokenizeAll(tz)
+                let syntax = try maybe.some(parser.parseProgram(toks sm bag)) else maybe.none(:ast.Program) end
+                maybe.some(tuple
+                    let file = file
+                    let text = maybe.unwrap(text)
+                    let toks = toks
+                    let comments = tokenizer.comments(tz)
+                    let syntax = syntax
+                end)
+            end
+        end
+
+    (* The interface file a module's local name was imported through, parsed
+     * once for the index *)
+    let unitOf(ix: T owner: String): maybe.T(Unit) =
+        begin
+            let path = hashMap.get(ix.imports owner)
+            if maybe.isNone(path) then
+                maybe.none()
+            else
+                let cached = hashMap.get(ix.units maybe.unwrap(path))
+                if maybe.isSome(cached) then
+                    maybe.unwrap(cached)
+                else
+                    let file = interfaceFile(ix maybe.unwrap(path))
+                    let u = if maybe.isSome(file) then loadUnit(maybe.unwrap(file)) else maybe.none(:Unit) end
+                    hashMap.insert(ix.units maybe.unwrap(path) u)
+                    u
+                end
+            end
+        end
+
+    (* The offset of a signature's name in an interface, if it declares name *)
+    let signatureOffset(sig: ast.Signature name: String): maybe.T(Int) =
+        case sig
+            when sigValue with x then
+                if maybe.isSome(x.val.name) andif stringOp.equal(maybe.unwrap(x.val.name) name) then
+                    maybe.some(x.val.offset)
+                else
+                    maybe.none()
+                end
+            when sigType with x then
+                if stringOp.equal(x.val.name name) then maybe.some(x.val.offset) else maybe.none() end
+            when sigTypeBinding with x then
+                if stringOp.equal(x.val.name name) then maybe.some(x.val.offset) else maybe.none() end
+            when sigTypeBindingGroup with x then
+                let var found = maybe.none(:Int)
+                for i = 0 upto {vector.length(x.val) - 1} do
+                    if stringOp.equal(vector.get(x.val i).name name) then
+                        found := maybe.some(vector.get(x.val i).offset)
+                    end
+                end
+                found
+            when sigKindBinding with x then
+                if stringOp.equal(x.val.name name) then maybe.some(x.val.offset) else maybe.none() end
+        end
+
+    (* Where an interface declares name: its token *)
+    let declaredIn(u: Unit name: String): maybe.T(tokens.Token) =
+        if maybe.isNone(u.syntax) then
+            maybe.none()
+        else
+            let phrases = maybe.unwrap(u.syntax).form.phrases
+            let var found = maybe.none(:tokens.Token)
+            for i = 0 upto {vector.length(phrases) - 1} do
+                case vector.get(phrases i).form
+                    when phraseInterface with x then
+                        for j = 0 upto {vector.length(x.iface.signatures) - 1} do
+                            if maybe.isNone(found) then
+                                let at = signatureOffset(vector.get(x.iface.signatures j) name)
+                                if maybe.isSome(at) then found := findNear(u.toks maybe.unwrap(at) name) end
+                            end
+                        end
+                    else ok
+                end
+            end
+            found
+        end
+
+    (* Where an interface names itself, after the keyword *)
+    let interfaceName(u: Unit): maybe.T(tokens.Token) =
+        begin
+            let var found = maybe.none(:tokens.Token)
+            for i = 0 upto {vector.length(u.toks) - 2} do
+                if maybe.isNone(found) andif stringOp.equal(vector.get(u.toks i).lexeme "interface") then
+                    found := maybe.some(vector.get(u.toks i + 1))
+                end
+            end
+            found
+        end
+
+    (* ======================================================================
+     * Comments
+     * ====================================================================== *)
+
+    let declarationWords = array of "let" "rec" "var" "and" "Let" "Def" "Rec" "Let" "export" end
+
+    (* The comment just before the declaration whose name starts at offset,
+     * with nothing but declaration keywords between them, without its
+     * delimiters and leading stars *)
+    let commentBefore(text: String comments: vector.T(location.Span) offset: Int): maybe.T(String) =
+        begin
+            let var found = maybe.none(:location.Span)
+            for i = 0 upto {vector.length(comments) - 1} do
+                let c = vector.get(comments i)
+                if c.endOffset <= offset then found := maybe.some(c) end
+            end
+            if maybe.isNone(found) then
+                maybe.none()
+            else
+                let c = maybe.unwrap(found)
+                let between = strutil.split(strutil.strip(stringOp.getSub(text c.endOffset offset - c.endOffset)) " ")
+                let var plain = true
+                for i = 0 upto {vector.length(between) - 1} do
+                    let w = strutil.strip(vector.get(between i))
+                    if stringOp.length(w) > 0 then
+                        let var known = false
+                        for j = 0 upto {extent declarationWords - 1} do
+                            if stringOp.equal(w declarationWords[j]) then known := true end
+                        end
+                        if not(known) then plain := false end
+                    end
+                end
+                if not(plain) then
+                    maybe.none()
+                else
+                    let raw = stringOp.getSub(text c.startOffset c.endOffset - c.startOffset)
+                    let inner =
+                        if {stringOp.length(raw) >= 4} andif strutil.startsWith(raw "(*")
+                                andif strutil.endsWith(raw "*)") then
+                            stringOp.getSub(raw 2 stringOp.length(raw) - 4)
+                        else
+                            raw
+                        end
+                    let lines = strutil.splitlines(inner)
+                    let cleaned = vector.new(:String)
+                    for i = 0 upto {vector.length(lines) - 1} do
+                        let var l = strutil.strip(vector.get(lines i))
+                        if strutil.startsWith(l "*") then
+                            l := strutil.strip(stringOp.getSub(l 1 stringOp.length(l) - 1))
+                        end
+                        vector.append(cleaned l)
+                    end
+                    let joined = strutil.strip(strutil.join("\n" cleaned))
+                    if stringOp.length(joined) is 0 then maybe.none() else maybe.some(joined) end
+                end
+            end
+        end
+
+    (* ======================================================================
+     * Queries
+     * ====================================================================== *)
+
+    (* The occurrence at offset, or just before it *)
+    let occurrenceAt(ix: T offset: Int): maybe.T(Occurrence) =
+        begin
+            let var found = maybe.none(:Occurrence)
+            for i = 0 upto {vector.length(ix.occurrences) - 1} do
+                let o = vector.get(ix.occurrences i)
+                if {o.start <= offset} andif {offset <= o.finish} then
+                    if maybe.isNone(found) orif {{offset < o.finish} andif {maybe.unwrap(found).finish is offset}} then
+                        found := maybe.some(o)
+                    end
+                end
+            end
+            found
+        end
+
+    let sameKind(a: Kind b: Kind): Bool =
+        case a
+            when value then b?value
+            when typeName then b?typeName
+            when member then b?member
+            when unitName then b?unitName
+        end
+
+    (* The binder of an occurrence's symbol, in the document *)
+    let binderOf(ix: T o: Occurrence): maybe.T(Occurrence) =
+        if o.isBinder then
+            maybe.some(o)
+        elsif o.id < 0 then
+            maybe.none()
+        else
+            let var found = maybe.none(:Occurrence)
+            for i = 0 upto {vector.length(ix.occurrences) - 1} do
+                let b = vector.get(ix.occurrences i)
+                if b.isBinder andif {b.id is o.id} andif sameKind(b.kind o.kind) then found := maybe.some(b) end
+            end
+            found
+        end
+
+    let place(file: String t: tokens.Token): analysis.Place =
+        tuple let file = file let start = t.span.startOffset let finish = t.span.endOffset end
+
+    let occurrencePlace(ix: T o: Occurrence): analysis.Place =
+        tuple let file = ix.a.path let start = o.start let finish = o.finish end
+
+    (* A declaration in an interface file: its unit and its name's token *)
+    Let Declared = Tuple u: Unit t: tokens.Token end
+
+    (* Where a member of an imported module, or the module itself, is
+     * declared: its interface's file, parsed *)
+    let memberDeclaration(ix: T owner: String name: maybe.T(String)): maybe.T(Declared) =
+        begin
+            let u = unitOf(ix owner)
+            if maybe.isNone(u) then
+                maybe.none()
+            else
+                let unit = maybe.unwrap(u)
+                let t = if maybe.isSome(name) then declaredIn(unit maybe.unwrap(name)) else interfaceName(unit) end
+                if maybe.isSome(t) then maybe.some(tuple let u = unit let t = maybe.unwrap(t) end) else maybe.none() end
+            end
+        end
+
+    (* A name with no occurrence, by its token: m.f in m's interface, else
+     * the document's scope *)
+    Let Found = Tuple hover: String place: maybe.T(analysis.Place) comment: maybe.T(String) end
+
+    let byName(ix: T offset: Int): maybe.T(Found) =
+        begin
+            let at = identAt(ix.toks offset)
+            if maybe.isNone(at) then
+                maybe.none()
+            else
+                let t = maybe.unwrap(at).t
+                let i = maybe.unwrap(at).i
+                let qualified = {i >= 2} andif stringOp.equal(vector.get(ix.toks i - 1).lexeme ".")
+                    andif isIdent(vector.get(ix.toks i - 2))
+                if qualified then
+                    let owner = vector.get(ix.toks i - 2).lexeme
+                    let d = memberDeclaration(ix owner maybe.some(t.lexeme))
+                    if maybe.isNone(d) then
+                        maybe.none()
+                    else
+                        let u = maybe.unwrap(d).u
+                        let decl = maybe.unwrap(d).t
+                        (* The declaration's line, as written *)
+                        let sm = location.newSourceMap(u.file u.text)
+                        let line = strutil.strip(location.getLine(sm location.locate(sm decl.span.startOffset).line))
+                        maybe.some(tuple
+                            let hover = owner <> "." <> line
+                            let place = maybe.some(place(u.file decl))
+                            let comment = commentBefore(u.text u.comments decl.span.startOffset)
+                        end)
+                    end
+                elsif maybe.isNone(ix.a.scope) then
+                    maybe.none()
+                else
+                    let scope = maybe.unwrap(ix.a.scope)
+                    let v = symbols.lookupValue(scope t.lexeme)
+                    let ty = symbols.lookupType(scope t.lexeme)
+                    let fromSymbol = fun(id: Int kind: Kind shown: String): maybe.T(Found)
+                        begin
+                            let var binder = maybe.none(:Occurrence)
+                            for j = 0 upto {vector.length(ix.occurrences) - 1} do
+                                let b = vector.get(ix.occurrences j)
+                                if b.isBinder andif {b.id is id} andif sameKind(b.kind kind) then
+                                    binder := maybe.some(b)
+                                end
+                            end
+                            maybe.some(tuple
+                                let hover = shown
+                                let place =
+                                    if maybe.isSome(binder) then maybe.some(occurrencePlace(ix maybe.unwrap(binder)))
+                                    else maybe.none(:analysis.Place)
+                                    end
+                                let comment =
+                                    if maybe.isSome(binder) then
+                                        commentBefore(ix.a.text ix.a.comments maybe.unwrap(binder).start)
+                                    else
+                                        maybe.none(:String)
+                                    end
+                            end)
+                        end
+                    if hashMap.contains(ix.imports t.lexeme) then
+                        let d = memberDeclaration(ix t.lexeme maybe.none())
+                        maybe.some(tuple
+                            let hover = "module " <> t.lexeme <> " : " <> maybe.unwrap(hashMap.get(ix.imports t.lexeme))
+                            let place =
+                                if maybe.isSome(d) then maybe.some(place(maybe.unwrap(d).u.file maybe.unwrap(d).t))
+                                else maybe.none(:analysis.Place)
+                                end
+                            let comment = maybe.none(:String)
+                        end)
+                    elsif maybe.isSome(ty) then
+                        fromSymbol(maybe.unwrap(ty).symbolId option typeName of Kind end
+                                formatting.typeDeclaration(t.lexeme maybe.unwrap(ty)))
+                    elsif maybe.isSome(v) then
+                        fromSymbol(maybe.unwrap(v).symbolId option value of Kind end
+                                formatting.valueDeclaration(t.lexeme maybe.unwrap(v)))
+                    else
+                        maybe.none()
+                    end
+                end
+            end
+        end
+
+    (* What an occurrence is, where it is declared, and the comment there *)
+    let resolve(ix: T o: Occurrence): Found =
+        case o.kind
+            when member then
+                let d = if maybe.isSome(o.unit) then memberDeclaration(ix maybe.unwrap(o.unit) maybe.some(o.name))
+                    else maybe.none(:Declared) end
+                if maybe.isSome(d) then
+                    let u = maybe.unwrap(d).u
+                    tuple
+                        let hover = o.hover
+                        let place = maybe.some(place(u.file maybe.unwrap(d).t))
+                        let comment = commentBefore(u.text u.comments maybe.unwrap(d).t.span.startOffset)
+                    end
+                else
+                    tuple
+                        let hover = o.hover
+                        let place = maybe.none(:analysis.Place)
+                        let comment = maybe.none(:String)
+                    end
+                end
+            when unitName then
+                let d =
+                    if maybe.isSome(o.unit) andif hashMap.contains(ix.imports maybe.unwrap(o.unit)) then
+                        memberDeclaration(ix maybe.unwrap(o.unit) maybe.none())
+                    else
+                        maybe.none(:Declared)
+                    end
+                tuple
+                    let hover = o.hover
+                    let place =
+                        if maybe.isSome(d) then maybe.some(place(maybe.unwrap(d).u.file maybe.unwrap(d).t))
+                        elsif o.isBinder then maybe.some(occurrencePlace(ix o))
+                        else maybe.none(:analysis.Place)
+                        end
+                    let comment = maybe.none(:String)
+                end
+            else
+                let b = binderOf(ix o)
+                tuple
+                    let hover = o.hover
+                    let place = if maybe.isSome(b) then maybe.some(occurrencePlace(ix maybe.unwrap(b)))
+                        else maybe.none(:analysis.Place) end
+                    let comment = if maybe.isSome(b) then commentBefore(ix.a.text ix.a.comments maybe.unwrap(b).start)
+                        else maybe.none(:String) end
+                end
+        end
+
+    let found(ix: T offset: Int): maybe.T(Found) =
+        begin
+            let o = occurrenceAt(ix offset)
+            if maybe.isSome(o) then maybe.some(resolve(ix maybe.unwrap(o))) else byName(ix offset) end
+        end
+
+    let hover(ix: T offset: Int): maybe.T(String) =
+        begin
+            let f = found(ix offset)
+            if maybe.isNone(f) then
+                maybe.none()
+            else
+                let x = maybe.unwrap(f)
+                let code = "```quest\n" <> x.hover <> "\n```"
+                maybe.some(if maybe.isSome(x.comment) then code <> "\n\n" <> maybe.unwrap(x.comment) else code end)
+            end
+        end
+
+    let definition(ix: T offset: Int): Array(analysis.Place) =
+        begin
+            let f = found(ix offset)
+            if maybe.isSome(f) andif maybe.isSome(maybe.unwrap(f).place) then
+                array of maybe.unwrap(maybe.unwrap(f).place) end
+            else
+                array of :analysis.Place end
+            end
+        end
+
+    (* The occurrences of the same thing as o: its symbol's, or a module
+     * member's of the same module and name, or a unit's of the same name *)
+    let same(o: Occurrence p: Occurrence): Bool =
+        sameKind(o.kind p.kind)
+            andif case o.kind
+                when member then
+                    stringOp.equal(o.name p.name) andif maybe.isSome(o.unit) andif maybe.isSome(p.unit)
+                        andif stringOp.equal(maybe.unwrap(o.unit) maybe.unwrap(p.unit))
+                when unitName then stringOp.equal(o.name p.name)
+                else {o.id >= 0} andif {o.id is p.id}
+            end
+
+    let references(ix: T offset: Int withDeclaration: Bool): Array(analysis.Place) =
+        begin
+            let o = occurrenceAt(ix offset)
+            let result = vector.new(:analysis.Place)
+            if maybe.isSome(o) then
+                let target = maybe.unwrap(o)
+                for i = 0 upto {vector.length(ix.occurrences) - 1} do
+                    let p = vector.get(ix.occurrences i)
+                    if same(target p) andif {withDeclaration orif not(p.isBinder)} then
+                        vector.append(result occurrencePlace(ix p))
+                    end
+                end
+            end
+            vector.toArray(result)
+        end
+
+    let highlights(ix: T offset: Int): Array(analysis.Place) = references(ix offset true)
+
+    (* ======================================================================
+     * Completion
+     * ====================================================================== *)
+
+    Let Completion = Tuple label: String kind: Int detail: String end
+
+    (* The protocol's CompletionItemKind *)
+    let functionKind: Int = 3
+    let fieldKind: Int = 5
+    let variableKind: Int = 6
+    let classKind: Int = 7
+    let interfaceKind: Int = 8
+    let moduleKind: Int = 9
+    let keywordKind: Int = 14
+
+    let isNameChar(c: Char): Bool = strutil.isAlnum(c) orif {c is '_'}
+
+    (* Where the name that ends at offset begins *)
+    let nameStart(text: String offset: Int): Int =
+        begin
+            let var start = offset
+            while {start > 0} andif isNameChar(stringOp.getChar(text start - 1)) do start := start - 1 end
+            start
+        end
+
+    (* The members an interface declares, by its syntax *)
+    let membersOf(u: Unit): vector.T(Completion) =
+        begin
+            let result = vector.new(:Completion)
+            let sm = location.newSourceMap(u.file u.text)
+            let lineAt = fun(offset: Int): String strutil.strip(location.getLine(sm location.locate(sm offset).line))
+            if maybe.isSome(u.syntax) then
+                let phrases = maybe.unwrap(u.syntax).form.phrases
+                for i = 0 upto {vector.length(phrases) - 1} do
+                    case vector.get(phrases i).form
+                        when phraseInterface with x then
+                            for j = 0 upto {vector.length(x.iface.signatures) - 1} do
+                                case vector.get(x.iface.signatures j)
+                                    when sigValue with y then
+                                        if maybe.isSome(y.val.name) then
+                                            let isFunction =
+                                                if maybe.isSome(y.val.typeSig) then
+                                                    case maybe.unwrap(y.val.typeSig).form
+                                                        when typeFun then true
+                                                        else false
+                                                    end
+                                                else
+                                                    false
+                                                end
+                                            vector.append(result tuple
+                                                let label = maybe.unwrap(y.val.name)
+                                                let kind = if isFunction then functionKind else fieldKind end
+                                                let detail = lineAt(y.val.offset)
+                                            end)
+                                        end
+                                    when sigType with y then
+                                        vector.append(result tuple
+                                            let label = y.val.name
+                                            let kind = classKind
+                                            let detail = lineAt(y.val.offset)
+                                        end)
+                                    when sigTypeBinding with y then
+                                        vector.append(result tuple
+                                            let label = y.val.name
+                                            let kind = classKind
+                                            let detail = lineAt(y.val.offset)
+                                        end)
+                                    when sigTypeBindingGroup with y then
+                                        for k = 0 upto {vector.length(y.val) - 1} do
+                                            let b = vector.get(y.val k)
+                                            vector.append(result tuple
+                                                let label = b.name
+                                                let kind = classKind
+                                                let detail = lineAt(b.offset)
+                                            end)
+                                        end
+                                    else ok
+                                end
+                            end
+                        else ok
+                    end
+                end
+            end
+            result
+        end
+
+    (* The names declared in a scope and its parents *)
+    let scopeNames(result: vector.T(Completion) scope: symbols.Scope): Ok =
+        begin
+            let var s = maybe.some(scope)
+            while maybe.isSome(s) do
+                let at = maybe.unwrap(s)
+                let values = hashMap.keys(at.values)
+                for i = 0 upto {vector.length(values) - 1} do
+                    let name = vector.get(values i)
+                    let sym = maybe.unwrap(hashMap.get(at.values name))
+                    vector.append(result tuple
+                        let label = name
+                        let kind = variableKind
+                        let detail = formatting.valueDeclaration(name sym)
+                    end)
+                end
+                let types = hashMap.keys(at.types)
+                for i = 0 upto {vector.length(types) - 1} do
+                    let name = vector.get(types i)
+                    vector.append(result tuple let label = name let kind = classKind let detail = "" end)
+                end
+                s := at.parent
+            end
+        end
+
+    let completions(ix: T text: String offset: Int): Tuple items: Array(Completion) start: Int end =
+        begin
+            let at = if offset > stringOp.length(text) then stringOp.length(text) else offset end
+            let start = nameStart(text at)
+            let prefix = stringOp.getSub(text start at - start)
+            let all = vector.new(:Completion)
+            let dotted = {start > 0} andif {stringOp.getChar(text start - 1) is '.'}
+            if dotted then
+                let q = nameStart(text start - 1)
+                let qualifier = stringOp.getSub(text q {start - 1} - q)
+                let u = unitOf(ix qualifier)
+                if maybe.isSome(u) then
+                    let members = membersOf(maybe.unwrap(u))
+                    for i = 0 upto {vector.length(members) - 1} do vector.append(all vector.get(members i)) end
+                end
+            else
+                (* The document's own binders, before its scope's names, so
+                 * that a local name comes with its declaration *)
+                for i = 0 upto {vector.length(ix.occurrences) - 1} do
+                    let o = vector.get(ix.occurrences i)
+                    if o.isBinder then
+                        let kind =
+                            case o.kind
+                                when typeName then classKind
+                                when unitName then moduleKind
+                                else variableKind
+                            end
+                        vector.append(all tuple let label = o.name let kind = kind let detail = o.hover end)
+                    end
+                end
+                let names = hashMap.keys(ix.imports)
+                for i = 0 upto {vector.length(names) - 1} do
+                    let name = vector.get(names i)
+                    vector.append(all tuple
+                        let label = name
+                        let kind = moduleKind
+                        let detail = "module " <> name <> " : " <> maybe.unwrap(hashMap.get(ix.imports name))
+                    end)
+                end
+                if maybe.isSome(ix.a.scope) then scopeNames(all maybe.unwrap(ix.a.scope)) end
+                let keywords = tokenizer.keywordNames()
+                for i = 0 upto {extent keywords - 1} do
+                    vector.append(all tuple let label = keywords[i] let kind = keywordKind let detail = "" end)
+                end
+            end
+            (* Those that start with the prefix, once each, the first kept *)
+            let seen = hashMap.new(:String :Bool stringOp.equal hash.string)
+            let items = vector.new(:Completion)
+            for i = 0 upto {vector.length(all) - 1} do
+                let c = vector.get(all i)
+                let typable = {stringOp.length(c.label) > 0}
+                    andif {strutil.isAlpha(stringOp.getChar(c.label 0)) orif {stringOp.getChar(c.label 0) is '_'}}
+                if typable andif strutil.startsWith(c.label prefix) andif not(hashMap.contains(seen c.label)) then
+                    hashMap.insert(seen c.label true)
+                    vector.append(items c)
+                end
+            end
+            tuple let items = vector.toArray(items) let start = start end
+        end
+end

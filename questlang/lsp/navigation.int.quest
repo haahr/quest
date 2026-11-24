@@ -1,0 +1,41 @@
+(* Quest Language Server: Hover, Definition, and References
+ *
+ * An index of a checked document (docs/lsp-plan.md steps 6 and 7): each name
+ * the typed bindings bind or use, at the token that spells it, with its
+ * symbol. A binder is where its symbol is declared, so a use's definition is
+ * its symbol's binder in the document. A member of an imported module
+ * (m.f) is declared in the module's interface, which is parsed when asked
+ * for, and its declaration found by name. A name with no typed node (in a
+ * type, or in a binding that failed) is looked up by name in the document's
+ * scope, or, after "m.", in the interface of the module m names. *)
+
+interface Navigation
+import
+    util/maybe : util/Maybe
+
+    questlang/lsp/analysis : questlang/lsp/Analysis
+export
+    T::TYPE
+    index(a: analysis.T): T
+
+    (* What the name at offset is, as Markdown: its declaration as the REPL
+     * shows it, and the comment before its declaration *)
+    hover(ix: T offset: Int): maybe.T(String)
+    (* Where the name at offset is declared *)
+    definition(ix: T offset: Int): Array(analysis.Place)
+    (* The uses in the document of the name at offset, and its declaration if
+     * withDeclaration and it is in the document *)
+    references(ix: T offset: Int withDeclaration: Bool): Array(analysis.Place)
+    (* The places of the name at offset, in the document, to highlight *)
+    highlights(ix: T offset: Int): Array(analysis.Place)
+
+    (* A name that could be typed at a cursor: kind is the protocol's
+     * CompletionItemKind, detail its declaration *)
+    Def Completion = Tuple label: String kind: Int detail: String end
+    (* The names completing the one that ends at offset in text, which may be
+     * newer than the index's (docs/lsp-plan.md step 9): after "m.", where m
+     * names an imported module, its interface's members; otherwise the
+     * names the document declares and imports, and the keywords. The
+     * second is where the name begins *)
+    completions(ix: T text: String offset: Int): Tuple items: Array(Completion) start: Int end
+end

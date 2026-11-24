@@ -1,0 +1,31 @@
+(* Quest Language Server: Positions
+ *
+ * Converts between the compiler's byte offsets and the protocol's positions:
+ * a 0-based line and a column, counted in UTF-16 code units unless the client
+ * accepted UTF-8, when it is a byte offset in the line (docs/lsp-plan.md
+ * section 3.0). Lines are split at '\n' alone, as location.SourceMap splits
+ * them. Counting UTF-16 units over a line's bytes:
+ *
+ * - a lead byte of a UTF-8 sequence of one, two, or three bytes is one unit,
+ *   of four bytes two, and its continuation bytes none;
+ * - a byte that is not part of a well-formed sequence is one unit, as an
+ *   editor showing it as U+FFFD counts it;
+ * - a column between a surrogate pair's halves goes back to the character's
+ *   first byte. *)
+
+interface Positions
+export
+    (* A text's line starts *)
+    T::TYPE
+    new(text: String): T
+    text(t: T): String
+    lineCount(t: T): Int
+
+    Def Position = Tuple line: Int character: Int end
+
+    (* The position of a byte offset, clamped to the text *)
+    toPosition(t: T offset: Int utf16: Bool): Position
+    (* The byte offset of a position: a line past the last is the text's end,
+     * and a column past a line's end is the line's end *)
+    toOffset(t: T line: Int character: Int utf16: Bool): Int
+end

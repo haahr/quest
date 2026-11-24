@@ -1,0 +1,137 @@
+(* Quest Language Server: Positions Implementation *)
+
+module positions : Positions
+import
+    ascii : Ascii
+    stringOp = string : StringOp
+
+    collections/vector : collections/Vector
+export
+    Let T = Tuple text: String starts: vector.T(Int) end
+
+    let new(text: String): T =
+        begin
+            let starts = vector.new(:Int)
+            vector.append(starts 0)
+            for i = 0 upto {stringOp.length(text) - 1} do
+                if stringOp.getChar(text i) is '\n' then vector.append(starts i + 1) end
+            end
+            tuple let text = text let starts = starts end
+        end
+
+    let text(t: T): String = t.text
+    let lineCount(t: T): Int = vector.length(t.starts)
+
+    Let Position = Tuple line: Int character: Int end
+
+    (* Where line ends, before its '\n' or at the text's end *)
+    let lineEnd(t: T line: Int): Int =
+        if {line + 1} < vector.length(t.starts) then vector.get(t.starts line + 1) - 1 else stringOp.length(t.text) end
+
+    (* The length of the well-formed UTF-8 sequence at i (below limit), or 1
+     * for a byte that starts none *)
+    let sequenceAt(text: String i: Int limit: Int): Int =
+        begin
+            let lead = ascii.val(stringOp.getChar(text i))
+            let var need = ~1
+            let var lo = 128
+            let var hi = 191
+            if lead < 128 then
+                need := 0
+            elsif {lead >= 194} andif {lead < 224} then
+                need := 1
+            elsif {lead >= 224} andif {lead < 240} then
+                need := 2
+                if lead is 224 then lo := 160 elsif lead is 237 then hi := 159 end
+            elsif {lead >= 240} andif {lead < 245} then
+                need := 3
+                if lead is 240 then lo := 144 elsif lead is 244 then hi := 143 end
+            end
+            if need <= 0 then
+                1
+            else
+                let var k = 1
+                let var good = true
+                while good andif {k <= need} do
+                    if {i + k} < limit then
+                        let c = ascii.val(stringOp.getChar(text i + k))
+                        if {c >= lo} andif {c <= hi} then
+                            k := k + 1
+                            lo := 128
+                            hi := 191
+                        else
+                            good := false
+                        end
+                    else
+                        good := false
+                    end
+                end
+                if good then k else 1 end
+            end
+        end
+
+    (* The line holding offset: the last whose start is at or before it *)
+    let lineOf(t: T offset: Int): Int =
+        begin
+            let var lo = 0
+            let var hi = vector.length(t.starts) - 1
+            while lo < hi do
+                let mid = {lo + hi + 1} / 2
+                if vector.get(t.starts mid) <= offset then lo := mid else hi := mid - 1 end
+            end
+            lo
+        end
+
+    let clampOffset(t: T offset: Int): Int =
+        if offset < 0 then 0 elsif offset > stringOp.length(t.text) then stringOp.length(t.text) else offset end
+
+    let toPosition(t: T offset: Int utf16: Bool): Position =
+        begin
+            let at = clampOffset(t offset)
+            let line = lineOf(t at)
+            let start = vector.get(t.starts line)
+            let character =
+                if not(utf16) then
+                    at - start
+                else
+                    let limit = lineEnd(t line)
+                    let var i = start
+                    let var units = 0
+                    while i < at do
+                        let size = sequenceAt(t.text i limit)
+                        units := units + if size is 4 then 2 else 1 end
+                        i := i + size
+                    end
+                    units
+                end
+            tuple let line = line let character = character end
+        end
+
+    let toOffset(t: T line: Int character: Int utf16: Bool): Int =
+        if line < 0 then
+            0
+        elsif line >= vector.length(t.starts) then
+            stringOp.length(t.text)
+        else
+            let start = vector.get(t.starts line)
+            let limit = lineEnd(t line)
+            if not(utf16) then
+                if {start + character} > limit then limit elsif character < 0 then start else start + character end
+            else
+                let var i = start
+                let var units = 0
+                let var going = true
+                while going andif {i < limit} do
+                    let size = sequenceAt(t.text i limit)
+                    let width = if size is 4 then 2 else 1 end
+                    if {units + width} > character then
+                        going := false
+                    else
+                        units := units + width
+                        i := i + size
+                    end
+                end
+                i
+            end
+        end
+end
