@@ -40,11 +40,16 @@ and incremental builds, so the question was how much of that gain a separate bui
   a call counting 2), is left out, with the functions that use it, and its calls stay calls of the compiled module.
   What a unit copies it compiles again, and the large functions cost most and gain least (§3.3), so a function of
   data alone has a bound of 15, which leaves `vector.append` (46) a call. A function that takes or returns a
-  function, or a value that holds one (an iterator, a tuple of two functions in `util/iter`'s source), gains by its
+  function, or a value that holds one, gains by its
   caller's functions being known in its body (§3.5), and its bound is the largest function the inliner takes at a
-  call with type arguments, its threshold and polymorphic bonus (60): a larger one would not be inlined. No module is
-  named, and no bound is a module's own. Of the three modules' 75 functions, 28 over 15 pass functions (26 of
-  `util/iter`, `vector.forEach` and `fold`), the largest 60. `QUEST_INLINE`'s `copy` and `copyFun` set the two
+  call with type arguments, its threshold and polymorphic bonus (60): a larger one would not be inlined. The type is
+  searched through aliases, applications, and the representations of inlined modules' abstract types, which the
+  importer holds before it copies a module that names them: an iterator is a tuple of two functions in `util/iter`'s
+  source, and is one in `collections/vector`'s copy too (`vector.iter`). No module is named, and no bound is a
+  module's own. Of the three modules' 75 functions, 32 over 15 pass functions (26 of
+  `util/iter`, and `vector.forEach`, `fold`, `iter`, `iterReversed`, `appendIter`, and `fromIter`), the largest 60.
+  With `vector.iter` copied, a filter, map, and sum over a vector of 20 million has no call in its loop, and the
+  program retires 4.89 G instructions against 5.15 G (2.44 G as a whole program, whose `append`s are inlined too). `QUEST_INLINE`'s `copy` and `copyFun` set the two
   bounds, for measuring.
 - **Every shape stays opaque.** The unit's types are laid out as they are without copies. A copy's code names the
   abstract types' representations, and meets the unit's values through the conversions represent already has for a

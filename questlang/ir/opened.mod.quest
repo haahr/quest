@@ -8,6 +8,7 @@ import
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
+    util/strutil : util/Strutil
 
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
@@ -16,6 +17,7 @@ import
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/simplify : questlang/ir/Simplify
     questlang/ir/walk : questlang/ir/Walk
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     questlang/modules/elaboration : questlang/modules/Elaboration
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/inlined : questlang/modules/Inlined
@@ -50,25 +52,57 @@ export
     let copyBound = simplify.setting("copy" 15)
     let copyFunBound = simplify.setting("copyFun" simplify.polymorphicInlineSize)
 
+    (* The representation of the abstract type of symbol id symbol, when it
+     * is an inlined module's: its source was elaborated before any copy that
+     * names its types was made (open visits a copy's imports first), in
+     * every unit alike *)
+    let inlinedRep(symbol: Int): maybe.T(model.Type) =
+        begin
+            let none = maybe.none(:model.Type)
+            let entry = if abstractTypes.isAbstractTypeSymbol(symbol) then abstractTypes.abstractTypeBySymbol(symbol)
+                else maybe.none(:abstractTypes.ModuleAbstractType) end
+            if maybe.isNone(entry) then
+                none
+            else
+                let name = maybe.unwrap(entry).globalName
+                let dot = strutil.rfind(name ".")
+                if {dot > 0} andif inlined.isInlined(stringOp.getSub(name 0 dot)) then maybe.unwrap(entry).rep
+                else none
+                end
+            end
+        end
+
     (* Whether a value of type t0 is a function or holds one: the type's
-     * structure is searched through aliases and applications, so an
-     * iterator, a tuple of two functions in its module's own source, is
-     * one *)
+     * structure is searched through aliases, applications, and the
+     * representations of inlined modules' abstract types, so an iterator, a
+     * tuple of two functions in util/iter's source, is one in every module's
+     * copy *)
     let holdsFunction(t0: model.Type): Bool =
         begin
             let seen = hashMap.new(:Int :Bool same hash.int)
             let var found = false
-            let rec visit(t: model.Type): Ok =
-                if not(found) andif not(hashMap.contains(seen t.id)) then
-                    hashMap.insert(seen t.id true)
-                    if t.form?typeFun then
-                        found := true
-                    else
-                        let parts = model.typeParts(t)
-                        for i = 0 upto {vector.length(parts) - 1} do
-                            case vector.get(parts i)
-                                when partType with x then visit(x.t)
-                                else ok
+            let rec visit(t0: model.Type): Ok =
+                begin
+                    let t = model.prune(t0)
+                    if not(found) andif not(hashMap.contains(seen t.id)) then
+                        hashMap.insert(seen t.id true)
+                        if t.form?typeFun then
+                            found := true
+                        else
+                            let symbol =
+                                case t.form
+                                    when typeVariable with v then v.symbolId
+                                    when typeAbstract with v then v.symbolId
+                                    else ~1
+                                end
+                            let rep = if symbol >= 0 then inlinedRep(symbol) else maybe.none(:model.Type) end
+                            if maybe.isSome(rep) then visit(maybe.unwrap(rep)) end
+                            let parts = model.typeParts(t)
+                            for i = 0 upto {vector.length(parts) - 1} do
+                                case vector.get(parts i)
+                                    when partType with x then visit(x.t)
+                                    else ok
+                                end
                             end
                         end
                     end

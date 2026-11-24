@@ -677,7 +677,7 @@ the runtime's helpers inline ([ssa.md](ssa.md) §4); clang inlines within a C un
   copied, so the module's state stays single. Nor is a function whose body is larger than a bound, by
   the inliner's measure, or one that uses such a function: what a unit copies it compiles again, so the bound keeps a
   build's cost near that of one without copies. The bound is 15 for a function of data alone, and for one that takes
-  or returns a function, or a value that holds one (an iterator), it is the largest the inliner takes at a call with
+  or returns a function, or a value that holds one (an iterator, seen through its inlined module's representation), it is the largest the inliner takes at a call with
   type arguments (60, its threshold and its polymorphic bonus): such a function gains by its caller's functions being
   known in its body, and a larger one would not be inlined. The unit's shapes stay as they are without
   copies, every abstract type opaque: a copy's code, which names the representations, meets the unit's values
