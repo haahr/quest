@@ -56,6 +56,7 @@ register allocation) walk the arrays; only the passes that care what an instruct
 | `intToPtr`, `ptrToInt` | → | a pointer's bits as an integer, and back, for what is truly an integer (a proxy's tag bit); a derived pointer is a `ptrAdd`, so that it stays a `ptr` |
 | `toVal`, `fromVal` | `int` or `ptr` → `val`, and back | a value as a `QVal` word, and a `QVal` word as the `int` or `ptr` its type says |
 | `realBits`, `bitsReal` | → | a double's 64 bits as an integer, and back |
+| `intToReal` | `int` → `real` | the nearest double, ties to even (C's `(double)`, arm64's `scvtf`) |
 | `sext8`, `zext8` | `int` → `int` | the low byte, sign- or zero-extended (a C `bool` or a `QChar`, an unsigned byte, received: `zext8`) |
 | `load` | `ptr` → value | the immediate is the byte offset; the width and the result's type are the instruction's (§2.1) |
 | `store` | `ptr value` → | likewise |
@@ -175,8 +176,9 @@ and `unit` (functions, static data, registration, and the unit).
   computes the site and calls the runtime's raise (`values.check`), so that the common path computes no site. The word
   module's operations, `static inline` in the header, are their instructions wherever they are called
   (`calls.inlineExternal`): arithmetic, bitwise operations, unsigned comparisons, conversions, and shifts and rotations
-  by a constant count; so is `ascii.val`, a conversion of a Char, which the SSA holds zero-extended. The other string
-  and `ascii` helpers are calls in C too, and stay calls.
+  by a constant count; so is `ascii.val`, a conversion of a Char, which the SSA holds zero-extended, and so is
+  `real.int` (`quest_real_from_int`), an `intToReal`, though the runtime defines it out of line: as a call it was 13%
+  of mandelbrot's samples. The other string and `ascii` helpers are calls in C too, and stay calls.
 - **The library's external functions that C inlines are their instructions** (`calls.libraryOperation`). The C
   printer calls a library member's C function in place of its wrapper (`libraryExternal`,
   [c-representation.md](c-representation.md) §6.2), and clang inlines the word module's `static inline` primitives;

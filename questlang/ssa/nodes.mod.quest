@@ -15,7 +15,7 @@ export
         opAnd opOr opXor opShl opLshr opAshr
         opEq opNe opLt opLe opGt opGe opUlt opPeq opPne
         opFadd opFsub opFmul opFdiv opFeq opFlt opFle opFgt opFge opIsNaN
-        opIntToPtr opPtrToInt opRealBits opBitsReal opSext8 opZext8
+        opIntToPtr opPtrToInt opRealBits opBitsReal opIntToReal opSext8 opZext8
         opLoad opStore opCall opCallIndirect opCopy opPtrAdd opThreadLocal opToVal opFromVal
         opMulHiU opSelect opUnproxy
     end
@@ -213,6 +213,7 @@ export
     let opPtrToInt: Opcode = option opPtrToInt of Opcode end
     let opRealBits: Opcode = option opRealBits of Opcode end
     let opBitsReal: Opcode = option opBitsReal of Opcode end
+    let opIntToReal: Opcode = option opIntToReal of Opcode end
     let opSext8: Opcode = option opSext8 of Opcode end
     let opZext8: Opcode = option opZext8 of Opcode end
     let opLoad: Opcode = option opLoad of Opcode end
@@ -376,7 +377,8 @@ export
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge then typeInt
             when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor,
                     opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
-                    opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
+                    opBitsReal, opIntToReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy,
+                    opPtrAdd,
                     opThreadLocal, opToVal, opFromVal, opMulHiU, opSelect, opUnproxy then
                 x
         end
@@ -603,6 +605,7 @@ export
             when opMulHiU then 50
             when opSelect then 51
             when opUnproxy then 52
+            when opIntToReal then 53
         end
 
     let isOp(i: Inst op: Opcode): Bool = opcodeIndex(i.op) is opcodeIndex(op)
@@ -626,7 +629,10 @@ export
             when opFge then "fge"
             when opIsNaN then "isNaN"
             when opIntToPtr then "intToPtr" when opPtrToInt then "ptrToInt" when opRealBits then "realBits"
-            when opBitsReal then "bitsReal" when opSext8 then "sext8" when opZext8 then "zext8"
+            when opBitsReal then "bitsReal"
+            when opIntToReal then "intToReal"
+            when opSext8 then "sext8"
+            when opZext8 then "zext8"
             when opLoad then "load" when opStore then "store" when opCall then "call"
             when opCallIndirect then "callIndirect" when opCopy then "copy" when opPtrAdd then "ptrAdd"
             when opThreadLocal then "threadLocal" when opToVal then "toVal" when opFromVal then "fromVal"
@@ -636,7 +642,19 @@ export
     let opcodes: Array(Opcode) = array of
         opConst opRealConst opSymbol opNull opSlot opAdd opSub opMul opDiv opRem opAnd opOr opXor opShl opLshr opAshr
         opEq opNe opLt opLe opGt opGe opUlt opPeq opPne opFadd opFsub opFmul opFdiv opFeq opFlt opFle opFgt opFge
-        opIsNaN opIntToPtr opPtrToInt opRealBits opBitsReal opSext8 opZext8 opLoad opStore opCall opCallIndirect opCopy
+        opIsNaN
+        opIntToPtr
+        opPtrToInt
+        opRealBits
+        opBitsReal
+        opIntToReal
+        opSext8
+        opZext8
+        opLoad
+        opStore
+        opCall
+        opCallIndirect
+        opCopy
         opPtrAdd opThreadLocal opToVal opFromVal opMulHiU opSelect opUnproxy
     end
 

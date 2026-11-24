@@ -213,7 +213,9 @@ export
     (* Emits inline SSA instructions for external C runtime functions defined
      * inline in runtime/quest_runtime.h: word arithmetic, bitwise operations,
      * unsigned comparisons, int/word conversions, constant-count shifts and
-     * rotations, and ascii.val (since Char is already held zero-extended).
+     * rotations, ascii.val (since Char is already held zero-extended), and
+     * real.int, which is a conversion (scvtf on arm64), rounding to nearest
+     * as C's (double) does, though the runtime defines it out of line.
      * Returns none for any other symbol. *)
     let inlineExternal(fn: vals.Fn symbol: String args: Array(Atom)): maybe.T(Int) =
         begin
@@ -226,6 +228,7 @@ export
             let named(name: String): Bool = vals.eq(symbol name)
             let count = if extent args is 2 then intConstant(args[1]) else maybe.none(:Int) end
             if named("quest_word_from_int") orif named("quest_word_to_int") orif named("quest_ascii_val") then one(x())
+            elsif named("quest_real_from_int") then one(vals.unary(fn ssa.opIntToReal x() vals.tReal))
             elsif named("quest_word_add") then both(ssa.opAdd)
             elsif named("quest_word_sub") then both(ssa.opSub)
             elsif named("quest_word_mul") then both(ssa.opMul)

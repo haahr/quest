@@ -245,7 +245,8 @@ export
                 when opRealConst, opSymbol, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor,
                         opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub,
                         opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
-                        opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
+                        opBitsReal, opIntToReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy,
+                        opPtrAdd,
                         opThreadLocal, opToVal, opFromVal, opSelect, opUnproxy then
                     maybe.none()
             end
@@ -333,7 +334,8 @@ export
             when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd,
                     opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt,
                     opRealBits,
-                    opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
+                    opBitsReal, opIntToReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy,
+                    opPtrAdd,
                     opThreadLocal,
                     opToVal, opFromVal, opSelect, opUnproxy then
                 minst.condEq
@@ -346,7 +348,8 @@ export
             when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd,
                     opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt,
                     opRealBits,
-                    opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
+                    opBitsReal, opIntToReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy,
+                    opPtrAdd,
                     opThreadLocal,
                     opToVal, opFromVal, opSelect, opUnproxy then
                 false
@@ -357,7 +360,8 @@ export
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opConst, opRealConst, opSymbol, opNull,
                     opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr,
                     opFadd,
-                    opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opLoad,
+                    opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opIntToReal, opSext8,
+                    opZext8, opLoad,
                     opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal, opFromVal, opSelect,
                     opUnproxy then
                 false
@@ -387,7 +391,7 @@ export
                         when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv,
                                 opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe,
                                 opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge,
-                                opIsNaN, opRealBits, opBitsReal, opSext8, opZext8, opLoad, opStore, opCall,
+                                opIsNaN, opRealBits, opBitsReal, opIntToReal, opSext8, opZext8, opLoad, opStore, opCall,
                                 opCallIndirect,
                                 opPtrAdd, opThreadLocal, opSelect, opUnproxy then
                             a
@@ -644,6 +648,7 @@ export
                 (* Copies of a word: conversions between ints, pointers, and a
                  * Real's bits *)
                 when opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opCopy, opToVal, opFromVal then emitMove(s d a(0))
+                when opIntToReal then emit(s minst.scvtf(d a(0)))
                 (* Lowered before selection (ssa/passes/unproxies) *)
                 when opUnproxy then raise unsupported with "arm64: an unproxy not lowered" end
                 (* A byte extended, unless it is the result of a call in the
@@ -1207,7 +1212,8 @@ export
                 when opMovConst, opSymbolAddress then true
                 when opAddImm then readsSp
                 when opMovImm, opMovz, opMovk, opTlvAddress, opMov, opArith, opSubImm, opLogicImm, opShiftImm, opMsub,
-                        opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore,
+                        opSxtb, opSxtw, opScvtf, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad,
+                        opStore,
                         opLdp,
                         opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz,
                         opTbz,

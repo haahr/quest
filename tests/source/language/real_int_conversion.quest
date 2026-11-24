@@ -1,0 +1,14 @@
+(* real.int converts an Int to the nearest Real, ties to even, as C's (double)
+   does. The self-hosted compiler makes it one instruction, intToReal (scvtf
+   on arm64), rather than a call (docs/ssa.md section 2). *)
+import conv : Conv
+import writer : Writer
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+
+let toReal(n: Int): Real = real.int(n)
+print(conv.real(toReal(0)))
+print(conv.real(toReal(0 - 7)))
+(* 2 ** 53 + 1 is halfway between two Reals, and goes to the even one *)
+print(conv.real(toReal(9007199254740993)))
+print(conv.real(toReal({0 - 9223372036854775807} - 1)))
+print(conv.real(toReal(3) ** 0.5))
