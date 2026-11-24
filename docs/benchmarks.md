@@ -450,14 +450,32 @@ would close most of it, for these two benchmarks only. *Done* differently (2026-
 
 ### 3.9. The interpreters
 
-Neither interpreter implements tail calls, and both stop a program that has more than 1000 calls active with
-`stack.overflow` (`MAX_CALL_DEPTH`, `primitives.maxCallDepth`), as a portable stand-in for the native stack. The
-conversions keep the originals' recursive loops, so most of the suite overflows when interpreted (§2.4). Running the
-suite in an interpreter needs tail calls there, or a much deeper limit. When the baseline was taken, both interpreters
+When the baseline was taken, neither interpreter implemented tail calls. Both stop a program that has more than 1000
+calls active with `stack.overflow` (`MAX_CALL_DEPTH`, `primitives.maxCallDepth`), as a portable stand-in for the
+native stack. The conversions keep the originals' recursive loops, so most of the suite overflowed when interpreted
+(§2.4). When the baseline was taken, both interpreters
 also mis-evaluated a function whose type parameters are followed by an empty value-parameter list (`let f(A::TYPE)():
 Int = 3`, called as `f(:Int)()`), which stopped hamlet, mlyacc, model-elimination, and vliw (the tables' "type
 application bug"). Since that was fixed, hamlet, mlyacc, and vliw overflow in both interpreters, and model-elimination
 reaches the 10-minute timeout.
+
+**With tail calls** (2026-11-24, `53b867f6`; [interpreter.md](interpreter.md) §3.3), every interpreter runs a call
+in tail position without adding to the calls active. Each conversion was run once at count 1, with a 2-minute timeout
+rather than §2.4's 10 minutes, so the timeouts here are not comparable to §2.4's:
+
+| Interpreter | Finish | Time out (2 min) | Overflow | At the baseline (finish / time out / fail, 10 min) |
+|---|--:|--:|--:|---|
+| Self-hosted (`./quest --stop-after interpret`) | 17 | 22 | 7 | 9 / 8 / 29 |
+| Bootstrap (`./questboot --stop-after interpret`) | 11 | 32 | 3 | 8 / 12 / 26 |
+
+- **Now finish in the self-hosted interpreter:** checksum, lexgen, mlyacc, string-concat, tailmerge, tyan,
+  wc-input1, wc-scanStream, and zern. barnes-hut, boyer, flat-array, imp-for, nucleic, pidigits, ratio-regions, and
+  tailfib finished before, and imp-for and tailfib now in under a tenth of their time (18.9 and 37.4 seconds).
+- **Still overflow, from recursion that is not a tail call:** DLXSimulator, hamlet, knuth-bendix, logic, ray, simple,
+  and vliw. The bootstrap interpreter, about ten times slower, times out on four of these first.
+
+Every other program runs until the timeout, so running the whole suite interpreted now needs time rather than a
+deeper limit.
 
 ### 3.10. The conversions
 
