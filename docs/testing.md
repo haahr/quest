@@ -858,8 +858,9 @@ directory (beside `quest-release`):
   commands, and `allocations.py` wait while another job holds the lock, so that they do not load the machine it is
   timing. `run_tests.py --no-exclusive` and `./quest --no-exclusive` (its first argument) do not wait, for a run
   whose result does not depend on a quiet machine or a run timed under load on purpose, and a stage build while only
-  a check holds the lock. What runs under the lock is marked by `QUEST_EXCLUSIVE_HELD` in its
-  environment, and neither waits on the lock nor yields to it, so a check's own builds and tests run at once.
+  a check holds the lock. Nor does `./quest`'s build of its stages from nothing (after a new release is
+  installed, or in a fresh worktree), likely the first step of an interactive session. What runs under the lock is
+  marked by `QUEST_EXCLUSIVE_HELD` in its environment, and neither waits on the lock nor yields to it, so a check's own builds and tests run at once.
 - **Load explains some failures,** and `tools/check` runs them again: when the only failures are tests that timed
   out and the terminal tests, each runs again alone, once, and the check passes if they all pass then. Any other
   failure is reported as it is, and nothing is run again.
