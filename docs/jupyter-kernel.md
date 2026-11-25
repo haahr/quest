@@ -8,8 +8,9 @@ compiled by the JIT ([jit.md](jit.md)), with the session's bindings kept from ce
   the protocol's client.
 - **`io/display`** and `io/readline` for a notebook's displays and lines (§4).
 - **Interrupts** that end a cell and keep its session (§5).
-- **A Pygments lexer** for exported notebooks (§6).
-- **Open work** nobody has started: highlighting in the editor, a notebook tried by hand, and later uses (§8).
+- **Highlighting:** a JupyterLab extension that highlights and indents Quest as it's typed, and a Pygments lexer for
+  exported notebooks (§6).
+- **Open work** nobody has started: a notebook tried by hand, and later uses (§8).
 
 ---
 
@@ -99,8 +100,8 @@ runtime.
 **Installing.** `tools/jupyter/install` runs `install.py` with jupyterlab's Python (or `QUEST_JUPYTER_PYTHON`). It
 installs a kernelspec named `quest` for the user, its `kernel.json` naming that Python by the path it was started with,
 this checkout's `quest_kernel.py`, and the release `tools/release --install` installed, `~/.local/bin/quest`, as the
-driver; and the lexer (§6). `--prefix DIR` installs under `DIR` instead, `--name` names the kernelspec, and
-`--uninstall` removes both.
+driver; the lexer; and the JupyterLab extension (§6). `--prefix DIR` installs under `DIR` instead, `--name` names
+the kernelspec, `--no-lab` leaves out the extension, which needs npm, and `--uninstall` removes all three.
 
 - **The installed release, not `./quest`, by default.** `./quest` rebuilds its stages whenever the compiler's sources
   change, and a stage build waits while any worktree's check or timing holds the machine-wide lock (testing.md §4.2),
@@ -154,11 +155,32 @@ default meaning there.
 
 ## 6. Highlighting
 
-`tools/jupyter/quest_lexer.py` is a Pygments lexer for Quest, its keywords the tokenizer's. jupyterlab's Python has pip
-but not setuptools, so `install.py` builds it into a wheel itself (`quest_pygments`, its entry point in
-`pygments.lexers`), and installs it with pip. nbconvert then highlights the Quest cells of a notebook that ran (whose
-`language_info` names the lexer) when it exports one. In the notebook itself, JupyterLab 4's editor, CodeMirror 6,
-would need a JupyterLab extension (§8.1).
+**In JupyterLab's editor.** `tools/jupyter/lab/` is a JupyterLab 4 extension, in plain JavaScript like the VS Code
+extension ([lsp.md](lsp.md) §9). It registers Quest with JupyterLab's editor, CodeMirror 6, for `text/x-quest`, the
+kernel's `language_info` mimetype, and for `.quest` files, so it serves notebook cells and the text editor alike.
+- **`src/mode.js`** is a CodeMirror stream parser that imports nothing, so plain Node can test it:
+  - **Tokens:** the lexer's (below): keywords, a binding's name after `let`, nested comments, strings and
+    characters, numbers, capitalized type names, operators.
+  - **Indentation:** where `quest fmt` puts a new line ([formatter.md](formatter.md) §2). It keeps a stack of the
+    open constructs (each keyword closed by `end`, and brackets) with their lines' columns. A line goes a level
+    inside the innermost, or 8 inside a bracket. `end`, `elsif`, and `else` go at its line's column, as do a `try`'s
+    `when` and a unit's `import` and `export`; a `case`'s or an `inspect`'s arms go a level in. A let's body after
+    `=`, a `fun`'s body after its result type, and an arm's body after `then` go a level deeper than their line. A
+    line starting with an operator continues its phrase, 4 deeper, or 8 in a condition. Typing `end`, `else`,
+    `when`, a closer, or a leading operator reindents its line. Over the tree's 121,941 lines, it puts 99.4 percent
+    where `quest fmt` did; the rest are breaks no rule can predict, such as a signature broken after a type.
+- **`src/index.js`** wraps it as a `LanguageSupport`, with a four-space indentation unit, and a filter that turns
+  every tab a change inserts (typed or pasted) into spaces to the next multiple of four columns, so a Quest cell
+  never holds a tab.
+- **Building:** `install.py` runs `npm install` (`@jupyterlab/builder` and the CodeMirror packages, the first time)
+  and `jupyter labextension build`, with jupyterlab's own Jupyter. The build, 12 KB that share JupyterLab's
+  CodeMirror rather than bundling it, goes into `lab/labextension/` (ignored by git). `install.py` copies it into
+  Jupyter's `labextensions` directory as `quest-jupyterlab`. A reload of JupyterLab's page loads it.
+
+**In exported notebooks.** `tools/jupyter/quest_lexer.py` is a Pygments lexer for Quest, its keywords the
+tokenizer's. jupyterlab's Python has pip but not setuptools, so `install.py` builds it into a wheel itself
+(`quest_pygments`, its entry point in `pygments.lexers`), and installs it with pip. nbconvert then highlights the
+Quest cells of a notebook that ran (whose `language_info` names the lexer) when it exports one.
 
 ## 7. Testing
 
@@ -168,29 +190,19 @@ Two unit checks of the self-hosted suite (`UNIT_CHECKS`; testing.md §2.3), whic
   output's order and line buffering, errors and rollbacks, modules, completion, inspection, complete input,
   displays, lines, interrupts (in a loop, and a recursion, compiled), and a driver's end.
 - `tests/self-hosted/jupyter_kernel.py` drives the kernel through `jupyter_client` from a kernelspec in a temporary
-  `JUPYTER_PATH`, and checks the lexer, under jupyterlab's Python; it is skipped, saying so, without one.
+  `JUPYTER_PATH`, and checks the lexer, under jupyterlab's Python; it is skipped, saying so, without one. It also
+  checks that the JupyterLab mode's keyword lists are the lexer's, and runs `tools/jupyter/lab/test.mjs` under Node
+  (skipped, saying so, without it): the mode's tokens, and its indentation of formatted samples, line by line.
+  `node tools/jupyter/lab/test.mjs --scan FILE...` lists the lines of formatted files the mode would indent
+  differently.
 
-Neither runs JupyterLab's page, which needs its token to sign in to: a notebook by hand is left to its user (§8.2).
+Neither runs JupyterLab's page, which needs its token to sign in to: a notebook by hand is left to its user (§8.1).
 
 ## 8. Open Work
 
 Work nobody has started yet, each item saying what is missing, where to start, and when it is done.
 
-### 8.1. Highlighting in JupyterLab's Editor
-
-**Problem.** The kernel names a Pygments lexer (§6), which nbconvert uses when it exports a notebook, but JupyterLab's
-own editor, CodeMirror 6, highlights a language only through a JupyterLab extension, so Quest cells show as plain text
-while they're edited.
-
-**Reproduce.** `tools/release --install` and `tools/jupyter/install`, then open a Quest notebook in JupyterLab.
-
-**Where to start.** A JupyterLab 4 extension (TypeScript, built with jupyterlab's extension tools) registering a
-CodeMirror 6 language for `text/x-quest`, its tokens those of `tools/jupyter/quest_lexer.py`, installed by
-`tools/jupyter/install` with the lexer.
-
-**Done when.** A Quest cell's keywords, comments, and strings are highlighted as it's typed in JupyterLab.
-
-### 8.2. A Notebook in JupyterLab's Page
+### 8.1. A Notebook in JupyterLab's Page
 
 **Problem.** The kernel's tests (§7) drive it through `jupyter_client` and nbconvert, as a notebook does, but nobody
 has yet run a notebook in JupyterLab's page itself: binding, printing, a failing cell, Tab completion of `vector.`
@@ -202,7 +214,7 @@ notebooks.
 
 **Done when.** Each of those works by hand, or this section records what doesn't.
 
-### 8.3. Later Uses
+### 8.2. Later Uses
 
 **Problem.** Two uses of the kernel aren't built: connecting a notebook to a program already running (a REPL served
 on a socket, rather than a session the kernel starts), and notebooks as tests (a `.ipynb`'s cells run through the

@@ -260,8 +260,8 @@ host it) and with `--no-jit`. It checks:
 (`tools/jupyter/quest_kernel.py`, [jupyter-kernel.md](jupyter-kernel.md) §3) through `jupyter_client`, from a
 kernelspec in a temporary `JUPYTER_PATH`, as a notebook does. It checks results, output, errors, displays, an input
 request, completion and inspection, an interrupt that keeps the session and one that ends it, and a cell that exits;
-and the Pygments lexer (§6). It runs itself again under jupyterlab's Python, which has `jupyter_client` and ipykernel,
-and is skipped, saying so, when there is none.
+the Pygments lexer; and the JupyterLab extension's mode, under Node when there is one (§6–7). It runs itself again
+under jupyterlab's Python, which has `jupyter_client` and ipykernel, and is skipped, saying so, when there is none.
 
 **The language server:** `tests/python/test_lsp.py`, in the unit suite, starts `./quest lsp` and drives it
 through the Language Server Protocol with `tests/python/lsp_client.py` ([lsp.md](lsp.md) §10).

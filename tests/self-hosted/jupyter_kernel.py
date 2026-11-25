@@ -9,6 +9,9 @@ that exits, the next cell running in the new one; completion, inspection, and
 complete input are answered; io/display's values are display data, and
 io/readline's lines are asked of the notebook. And the lexer, for nbconvert: its
 keywords are the tokenizer's, its tokens, and Pygments finding it installed.
+And the JupyterLab extension's mode (tools/jupyter/lab/src/mode.js): its
+keywords are the lexer's, and its own tests (test.mjs) pass under Node, when
+there is one.
 
 It needs jupyter_client and ipykernel, so it runs itself again with
 jupyterlab's Python (QUEST_JUPYTER_PYTHON, or Homebrew's), and is skipped,
@@ -23,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -100,6 +104,32 @@ def check_lexer() -> list[str]:
                              capture_output=True, text=True, env={**os.environ, "PYTHONPATH": str(target)})
         if ran.stdout.strip() != "Quest":
             problems.append(f"Pygments finds no lexer named quest once it is installed: {ran.stdout}{ran.stderr}")
+    return problems
+
+
+def check_lab() -> list[str]:
+    """The JupyterLab extension's mode: its keyword lists are the lexer's, and
+    tools/jupyter/lab/test.mjs, its tokens and indentation, passes. Without
+    Node, the second is skipped, saying so; the extension's build, which needs
+    npm's packages, is left to install.py."""
+    sys.path.insert(0, str(ROOT_DIR / "tools" / "jupyter"))
+    import quest_lexer
+
+    problems: list[str] = []
+    lab = ROOT_DIR / "tools" / "jupyter" / "lab"
+    mode = (lab / "src" / "mode.js").read_text(encoding="utf-8")
+    for name in ["TYPE_KEYWORDS", "VALUE_KEYWORDS", "CONSTANTS"]:
+        found = re.search(rf"export const {name} = \[(.*?)\];", mode, re.S)
+        words = re.findall(r'"([A-Za-z]+)"', found.group(1)) if found else []
+        if words != list(getattr(quest_lexer, name)):
+            problems.append(f"the JupyterLab mode's {name} differ from the lexer's: {words}")
+    node = shutil.which("node")
+    if node is None:
+        print("no node: the JupyterLab mode's tests not run")
+        return problems
+    ran = subprocess.run([node, str(lab / "test.mjs")], capture_output=True, text=True)
+    if ran.returncode != 0:
+        problems.append(f"the JupyterLab mode's tests failed:\n{ran.stdout}{ran.stderr}")
     return problems
 
 
@@ -227,7 +257,7 @@ if __name__ == "__main__":
             sys.exit(0)
         sys.exit(subprocess.run([JUPYTER_PYTHON, __file__, driver],
                                 env={**os.environ, "QUEST_JUPYTER_RERUN": "1"}).returncode)
-    found = check_lexer() + check(driver)
+    found = check_lexer() + check_lab() + check(driver)
     for problem in found:
         print(problem)
     print(f"jupyter kernel: {len(found)} problems")
