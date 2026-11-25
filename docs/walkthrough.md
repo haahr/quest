@@ -1111,6 +1111,11 @@ The same loop:
 <!-- excerpt: self-hosted examples/argmax/argmax.quest codegen_arm64 -->
 ```
 ...
+Lf1_b47:
+	.loc 1 21 16
+	ldr x27, [x22, #0]
+	mov x28, x0
+	mov x19, x12
 Lf1_b15:
 	.loc 1 20 25
 	add x12, x20, #8
@@ -1140,14 +1145,6 @@ Lf1_b19:
 	ldr x20, [sp, #8]
 	b Lf1_b15
 ...
-Lf1_b47:
-	.loc 1 21 16
-	ldr x27, [x22, #0]
-	mov x28, x0
-	mov x19, x12
-	.loc 1 20 25
-	b Lf1_b15
-...
 ```
 
 arm64 has 31 general registers, `x0` to `x30`. Values that must survive a call live in the *callee-saved* registers
@@ -1156,7 +1153,7 @@ two closures, `x25` and `x27` the code of `key` and of `isGreater`, `x26` is `n 
 parameters are `x24` (`best`), `x28` (`bestKey`), and `x19` (`i`). The key's result needs a register too, and the
 allocator gives it `x20`, reloading the array from the stack (`ldr x20, [sp, #8]`) before the jump back. The SSA's
 block numbers are not the assembly's, since the backend adds and removes blocks of its own: `Lf1_b47` is the SSA's
-`b46`, which loads `isGreater`'s code once and enters the loop. Arguments go in `x0`, `x1`, `x2`,
+`b46`, which loads `isGreater`'s code once and falls into the loop. Arguments go in `x0`, `x1`, `x2`,
 ... and a result comes back in `x0`, as the platform's calling convention says, so the C functions of the runtime and
 Quest's compiled functions can call each other.
 

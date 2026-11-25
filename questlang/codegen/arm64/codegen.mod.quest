@@ -557,9 +557,12 @@ export
      * each block is followed by its best unplaced non-cold successor so the
      * branch can fall through; when none remains, the next unplaced non-cold
      * block from the builder's layout starts a new chain. Among non-cold
-     * successors, deeper loop nesting wins first, then blocks without calls
-     * (keeping a fast path ahead of a proxy's slow path), then earlier layout
-     * order. Cold blocks (from which every path raises) are placed last in
+     * successors, deeper loop nesting wins first, then a block that enters a
+     * deeper loop (a loop's preheader, as Ball and Larus predict a branch into
+     * a loop taken: a rotated loop's guard otherwise fell through to its exit,
+     * and took two jumps to enter, which cost fib 1.17 times the cycles), then
+     * blocks without calls (keeping a fast path ahead of a proxy's slow
+     * path), then earlier layout order. Cold blocks (from which every path raises) are placed last in
      * layout order; otherwise a check's raising block or a proxy's slow path
      * would sit inline and force the hot path to jump over it on every
      * execution (docs/arm64.md section 3.5). *)
@@ -573,10 +576,14 @@ export
             let at = array of(n ~1)
             for k = 0 upto {count - 1} do at[vector.get(s.layout k)] := k end
             let calls = array of(n false)
+            (* Whether a block branches to a block nested in more loops *)
+            let enters = array of(n false)
             for b = 0 upto {n - 1} do
                 let insts = machine.block(m b).insts
                 for j = 0 upto {vector.length(insts) - 1} do
-                    if machine.isKind(vector.get(insts j) machine.kindCall) then calls[b] := true end
+                    let i = vector.get(insts j)
+                    if machine.isKind(i machine.kindCall) then calls[b] := true end
+                    if {i.target >= 0} andif {depth[final[i.target]] > depth[b]} then enters[b] := true end
                 end
             end
             (* Each block's predecessors, by the branches that name it *)
@@ -603,6 +610,7 @@ export
             let open(b: Int): Bool = {at[b] >= 0} andif {final[b] is b} andif not(placed[b]) andif not(cold[b])
             let better(a: Int b: Int): Bool =
                 if depth[a] isnot depth[b] then depth[a] > depth[b]
+                elsif enters[a] isnot enters[b] then enters[a]
                 elsif calls[a] isnot calls[b] then not(calls[a])
                 else at[a] < at[b]
                 end
@@ -765,7 +773,32 @@ export
                         andif machine.isKind(maybe.unwrap(following) machine.kindJump)
                         andif {final[maybe.unwrap(following).target] isnot next}
                     let falls = inverted orif {machine.isKind(i machine.kindJump) andif {final[i.target] is next}}
-                    if invert orif not(falls) then
+                    (* A jump to a block that only returns returns itself,
+                     * with its own epilogue, so that whichever way a branch
+                     * is laid out, the path that leaves takes one branch, not
+                     * a branch and a jump (tak's base case, once the layout
+                     * let a rotated loop's guard fall into the loop) *)
+                    let returned =
+                        if machine.isKind(i machine.kindJump) andif not(falls) then
+                            let to = machine.block(m final[i.target])
+                            if not(to.raised) andif {vector.length(to.insts) is 1}
+                                    andif machine.isKind(vector.get(to.insts 0) machine.kindReturn) then
+                                let r = vector.get(to.insts 0)
+                                let rop = vector.get(s.ops r.op)
+                                if isBrk(rop) orif isTableEnd(rop) then maybe.none(:machine.Inst) else maybe.some(r) end
+                            else
+                                maybe.none(:machine.Inst)
+                            end
+                        else
+                            maybe.none(:machine.Inst)
+                        end
+                    if maybe.isSome(returned) then
+                        let r = maybe.unwrap(returned)
+                        let rregs = array of(extent r.operands 0)
+                        for q = 0 upto {extent rregs - 1} do rregs[q] := r.operands[q].reg end
+                        if not(bare) then restore(e) end
+                        emit(e tuple let op = vector.get(s.ops r.op) let regs = rregs end)
+                    elsif invert orif not(falls) then
                         let l = vector.get(s.locs i.op)
                         if ssa.hasLoc(l) andif not(ssa.sameLoc(l last)) andif not(select.rematerializable(s i)) then
                             emit(e minst.loc(l.file l.line l.col))

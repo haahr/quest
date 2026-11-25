@@ -408,6 +408,25 @@ export
 
     let remade(i: ssa.Inst): Bool = case i.op when opConst, opRealConst, opSymbol, opNull then true else false end
 
+    (* Whether i is a conversion that changes no bits *)
+    let reinterprets(i: ssa.Inst): Bool =
+        case i.op when opToVal, opFromVal, opPtrToInt, opIntToPtr then true else false end
+
+    (* Whether i makes a value that is rematerialized where it is used: a
+     * constant, a symbol, or a null, or a conversion of one that changes no
+     * bits. Moved before a loop that calls, such a value would hold a
+     * callee-saved register across the loop to save an instruction or two,
+     * and shift the registers of the loop's other values: in peek, the cell
+     * that find reloads after its call moved to a register the callee does
+     * not restore, so the reload took 1.2 times the cycles *)
+    let rematerialized(defs: Array(maybe.T(ssa.Inst)) i: ssa.Inst): Bool =
+        if remade(i) then true
+        elsif reinterprets(i) andif {extent i.args is 1} andif {i.args[0] < extent defs}
+                andif maybe.isSome(defs[i.args[0]]) then
+            remade(maybe.unwrap(defs[i.args[0]]))
+        else false
+        end
+
     let comparison(i: ssa.Inst): Bool =
         case i.op
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge then true
@@ -477,8 +496,11 @@ export
             for k = 0 upto {extent i.args - 1} do
                 let a = i.args[k]
                 if not(x.invariant[a]) then
-                    if {a < extent defs} andif maybe.isSome(defs[a]) andif remade(maybe.unwrap(defs[a])) then ok
-                    else ready := false
+                    if {a < extent defs} andif maybe.isSome(defs[a])
+                            andif rematerialized(defs maybe.unwrap(defs[a])) then
+                        ok
+                    else
+                        ready := false
                     end
                 end
             end
@@ -492,25 +514,34 @@ export
             r
         end
 
+    (* The copy at the end of block b of a, a rematerialized value the loop
+     * defines, made there (its own argument first, for a conversion) unless
+     * made already *)
+    let rec copyOf(x: Hoist defs: Array(maybe.T(ssa.Inst)) b: Int a: Int): Int =
+        begin
+            if x.copies[a] < 0 then
+                let d = maybe.unwrap(defs[a])
+                let args = array of(extent d.args 0)
+                for k = 0 upto {extent d.args - 1} do
+                    args[k] := if x.invariant[d.args[k]] then d.args[k] else copyOf(x defs b d.args[k]) end
+                end
+                let v = ssa.newValue(x.f ssa.typeOf(x.f a))
+                let c = ssa.instruction(d.op args array of v end d.imm d.symbol d.width d.signed d.signature)
+                c.loc := d.loc
+                ssa.append(x.f b c)
+                grow(x)
+                x.copies[a] := v
+            end
+            x.copies[a]
+        end
+
     (* Moves i to the end of block b (unterminated), copying there the
      * rematerialized values the loop defines that it uses *)
     let moveTo(x: Hoist defs: Array(maybe.T(ssa.Inst)) b: Int i: ssa.Inst): Ok =
         begin
             for k = 0 upto {extent i.args - 1} do
                 let a = i.args[k]
-                if not(x.invariant[a]) then
-                    if x.copies[a] < 0 then
-                        let d = maybe.unwrap(defs[a])
-                        let v = ssa.newValue(x.f ssa.typeOf(x.f a))
-                        let c = ssa.instruction(d.op array of :Int end array of v end d.imm d.symbol d.width d.signed
-                                d.signature)
-                        c.loc := d.loc
-                        ssa.append(x.f b c)
-                        grow(x)
-                        x.copies[a] := v
-                    end
-                    i.args[k] := x.copies[a]
-                end
+                if not(x.invariant[a]) then i.args[k] := copyOf(x defs b a) end
             end
             ssa.append(x.f b i)
             grow(x)
@@ -707,7 +738,7 @@ export
                          * nothing is made once before it *)
                         let real = ssa.isOp(i ssa.opRealConst) andif not(calls)
                         if {movable(i) orif load orif real} andif not(calls andif ssa.isOp(i ssa.opPtrAdd))
-                                andif argumentsReady(x defs i)
+                                andif not(reinterprets(i) andif rematerialized(defs i)) andif argumentsReady(x defs i)
                                 andif {not(load) orif safeAddress(x defs i.args[0])} then
                             moved[i.results[0]] := true
                             moveTo(x defs pre i)

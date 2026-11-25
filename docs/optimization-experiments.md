@@ -240,8 +240,21 @@ parameters promotion leaves unused, which covers the loops it makes.
 - **Values live only across a cold call saved only on its path:** `tfoCombine`'s reals are stored and reloaded around
   `quest_gc_alloc_slow` on the fast path; the spill code could move to the cold block. Not measured.
 
-## 7. Observed, not taken apart
+## 7. Observed, not acted on
 
+- **A reload's speed depends on which register holds its address** (2026-11-25). peek's `find` stores to a cell,
+  calls a closure that stores to the same cell, and reloads it. When the loops pass moved a symbol's `toVal` before
+  the loop, the cell's pointer moved from `x20` to `x21`, and peek took 1.20 times the cycles with 0.99 of the
+  instructions (92.4 s against 75.9 s in the suite), nearly all of them on the reload. The callee restores `x19` and
+  `x20` from its stack before it returns, so with the cell in `x20` the reload's address came late, after the callee's
+  store; in `x21` it is ready at once, and the reload most likely runs ahead of that store and is replayed (read from
+  the profile, not seen directly). Measured by hand-edited assembly: swapping `x20` and `x21` in `find` alone gave back
+  the cycles; the moved instructions put back, or the code shifted by one to eight `nop`s, did not. The loops pass no
+  longer moves such conversions (they are rematerialized, as the values they convert are), which restored `find`'s
+  code, but the hazard itself is not fixed: any change that shifts a loop's registers, here or in another program, can
+  set it off again, and nothing in the compiler models it. What would: a register allocator that prefers, for a value
+  live across a call and loaded through after it, a register the callee restores; or a measure of how often it costs,
+  from counts of cycles against instructions over the suite, before any of that.
 - **A `while` on a `var` flag through arm64:** mandelbrot's inner loop written that way retired 1.25 times the
   recursive version's instructions through arm64, though 0.88 through ssac (benchmarks.md §42.3, before the loops pass
   rotated loops). Not a cost of the recursive form the suite uses, but of Quest's own loops; to be counted again.

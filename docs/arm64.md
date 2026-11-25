@@ -181,16 +181,21 @@ the access's width (an array's element), made for it alone, at the base and the 
 x2, lsl #3]`), without the `mul` or the `add`; and no extension of a narrow result (ssa.md §2.2) of a call of a function
 in the unit that returns its narrow results extended, which is every one but those that tail-call, for such a result, a
 function that may not. When the code is emitted, blocks that only jump are passed over, a jump to the next block falls
-through, and a conditional branch to the next block is inverted before the block's last jump. The blocks are laid out in
-chains: from the entry, each is followed by its best successor not yet placed, one not cold, then in a deeper loop, then
-making no call (a proxy's slow path is not followed into), then first in the builder's order; the blocks from which
-every path raises come last (2026-11-02, benchmarks.md §13). Last, loads (or stores) of 8 bytes off one base, at offsets
-8 apart, are merged into an `ldp` (`stp`): a load's partner moved up to it, a store moved down to its partner, across up
-to 16 instructions that touch only registers, and none that branch or store (nor, for a store, load) or that write the
-base or the moved access's register. Two stores are left apart when the code that runs next (up to 12 instructions on,
-following jumps, until a call or a write of the base) loads one of their two words alone, with no load of the other
-within four instructions to make a pair of: a lone load does not forward from half of a pair's store, which cost
-psdes-random a fifth of its time once a tuple's two stores had one base (benchmarks.md §18.2).
+through, a conditional branch to the next block is inverted before the block's last jump, and a jump to a block that
+only returns is that return, with its own epilogue. The blocks are laid out in chains: from the entry, each is followed
+by its best successor not yet placed, one not cold, then in a deeper loop, then entering a deeper loop (a preheader,
+since a branch into a loop is likelier taken), then making no call (a proxy's slow path is not followed into), then
+first in the builder's order; the blocks from which every path raises come last (2026-11-02, benchmarks.md §13). With
+returns made where they are jumped to, whichever way a rotated loop's guard is laid out costs one taken branch: fib,
+whose calls mostly enter the loop, took 1.17 times the cycles when its guard fell through to the exit, and tak, whose
+calls mostly leave, 1.13 when the exit then jumped to a shared return (2026-11-25, benchmarks.md §44). Last, loads (or
+stores) of 8 bytes off one base, at offsets 8 apart, are merged into an `ldp` (`stp`): a load's partner moved up to it,
+a store moved down to its partner, across up to 16 instructions that touch only registers, and none that branch or store
+(nor, for a store, load) or that write the base or the moved access's register. Two stores are left apart when the code
+that runs next (up to 12 instructions on, following jumps, until a call or a write of the base) loads one of their two
+words alone, with no load of the other within four instructions to make a pair of: a lone load does not forward from
+half of a pair's store, which cost psdes-random a fifth of its time once a tuple's two stores had one base
+(benchmarks.md §18.2).
 
 ### 3.6. Exceptions
 
