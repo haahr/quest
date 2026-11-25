@@ -344,6 +344,21 @@ export
     let raiseError(A::TYPE e: CompilerError): A = raise compilerError with e end
 
     let fail(A::TYPE message: String offset: Int): A = raise compilerError with errorAt(message offset) end
+    let failWithHelp(A::TYPE message: String offset: Int help: maybe.T(String)): A =
+        begin
+            let err = errorAt(message offset)
+            raise compilerError with tuple
+                let message = err.message
+                let offset = err.offset
+                let length = err.length
+                let isFatal = err.isFatal
+                let help = help
+                let notes = err.notes
+                let file = err.file
+                let silent = err.silent
+                let labels = err.labels
+            end end
+        end
 
     let mainFrame = "<main>"
     let initFrameSuffix = ".<init>"

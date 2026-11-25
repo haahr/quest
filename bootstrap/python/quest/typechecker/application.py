@@ -11,6 +11,7 @@ from typing import Any, Optional
 
 import quest.syntax.ast as ast
 from quest.typechecker.checker import Checker
+from quest.typechecker.near_miss import call_help, value_help
 from quest.types import (
     INT_TYPE,
     QAllType,
@@ -200,7 +201,11 @@ class ApplicationMixin(Checker):
         if isinstance(fn_type, QFunType):
             return self._synth_monomorphic_app(expr, func_typed, fn_type, env, loop_depth)
 
-        raise TypeError(f"Cannot invoke non-function type '{fn_type}'", offset=expr.func.offset)
+        raise TypeError(
+            f"Cannot invoke non-function type '{fn_type}'",
+            offset=expr.func.offset,
+            help_text=call_help(env, expr.func.name) if isinstance(expr.func, ast.ExprId) else None,
+        )
 
     def _synth_monomorphic_app(
         self,
@@ -289,7 +294,9 @@ class ApplicationMixin(Checker):
             case ast.ExprId():
                 sym = env.lookup_value(target.name)
                 if sym is None:
-                    raise TypeError(f"Undefined variable '{target.name}'", offset=offset)
+                    raise TypeError(
+                        f"Undefined variable '{target.name}'", offset=offset, help_text=value_help(env, target.name)
+                    )
                 self._check_capturable(sym, offset)
                 if is_out:
                     if not sym.is_var and not sym.is_out and not isinstance(sym.type_val, (QVarType, QOutType)):

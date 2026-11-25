@@ -96,6 +96,7 @@ import
     questlang/typechecker/control : questlang/typechecker/Control
     questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
     questlang/typechecker/exceptions : questlang/typechecker/Exceptions
+    questlang/typechecker/nearMiss : questlang/typechecker/NearMiss
     questlang/typechecker/scoping : questlang/typechecker/Scoping
     questlang/typechecker/tuples : questlang/typechecker/Tuples
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
@@ -226,7 +227,8 @@ export
                         end
                         let found = checker.lookupValue(c e name)
                         if maybe.isNone(found) then
-                            diagnostics.fail(:Ok "Undefined variable '" <> name <> "'" offset)
+                            diagnostics.failWithHelp(:Ok "Undefined variable '" <> name <> "'" offset
+                                    nearMiss.valueHelp(e name))
                         end
                         let sym = maybe.unwrap(found)
                         (* Closures may not capture var or out parameters, nor
@@ -258,7 +260,8 @@ export
                                 let targetOffset = x.target.span.startOffset
                                 let found = checker.lookupValue(c e id.name)
                                 if maybe.isNone(found) then
-                                    diagnostics.fail(:Ok "Undefined variable '" <> id.name <> "'" targetOffset)
+                                    diagnostics.failWithHelp(:Ok "Undefined variable '" <> id.name <> "'" targetOffset
+                                            nearMiss.valueHelp(e id.name))
                                 end
                                 let sym = maybe.unwrap(found)
                                 (* The same rules as a plain use: a closure may

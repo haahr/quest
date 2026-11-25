@@ -1,0 +1,78 @@
+(* Quest Self-Hosted Compiler: Help for Names That Failed to Resolve *)
+
+module nearMiss : NearMiss
+import
+    ascii : Ascii
+    stringOp = string : StringOp
+
+    util/maybe : util/Maybe
+
+    questlang/types/env : questlang/types/Env
+    questlang/types/symbols : questlang/types/Symbols
+export
+    (* The module registered under name, without loading a builtin one *)
+    let registeredModule(e: env.T name: String): maybe.T(symbols.Scope) =
+        if env.hasModule(e name) then env.lookupModule(e name) else maybe.none() end
+
+    (* name with its first letter lowercased: an interface's module's name *)
+    let lowered(name: String): String =
+        if stringOp.isEmpty(name) then
+            name
+        else
+            let code = ascii.val(stringOp.getChar(name 0))
+            if {code < 65} orif {code > 90} then
+                name
+            else
+                let s = stringOp.getSub(name 0 stringOp.length(name))
+                stringOp.setChar(s 0 ascii.char(code + 32))
+                s
+            end
+        end
+
+    (* Whether the module registered under name has a type T *)
+    let hasType(e: env.T name: String): Bool =
+        begin
+            let scope = registeredModule(e name)
+            maybe.isSome(scope) andif maybe.isSome(symbols.lookupTypeLocal(maybe.unwrap(scope) "T"))
+        end
+
+    let typeHelp(e: env.T name: String): maybe.T(String) =
+        begin
+            let m = lowered(name)
+            if hasType(e name) then
+                maybe.some("'" <> name <> "' is a module; its type is " <> name <> ".T")
+            elsif {not stringOp.equal(m name)} andif env.hasInterface(e name) andif hasType(e m) then
+                maybe.some("'" <> name <> "' is an interface; the module imported as '" <> m <> "' has the type "
+                    <> m <> ".T")
+            else
+                maybe.none()
+            end
+        end
+
+    let valueHelp(e: env.T name: String): maybe.T(String) =
+        begin
+            let m = lowered(name)
+            if {not stringOp.equal(m name)} andif env.hasInterface(e name) andif env.hasModule(e m) then
+                maybe.some("'" <> name <> "' is an interface; the module is imported as '" <> m <> "'")
+            else
+                maybe.none()
+            end
+        end
+
+    let memberHelp(moduleName: String scope: symbols.Scope member: String): maybe.T(String) =
+        if maybe.isSome(symbols.lookupTypeLocal(scope member)) then
+            maybe.some(moduleName <> "." <> member <> " is a type, not a value")
+        else
+            maybe.none()
+        end
+
+    let callHelp(e: env.T name: String): maybe.T(String) =
+        begin
+            let scope = registeredModule(e name)
+            if maybe.isSome(scope) andif maybe.isSome(symbols.lookupValueLocal(maybe.unwrap(scope) "new")) then
+                maybe.some("'" <> name <> "' is a module; call one of its functions, such as " <> name <> ".new")
+            else
+                maybe.none()
+            end
+        end
+end

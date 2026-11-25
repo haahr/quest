@@ -12,6 +12,7 @@ from typing import Optional
 
 import quest.syntax.ast as ast
 from quest.typechecker.checker import Checker
+from quest.typechecker.near_miss import value_help
 from quest.types import (
     BOOL_TYPE,
     INFIX_OPERATORS,
@@ -335,7 +336,7 @@ class ControlMixin(Checker):
             case ast.ExprId(name=name, offset=id_off):
                 sym = env.lookup_value(name)
                 if sym is None:
-                    raise TypeError(f"Undefined variable '{name}'", offset=id_off)
+                    raise TypeError(f"Undefined variable '{name}'", offset=id_off, help_text=value_help(env, name))
                 self._check_capturable(sym, id_off)
                 if not sym.is_var and not sym.is_out:
                     raise TypeError(f"Cannot assign to immutable variable '{name}'", offset=id_off)

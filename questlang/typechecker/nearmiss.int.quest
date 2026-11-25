@@ -1,0 +1,35 @@
+(* Quest Self-Hosted Compiler: Help for Names That Failed to Resolve
+ *
+ * A lookup that fails says only that it failed (Undefined type 'vector'), and
+ * the commonest causes are a module, its interface, and its type standing in
+ * for one another: vector for vector.T, Vector for vector.T, Iter for the
+ * module iter. Each function returns the help line for one kind of failed
+ * lookup, or none, by looking for the name in the namespaces the lookup did
+ * not search, and for an interface, for the module of the same name with its
+ * first letter lowercased. Only modules and interfaces already registered are
+ * consulted, so asking loads nothing (docs/error-messages-plan.md section 2;
+ * the bootstrap's typechecker/near_miss.py). *)
+
+interface NearMiss
+import
+    util/maybe : util/Maybe
+
+    questlang/types/env : questlang/types/Env
+    questlang/types/symbols : questlang/types/Symbols
+export
+    (* Help for a type name that is not a type: a module's name, whose type
+     * is name.T, or an interface's, whose module has the type *)
+    typeHelp(e: env.T name: String): maybe.T(String)
+
+    (* Help for a value name that is not a value: an interface's name, whose
+     * module is imported under the name lowercased *)
+    valueHelp(e: env.T name: String): maybe.T(String)
+
+    (* Help for a member a module does not export as a value: a type of the
+     * module's *)
+    memberHelp(moduleName: String scope: symbols.Scope member: String): maybe.T(String)
+
+    (* Help for a call of a module's name: one of its functions, new, when it
+     * has one *)
+    callHelp(e: env.T name: String): maybe.T(String)
+end

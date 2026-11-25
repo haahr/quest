@@ -19,6 +19,7 @@ from typing import Any, Optional, Union
 import quest.syntax.ast as ast
 from quest.common.diagnostics import QuestTypeError
 from quest.typechecker.checks import check_binder
+from quest.typechecker.near_miss import type_help
 from quest.types import (
     TYPE_KIND,
     alias_reference,
@@ -191,7 +192,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                 name = path[0]
                 sym = env.lookup_type(name)
                 if sym is None:
-                    raise KindError(f"Undefined type '{name}'", offset=offset)
+                    raise KindError(f"Undefined type '{name}'", offset=offset, help_text=type_help(env, name))
                 if isinstance(sym, _RecOperatorSymbol):
                     raise sym.non_uniform_error(offset)
                 if sym.definition is not None:

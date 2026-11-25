@@ -14,6 +14,7 @@ import
     questlang/typechecker/checker : questlang/typechecker/Checker
     questlang/typechecker/checks : questlang/typechecker/Checks
     questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
+    questlang/typechecker/nearMiss : questlang/typechecker/NearMiss
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
     questlang/types/env : questlang/types/Env
     questlang/types/kinds : questlang/types/Kinds
@@ -315,9 +316,9 @@ export
                                     let ms = maybe.unwrap(modSym)
                                     let valSym = symbols.lookupValueLocal(maybe.unwrap(moduleScope) x.field)
                                     if maybe.isNone(valSym) then
-                                        diagnostics.fail(:Ok "Module '" <> id.name <> "' has no exported member '"
-                                            <> x.field <> "'"
-                                                offset)
+                                        diagnostics.failWithHelp(:Ok "Module '" <> id.name
+                                            <> "' has no exported member '" <> x.field <> "'" offset
+                                                nearMiss.memberHelp(id.name maybe.unwrap(moduleScope) x.field))
                                     end
                                     checker.checkPoisoned(maybe.unwrap(valSym))
                                     let targetTyped =

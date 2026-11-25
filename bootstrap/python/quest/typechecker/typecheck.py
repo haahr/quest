@@ -35,6 +35,7 @@ from quest.modules.elaboration import (
 )
 import quest.modules.loader  # noqa: F401  (registers the loader with quest.modules.elaboration)
 from quest.typechecker.elaborate_types import require_unsound_module
+from quest.typechecker.near_miss import value_help
 from quest.typechecker.typed_ast import (
     TypedBinding,
     TypedBool,
@@ -357,7 +358,7 @@ class TypeElaborator(
 
                 sym = env.lookup_value(name)
                 if sym is None:
-                    raise TypeError(f"Undefined variable '{name}'", offset=off)
+                    raise TypeError(f"Undefined variable '{name}'", offset=off, help_text=value_help(env, name))
 
                 # Disallow capturing out or var parameters / local mutable
                 # variables in nested closures
@@ -385,7 +386,11 @@ class TypeElaborator(
                 if isinstance(target, ast.ExprId):
                     sym = env.lookup_value(target.name)
                     if sym is None:
-                        raise TypeError(f"Undefined variable '{target.name}'", offset=target.offset)
+                        raise TypeError(
+                            f"Undefined variable '{target.name}'",
+                            offset=target.offset,
+                            help_text=value_help(env, target.name),
+                        )
                     # The same rules as a plain use: a closure may not
                     # capture a var parameter, nor a function read a global var
                     self._check_capturable(sym, target.offset)

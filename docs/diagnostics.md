@@ -91,6 +91,11 @@ are any.
 - **The first error, or several.** The bootstrap raises at the first kind or type error, and the pipeline reports it.
   The self-hosted checker reports that error first, with the same message and span, and goes on to find others
   (§4.5).
+- **Help for a name that failed to resolve.** An undefined type or variable, a module's missing member, and a call of
+  a module carry help when the name means something else in scope: a module where its type was meant (`'vector' is
+  a module; its type is vector.T`), an interface where its module was meant, a module's type where a value was
+  meant, and a module called as a function. Only modules and interfaces already registered are consulted
+  (`typechecker/near_miss.py`, `questlang/typechecker/nearMiss`).
 - **Internal errors.** A broken invariant of the bootstrap usually shows as a Python exception, reported with its
   traceback (§3). The self-hosted checker reports one as an error whose message starts `internal:`.
 

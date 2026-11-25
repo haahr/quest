@@ -19,6 +19,7 @@ import
     questlang/typechecker/checks : questlang/typechecker/Checks
     questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
     questlang/typechecker/escape : questlang/typechecker/Escape
+    questlang/typechecker/nearMiss : questlang/typechecker/NearMiss
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
     questlang/types/env : questlang/types/Env
     questlang/types/kinds : questlang/types/Kinds
@@ -317,7 +318,8 @@ export
                         let idOff = left.span.startOffset
                         let found = checker.lookupValue(c e id.name)
                         if maybe.isNone(found) then
-                            diagnostics.fail(:Ok "Undefined variable '" <> id.name <> "'" idOff)
+                            diagnostics.failWithHelp(:Ok "Undefined variable '" <> id.name <> "'" idOff
+                                    nearMiss.valueHelp(e id.name))
                         end
                         let sym = maybe.unwrap(found)
                         checker.checkCapturable(c sym idOff)

@@ -254,6 +254,11 @@ class Environment:
     def register_interface(self, name: str, scope: Scope) -> None:
         self._interfaces[name] = scope
 
+    def has_interface(self, name: str) -> bool:
+        """Whether an interface is registered under name (builtin interfaces
+        not yet loaded are not)."""
+        return name in self._interfaces
+
     def lookup_interface(self, name: str) -> Optional[Scope]:
         res = self._interfaces.get(name)
         if res is None and self.builtin_registry:

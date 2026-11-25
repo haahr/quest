@@ -20,6 +20,7 @@ import
     questlang/typechecker/checker : questlang/typechecker/Checker
     questlang/typechecker/checks : questlang/typechecker/Checks
     questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
+    questlang/typechecker/nearMiss : questlang/typechecker/NearMiss
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
     questlang/types/env : questlang/types/Env
     questlang/types/kinds : questlang/types/Kinds
@@ -157,7 +158,8 @@ export
                     begin
                         let found = checker.lookupValue(c e x.name)
                         if maybe.isNone(found) then
-                            diagnostics.fail(:Ok "Undefined variable '" <> x.name <> "'" offset)
+                            diagnostics.failWithHelp(:Ok "Undefined variable '" <> x.name <> "'" offset
+                                    nearMiss.valueHelp(e x.name))
                         end
                         let sym = maybe.unwrap(found)
                         checker.checkCapturable(c sym offset)
@@ -709,8 +711,12 @@ export
                             when typeAll then synthPolymorphicApp(c offset args funcTyped fnType e loopDepth expected)
                             when typeFun then synthMonomorphicApp(c offset funcTyped args fnType e loopDepth)
                             else
-                                diagnostics.fail("Cannot invoke non-function type '" <> model.show(fnType)
-                                    <> "'" x.func.span.startOffset)
+                                diagnostics.failWithHelp("Cannot invoke non-function type '" <> model.show(fnType)
+                                    <> "'" x.func.span.startOffset
+                                        case x.func.form
+                                            when exprId with id then nearMiss.callHelp(e id.name)
+                                            else maybe.none()
+                                        end)
                         end
                     end
                 end

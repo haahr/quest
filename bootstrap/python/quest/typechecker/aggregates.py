@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Optional
 import quest.syntax.ast as ast
 from quest.typechecker.checker import Checker
+from quest.typechecker.near_miss import member_help
 from quest.types import (
     BOOL_TYPE,
     binds_module,
@@ -228,6 +229,7 @@ class AggregateMixin(Checker):
                     raise TypeError(
                         f"Module '{expr.target.name}' has no exported member '{expr.field}'",
                         offset=expr.offset,
+                        help_text=member_help(expr.target.name, module_scope, expr.field),
                     )
                 target_typed = TypedVar(
                     name=expr.target.name,
