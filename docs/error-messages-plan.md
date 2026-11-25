@@ -1,16 +1,20 @@
 # Plan: Error Messages That Point at the Fix
 
-Two kinds of error read badly today: a misused name (an interface for its module, a module for its type, a type
-without its arguments) gets a message about the symptom, often somewhere else; and a syntax error is reported where
-the parser gave up, with a list of everything it could have accepted there, which is often far from where the fix
-goes. This plan makes both point at the fix, without new compiler machinery: the checker adds a help line where it
-already reports a failed lookup, and the parser, once a parse has failed, looks again at the tokens to say what was
+Two kinds of error read badly today: a misused name (an interface for its module, a module for its type, a type without
+its arguments) gets a message about the symptom, often somewhere else; and a syntax error is reported where the parser
+gave up, with a list of everything it could have accepted there, which is often far from where the fix goes. This plan
+makes both point at the fix, without new compiler machinery: the checker adds a help line where it already reports a
+failed lookup or a type mismatch, and the parser, once a parse has failed, looks again at the tokens to say what was
 left open and lists what it expected in words.
 
 Both compilers, with the same text, since the error tests and the shared goldens compare their output
 ([diagnostics.md](diagnostics.md) §1, [testing.md](testing.md) §3). The two-compilers policy holds: shared behavior
 goldens are written by the bootstrap. Each step adds error tests for what it reports
 (`tests/errors/<phase>/`), whose expectations match a diagnostic's message, notes, or help (testing.md §3.3).
+
+Nothing new is an error (the user, 2026-11-24, §6): every program accepted today is accepted after this plan, and
+every program rejected today is rejected at the same place. The plan changes only what an error says, its notes and
+help, and, for a syntax error, which of the tokens involved it is located at.
 
 Not in this plan: recovering from a syntax error to report the next one, a different parsing algorithm, and changes
 to how diagnostics are rendered (§5).
@@ -73,22 +77,41 @@ table gets an error test that matches its help.
 The library index for the missing-import row is the list of `lib/` interfaces, which the loader already searches; if
 reading it at that point is awkward in either compiler, that row is left out.
 
-### Step 2. A type through an interface's name, when its module is imported
+Steps 2 and 3 add help to the subtype failure (`synthesized type 'S' is not a subtype of expected type 'E'`), which
+both compilers raise from one place each (the subtype check's caller in the bootstrap's checker, and its counterpart in
+`questlang/typechecker/`). A function in each compiler, `mismatchHelp(S, E)`, looks at the two types for the two shapes
+below and returns the help, or nothing; the message and its location stay as they are. A declaration of either shape
+is still accepted, as it is today (§6).
 
-When a type path's first name is an interface and a module implementing that interface is imported, the path is an
-error at the annotation: `'Iter.T' names the interface's type, not the module's`, with the help `write iter.T`. An
-interface's name in a path stays legal where no implementing module is in scope. This is the plan's one change to what
-programs are accepted; the user decides it (§6). Nothing in the tree is affected (§1).
+### Step 2. A type through an interface's name
+
+`Iter.T(Int)` is accepted as a declared type, and it names the interface's own abstract type, so the first value
+passed where it is expected fails (§1). When one of the two types (or a type argument of one, at any depth) is a type
+reached through an interface's name, and the other has, at the same place, the type of the same name in a module that
+implements that interface, the help says what happened:
+
+```
+= help: 'Iter.T' is the interface Iter's own type, which no value has; where it is declared, write iter.T, the type
+        of the module that implements Iter
+```
+
+The path through an interface's name is told from the module's by how it was elaborated (the bootstrap's
+`elaborate_types.py` looks up `env.lookup_interface` after `env.lookup_module`, and the self-hosted
+`elaboratetypes` the same), so the type variable it makes needs to record that it came from an interface, if it does
+not already; the name alone (`Iter.T` against `iter.T`) is the fallback. If the declaration's location is known where
+the mismatch is found, the help names it (`where it is declared, at 3:13`).
 
 ### Step 3. A type operator without its arguments
 
-Where a value's declared type is an operator that takes arguments (`vector.T`, of kind `ALL(A::TYPE) TYPE`), report
-it there: `vector.T takes 1 type argument`, with the help `for example, vector.T(Int)`. Today the declaration is
-accepted and the error is a subtype failure at the first use. The check belongs where a parameter's or a binding's
-type annotation is elaborated, and asks only whether the elaborated type's kind is an operator kind. If the type
-system means an unapplied operator to be a type there, which the bootstrap's acceptance suggests it might
-([type-system.md](type-system.md)), this step becomes help on the subtype failure instead: `'vector.T' is missing
-its type argument`.
+`v: vector.T` is accepted as a declared type, and the first use of `v` fails with `'vector.T' is not a subtype of
+'vector.T(?A)'` (§1). When one type is an operator (its kind takes arguments, as `vector.T`'s is `ALL(A::TYPE)
+TYPE`) and the other is the same operator applied, the help says so:
+
+```
+= help: 'vector.T' is missing its type argument; where it is declared, write vector.T(...), as in vector.T(Int)
+```
+
+With the declaration's location when it is known, as in step 2.
 
 ## 3. Syntax: What Was Left Open
 
@@ -130,7 +153,8 @@ The expected list is printed as source text, without the grammar's internal name
 - the tokens that can start an expression, when all or nearly all of them are expected, collapsed into `an
   expression`;
 - the message `expected 'end', ')', or an expression, found 'let'`, located at the found token, with `the end of the
-  file` for EOF.
+  file` for EOF;
+- no token kinds (`KW_END`, `RPAREN`): the words alone (§6).
 
 This changes the text of every syntax error, so the parse error tests (14) and any parse goldens with errors are
 written again, by the bootstrap. Each grammar's descriptions are data beside its rules, the same in both grammars
@@ -170,11 +194,9 @@ already does so for others, and is otherwise left alone.
 - **Rewording other type errors.** The subtype failure's text (`synthesized type ... is not a subtype of expected
   type ...`) is a candidate too, but its wording is tested widely and it is not one of the cases above.
 
-## 6. Decisions for the User
+## 6. Decisions (the User, 2026-11-24)
 
-1. **Step 2's rule.** Make `Iter.T` an error when a module implementing `Iter` is imported (the plan), make it an
-   error everywhere, or only add help to the subtype failure.
-2. **Step 3.** Whether an unapplied operator as a value's declared type should be an error at the annotation (the
-   plan) or only get help where it fails.
-3. **Step 5's form.** The plan drops the token kinds (`KW_END`) from syntax errors. Keeping them, after the words,
-   would help someone reading the grammar, at the cost of length.
+1. **Nothing new is an error.** A type through an interface's name (`Iter.T`) stays legal as a declaration; the help
+   comes where it is first misused, at the subtype failure (step 2).
+2. **Unapplied type operators** as declared types stay legal too, and get help only where they fail (step 3).
+3. **Syntax errors** say what was expected in words, without the token kinds (step 5).
