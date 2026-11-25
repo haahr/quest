@@ -90,6 +90,15 @@ are any.
   that together start an expression, a type, or a declaration, or continue an expression (an operator), is named by
   those words when all of its tokens were expected (`syntax/expected.py`, `questlang/syntax/parser/expected`). Both
   compilers report the same position and text.
+- **What was left open.** Before reporting, the parser walks the tokens with a stack of the keywords that `end`
+  closes and the brackets (`syntax/unclosed.py`, `questlang/syntax/parser/unclosed`). When it finds a construct left
+  open before where the parse stopped, or a closer with nothing to close, the error is located there instead:
+  `'if' has no matching 'end'`, with a note saying what shows it (`the 'end' at 5:5 lines up with the 'begin' at
+  2:5`, since `quest fmt` lines an `end` up with the line its construct starts on; or a declaration at the left
+  margin, a closing bracket of another kind, the end of the file), and a secondary label where the parse stopped
+  (`parsing stopped here`, or the note `parsing stopped at the end of the file`). An opener the parse stopped at is
+  what the parser rejected (`(1 + 2)`, since braces group), so it keeps the usual error. The REPL and the language
+  server ask where the parse stopped (`parser.stoppedAt`), not where the error is located.
 
 ### 4.2. Kinds and Types
 - **The first error, or several.** The bootstrap raises at the first kind or type error, and the pipeline reports it.

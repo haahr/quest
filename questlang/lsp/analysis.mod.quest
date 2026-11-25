@@ -236,7 +236,10 @@ export
                 when diagbag.fatalError then
                     for i = 0 upto {diagbag.count(b) - 1} do diagbag.add(bag diagbag.get(b i)) end
                     cuts := cuts + 1
-                    let at = if diagbag.count(b) > 0 then diagnostics.span(diagbag.get(b 0)).startOffset else ~1 end
+                    (* Where the parse stopped, which is where the error is
+                     * unless it is located at a construct left open *)
+                    let endOffset = if vector.empty(current) then 0 else vector.last(current).span.startOffset end
+                    let at = if diagbag.count(b) > 0 then parser.stoppedAt(diagbag.get(b 0) endOffset) else ~1 end
                     if {at <= lastError} orif {cuts > 20} then
                         going := false
                     else

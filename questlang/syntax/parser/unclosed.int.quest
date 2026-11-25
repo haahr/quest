@@ -1,0 +1,42 @@
+(* Quest Self-Hosted Compiler: What Was Left Open Where a Parse Failed
+ *
+ * The parser reports a syntax error where it stopped, which for a missing end
+ * or bracket is often far from where the fix goes: the end of the file, or the
+ * next declaration. After a parse has failed, find walks the tokens with a
+ * stack of what is open, the keywords that end closes and the brackets, and
+ * returns the first construct it can show was left open, or a closer with
+ * nothing to close:
+ *
+ * - a closing bracket where something else is innermost, or an end where a
+ *   bracket is: the innermost construct is not closed;
+ * - an end that starts a line at the column of the line of an opener deeper
+ *   than the innermost: the innermost is missing its end, since quest fmt
+ *   lines an end up with the line its construct starts on;
+ * - a declaration (let, Let, Def, ...) that starts a line no further right
+ *   than the line of the innermost opener: that opener is missing its end;
+ * - the end of the file with something open: the innermost is not closed;
+ * - an end or closing bracket with nothing it can close.
+ *
+ * The keywords that end closes are the grammar's (docs/grammar.txt), with two
+ * that open only in context: of, unless it is option's or variant's or is
+ * followed by a parenthesis (array of(n x)), and with, inside an Option type.
+ * The bootstrap's counterpart is syntax/unclosed.py
+ * (docs/error-messages-plan.md section 3). *)
+
+interface Unclosed
+import
+    util/maybe : util/Maybe
+
+    questlang/common/location : questlang/common/Location
+    questlang/syntax/tokens : questlang/syntax/Tokens
+export
+    (* A construct left open, or a closer with nothing to close: the token the
+     * error is located at, its message, a note saying what shows it, and
+     * whether the token is a closer with nothing to close rather than an
+     * opener *)
+    Def Finding = Tuple tok: tokens.Token message: String note: maybe.T(String) closesNothing: Bool end
+
+    (* The first construct left open in toks (all but an EOF token at the
+     * end), or a closer with nothing to close, if the walk can show one *)
+    find(toks: Array(tokens.Token) sm: location.SourceMap): maybe.T(Finding)
+end

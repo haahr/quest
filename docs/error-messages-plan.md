@@ -143,6 +143,13 @@ reported as today, with step 5's wording. When the two disagree in a way the pas
 but no line-up or column-1 evidence), the farthest-token error stays and the open construct is a note: `the 'case' at
 3:5 is still open here`.
 
+As built: the declaration rule fires for a declaration no further right than the innermost opener's line, not only
+at column 1; an opener the parse stopped at keeps the usual error, since the parser rejected the opener itself
+(`(1 + 2)`: braces group in Quest, not parentheses); the end of the file is a note (`parsing stopped at the end of the
+file`), not a label, since there is no line to show; and the "still open here" note was left out, since nearly every
+error inside a block would carry it. The REPL's test for incomplete input and the language server's recovery ask where
+the parse stopped (`parser.stoppedAt`), so they behave as before.
+
 ### Step 5. What was expected, in words
 
 The expected list is printed as source text, without the grammar's internal names:

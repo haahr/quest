@@ -18,7 +18,8 @@ from typing import Any, Callable, Optional as Opt
 from quest.common.location import SourceMap
 from quest.syntax.expected import describe as describe_expected
 from quest.syntax.tokens import Token, TokenKind
-from quest.common.diagnostics import QuestCompilerError
+from quest.syntax.unclosed import find as find_unclosed
+from quest.common.diagnostics import Diagnostic, DiagnosticLabel, QuestCompilerError
 
 
 # ============================================================================
@@ -223,9 +224,41 @@ class ParserError(QuestCompilerError):
         offset: int,
         length: int = 1,
         token: Opt[Token] = None,
+        notes: Opt[list[str]] = None,
+        stopped: Opt[Token] = None,
     ):
         super().__init__(message=message, offset=offset, length=length)
+        # The token the parse stopped at, the farthest any construct reached
+        # (the REPL reads another line when it is the end of the input)
         self.token = token
+        self.notes = notes or []
+        # Where the parse stopped, when the error is located elsewhere: a
+        # secondary label, "parsing stopped here"
+        self.stopped = stopped
+
+    def to_diagnostic(self, length: Opt[int] = None) -> Diagnostic:
+        diagnostic = Diagnostic.make_error(
+            message=self.message,
+            offset=self.offset,
+            length=length if length is not None else self.length,
+            notes=self.notes,
+        )
+        if self.stopped is not None:
+            diagnostic.secondary_labels.append(
+                DiagnosticLabel(
+                    offset=self.stopped.offset,
+                    length=max(1, self.stopped.length),
+                    message=STOPPED_HERE,
+                    is_primary=False,
+                )
+            )
+        return diagnostic
+
+
+# The secondary label of a syntax error located at what was left open, or its
+# note when the parse stopped at the end of the input
+STOPPED_HERE = "parsing stopped here"
+STOPPED_AT_END = "parsing stopped at the end of the file"
 
 
 # Sentinel for packrat recursion detection
@@ -309,9 +342,30 @@ class Parser:
                 return result
 
         # Format diagnostic error on failure, saying what was expected in
-        # words (syntax/expected.py)
+        # words (syntax/expected.py), or, when the tokens show a construct
+        # left open before where the parse stopped (or a closer with nothing
+        # to close, there or before), reporting that, with where the parse
+        # stopped as a secondary label (syntax/unclosed.py). An opener the
+        # parse stopped at is itself what the parser rejected.
         farthest_token = self._peek(self.farthest_pos)
         message = describe_expected(self.expected_at_farthest, farthest_token)
+        unclosed = find_unclosed(self.tokens[:-1], self.source_map)
+        if unclosed is not None and (
+            unclosed.token.offset < farthest_token.offset
+            or (unclosed.token.offset == farthest_token.offset and unclosed.closes_nothing)
+        ):
+            at_end = farthest_token.kind == TokenKind.EOF
+            notes = [unclosed.note] if unclosed.note else []
+            if at_end:
+                notes.append(STOPPED_AT_END)
+            raise ParserError(
+                unclosed.message,
+                unclosed.token.offset,
+                max(1, unclosed.token.length),
+                token=farthest_token,
+                notes=notes,
+                stopped=None if at_end or farthest_token.offset == unclosed.token.offset else farthest_token,
+            )
         raise ParserError(
             message,
             farthest_token.offset,
