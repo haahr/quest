@@ -45,14 +45,17 @@ parse to the next, so that each parse does not allocate a fresh table of tokens 
 
 Because every alternative backtracks, a failed parse leaves no single point of failure. The engine records the
 farthest token position at which any construct failed, and the names of everything that was expected there (token
-kinds and target names). When no parse covers all the tokens, the error is reported at that token:
+kinds and target names). When no parse covers all the tokens, the error is reported at that token, saying what was
+expected in words (`expected`, the bootstrap's `syntax/expected.py`): the target names are left out, the tokens are
+quoted as written, and a group of tokens that together start an expression, a type, or a declaration, or continue an
+expression, is named so:
 
 ```
-error: Unexpected token '(' (LPAREN), expected: AT, CHAR_LIT, IDENT, ..., PostfixValue, PrimaryValue, ..., Value
+error: Expected ':', '::', 'and', 'end', 'of', a declaration, an expression, or an operator, found ';'
 ```
 
-This is why targets have names (`"Value"`, `"PostfixValue"`): they appear in messages, and must match the bootstrap's.
-The error goes to the bag and `diagbag.fatalError` is raised. The REPL relies on the farthest position too: if it is
+Targets still have names (`"Value"`, `"PostfixValue"`), which must match the bootstrap's, since the two record the
+same failures. The error goes to the bag and `diagbag.fatalError` is raised. The REPL relies on the farthest position too: if it is
 the end of the input, the input is incomplete and the REPL reads another line.
 
 ## The grammar and its actions

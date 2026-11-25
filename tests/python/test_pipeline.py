@@ -161,7 +161,7 @@ class TestPipeline(unittest.TestCase):
         self.assertEqual(res.final_phase, "parse")
         self.assertTrue(res.has_errors)
         self.assertNotIn("typecheck", res.artifacts)
-        self.assertTrue(any("Unexpected token" in d.message for d in res.diagnostics))
+        self.assertTrue(any("Expected '(' or an expression, found ';'" in d.message for d in res.diagnostics))
 
     def test_interpret_dump(self):
         """Verifies --dump-after interpret emits formatted value for

@@ -316,7 +316,7 @@ class LanguageServerTest(unittest.TestCase):
         messages = [d["message"] for d in diagnostics]
         self.assertIn(2, lines, messages)
         self.assertIn(4, lines, messages)
-        self.assertTrue(any("Unexpected token" in m for m in messages), messages)
+        self.assertTrue(any(", found " in m for m in messages), messages)
         self.assertFalse(any("Undefined" in m or "questLspBroken" in m for m in messages), messages)
         module = MODULE.replace("= r\n", "= r +\n").replace('"few"', "1")
         self.write("shapes.int.quest", INTERFACE)

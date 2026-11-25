@@ -6,9 +6,10 @@ A token is its kind, its lexeme (the exact source text, quotes, backslashes,
 and tildes included: "a\\n", ~3), a literal's value (the string a and newline;
 the Int -3), and the offset of its first character in the file. Offsets become
 lines and columns only when an error is reported (SourceMap, common/location.py).
-The tokenize phase's output and the parser's error messages print the kinds'
-names, so the self-hosted counterpart, questlang/syntax/tokens, gives its kinds
-the same names. docs/syntax.md §2 gives the lexical rules."""
+The tokenize phase's output prints the kinds' names, and the parser records
+them as what it expected (syntax/expected.py spells them for its messages), so
+the self-hosted counterpart, questlang/syntax/tokens, gives its kinds the same
+names. docs/syntax.md §2 gives the lexical rules."""
 
 from __future__ import annotations
 

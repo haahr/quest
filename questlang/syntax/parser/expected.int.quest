@@ -1,0 +1,26 @@
+(* Quest Self-Hosted Compiler: What a Syntax Error Says Was Expected
+ *
+ * The parser engine records the names of the constructs that failed at the
+ * farthest token: token kinds (KW_END, or IDENT('foo') for a token with a
+ * fixed lexeme) and the grammar's nonterminals (PrimaryValue). describe turns
+ * them into what a reader writes: the nonterminals are left out, since the
+ * tokens that start them are recorded too; a group of tokens that together
+ * mean "an expression", "a type", "a declaration", or "an operator" becomes
+ * those words when every token of the group is expected; literal and name
+ * tokens become words ("a name", "an integer"); and every other token is
+ * quoted as written ('end', ')'). The bootstrap's counterpart is
+ * syntax/expected.py, whose groups and words are the same
+ * (docs/error-messages-plan.md section 3). *)
+
+interface Expected
+import
+    questlang/syntax/tokens : questlang/syntax/Tokens
+export
+    (* What was found instead of what was expected: the token as written, or
+     * the end of the file *)
+    found(tok: tokens.Token): String
+
+    (* The message of a syntax error at tok, where the constructs named by
+     * names were expected: Expected 'end' or an expression, found 'let' *)
+    describe(names: Array(String) tok: tokens.Token): String
+end

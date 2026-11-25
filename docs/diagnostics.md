@@ -84,8 +84,12 @@ are any.
   lexes on, and no later phase runs): an unexpected character, an unclosed comment, an unterminated
   string or character literal, an empty character literal, an unknown or unterminated escape, an invalid number, or
   an integer out of range.
-- **The parser** reports one syntax error, at the farthest position any alternative reached, naming everything that
-  was expected there, sorted. Both compilers report the same position and text.
+- **The parser** reports one syntax error, at the farthest position any alternative reached, saying in words what
+  was expected there: `Expected ':', 'end', a declaration, or an expression, found ';'`. The grammar's nonterminals
+  are left out (the tokens that start them are listed too); tokens are quoted as written; and a group of tokens
+  that together start an expression, a type, or a declaration, or continue an expression (an operator), is named by
+  those words when all of its tokens were expected (`syntax/expected.py`, `questlang/syntax/parser/expected`). Both
+  compilers report the same position and text.
 
 ### 4.2. Kinds and Types
 - **The first error, or several.** The bootstrap raises at the first kind or type error, and the pipeline reports it.

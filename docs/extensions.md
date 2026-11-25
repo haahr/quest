@@ -260,7 +260,7 @@ Empty phrases (`;;`, or a `;` at the start) are accepted, as in the paper. A sem
 error:
 
 ```quest
-let n = begin let a = 1; a + 1 end   (* ERROR: Unexpected token ';' *)
+let n = begin let a = 1; a + 1 end   (* ERROR: ... found ';' *)
 ```
 
 The one relaxation is that the top-level semicolon is optional, in files and at the REPL, including after the last

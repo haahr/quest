@@ -1,0 +1,144 @@
+(* Quest Self-Hosted Compiler: What a Syntax Error Says Was Expected *)
+
+module expected : Expected
+import
+    ascii : Ascii
+    stringOp = string : StringOp
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/strutil : util/Strutil
+
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
+    questlang/syntax/tokens : questlang/syntax/Tokens
+export
+    Let Group = Tuple words: String names: Array(String) end
+
+    let group(words: String names: String): Group =
+        tuple let words = words let names = vector.toArray(strutil.split(names " ")) end
+
+    (* The tokens that start an expression, a type, a declaration (in a block
+     * or at the top level), and the operators that continue an expression,
+     * each described by its words when all of its tokens are expected *)
+    let groups = array of
+        group("an expression"
+                "AT CHAR_LIT IDENT INT_LIT KW_ARRAY KW_AUTO KW_BEGIN KW_CASE KW_EXCEPTION KW_EXIT KW_EXTENT KW_EXTERNAL"
+            <> " KW_FALSE KW_FOR KW_FUN KW_IF KW_INSPECT KW_LOOP KW_NOT KW_OK KW_OPTION KW_ORDINAL KW_RAISE KW_RECORD"
+            <> " KW_TRUE KW_TRY KW_TUPLE KW_VAR KW_VARIANT KW_WHILE LBRACE REAL_LIT STRING_LIT SYMBOLIC_INFIX")
+        group("a type"
+                "IDENT KW_ALL KW_ARRAY_TYPE KW_AUTO_TYPE KW_EXCEPTION_TYPE KW_EXTERNAL KW_FUN_TYPE KW_OPTION_TYPE"
+            <> " KW_OUT_TYPE KW_RECORD_TYPE KW_REC_TYPE KW_TUPLE_TYPE KW_VARIANT_TYPE KW_VAR_TYPE LBRACE"
+            <> " SYMBOLIC_INFIX")
+        group("a declaration" "KW_DEF KW_DEF_KIND KW_IMPORT KW_INTERFACE KW_LET KW_LET_TYPE KW_MODULE KW_UNSOUND")
+        group("an operator" "ASSIGN BANG DOT KW_ANDIF KW_IS KW_ISNOT KW_ORIF LBRACKET LPAREN QUESTION SYMBOLIC_INFIX")
+    end
+
+    (* The tokens without a fixed spelling, by what they are *)
+    let word(name: String): maybe.T(String) =
+        if stringOp.equal(name "IDENT") then maybe.some("a name")
+        elsif stringOp.equal(name "INT_LIT") then maybe.some("an integer")
+        elsif stringOp.equal(name "REAL_LIT") then maybe.some("a real number")
+        elsif stringOp.equal(name "CHAR_LIT") then maybe.some("a character")
+        elsif stringOp.equal(name "STRING_LIT") then maybe.some("a string")
+        elsif stringOp.equal(name "SYMBOLIC_INFIX") then maybe.some("an operator")
+        elsif stringOp.equal(name "EOF") then maybe.some("the end of the file")
+        else maybe.none()
+        end
+
+    (* Whether name is a token's (KW_END, IDENT('foo')) rather than a
+     * nonterminal's (PrimaryValue): its kind is all capitals and
+     * underscores *)
+    let isTokenName(name: String): Bool =
+        begin
+            let paren = strutil.find(name "(")
+            let n = if paren < 0 then stringOp.length(name) else paren end
+            let var good = n > 0
+            for i = 0 upto {n - 1} do
+                let c = ascii.val(stringOp.getChar(name i))
+                if not({c is 95} orif {{c >= 65} andif {c <= 90}}) then good := false end
+            end
+            good
+        end
+
+    let quoted(s: String): String = "'" <> s <> "'"
+
+    Let Set = hashMap.T(String Bool)
+
+    let newSet(): Set = hashMap.new(stringOp.equal hash.string)
+    let add(s: Set name: String): Ok = begin hashMap.insert(s name true) ok end
+    let has(s: Set name: String): Bool = hashMap.contains(s name)
+
+    let sorted(s: Set): vector.T(String) =
+        begin
+            let v = hashMap.keys(s)
+            sort.sortVector(v sort.stringCompare)
+            v
+        end
+
+    (* The phrases for names: the quoted tokens, sorted, then the words,
+     * sorted *)
+    let phrases(names: Array(String)): vector.T(String) =
+        begin
+            let toks = newSet()
+            for i = 0 upto {extent names - 1} do if isTokenName(names[i]) then add(toks names[i]) end end
+            let words = newSet()
+            let covered = newSet()
+            for g = 0 upto {extent groups - 1} do
+                let members = groups[g].names
+                let var all = true
+                for i = 0 upto {extent members - 1} do if not(has(toks members[i])) then all := false end end
+                if all then
+                    add(words groups[g].words)
+                    for i = 0 upto {extent members - 1} do add(covered members[i]) end
+                end
+            end
+            let quotes = newSet()
+            let toksSorted = hashMap.keys(toks)
+            for i = 0 upto {vector.length(toksSorted) - 1} do
+                let name = vector.get(toksSorted i)
+                if not(has(covered name)) then
+                    let open = strutil.find(name "('")
+                    let w = word(name)
+                    let spelling = tokenizer.spellingOf(name)
+                    if {open >= 0} andif strutil.endsWith(name "')") then
+                        add(quotes quoted(stringOp.getSub(name {open + 2} {stringOp.length(name) - {open + 4}})))
+                    elsif maybe.isSome(w) then
+                        add(words maybe.unwrap(w))
+                    elsif maybe.isSome(spelling) then
+                        add(quotes quoted(maybe.unwrap(spelling)))
+                    else
+                        add(words name)
+                    end
+                end
+            end
+            vector.concat(sorted(quotes) sorted(words))
+        end
+
+    (* phrases joined as a list in prose: a, b, or c *)
+    let listed(ps: vector.T(String)): String =
+        begin
+            let n = vector.length(ps)
+            if n <= 2 then
+                strutil.join(" or " ps)
+            else
+                let first = vector.new(:String)
+                for i = 0 upto {n - 2} do vector.append(first vector.get(ps i)) end
+                strutil.join(", " first) <> ", or " <> vector.get(ps {n - 1})
+            end
+        end
+
+    let found(tok: tokens.Token): String = case tok.kind when eof then "the end of the file" else quoted(tok.lexeme) end
+
+    let describe(names: Array(String) tok: tokens.Token): String =
+        begin
+            let ps = phrases(names)
+            if vector.empty(ps) then
+                "Unexpected " <> found(tok)
+            else
+                "Expected " <> listed(ps) <> ", found " <> found(tok)
+            end
+        end
+end

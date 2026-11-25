@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional as Opt
 
 from quest.common.location import SourceMap
+from quest.syntax.expected import describe as describe_expected
 from quest.syntax.tokens import Token, TokenKind
 from quest.common.diagnostics import QuestCompilerError
 
@@ -307,17 +308,10 @@ class Parser:
             if token.kind == TokenKind.EOF:
                 return result
 
-        # Format diagnostic error on failure
+        # Format diagnostic error on failure, saying what was expected in
+        # words (syntax/expected.py)
         farthest_token = self._peek(self.farthest_pos)
-        expected_string = (
-            ", ".join(sorted(self.expected_at_farthest))
-            if self.expected_at_farthest
-            else "valid syntax"
-        )
-        message = (
-            f"Unexpected token {farthest_token.lexeme!r} ({farthest_token.kind.name}), "
-            f"expected: {expected_string}"
-        )
+        message = describe_expected(self.expected_at_farthest, farthest_token)
         raise ParserError(
             message,
             farthest_token.offset,

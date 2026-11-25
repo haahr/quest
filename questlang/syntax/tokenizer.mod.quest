@@ -116,6 +116,22 @@ export
     let reservedPunctuationTable = initReservedPunctuation()
     let delimiterTable = initDelimiters()
 
+    (* Each kind's name to its spelling, from the three tables *)
+    let spellingTable =
+        begin
+            let m = hashmap.new(:String :String stringOp.equal hash.string)
+            let tables = array of keywordTable reservedPunctuationTable delimiterTable end
+            for t = 0 upto {extent tables - 1} do
+                let names = hashmap.keys(tables[t])
+                for i = 0 upto {vector.length(names) - 1} do
+                    let s = vector.get(names i)
+                    hashmap.insert(m tokens.tokenKindName(maybe.unwrap(lookup(tables[t] s))) s)
+                end
+            end
+            m
+        end
+    let spellingOf(kindName: String): maybe.T(String) = hashmap.get(spellingTable kindName)
+
     let new(sm: location.SourceMap bag: diagbag.T): T =
         begin
             let txt = location.text(sm)
