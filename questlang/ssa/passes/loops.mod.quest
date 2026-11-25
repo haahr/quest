@@ -54,15 +54,39 @@ export
             end
         end
 
+    (* Whether blk ends in a tail call of f itself, as ssa/passes/tailCalls
+     * marks one, with all of f's arguments *)
+    let selfTailCall(f: Function blk: ssa.Block): Bool =
+        case blk.term
+            when termTailCall with x then
+                ssa.isOp(x.call ssa.opCall) andif stringOp.equal(x.call.symbol f.symbol)
+                    andif {extent x.call.args is vector.length(f.paramTypes)}
+            when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable then false
+        end
+
     let jump(block: Int args: Array(Int)): ssa.Terminator =
         option termJump of ssa.Terminator with let target = ssa.target(block args) end
 
-    let loopFunction(f: Function): Bool =
+    (* Makes f's one self tail call a loop: a call followed by its return
+     * before tailCalls (marked false), or a tail call after it (marked true) *)
+    let loopSites(f: Function marked: Bool): Bool =
         begin
             let sites = vector.new(:Int)
             if not(tailCalls.slotsEscape(f)) then
                 for b = 0 upto {vector.length(f.blocks) - 1} do
-                    if selfTail(f ssa.block(f b)) then vector.append(sites b) end
+                    let blk = ssa.block(f b)
+                    if if marked then selfTailCall(f blk) else selfTail(f blk) end then vector.append(sites b) end
+                end
+            end
+            (* A marked site is a call and a return of its results again, the
+             * shape the conversion below takes, when it is the only one *)
+            if marked andif {vector.length(sites) is 1} then
+                let blk = ssa.block(f vector.get(sites 0))
+                case blk.term
+                    when termTailCall with x then
+                        vector.append(blk.insts x.call)
+                        blk.term := option termReturn of ssa.Terminator with let values = x.call.results end
+                    when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable then ok
                 end
             end
             (* Two or more sites are loops nested in one function (an outer
@@ -105,6 +129,8 @@ export
                 true
             end
         end
+
+    let loopFunction(f: Function): Bool = loopSites(f false)
 
     (* =========================================================================
      * Module cells kept in registers across loops
@@ -1489,6 +1515,17 @@ export
                 end
                 (* Bounds checks last, with equal values numbered alike *)
                 if decideBounds(f) then valueNumbers.numberFunction(f) end
+            end
+        end
+
+    let loopTailCalls(u: ssa.Unit): Ok =
+        for i = 0 upto {vector.length(u.functions) - 1} do
+            let f = vector.get(u.functions i)
+            if loopSites(f true) then
+                (* The header's parameters that nothing reads go, as the
+                 * closure's, which the back edge passes as null *)
+                dropDeadParams(f)
+                valueNumbers.numberFunction(f)
             end
         end
 end

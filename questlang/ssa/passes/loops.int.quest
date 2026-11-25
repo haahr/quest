@@ -63,6 +63,14 @@ export
     (* Each function's, numbering the values again and deciding the
      * conditions again of each that changed *)
     loopUnit(u: ssa.Unit): Ok
+    (* After ssa/passes/tailJumps: a function's one self tail call, as
+     * ssa/passes/tailCalls marks it, a loop, as loopUnit makes one before
+     * it, numbering the values of each that changed. tailJumps copies a
+     * mutually recursive function into its caller, which can leave a self
+     * tail call (even-odd's even1, odd1 copied in, calls even1) that the
+     * backends would make a branch to the function's start, passing its
+     * arguments again. *)
+    loopTailCalls(u: ssa.Unit): Ok
     (* Whether a loop is rotated when its first pass has no invariant check to
      * move before it (on by default): it saves the jump back to the test, on
      * arm64; clang rotates loops itself, and a loop rotated before it

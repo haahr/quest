@@ -70,7 +70,11 @@ export
         elsif stringOp.equal(name "tables") then tables.tableUnit(u)
         elsif stringOp.equal(name "accumulate") then accumulate.accumulateUnit(u)
         elsif stringOp.equal(name "tailCalls") then tailCalls.markUnit(u)
-        elsif stringOp.equal(name "tailJumps") then tailJumps.jumpUnit(u)
+        elsif stringOp.equal(name "tailJumps") then
+            (* Copying a mutually recursive function into its caller can leave
+             * a self tail call, which loops makes a loop as it does before *)
+            tailJumps.jumpUnit(u)
+            loops.loopTailCalls(u)
         elsif stringOp.equal(name "trampolines") then trampolines.trampolineUnit(u)
         else raise unknownPass with name end
         end
