@@ -3919,5 +3919,39 @@ on the back edge of mandelbrot's inner loop, which register assignment makes fro
 
 ### 44.2. Times
 
-To follow: the suite at `run.py time --clean --scale 0.25`, before (`31dc2eac`) and after (`3daeb07b`), through C,
-ssac, arm64, and arm64 whole program.
+`run.py time --clean --scale 0.25`, one run each, before (`31dc2eac`, main just before the five changes) and after
+(`3daeb07b`), each in a worktree of its own, each run waiting for the load to stay under 5 for 180 s. MLton's times are
+§41's (`mlton-69f83386.jsonl`): nothing in the originals, their counts, or MLton has changed since. The times are in
+`benchmarks/mlton/baselines/2026-11-24/`. Geometric means of time over MLton's, and of after over before:
+
+| System | Before | After | After over before |
+|---|--:|--:|--:|
+| C | 1.68 | 1.70 | 1.009 |
+| ssac | 1.20 | **1.18** | 0.985 |
+| arm64 | 1.65 | **1.59** | 0.962 |
+| arm64, whole program | 1.63 | **1.58** | 0.967 |
+
+C does not run the SSA's passes, so its 1.009 is the runs' noise. Through arm64, faster by 5% or more: vector32- and
+vector64-concat 0.71 and 0.72, mandelbrot 0.76, imp-for 0.79, vector-rev 0.83, mpuz 0.86, string-concat 0.87, zern
+0.90, tak 0.91, ratio-regions 0.93, tensor, matrix-multiply, and fft 0.94, checksum and ray 0.95; through ssac,
+mandelbrot 0.79, smith-normal-form 0.89, lexgen 0.90, ray 0.94. Slower: peek 1.22 and fib 1.18 through arm64 (1.18
+and 1.20 whole program), with 0.99 and 0.87 of their instructions. output1's 1.06 and barnes-hut's 1.11 whole program
+were not in their cycles (1.00 and 1.02), and are the runs' noise.
+
+### 44.3. Fixed after timing
+
+Each found by cycles against instructions (`/usr/bin/time -l`), which load barely changes, then by hand-edited assembly.
+
+- **peek** (0.99 of the instructions, 1.20 of the cycles): the pass moved a symbol's `toVal` before `find`'s loop,
+  which took a callee-saved register and moved the cell that `find` reloads after its call into one the callee does
+  not restore; the reload then stalled (optimization-experiments.md §7). Such conversions are now rematerialized, as
+  the constants they convert are.
+- **fib** (0.87, 1.17): most of its calls enter its rotated loop, and arm64's layout let the guard fall through to the
+  exit, so entering took a branch and a jump. The layout now prefers a block that enters a deeper loop
+  ([arm64.md](arm64.md) §3.5).
+- **tak**, which that made 1.13 of the cycles: most of its calls leave at once, and the exit then branched and jumped
+  to a shared return. A jump to a block that only returns is now that return.
+
+Against `3daeb07b`, all 46 at a thirty-second of the counts (`counts-3daeb07b.jsonl`, `counts-fixes.jsonl`): through
+arm64, 0.998 of the instructions and 0.989 of the cycles, fib 0.781 of the cycles and peek 0.831; through ssac 1.000
+and 0.997. No program retires 1% more but vliw (1.010, its cycles 1.003).
