@@ -128,6 +128,23 @@ export
             known
         end
 
+    (* Whether h heads a natural loop: a back edge (from a block h dominates)
+     * enters it. It is cheap, where body allocates for every block of the
+     * function, so the passes ask it of each block first: asking body of
+     * each makes a pass quadratic in a function's blocks, which a whole
+     * program's largest functions make seconds *)
+    let isHeader(g: cfg.Graph h: Int): Bool =
+        begin
+            let var found = false
+            if cfg.reached(g h) then
+                for k = 0 upto {extent g.preds[h] - 1} do
+                    let p = g.preds[h][k]
+                    if cfg.reached(g p) andif cfg.dominates(g h p) then found := true end
+                end
+            end
+            found
+        end
+
     (* The blocks of the natural loop whose header is h: those that reach one
      * of h's back edges' sources without passing h, h among them; none when h
      * heads no loop *)
@@ -353,7 +370,7 @@ export
                 let g = cfg.graph(f)
                 let defs = ssa.definitions(f)
                 for r = 0 upto {extent g.order - 1} do
-                    if not(again) then
+                    if not(again) andif isHeader(g g.order[r]) then
                         let h = g.order[r]
                         let inside = body(g h)
                         if inside[h] then
@@ -968,20 +985,25 @@ export
         end
 
     (* Moves what is invariant out of f's loops, innermost first, so that an
-     * outer loop then sees what an inner one moved; whether it moved any *)
+     * outer loop then sees what an inner one moved; whether it moved any. The
+     * graph is made again after each loop, since hoistLoop gives every loop a
+     * preheader even when it moves nothing, but not for each block *)
     let hoistLoops(f: Function): Bool =
         begin
             let g = cfg.graph(f)
             let headers = vector.new(:Int)
             for r = 0 upto {extent g.order - 1} do vector.append(headers g.order[r]) end
             let var any = false
+            let var now = g
             let var k = vector.length(headers) - 1
             while k >= 0 do
                 let h = vector.get(headers k)
-                let now = cfg.graph(f)
-                if cfg.reached(now h) then
+                if isHeader(now h) then
                     let inside = body(now h)
-                    if inside[h] then if hoistLoop(f now h inside) then any := true end end
+                    if inside[h] then
+                        if hoistLoop(f now h inside) then any := true end
+                        now := cfg.graph(f)
+                    end
                 end
                 k := k - 1
             end
