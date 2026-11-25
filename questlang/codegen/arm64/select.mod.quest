@@ -151,6 +151,11 @@ export
         (* Values (comparisons, bit tests, or conjunctions) fused into a
          * branch or select *)
         fused: Array(Bool)
+        (* For a sum whose add carries out into a value, that value (~1 for
+         * none): the add is an adds, and the value its cset hs; carried
+         * marks those values, which are not emitted where they are defined *)
+        carryOf: Array(Int)
+        carried: Array(Bool)
         (* Indexed addressing info for single-use ptrAdd instructions folded
          * into a load or store. For a folded ptrAdd value v, indexOf[v] is
          * the index SSA value (~1 if not folded) and shiftOf[v] is its
@@ -588,14 +593,21 @@ export
                 when opSymbol then
                     emit(s minst.symbolAddress(d i.symbol i.imm hashMap.contains(s.defined i.symbol)))
                 when opSlot then spPlus(s d s.slotAt[i.imm])
-                when opAdd, opPtrAdd then add(s d i.args[0] i.args[1])
+                when opAdd, opPtrAdd then
+                    let carry = s.carryOf[i.results[0]]
+                    if carry >= 0 then
+                        emit(s minst.adds(d a(0) a(1)))
+                        emit(s minst.cset(minst.condHs r(s carry)))
+                    else
+                        add(s d i.args[0] i.args[1])
+                    end
                 when opSub then sub(s d i.args[0] i.args[1])
                 when opMul then arith(minst.arithMul)
                 when opMulHiU then arith(minst.arithUmulh)
                 (* Emits csel (or cset when selecting between 1 and 0; see
                  * ssa/passes/selects) using the flags of a fused single-use
                  * comparison, or by comparing the condition against 0 *)
-                when opSelect then
+                when opSelect then if not(s.carried[i.results[0]]) then
                     let c = i.args[0]
                     let cond =
                         if s.fused[c] then
@@ -611,6 +623,7 @@ export
                         emit(s minst.cset(minst.inverse(cond) d))
                     else emit(s minst.csel(cond d zeroOr(s i.args[1]) zeroOr(s i.args[2])))
                     end
+                end
                 when opDiv then arith(minst.arithSdiv)
                 (* Omitted when fused into a branch as a bit test or
                  * comparison conjunction; otherwise emitted with a logical
@@ -628,7 +641,7 @@ export
                     emit(s minst.msub(d q a(1) a(0)))
                 when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge,
                         opIsNaN then
-                    if not(s.fused[i.results[0]]) then
+                    if not(s.fused[i.results[0]]) andif not(s.carried[i.results[0]]) then
                         setFlags(s i)
                         emit(s minst.cset(condition(i.op) d))
                     end
@@ -1055,6 +1068,51 @@ export
                     end
                 end
             end
+            (* Carries: a sum = add x, y of two registers, its comparison
+             * ult sum, x (or y), which holds exactly when the add carried
+             * out, and, when that comparison is fused into a select of 1 or
+             * 0, the select, all in one block. The add sets the flags
+             * (adds), and the carry is made at once from them (cset hs), so
+             * that neither the comparison nor the select is emitted:
+             * bignum's limbs, whose carries are bit(word.lt(sum operand)),
+             * took an add, a cmp, and a cset for each *)
+            let carryOf = array of(nValues ~1)
+            let carried = array of(nValues false)
+            let isConstant(v: Int k: Int): Bool =
+                maybe.isSome(defs[v]) andif ssa.isOp(maybe.unwrap(defs[v]) ssa.opConst)
+                    andif {maybe.unwrap(defs[v]).imm is k}
+            let inRegister(v: Int): Bool = not(maybe.isSome(defs[v]) andif ssa.isOp(maybe.unwrap(defs[v]) ssa.opConst))
+            (* Each fused comparison's select of 1 or 0, in its block *)
+            let selectOf = array of(nValues ~1)
+            for b = 0 upto {nBlocks - 1} do
+                let insts = ssa.block(f b).insts
+                for k = 0 upto {vector.length(insts) - 1} do
+                    let i = vector.get(insts k)
+                    if ssa.isOp(i ssa.opSelect) andif isConstant(i.args[1] 1) andif isConstant(i.args[2] 0) then
+                        selectOf[i.args[0]] := i.results[0]
+                    end
+                end
+            end
+            for b = 0 upto {nBlocks - 1} do
+                let insts = ssa.block(f b).insts
+                for k = 0 upto {vector.length(insts) - 1} do
+                    let i = vector.get(insts k)
+                    if ssa.isOp(i ssa.opUlt) then
+                        let c = i.results[0]
+                        let sum = i.args[0]
+                        let made = if fused[c] then selectOf[c] else c end
+                        if {made >= 0} andif maybe.isSome(defs[sum]) andif {defBlock[sum] is b}
+                                andif {carryOf[sum] < 0} then
+                            let add = maybe.unwrap(defs[sum])
+                            if ssa.isOp(add ssa.opAdd) andif inRegister(add.args[0]) andif inRegister(add.args[1])
+                                    andif {{i.args[1] is add.args[0]} orif {i.args[1] is add.args[1]}} then
+                                carryOf[sum] := made
+                                carried[made] := true
+                            end
+                        end
+                    end
+                end
+            end
             (* Identify single-use ptrAdd instructions in the same block as
              * their load or store that can fold into a register-indexed
              * addressing mode, along with any single-use multiplication by
@@ -1125,6 +1183,8 @@ export
                 let defBlock = defBlock
                 let uses = uses
                 let fused = fused
+                let carryOf = carryOf
+                let carried = carried
                 let indexOf = indexOf
                 let shiftOf = shiftOf
                 let folded = folded
@@ -1202,7 +1262,8 @@ export
             machine.isKind(i machine.kindOrdinary) andif case vector.get(s.ops i.op)
                 when opMovConst, opSymbolAddress then true
                 when opAddImm then readsSp
-                when opMovImm, opMovz, opMovk, opMov, opArith, opSubImm, opLogicImm, opShiftImm, opMsub,
+                when opMovImm, opMovz, opMovk, opMov, opArith, opAdds, opSubImm, opLogicImm, opShiftImm,
+                        opMsub,
                         opSxtb, opSxtw, opScvtf, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad,
                         opStore,
                         opLdp,

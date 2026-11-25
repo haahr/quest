@@ -30,6 +30,7 @@ export
         opSymbolAddress with symbol: String offset: Int local: Bool end
         opMov
         opArith with arith: Arith end
+        opAdds
         opAddImm with imm: Int shift: Int end
         opSubImm with imm: Int end
         opLogicImm with arith: Arith imm: Int end
@@ -178,7 +179,7 @@ export
 
     let results(op: Op): Int =
         case op
-            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith, opAddImm,
+            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith, opAdds, opAddImm,
                     opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opScvtf, opCset, opCsel, opLoad, opAdrp,
                     opAddPageOff,
                     opAdr then
@@ -195,7 +196,8 @@ export
             when opMovImm, opMovz, opMovConst, opSymbolAddress, opMov, opArith, opAddImm, opSubImm, opLogicImm,
                     opShiftImm, opMsub, opSxtb, opSxtw, opScvtf, opAdrp, opAddPageOff, opAdr then
                 true
-            when opMovk, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore,
+            when opMovk, opAdds, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad,
+                    opStore,
                     opLdp, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond,
                     opBrk,
                     opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
@@ -216,6 +218,7 @@ export
     let mov(d: Int s: Int): Inst = inst(option opMov of Op end array of d s end)
     let arith(a: Arith d: Int x: Int y: Int): Inst =
         inst(option opArith of Op with let arith = a end array of d x y end)
+    let adds(d: Int x: Int y: Int): Inst = inst(option opAdds of Op end array of d x y end)
     let addImm(d: Int s: Int imm: Int shift: Int): Inst =
         inst(option opAddImm of Op with let imm = imm let shift = shift end array of d s end)
     let subImm(d: Int s: Int imm: Int): Inst = inst(option opSubImm of Op with let imm = imm end array of d s end)

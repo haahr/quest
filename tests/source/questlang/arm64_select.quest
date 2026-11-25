@@ -20,7 +20,8 @@
  * call extended unless the unit's callee extends it; comparisons with a
  * negative constant (cmn) or a shifted one; and switches: a jump table for
  * dense cases from a negative one, its gaps the default's, a search of
- * sparse cases, and comparisons in turn of four. *)
+ * sparse cases, and comparisons in turn of four; and carries, an add whose
+ * comparison with an operand is an adds and a cset hs. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
@@ -312,3 +313,25 @@ switchTo(switches sTable swp[0] array of ~3 ~2 0 1 2 4 5 7 8 9 11 12 end sSparse
 switchTo(switches sSparse swp[0] array of 900 ~40 7 ~1 30 5000 200 60 0 end sFew)
 switchTo(switches sFew swp[0] array of 3 0 1 2 end sDefault)
 show("switches" switches)
+
+(* 15. Carries: an add of two registers whose ult against an operand is fused
+ * into a select of 1 or 0, as bignum's limbs make them, and one unfused, each
+ * an adds and a cset hs, neither comparison emitted; an add of a constant
+ * keeps its comparison *)
+let carries = ssa.newFunction("qf_carries" false array of tInt tInt tInt end array of tInt end)
+let cap = params(carries)
+let carrySelect(f: ssa.Function c: Int): Int =
+    begin
+        let v = ssa.newValue(f tInt)
+        ssa.append(f 0 ssa.inst(ssa.opSelect array of c ssa.constant(f 0 1) ssa.constant(f 0 0) end array of v end))
+        v
+    end
+let sum1 = ssa.binary(carries 0 ssa.opAdd cap[0] cap[1])
+let carry1 = carrySelect(carries ssa.binary(carries 0 ssa.opUlt sum1 cap[0]))
+let sum2 = ssa.binary(carries 0 ssa.opAdd sum1 cap[2])
+let carry2 = ssa.binary(carries 0 ssa.opUlt sum2 cap[2])
+let sum3 = ssa.binary(carries 0 ssa.opAdd sum2 ssa.constant(carries 0 7))
+let carry3 = ssa.binary(carries 0 ssa.opUlt sum3 sum2)
+let total = ssa.binary(carries 0 ssa.opAdd ssa.binary(carries 0 ssa.opAdd carry1 carry2) carry3)
+ret(carries 0 array of ssa.binary(carries 0 ssa.opAdd total sum3) end)
+show("carries" carries)

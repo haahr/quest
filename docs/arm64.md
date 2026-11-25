@@ -161,6 +161,9 @@ few constraints, so the patterns are few:
 - constants: `movz`/`movk` sequences, logical immediates, `adrp` + `add` for symbols;
 - shifted and extended operands, `madd`/`msub`;
 - comparison fused into branches: `cbz`/`cbnz`, `tbz`/`tbnz`, `cmp` + `b.cond`; `csel`/`cset` for values;
+- a carry, `ult` of an add's sum against one of its two registers (as a value or a select of 1 or 0, in the add's
+  block), as `adds` and `cset hs` at the add: bignum's limbs took an `add`, a `cmp`, and a `cset` for each
+  (smith-normal-form's instructions 0.956, 2026-11-25);
 - `ldp`/`stp` for the halves of 16-byte values and for saving registers.
 
 As built (`codegen/arm64/select`, over `minst`'s instructions, §3.17): immediates for `add`, `sub`, and `cmp`, a
