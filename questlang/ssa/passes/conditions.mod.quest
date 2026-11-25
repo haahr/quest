@@ -32,9 +32,51 @@ export
             else maybe.none(:ssa.Opcode)
         end
 
+    (* The runtime functions whose result is a new object, so never null:
+     * an allocation, an array made, and every function that returns a string
+     * (runtime/quest_runtime.h: each returns a new one) *)
+    let allocates(name: String): Bool =
+        stringOp.equal(name "quest_alloc") orif stringOp.equal(name "quest_array_new")
+            orif stringOp.equal(name "quest_string_new") orif stringOp.equal(name "quest_string_alloc")
+            orif stringOp.equal(name "quest_string_concat") orif stringOp.equal(name "quest_string_concat_n")
+            orif stringOp.equal(name "quest_string_get_sub") orif stringOp.equal(name "quest_string_cat_sub")
+            orif stringOp.equal(name "quest_string_conc")
+
     let decideFunction(f: ssa.Function): Bool =
         begin
             let defs = ssa.definitions(f)
+            (* Whether v is a pointer known not to be null where it is defined:
+             * a symbol's address, or a new object (allocates); a copy as what
+             * it copies *)
+            let rec notNull(v: Int depth: Int): Bool =
+                begin
+                    let d = defs[v]
+                    if maybe.isNone(d) orif {depth > 4} then
+                        false
+                    else
+                        let i = maybe.unwrap(d)
+                        case i.op
+                            when opSymbol then true
+                            when opCopy then notNull(i.args[0] depth + 1)
+                            when opCall then {extent i.results is 1} andif allocates(i.symbol)
+                            else false
+                        end
+                    end
+                end
+            let isNull(v: Int): Bool = maybe.isSome(defs[v]) andif ssa.isOp(maybe.unwrap(defs[v]) ssa.opNull)
+            (* A comparison of a pointer known not to be null with null: what
+             * it is, if it is one *)
+            let againstNull(i: ssa.Inst): maybe.T(Bool) =
+                case i.op
+                    when opPeq, opPne then
+                        if {isNull(i.args[1]) andif notNull(i.args[0] 0)}
+                                orif {isNull(i.args[0]) andif notNull(i.args[1] 0)} then
+                            maybe.some(ssa.isOp(i ssa.opPne))
+                        else
+                            maybe.none(:Bool)
+                        end
+                    else maybe.none(:Bool)
+                end
             (* A value as text that is the same for values that must be equal:
              * a constant, a null, or a symbol by what it is, an invariant load
              * by its address, a copy as what it copies *)
@@ -103,7 +145,12 @@ export
                         if maybe.isSome(c) then
                             let i = maybe.unwrap(c)
                             let known = hashMap.get(facts key(i.op i))
-                            if maybe.isSome(known) andif cfg.dominates(g maybe.unwrap(known).block b) then
+                            let fixed = againstNull(i)
+                            if maybe.isSome(fixed) then
+                                let chosen = if maybe.unwrap(fixed) then x.ifTrue else x.ifFalse end
+                                blk.term := option termJump of ssa.Terminator with let target = chosen end
+                                decided := true
+                            elsif maybe.isSome(known) andif cfg.dominates(g maybe.unwrap(known).block b) then
                                 let chosen = if maybe.unwrap(known).value then x.ifTrue else x.ifFalse end
                                 blk.term := option termJump of ssa.Terminator with let target = chosen end
                                 decided := true

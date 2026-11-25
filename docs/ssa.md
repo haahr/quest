@@ -274,10 +274,13 @@ internal error.
   longer reached are dropped. Comparisons are the same by opcode, immediate, and operands, where a constant, a null, or
   a symbol is compared by what it is and an invariant load by its address, since value numbering keeps those apart in
   each block; an equality known gives its negation too. The builder checks an array for null and its index against its
-  length at every access, as it does a string, and value numbering compares only within a block, so fft's butterfly
-  made 24 null checks and 24 bounds checks for its 8 elements, and this takes its arm64 instructions retired to 0.81
-  (benchmarks.md §39). It then numbers the values again of each function it changed, which merges the loads that the
-  checks kept in separate generations.
+  length at every access, as it does a string, and value numbering compares only within a block, so fft's butterfly made
+  24 null checks and 24 bounds checks for its 8 elements, and this takes its arm64 instructions retired to 0.81
+  (benchmarks.md §39). A null test of a pointer that cannot be null is decided too: a symbol's address, or a new object
+  (from `quest_alloc`, `quest_array_new`, or a runtime function that returns a string, each of which returns a new one;
+  `conditions.allocates`), so an array that a loop fills as it makes it is not checked on every pass (benchmarks.md
+  §46). It then numbers the values again of each function it changed, which merges the loads that the checks kept in
+  separate generations.
 - **`ssa/passes/selects`** makes selects of branches (if-conversion): a branch whose two arms only pass values to one
   block, each arm directly or through a block of its own (one with no parameters, reached only from the branch, that
   only jumps on), becomes a jump to that block, each argument the arms pass differently a `select` by the branch's
@@ -315,47 +318,46 @@ internal error.
   second; a runaway `1 + f(n + 1)` loops forever rather than overflowing the stack, as clang already made it in C
   ([exceptions.md](exceptions.md) §6), and a traceback through the loop's levels shows one frame, as through tail calls
   (`repl/module_errors` subtracts, to keep its frames). `ssa_accumulate` shows each case.
-- **`ssa/passes/loops`** makes the loop that recursion is visible to the SSA, and keeps module cells in registers
-  across loops (benchmarks.md §44). A recursive loop that stays a function, because the IR could not
-  contify it (mandelbrot's `loop1`, called from `doit` and the top level), is a self tail call, which only the backends
-  made a jump. A function that calls itself in tail position once, from which no slot's address escapes, gets a header
-  as `accumulate`'s, and the call becomes a jump to it. One that calls itself so twice or more is left to the backends:
-  its calls are usually nested loops in one function (zern's `lp2`, into which `lp1` is inlined), which one header
-  merges into a shape that clang does not take apart again (zern took 1.09 of its instructions through `ssac`). Then a
-  module cell's word that a loop stores to (a top-level tuple's `var` field, reached through its global's load, which
-  only its module's initialization writes) is kept in a stack slot across the loop, which promotion makes a register:
-  loaded where the loop is entered, stored back on every edge that leaves it (a raise's too, from the block before
-  the raise). It must be an `Int` or a `Real`, read and written whole; no other access in the loop can reach it (one
-  at an overlapping offset through another address but a slot's or a global's own word, or an invariant load); the
-  loop stores nothing to the global, calls only runtime functions that write no memory and cannot raise, and enters no
-  try. mandelbrot retires 0.90 of its instructions through `ssac` and 0.89 through arm64. Last, what a loop computes
-  the same on every pass moves before it, into a preheader (benchmarks.md §44): pure operations (constants,
-  symbols, and nulls copied, not moved, and comparisons left with the branches arm64 fuses them into) and loads that
-  cannot fault there (a slot's, a global's the loop does not store to, an invariant load of an object a check before
-  the loop found not null). When the loop's header only tests whether to leave and its first pass checks invariant
-  values before it stores, calls, or tests what varies, the loop is rotated: a copy of the header's test leaves where
-  the header would, or runs those checks once and enters the header's successor, and the header becomes the test at
-  the loop's bottom. The checks raise as the first pass would have, `conditions` decides the loop's own copies, and
-  the loads they guarded move too; the header's values used elsewhere are kept in slots, stored by the header and the
-  guard, which promotion joins; and the block parameters promotion leaves unused are dropped (a loop's dead closure
-  argument among them). A derived pointer (`ptrAdd`) moves only out of a loop that calls nothing, so that none is live
-  across a collection without its object's own pointer. Through arm64, matrix-multiply retires 0.84 of its
-  instructions, fft 0.87, pidigits and vector-rev 0.88, smith-normal-form 0.90; through `ssac`, whose clang hoisted
-  most of it already, tensor 0.95. Then a bounds check goes when the comparisons before it decide it
-  (benchmarks.md §44): its index is never negative (a constant, a length, either plus a small constant, or a
-  block parameter that every jump binds such a value to) and at most the length less one, by a comparison on a branch
-  that dominates it or, for a block parameter, on every jump into the block, by the value bound there or, for a jump
-  binding x + 1, by a test there that x is not the bound (a `for` loop's, by induction). Values compare by form, a base
-  and a constant offset, loads by address and symbols by name, so the guard's copy of `len - 1` is the header's; and
-  `string.length`'s test for a null string counts as the length, since under its bound of 0 - 1 no index that is not
-  negative reaches the check. Through arm64, vector32- and vector64-concat retire 0.83 of their instructions,
-  matrix-multiply 0.91, smith-normal-form 0.93; through `ssac`, smith-normal-form 0.94 and the vector programs 0.95.
-  Through arm64 (not `ssac`: clang rotates loops itself, and one rotated before it can compile worse, fib by 20%) a
-  loop is rotated whether or not it has checks to move, when its header only tests whether to leave, so that each pass
-  ends in the test rather than in a jump back to it (the guard binding the parameters of the header's successor from
-  its copies); and a Real constant used in a loop that calls nothing, which takes two instructions to make, is made
-  once before it (benchmarks.md §44): imp-for retires 0.77 of its instructions, fib, tak, and mandelbrot
-  0.87, the vector programs 0.90. `language/module_cells_in_loops`, `language/hoisted_loop_checks`, and
+- **`ssa/passes/loops`** makes the loop that recursion is visible to the SSA, and keeps module cells in registers across
+  loops (benchmarks.md §44). A recursive loop that stays a function, because the IR could not contify it (mandelbrot's
+  `loop1`, called from `doit` and the top level), is a self tail call, which only the backends made a jump. A function
+  that calls itself in tail position once, from which no slot's address escapes, gets a header as `accumulate`'s, and
+  the call becomes a jump to it. One that calls itself so twice or more is left to the backends: its calls are usually
+  nested loops in one function (zern's `lp2`, into which `lp1` is inlined), which one header merges into a shape that
+  clang does not take apart again (zern took 1.09 of its instructions through `ssac`). Then a module cell's word that a
+  loop stores to (a top-level tuple's `var` field, reached through its global's load, which only its module's
+  initialization writes) is kept in a stack slot across the loop, which promotion makes a register: loaded where the
+  loop is entered, stored back on every edge that leaves it (a raise's too, from the block before the raise). It must be
+  an `Int` or a `Real`, read and written whole; no other access in the loop can reach it (one at an overlapping offset
+  through another address but a slot's or a global's own word, or an invariant load); the loop stores nothing to the
+  global, calls only runtime functions that write no memory and cannot raise, and enters no try. mandelbrot retires 0.90
+  of its instructions through `ssac` and 0.89 through arm64. Last, what a loop computes the same on every pass moves
+  before it, into a preheader (benchmarks.md §44): pure operations (constants, symbols, and nulls copied, not moved, and
+  comparisons left with the branches arm64 fuses them into) and loads that cannot fault there (a slot's, a global's the
+  loop does not store to, an invariant load of an object a check before the loop found not null, or of a new object).
+  When the loop's header only tests whether to leave and its first pass checks invariant values before it stores, calls,
+  or tests what varies, the loop is rotated: a copy of the header's test leaves where the header would, or runs those
+  checks once and enters the header's successor, and the header becomes the test at the loop's bottom. The checks raise
+  as the first pass would have, `conditions` decides the loop's own copies, and the loads they guarded move too; the
+  header's values used elsewhere are kept in slots, stored by the header and the guard, which promotion joins; and the
+  block parameters promotion leaves unused are dropped (a loop's dead closure argument among them). A derived pointer
+  (`ptrAdd`) moves only out of a loop that calls nothing, so that none is live across a collection without its object's
+  own pointer. Through arm64, matrix-multiply retires 0.84 of its instructions, fft 0.87, pidigits and vector-rev 0.88,
+  smith-normal-form 0.90; through `ssac`, whose clang hoisted most of it already, tensor 0.95. Then a bounds check goes
+  when the comparisons before it decide it (benchmarks.md §44): its index is never negative (a constant, a length,
+  either plus a small constant, or a block parameter that every jump binds such a value to) and at most the length less
+  one, by a comparison on a branch that dominates it or, for a block parameter, on every jump into the block, by the
+  value bound there or, for a jump binding x + 1, by a test there that x is not the bound (a `for` loop's, by
+  induction). Values compare by form, a base and a constant offset, loads by address and symbols by name, so the guard's
+  copy of `len - 1` is the header's; and `string.length`'s test for a null string counts as the length, since under its
+  bound of 0 - 1 no index that is not negative reaches the check. Through arm64, vector32- and vector64-concat retire
+  0.83 of their instructions, matrix-multiply 0.91, smith-normal-form 0.93; through `ssac`, smith-normal-form 0.94 and
+  the vector programs 0.95. Through arm64 (not `ssac`: clang rotates loops itself, and one rotated before it can compile
+  worse, fib by 20%) a loop is rotated whether or not it has checks to move, when its header only tests whether to
+  leave, so that each pass ends in the test rather than in a jump back to it (the guard binding the parameters of the
+  header's successor from its copies); and a Real constant used in a loop that calls nothing, which takes two
+  instructions to make, is made once before it (benchmarks.md §44): imp-for retires 0.77 of its instructions, fib, tak,
+  and mandelbrot 0.87, the vector programs 0.90. `language/module_cells_in_loops`, `language/hoisted_loop_checks`, and
   `language/decided_bounds_checks` show each case.
 - **`ssa/passes/tailCalls`** marks calls in tail position (§3, arm64.md §3.7): a call whose block returns its results
   (or the extension of its byte), or jumps, through blocks that do nothing else, to one that does. A block's parameters

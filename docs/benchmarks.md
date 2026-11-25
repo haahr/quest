@@ -3983,3 +3983,36 @@ means over MLton's of 1.68 and 1.21). The compiler, which spends its time alloca
 matching, likely gains less from clang's optimizations than the suite's loops do (not profiled). The load stayed below 5 through the `-j 1`
 rounds and reached 17 by the end of the `-j 8` ones, mostly their own; every round put ssac ahead, and each
 compiler's three rounds are within 5% of each other.
+
+
+## 46. Null tests of new objects decided (2026-11-25)
+
+The builder checks an array or a string for null at every access, and the conditions pass removed a check only where
+an identical one dominated it. A build with no null checks at all (unsound) bounded what more could go: through arm64,
+vector-rev 0.853 of its instructions, pidigits 0.940, tensor 0.952, zern 0.960, wc-scanStream 0.966, ratio-regions
+0.968; 0.997 over the suite (`counts-no-null-checks.jsonl`). In vector-rev the check that stays is of the array that
+`tabulate` is filling as it makes it: the loop's first check is of the source's index, which varies, so rotation
+cannot move the null check out.
+
+So the conditions pass decides a null test of a symbol's address or of a new object, from `quest_alloc`,
+`quest_array_new`, or a runtime function that returns a string ([ssa.md](ssa.md) §4.1). Alone, that cost
+matrix-multiply 5% through arm64 (as the build with no checks did): the loops pass moved an invariant load, such as an
+array's length, only where a passed check showed its object not null, and the check was gone. A new object's load now
+counts as safe there too.
+
+Against `33e35430` (`counts-fixes.jsonl` of 2026-11-24, `counts-nonnull.jsonl`), whole programs at a thirty-second of
+the counts, instructions retired:
+
+| Program | arm64 | ssac |
+|---|--:|--:|
+| vector32-concat, vector64-concat | 0.884 | 0.25 |
+| vector-rev | 0.852 | 0.742 |
+| pidigits | 0.917 | 0.762 |
+| smith-normal-form | 0.914 | 0.925 |
+| psdes-random | 0.935 | 0.985 |
+| checksum | 0.974 | 0.958 |
+| The suite (geometric mean) | 0.984 | 0.927 |
+
+No program retires 1% more. Through ssac, clang vectorizes the vector programs' loops once no check is left in them,
+which is most of their 0.25. Cycles, taken on a loaded machine, follow: vector-rev 0.76 through arm64, the vector
+programs 0.56 to 0.57 through ssac.

@@ -227,6 +227,17 @@ parameters promotion leaves unused, which covers the loops it makes.
 - **A block merged into its one predecessor that jumps to it,** so that a header's test ends it: tensor 1.04, nothing
   helped.
 
+### 5.8. arm64's back-edge moves
+
+With loops rotated in the SSA, a loop's back edge can still end in moves, when register assignment gives a value
+computed in the loop a register other than its parameter's (mandelbrot's inner loop: `zr*zi` reuses the register of
+`zr`, so the new `zr` and `zi` are made in two others and moved back with two `fmov`s). Measured 2026-11-25, by
+hand-edited assembly and samples: removing mandelbrot's two `fmov`s saved 0.24% of its instructions and no cycles,
+since its inner loop is entered very often and runs a few passes each time (its hottest instructions are the loop's
+setup, not its back edge); in mpuz, the moves before its 26 back edges take about 0.25% of the samples. **Why not:**
+under the bar on both programs the plan named. Removing them would take register assignment that keeps a value out of
+a register a later value on the same path is hinted to.
+
 ## 6. Not started
 
 - **The start bitmap built at collection.** The allocation fast path sets the object's start bit

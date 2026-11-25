@@ -622,13 +622,16 @@ export
         end
 
     (* Whether a load at address a, invariant, cannot fault before the loop:
-     * of a symbol's word, a stack slot's, or an object checked not null *)
+     * of a symbol's word, a stack slot's, a new object's (whose null test the
+     * conditions pass decides, so that no check is left to show it), or an
+     * object checked not null *)
     let safeAddress(x: Hoist defs: Array(maybe.T(ssa.Inst)) a: Int): Bool =
         if x.nonNull[a] then true
         elsif {a >= extent defs} orif maybe.isNone(defs[a]) then false
         else
             let d = maybe.unwrap(defs[a])
             ssa.isOp(d ssa.opSymbol) orif ssa.isOp(d ssa.opSlot)
+                orif {ssa.isOp(d ssa.opCall) andif {extent d.results is 1} andif conditions.allocates(d.symbol)}
         end
 
     (* Moves before the loop of header h, into a new preheader, what of it is
