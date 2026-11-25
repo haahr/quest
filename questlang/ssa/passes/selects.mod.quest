@@ -118,6 +118,54 @@ export
      * Thus any block g reports as having one predecessor still has at most
      * one, so staleness can only miss a follow-on conversion, never make an
      * unsound one. *)
+    (* Merges each block that only jumps to a block whose sole predecessor
+     * it is with that block: a conversion leaves the branch's block jumping
+     * to the join, so that what was one diamond after another is a chain of
+     * blocks, and what is decided within a block (value numbering's loads,
+     * arm64's fused flags, a load paired with its neighbor) stops at each
+     * jump. The successor's parameters take the jump's arguments. *)
+    let straighten(f: Function): Ok =
+        begin
+            let var again = true
+            while again do
+                again := false
+                let g = cfg.graph(f)
+                let nBlocks = vector.length(f.blocks)
+                let absorbed = array of(nBlocks false)
+                for b = 0 upto {nBlocks - 1} do
+                    if cfg.reached(g b) andif not(absorbed[b]) then
+                        case ssa.block(f b).term
+                            when termJump with x then
+                                let c = x.target.block
+                                if {c isnot 0} andif {c isnot b} andif not(absorbed[c])
+                                        andif {extent g.preds[c] is 1} then
+                                    let blk = ssa.block(f b)
+                                    let next = ssa.block(f c)
+                                    let params = vector.toArray(next.params)
+                                    let to = array of(vector.length(f.types) ~1)
+                                    for k = 0 upto {extent params - 1} do to[params[k]] := x.target.args[k] end
+                                    ssa.replaceUses(f fun(v: Int): Int
+                                        if {v < extent to} andif {to[v] >= 0} then to[v] else v end)
+                                    for k = 0 upto {vector.length(next.insts) - 1} do
+                                        vector.append(blk.insts vector.get(next.insts k))
+                                    end
+                                    vector.clear(next.insts)
+                                    blk.term := next.term
+                                    blk.termLoc := next.termLoc
+                                    next.term := ssa.termNone
+                                    absorbed[c] := true
+                                    again := true
+                                end
+                            when termNone, termBranch, termSwitch, termReturn, termTailCall, termTry,
+                                    termUnreachable then
+                                ok
+                        end
+                    end
+                end
+                if again then cfg.dropUnreached(f) end
+            end
+        end
+
     let selectFunction(f: Function): Ok =
         begin
             let g = cfg.graph(f)
@@ -138,7 +186,10 @@ export
                     end
                 end
             end
-            if changed then cfg.dropUnreached(f) end
+            if changed then
+                cfg.dropUnreached(f)
+                straighten(f)
+            end
         end
 
     let selectUnit(u: ssa.Unit): Ok =

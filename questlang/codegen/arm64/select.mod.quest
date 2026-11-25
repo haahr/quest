@@ -1113,10 +1113,10 @@ export
                     end
                 end
             end
-            (* Identify single-use ptrAdd instructions in the same block as
-             * their load or store that can fold into a register-indexed
-             * addressing mode, along with any single-use multiplication by
-             * the access width (as in array indexing) *)
+            (* Identify ptrAdd instructions used only as the addresses of
+             * loads and stores in their own block that can fold into a
+             * register-indexed addressing mode, along with any single-use
+             * multiplication by the access width (as in array indexing) *)
             let indexOf = array of(nValues ~1)
             let shiftOf = array of(nValues 0)
             let folded = array of(nValues false)
@@ -1126,12 +1126,37 @@ export
                 else
                     maybe.none()
                 end
+            (* A ptrAdd's uses as the address of a load or a store at offset 0
+             * in its own block, and whether they all access one width: a
+             * ptrAdd used only so (a load of an array's element and the
+             * store back, say) folds into each *)
+            let accesses = array of(nValues 0)
+            let widthAt = array of(nValues 0)
+            for b = 0 upto {nBlocks - 1} do
+                let insts = ssa.block(f b).insts
+                for k = 0 upto {vector.length(insts) - 1} do
+                    let i = vector.get(insts k)
+                    if {ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opStore)} andif {i.imm is 0}
+                            andif {defBlock[i.args[0]] is b} then
+                        let v = i.args[0]
+                        if {accesses[v] is 0} orif {widthAt[v] is i.width} then
+                            accesses[v] := accesses[v] + 1
+                            widthAt[v] := i.width
+                        else
+                            accesses[v] := ~1000000
+                        end
+                    end
+                end
+            end
             for b = 0 upto {nBlocks - 1} do
                 let insts = ssa.block(f b).insts
                 let here(v: Int): Bool = {defBlock[v] is b} andif {uses[v] is 1} andif maybe.isSome(defs[v])
+                let addressed(v: Int): Bool =
+                    {defBlock[v] is b} andif {accesses[v] is uses[v]} andif maybe.isSome(defs[v])
                 for k = 0 upto {vector.length(insts) - 1} do
                     let i = vector.get(insts k)
-                    if {ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opStore)} andif {i.imm is 0} andif here(i.args[0])
+                    if {ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opStore)} andif {i.imm is 0}
+                            andif addressed(i.args[0])
                             andif ssa.isOp(maybe.unwrap(defs[i.args[0]]) ssa.opPtrAdd)
                             andif maybe.isNone(constAt(maybe.unwrap(defs[i.args[0]]).args[1])) then
                         let v = i.args[0]

@@ -178,7 +178,8 @@ to it when equal and, by `b.gt`, to a block of its own that searches the greater
 runs of up to four compared in turn, so that 60 sparse cases take about six comparisons; an `and` of two integer
 comparisons as `cmp`, `ccmp`, and `b.cond`; a load or store at the start of a symbol the unit defines as `adrp` and the
 access at the symbol's page offset, without the `add`; one at a `ptrAdd` of a base and an index, or of an index times
-the access's width (an array's element), made for it alone, at the base and the index register, shifted (`ldr x0, [x1,
+the access's width (an array's element), made in its block only for accesses of one width (an element's load
+and its store back, each folding it), at the base and the index register, shifted (`ldr x0, [x1,
 x2, lsl #3]`), without the `mul` or the `add`; and no extension of a narrow result (ssa.md §2.2) of a call of a function
 in the unit that returns its narrow results extended, which is every one but those that tail-call, for such a result, a
 function that may not. When the code is emitted, blocks that only jump are passed over, a jump to the next block falls

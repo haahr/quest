@@ -291,7 +291,11 @@ internal error.
   global); they move into the branch's block. A carry in a loop of arbitrary-precision arithmetic (`util/bignum`'s
   `bit(word.lt(sum operand))`) is such a branch, taken as often as not, half of which arm64 mispredicted as a branch; it
   makes each a `cset` of the comparison's flags, as C's compiler does ([benchmarks.md](benchmarks.md) §15).
-  `ssa_selects` shows each case.
+  A function the pass changed then has its blocks that only jump to a block whose sole predecessor they are merged with
+  it, the successor's parameters taking the jump's arguments: one diamond after another was left a chain of blocks,
+  and what is decided within a block stopped at each jump (arm64 makes a carry `adds` and `cset hs` only in its add's
+  block, arm64.md §3.1; with both of a limb's carries in one block, smith-normal-form's instructions through arm64 were
+  0.955 of what fusing the first alone left, 2026-11-25). `ssa_selects` shows each case.
 - **`ssa/passes/tables`** makes a switch of constants a load from a table. A switch whose arms (each a case's target,
   directly or through blocks with no parameters that only make constants and jump on) all pass arguments to one
   block, the join, with at least 4 cases, dense (their range at most twice their number), becomes a check of the value
