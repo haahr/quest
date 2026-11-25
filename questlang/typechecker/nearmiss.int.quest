@@ -7,14 +7,17 @@
  * lookup, or none, by looking for the name in the namespaces the lookup did
  * not search, and for an interface, for the module of the same name with its
  * first letter lowercased. Only modules and interfaces already registered are
- * consulted, so asking loads nothing (docs/error-messages-plan.md section 2;
- * the bootstrap's typechecker/near_miss.py). *)
+ * consulted, so asking loads nothing. mismatchHelp does the same for a
+ * subtype failure whose types differ in one of two ways that a declaration,
+ * accepted, leads to (docs/error-messages-plan.md section 2; the bootstrap's
+ * typechecker/near_miss.py). *)
 
 interface NearMiss
 import
     util/maybe : util/Maybe
 
     questlang/types/env : questlang/types/Env
+    questlang/types/model : questlang/types/Model
     questlang/types/symbols : questlang/types/Symbols
 export
     (* Help for a type name that is not a type: a module's name, whose type
@@ -32,4 +35,13 @@ export
     (* Help for a call of a module's name: one of its functions, new, when it
      * has one *)
     callHelp(e: env.T name: String): maybe.T(String)
+
+    (* Help for a subtype failure between synthesized and expected: the first
+     * place, in the two types walked together through type applications and
+     * array, var, and out types, where one is a type through an interface's
+     * name (Iter.T) and the other its module's (iter.T), or one is a type
+     * operator (vector.T) and the other the operator applied (vector.T(?A)).
+     * Both are declarations the checker accepts, which fail only where a value
+     * meets them. *)
+    mismatchHelp(synthesized: model.Type expected: model.Type): maybe.T(String)
 end

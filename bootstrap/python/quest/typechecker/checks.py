@@ -13,6 +13,7 @@ from typing import Any, Optional
 import quest.syntax.ast as ast
 from quest.common.diagnostics import QuestCompilerError, QuestTypeError
 from quest.types.env import Environment
+from quest.typechecker.near_miss import mismatch_help
 from quest.typechecker.typed_ast import (
     TypedBlock,
     TypedCase,
@@ -206,6 +207,7 @@ def require_subtype(
         raise QuestTypeError(
             f"{prefix} type '{typed.type_val}' is not a subtype of expected type '{expected_type}'",
             offset=expr.offset,
+            help_text=mismatch_help(typed.type_val, expected_type),
         )
     return typed
 

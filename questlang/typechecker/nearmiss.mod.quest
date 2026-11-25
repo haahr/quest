@@ -6,8 +6,10 @@ import
     stringOp = string : StringOp
 
     util/maybe : util/Maybe
+    util/strutil : util/Strutil
 
     questlang/types/env : questlang/types/Env
+    questlang/types/model : questlang/types/Model
     questlang/types/symbols : questlang/types/Symbols
 export
     (* The module registered under name, without loading a builtin one *)
@@ -73,6 +75,111 @@ export
                 maybe.some("'" <> name <> "' is a module; call one of its functions, such as " <> name <> ".new")
             else
                 maybe.none()
+            end
+        end
+
+    (* Help when t is a type reached through an interface's name (Iter.T) and
+     * other, in its place, the type of that name in the module of the
+     * interface's name lowercased (iter.T) *)
+    let interfaceTypeHelp(t: model.Type other: model.Type): maybe.T(String) =
+        case t.form
+            when typeVariable with tv then
+                case other.form
+                    when typeVariable with ov then
+                        let dot = strutil.find(tv.name ".")
+                        if dot < 0 then
+                            maybe.none()
+                        else
+                            let iface = stringOp.getSub(tv.name 0 dot)
+                            let rest = stringOp.length(tv.name) - {dot + 1}
+                            let member = stringOp.getSub(tv.name {dot + 1} rest)
+                            let m = lowered(iface)
+                            if {strutil.find(member ".") >= 0} orif stringOp.equal(m iface)
+                                    orif {not stringOp.equal(ov.name m <> "." <> member)} then
+                                maybe.none()
+                            else
+                                maybe.some("'" <> tv.name <> "' is the interface " <> iface
+                                    <> "'s own type, which no value has; where it is declared, write " <> ov.name)
+                            end
+                        end
+                    else maybe.none()
+                end
+            else maybe.none()
+        end
+
+    (* Help when t is a type operator (vector.T) and other, in its place, the
+     * same operator applied (vector.T(?A)) *)
+    let unappliedHelp(t: model.Type other: model.Type): maybe.T(String) =
+        case t.form
+            when typeVariable with tv then
+                let isOperator =
+                    maybe.isSome(tv.bound)
+                        andif {case maybe.unwrap(tv.bound).form when kindAll then true else false end}
+                case other.form
+                    when typeApp with app then
+                        case app.constructor.form
+                            when typeVariable with cv then
+                                if isOperator andif {cv.symbolId is tv.symbolId} then
+                                    let arguments = if extent app.arguments is 1 then "argument" else "arguments" end
+                                    maybe.some("'" <> tv.name <> "' is missing its type " <> arguments
+                                        <> "; where it is declared, write " <> tv.name <> "(...)")
+                                else
+                                    maybe.none()
+                                end
+                            else maybe.none()
+                        end
+                    else maybe.none()
+                end
+            else maybe.none()
+        end
+
+    let pairHelp(t: model.Type other: model.Type): maybe.T(String) =
+        begin
+            let found = interfaceTypeHelp(t other)
+            if maybe.isSome(found) then found else unappliedHelp(t other) end
+        end
+
+    let rec mismatchHelp(synthesized: model.Type expected: model.Type): maybe.T(String) =
+        begin
+            let var found = pairHelp(synthesized expected)
+            if maybe.isNone(found) then found := pairHelp(expected synthesized) end
+            if maybe.isSome(found) then
+                found
+            else
+                case synthesized.form
+                    when typeApp with s then
+                        case expected.form
+                            when typeApp with x then
+                                if extent s.arguments is extent x.arguments then
+                                    let var result = mismatchHelp(s.constructor x.constructor)
+                                    let var i = 0
+                                    while maybe.isNone(result) andif {i < extent s.arguments} do
+                                        result := mismatchHelp(s.arguments[i] x.arguments[i])
+                                        i := i + 1
+                                    end
+                                    result
+                                else
+                                    maybe.none()
+                                end
+                            else maybe.none()
+                        end
+                    when typeArray with s then
+                        case expected.form
+                            when typeArray with x then mismatchHelp(s.element x.element)
+                            else maybe.none()
+                        end
+                    when typeVar with s then
+                        case expected.form
+                            when typeVar with x then mismatchHelp(s.element x.element)
+                            else maybe.none()
+                        end
+                    when typeOut with s then
+                        case expected.form
+                            when typeOut with x then mismatchHelp(s.element x.element)
+                            else maybe.none()
+                        end
+                    else maybe.none()
+                end
             end
         end
 end

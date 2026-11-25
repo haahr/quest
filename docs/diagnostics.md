@@ -96,6 +96,11 @@ are any.
   a module; its type is vector.T`), an interface where its module was meant, a module's type where a value was
   meant, and a module called as a function. Only modules and interfaces already registered are consulted
   (`typechecker/near_miss.py`, `questlang/typechecker/nearMiss`).
+- **Help for a mismatch a declaration led to.** Two declarations are accepted but name a type no value meets: a type
+  through an interface's name (`Iter.T`, the interface's own abstract type, where the module's `iter.T` was meant),
+  and a type operator without its arguments (`v: vector.T`). The subtype failure where a value first meets one says
+  so in its help, found by walking the two types together through type applications and array, var, and out types
+  (`mismatch_help`, `nearMiss.mismatchHelp`).
 - **Internal errors.** A broken invariant of the bootstrap usually shows as a Python exception, reported with its
   traceback (§3). The self-hosted checker reports one as an error whose message starts `internal:`.
 
