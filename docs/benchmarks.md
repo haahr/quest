@@ -27,8 +27,9 @@ program included (§35), measures what inlining three library modules into their
 makes whole program as fast as unit by unit (§37), counts where the median programs' instructions go against
 MLton's (§38), takes one-block large objects from the collector's free list (§39), counts the first fixes for
 the median programs (§40), times them, with two regressions the timing found and fixed (§41), inlines three
-library modules into their importers (§43), makes loops in recursive form loops in the SSA (§44), and times the
-ssac-built compiler against the arm64-built one (§45).
+library modules into their importers (§43), makes loops in recursive form loops in the SSA (§44), times the
+ssac-built compiler against the arm64-built one (§45), decides null tests of new objects (§46), and profiles the
+ssac-built and arm64-built compilers (§47).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -4016,3 +4017,45 @@ the counts, instructions retired:
 No program retires 1% more. Through ssac, clang vectorizes the vector programs' loops once no check is left in them,
 which is most of their 0.25. Cycles, taken on a loaded machine, follow: vector-rev 0.76 through arm64, the vector
 programs 0.56 to 0.57 through ssac.
+
+## 47. Where the arm64-built compiler's time goes against the ssac-built one's (2026-11-25)
+
+§21.5's profile again, with the ssac-built compiler in the C-built one's place, at `dd931491` (§44's loops pass in,
+§46's null tests not). Each stage 2 compiled the driver through arm64 at `-j 1` from an empty build directory, under
+`tools/exclusive` after three minutes with the load below 5: three timed rounds alternating, then two sampled by
+§21.5's copy of the sampler (every millisecond, a file for each process). The script, the timings, and the samples
+by symbol are in `benchmarks/mlton/baselines/2026-11-25/` (`compiler-profile*`).
+
+| | ssac-built | arm64-built | arm64 / ssac |
+|---|--:|--:|--:|
+| Wall | 79.82, 87.45, 84.16 s | 85.50, 89.08, 89.25 s | 1.05 (means) |
+| User | 72.42, 76.77, 76.03 s | 78.11, 80.90, 80.95 s | **1.07** (means) |
+| Maximum resident | 5.53, 5.57, 5.57 GB | 6.93, 7.08, 6.92 GB | **1.25** |
+| Samples, two runs | 90,024 | 98,571 | 1.095 |
+| Instructions in the binary | 1.83 million | 2.20 million | 1.20 |
+
+The rounds were slower than §45's, for both compilers alike; the ratio is §45's. By where they fall (a function's
+export and its body summed, since ssac names the body `qv_...` and arm64 the export a stub of it):
+
+| | ssac-built | arm64-built | arm64 / ssac | Of the difference |
+|---|--:|--:|--:|--:|
+| Compiled Quest code | 46,100 | 52,942 | 1.148 | 80% |
+| The runtime and the collector | 37,317 | 38,957 | 1.044 | 19% |
+| System libraries | 6,607 | 6,672 | 1.010 | 1% |
+
+- **`opcodeIndex` is not a table** (+1,138 samples, 13% of the difference: 1,682 against 544). §22's tables pass
+  takes a switch whose arms jump with constants to one join, but the simplifier rewrites a join whose continuation
+  only returns into a return in each arm (`straightened` in `ir/simplify`), so a function whose body is the switch
+  reaches the SSA with 54 arms that each return. arm64 makes it a jump table and 54 blocks of a `mov` and an epilogue
+  (288 instructions); clang made the returns a table of values (16 instructions). §22 measured it as a table, likely
+  through an inlined `isOp`, where the switch is a value bound by a `let` and keeps its join; `isOp` calls it now.
+  `tests/golden/ssa/language/option_switches.out` has its tables only in such `let`s.
+- **The collector does more** (+1,640): the arm64-built compiler's heap is 1.25 times the ssac-built one's at its
+  largest, and `quest_gc_alloc_slow` (+569), `quest_gc_mark_object` (+406), `quest_gc_mark_word` (+213), and
+  `quest_gc_scan_object` (+156) follow. Why it keeps more was not taken apart: values held in spill slots or
+  callee-saved registers past their last use, which a stack map counts as live, are the likeliest.
+- **The rest is spread thin.** No other name differs by more than 570 samples (functions of one name summed):
+  `append` +461, `hash.string` +450 (84 instructions against 59), `equal` +430, `int` +328, `insert` +271 (696
+  against 426), `unionWith` +244, `get` +226, `contains` +180. These are the hot functions §21.5 found 1.2 to 1.4 times
+  as long, and what is left of them is the register allocator's (§22.3). A few are faster through arm64, where
+  inlining differs: `intersection` −526.

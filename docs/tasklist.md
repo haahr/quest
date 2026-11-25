@@ -132,11 +132,40 @@ a loop's join, a spill reloaded each round in `findIndex`, and an `ldr` then a `
 item 5, 136 to 3,588 per program; §38.3 item 7, four per element of tyan's compare). `883a870d` made a join take its
 hot predecessor's register; hint-following and full coalescing were tried and not kept (arm64.md §6.1).
 
-**Where to start.** `codegen/machine/regalloc`; arm64.md §6.2 proposes conservative (Briggs) coalescing. A profile of
-the ssac-built and arm64-built compilers (§21.5's method) says which functions carry the gap now.
+**Where to start.** `codegen/machine/regalloc`; arm64.md §6.2 proposes conservative (Briggs) coalescing.
+benchmarks.md §47 profiles the compiler against the ssac-built one: after `opcodeIndex` (the next entry), the hash
+map and vector functions, `hash.string`, and `equal` carry the gap, none by more than 570 samples of 98,571.
 
 **Done when.** `findIndex`'s probe loop has no copy at its join and no reload each round, and the compiler's gap and
 the suite's counts are measured; or it is judged not worth it.
+
+## Tables for switches whose arms return
+
+**Problem.** `nodes.opcodeIndex` is a 54-arm jump table through arm64, each arm a `mov` and an epilogue (288
+instructions), and takes 1,682 of the arm64-built compiler's samples against the ssac-built one's 544, 13% of the
+difference between them (benchmarks.md §47). The SSA's tables pass takes a switch whose arms jump with constants to
+one join, but the simplifier rewrites a join whose continuation only returns into a return in each arm
+(`straightened` in `questlang/ir/simplify`), so a function whose body is the switch never has the join. clang makes
+the returns a table of values.
+
+**Where to start.** `questlang/ssa/passes/tables.mod.quest`: take a switch whose arms each return constants as one
+whose arms jump to a join that returns, making the table's loads and one return. Any other function whose body maps
+an option to constants gains alike (`opcodeName` is likely one: 396 instructions through arm64 against ssac's 16).
+
+**Done when.** `opcodeIndex` is a range check and a load through arm64, `ssa_tables` and an SSA golden show it, and
+the compiler's samples are measured again.
+
+## The arm64-built compiler's larger heap
+
+**Problem.** The arm64-built compiler's heap is 1.25 times the ssac-built one's at its largest compiling the driver
+(6.9 against 5.5 GB at `-j 1`), and its collector takes 1,640 more samples (benchmarks.md §47). The two compile the
+same source, so the difference is in what their code keeps reachable.
+
+**Where to start.** `tools/perf/gcstats.py` or `retention.py` on both compilers compiling one large unit: whether
+the live bytes after a collection differ, and if so which stack maps keep more. A value in a spill slot or a
+callee-saved register past its last use, which a stack map counts as live, is the likeliest cause.
+
+**Done when.** The cause is named and fixed, or shown to be the stack maps' precision and recorded as such.
 
 ## An unproxy first made inside a loop, hoisted
 
