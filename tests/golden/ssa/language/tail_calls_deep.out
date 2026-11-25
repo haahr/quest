@@ -89,21 +89,32 @@ b0(%0: ptr, %1: int):
 
 function qf_keep(%0: ptr, %1: ptr, %2: int, %3: val): val {
 b0(%0: ptr, %1: ptr, %2: int, %3: val):
-  @48:43
-  %4: int = const 0
-  %5: int = eq %2, %4
   @48:40
-  branch %5, b1(), b2()
+  jump b4()
 b1():
   @48:40
   return %3
-b2():
+b2(%30: int):
   @48:70
   %6: int = const 1
-  %7: int = sub %2, %6
+  %7: int = sub %30, %6
   @48:62
-  %8: ptr = null
-  tail %9: val = call qf_keep(%8, %1, %7, %3)
+  jump b3()
+b3():
+  @48:43
+  %4: int = const 0
+  %5: int = eq %7, %4
+  @48:40
+  branch %5, b1(), b2(%7)
+b4():
+  @48:43
+  %18: int = const 0
+  %19: int = eq %2, %18
+  @48:40
+  branch %19, b1(), b5()
+b5():
+  @48:40
+  jump b2(%2)
 }
 
 function qf_f_2(%0: ptr, %1: int): int {
@@ -300,10 +311,10 @@ b0(%0: int, %1: ptr):
   call qv_mod_relay_init()
   @12:16
   %4: int = const 5000
-  jump b3(%4, %265)
+  jump b41()
 b1():
   @12:7
-  %21: ptr = call qv_conv_int(%255)
+  %21: ptr = call qv_conv_int(%311)
   @7:45
   %22: ptr = symbol qm_writer
   %23: ptr = load8 %22 + 0
@@ -331,29 +342,29 @@ b1():
   %39: ptr = symbol qso_14 + 8
   %40: ptr = symbol qso_15 + 8
   %272: ptr = select %38, %39, %40
-  jump b6(%272)
+  jump b6()
 b2():
   @7:28
   %249: int = const 0
   return %249
-b3(%254: int, %255: int):
+b3():
   @11:42
   %13: int = const 0
-  %14: int = eq %254, %13
+  %14: int = eq %16, %13
   @11:39
-  branch %14, b4(), b5()
-b4():
+  branch %14, b4(%18), b5(%18, %16)
+b4(%311: int):
   @11:39
   jump b1()
-b5():
+b5(%312: int, %314: int):
   @11:69
   %15: int = const 1
-  %16: int = sub %254, %15
+  %16: int = sub %314, %15
   @11:75
-  %18: int = add %255, %15
+  %18: int = add %312, %15
   @11:63
-  jump b3(%16, %18)
-b6(%34: ptr):
+  jump b3()
+b6():
   @7:45
   %41: ptr = symbol qm_writer
   %42: ptr = load8 %41 + 0
@@ -363,7 +374,7 @@ b6(%34: ptr):
   %46: ptr = load8 %45 + 0
   @7:59
   %47: ptr = symbol qso_13 + 8
-  %48: ptr = call quest_string_concat(%34, %47)
+  %48: ptr = call quest_string_concat(%272, %47)
   @7:28
   call quest_writer_put_string(%46, %48)
   @22:10
@@ -375,11 +386,11 @@ b6(%34: ptr):
   %54: ptr = symbol qso_15 + 8
   %55: ptr = symbol qso_14 + 8
   %273: ptr = select %53, %54, %55
-  jump b8(%273)
+  jump b8()
 b7():
   @7:28
   jump b2()
-b8(%49: ptr):
+b8():
   @7:45
   %56: ptr = symbol qm_writer
   %57: ptr = load8 %56 + 0
@@ -389,13 +400,13 @@ b8(%49: ptr):
   %61: ptr = load8 %60 + 0
   @7:59
   %62: ptr = symbol qso_13 + 8
-  %63: ptr = call quest_string_concat(%49, %62)
+  %63: ptr = call quest_string_concat(%273, %62)
   @7:28
   call quest_writer_put_string(%61, %63)
   %64: ptr = symbol qf_f_closure
   @26:16
   %67: int = const 5000
-  jump b12(%67, %64)
+  jump b39()
 b9():
   @7:28
   jump b7()
@@ -419,35 +430,35 @@ b10():
   %100: int = const 5000
   %104: int = const 1
   @36:16
-  jump b17(%104, %100, %250)
+  jump b38()
 b11():
   @7:28
   jump b9()
-b12(%256: int, %257: ptr):
+b12():
   @25:49
   %75: int = const 0
-  %76: int = eq %256, %75
+  %76: int = eq %81, %75
   @25:46
-  branch %76, b13(), b14()
-b13():
+  branch %76, b13(%84), b14(%84, %81)
+b13(%307: ptr):
   @25:61
-  %77: ptr = load8 %257 + 0 invariant
+  %77: ptr = load8 %307 + 0 invariant
   %78: int = const 0
-  %79: int = callIndirect %77, %257, %78
+  %79: int = callIndirect %77, %307, %78
   @25:46
   jump b10()
-b14():
+b14(%308: ptr, %310: int):
   @25:78
   %80: int = const 1
-  %81: int = sub %256, %80
+  %81: int = sub %310, %80
   %82: int = const 16
   %83: ptr = symbol quest_layout_closure_qf_f_2
   %84: ptr = call quest_alloc(%82, %83)
   %85: ptr = symbol qf_f_2
   store8 %84 + 0, %85
-  store8 %84 + 8, %257
+  store8 %84 + 8, %308
   @25:71
-  jump b12(%81, %84)
+  jump b12()
 b15():
   @36:7
   %148: ptr = call qv_conv_int(%259)
@@ -475,7 +486,7 @@ b15():
   %163: ptr = call quest_auto_new(%161, %162)
   @45:16
   %168: int = const 5000
-  jump b25(%163, %168)
+  jump b37()
 b16():
   @7:28
   jump b11()
@@ -487,15 +498,13 @@ b18():
   %129: int = const 0
   %130: int = eq %267, %129
   @33:35
-  %270: int = const 0
   %271: int = const 1
   @33:89
-  %132: int = const 1
-  %133: int = sub %267, %132
+  %133: int = sub %267, %271
   @33:18
-  %274: int = select %130, %270, %132
+  %274: int = select %130, %129, %271
   %275: int = select %130, %271, %133
-  jump b22(%274, %275)
+  jump b22()
 b19():
   @31:5
   jump b20()
@@ -505,12 +514,12 @@ b20():
 b21():
   @31:5
   jump b15()
-b22(%268: int, %269: int):
+b22():
   @33:105
   %144: int = const 1
   %145: int = add %259, %144
   @33:13
-  jump b17(%268, %269, %145)
+  jump b17(%274, %275, %145)
 b23(%164: int):
   @45:7
   %202: ptr = call qv_conv_int(%164)
@@ -548,7 +557,7 @@ b23(%164: int):
   @7:28
   call quest_writer_put_string(%225, %227)
   @59:16
-  jump b32(%217)
+  jump b35()
 b24():
   @7:28
   jump b16()
@@ -564,7 +573,6 @@ b26():
   @41:5
   %181: ptr = slot 0
   %253: int = const 0
-  %252: val = toVal %253
   store8 %181 + 0, %252
   %182: val = load8 %175 + 0
   %183: ptr = symbol quest_type_Int
@@ -620,22 +628,57 @@ b30():
 b31():
   @7:28
   jump b24()
-b32(%262: int):
+b32():
   @58:36
   %234: int = const 0
-  %235: int = eq %262, %234
+  %235: int = eq %238, %234
   @58:33
-  branch %235, b33(), b34()
+  branch %235, b33(), b34(%238)
 b33():
   @58:33
   %236: int = const 42
   jump b30()
-b34():
+b34(%306: int):
   @56:46
   %237: int = const 1
-  %238: int = sub %262, %237
+  %238: int = sub %306, %237
   @56:44
-  jump b32(%238)
+  jump b32()
+b35():
+  @58:36
+  %277: int = const 0
+  %278: int = eq %217, %277
+  @58:33
+  branch %278, b33(), b36()
+b36():
+  @58:33
+  jump b34(%217)
+b37():
+  @41:5
+  %283: int = const 0
+  %252: val = toVal %283
+  jump b25(%163, %168)
+b38():
+  @31:5
+  jump b17(%104, %100, %250)
+b39():
+  @25:49
+  %289: int = const 0
+  %290: int = eq %67, %289
+  @25:46
+  branch %290, b13(%64), b40()
+b40():
+  @25:46
+  jump b14(%64, %67)
+b41():
+  @11:42
+  %298: int = const 0
+  %299: int = eq %4, %298
+  @11:39
+  branch %299, b4(%265), b42()
+b42():
+  @11:39
+  jump b5(%265, %4)
 }
 
 data qm_relay writable zero 16
