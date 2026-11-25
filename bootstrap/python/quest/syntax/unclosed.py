@@ -1,5 +1,4 @@
-"""What was left open where a parse failed (docs/error-messages-plan.md
-section 3).
+"""What was left open where a parse failed (docs/diagnostics.md §4.1).
 
 The parser reports a syntax error where it stopped, which for a missing end or
 bracket is often far from where the fix goes: the end of the file, or the next

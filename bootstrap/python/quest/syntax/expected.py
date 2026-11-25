@@ -1,5 +1,5 @@
 """What a syntax error says was expected, in words
-(docs/error-messages-plan.md section 3).
+(docs/diagnostics.md §4.1).
 
 The parser engine records the names of the constructs that failed at the
 farthest token: token kinds (KW_END, or IDENT('foo') for a token with a fixed

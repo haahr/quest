@@ -97,3 +97,20 @@ before overwriting it, as with the string task above.
 
 **Done when.** `copy` is in the interface, with a test, and the hand-written copies in lib/ and questlang/ use it; or
 it is judged not worth adding.
+
+## What the error-message help left out
+
+**Problem.** The help for names, mismatches, and syntax errors (diagnostics.md §4.1–4.2) left four things out:
+
+- a missing import of a library module (`nothing named 'vector' is imported; collections/vector :
+  collections/Vector imports the collection`), which needs the list of `lib/` interfaces where a lookup fails;
+- the location of the declaration in the help for `Iter.T` and an unapplied `vector.T` (`where it is declared, at
+  3:13`), which needs the declared type's span where the subtype failure is found;
+- a note on the usual syntax error naming a construct still open where the parse stopped, left out since nearly
+  every error inside a block would carry it;
+- several syntax errors in one report, which needs recovery points in the grammar and the engine.
+
+**Where to start.** `typechecker/near_miss.py` and `questlang/typechecker/nearMiss` for the first two;
+`syntax/unclosed.py` and `questlang/syntax/parser/unclosed` for the third.
+
+**Done when.** Each is in both compilers with an error test, or judged not worth it.

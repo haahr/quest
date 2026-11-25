@@ -1,5 +1,5 @@
 """Help for a name that failed to resolve: what the name is instead
-(docs/error-messages-plan.md section 2).
+(docs/diagnostics.md §4.2).
 
 A lookup that fails says only that it failed (Undefined type 'vector'), and the
 commonest causes are a module, its interface, and its type standing in for one
@@ -107,7 +107,7 @@ def mismatch_help(synthesized: QType, expected: QType) -> Optional[str]:
     array, var, and out types, where one is a type through an interface's name
     and the other its module's, or one is a type operator and the other the
     operator applied. Both are declarations the checker accepts, which fail
-    only where a value meets them (docs/error-messages-plan.md section 2)."""
+    only where a value meets them (docs/diagnostics.md §4.2)."""
     for t, other in ((synthesized, expected), (expected, synthesized)):
         found = _interface_type_help(t, other) or _unapplied_help(t, other)
         if found is not None:
