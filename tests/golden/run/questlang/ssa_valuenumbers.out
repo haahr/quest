@@ -128,7 +128,7 @@ b0(%0: ptr):
   %9: int = add %8, %5
   return %9
 }
-== ordinary loads across a join
+== ordinary loads across a join that no path into it writes
 function joins(%0: ptr, %1: int): int {
 b0(%0: ptr, %1: int):
   %2: int = load8 %0 + 0
@@ -149,9 +149,66 @@ b0(%0: ptr, %1: int):
 b1():
   jump b2()
 b2():
+  %5: int = add %2, %2
+  return %5
+}
+== ordinary loads across a join that one path into it writes
+function written(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: int = load8 %0 + 0
+  branch %1, b1(), b2()
+b1():
+  %3: int = const 7
+  store8 %0 + 8, %3
+  jump b2()
+b2():
   %4: int = load8 %0 + 0
   %5: int = add %2, %4
   return %5
+}
+-- after valueNumbers
+function written(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: int = load8 %0 + 0
+  branch %1, b1(), b2()
+b1():
+  %3: int = const 7
+  store8 %0 + 8, %3
+  jump b2()
+b2():
+  %4: int = load8 %0 + 0
+  %5: int = add %2, %4
+  return %5
+}
+== an ordinary load at a loop's header, which its back edge reaches
+function looped(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: int = load8 %0 + 0
+  jump b1(%1)
+b1(%3: int):
+  %4: int = load8 %0 + 0
+  %5: int = const 1
+  %6: int = sub %3, %5
+  store8 %0 + 0, %6
+  branch %6, b1(%6), b2()
+b2():
+  %7: int = add %2, %4
+  return %7
+}
+-- after valueNumbers
+function looped(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: int = load8 %0 + 0
+  jump b1(%1)
+b1(%3: int):
+  %4: int = load8 %0 + 0
+  %5: int = const 1
+  %6: int = sub %3, %5
+  store8 %0 + 0, %6
+  branch %6, b1(%6), b2()
+b2():
+  %7: int = add %2, %4
+  return %7
 }
 == an ordinary load in a try's handler
 function handled(%0: ptr): int slots [16:8] {

@@ -8,7 +8,9 @@
  * pointer addition's address matching one at an offset, across a store and
  * a call; ordinary loads, repeated, across a store (whose value a load of
  * its address reads), across a call that may write memory and one of the
- * runtime's that does not, across a join, and in a try's handler; a word
+ * runtime's that does not, across a join no path into it writes (reused),
+ * across one that a path writes and at a loop's header (kept), and in a
+ * try's handler; a word
  * whose neighbor its block loads, kept for arm64 to load the two as a pair
  * though an equal is available from another block, and replaced by one in
  * its own; a
@@ -121,7 +123,7 @@ show("ordinary loads across calls" array of
     "}"
 end)
 
-show("ordinary loads across a join" array of
+show("ordinary loads across a join that no path into it writes" array of
     "function joins(%0: ptr, %1: int): int {"
     "b0(%0: ptr, %1: int):"
     "  %2: int = load8 %0 + 0"
@@ -133,6 +135,39 @@ show("ordinary loads across a join" array of
     "  %4: int = load8 %0 + 0"
     "  %5: int = add %2, %4"
     "  return %5"
+    "}"
+end)
+
+show("ordinary loads across a join that one path into it writes" array of
+    "function written(%0: ptr, %1: int): int {"
+    "b0(%0: ptr, %1: int):"
+    "  %2: int = load8 %0 + 0"
+    "  branch %1, b1(), b2()"
+    "b1():"
+    "  %3: int = const 7"
+    "  store8 %0 + 8, %3"
+    "  jump b2()"
+    "b2():"
+    "  %4: int = load8 %0 + 0"
+    "  %5: int = add %2, %4"
+    "  return %5"
+    "}"
+end)
+
+show("an ordinary load at a loop's header, which its back edge reaches" array of
+    "function looped(%0: ptr, %1: int): int {"
+    "b0(%0: ptr, %1: int):"
+    "  %2: int = load8 %0 + 0"
+    "  jump b1(%1)"
+    "b1(%3: int):"
+    "  %4: int = load8 %0 + 0"
+    "  %5: int = const 1"
+    "  %6: int = sub %3, %5"
+    "  store8 %0 + 0, %6"
+    "  branch %6, b1(%6), b2()"
+    "b2():"
+    "  %7: int = add %2, %4"
+    "  return %7"
     "}"
 end)
 

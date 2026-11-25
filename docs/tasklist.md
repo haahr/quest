@@ -133,27 +133,11 @@ item 5, 136 to 3,588 per program; §38.3 item 7, four per element of tyan's comp
 hot predecessor's register; hint-following and full coalescing were tried and not kept (arm64.md §6.1).
 
 **Where to start.** `codegen/machine/regalloc`; arm64.md §6.2 proposes conservative (Briggs) coalescing.
-benchmarks.md §47 profiles the compiler against the ssac-built one: after `opcodeIndex` (the next entry), the hash
+benchmarks.md §47 profiles the compiler against the ssac-built one: after `opcodeIndex` (a table since `bb49e0c0`), the hash
 map and vector functions, `hash.string`, and `equal` carry the gap, none by more than 570 samples of 98,571.
 
 **Done when.** `findIndex`'s probe loop has no copy at its join and no reload each round, and the compiler's gap and
 the suite's counts are measured; or it is judged not worth it.
-
-## Tables for switches whose arms return
-
-**Problem.** `nodes.opcodeIndex` is a 54-arm jump table through arm64, each arm a `mov` and an epilogue (288
-instructions), and takes 1,682 of the arm64-built compiler's samples against the ssac-built one's 544, 13% of the
-difference between them (benchmarks.md §47). The SSA's tables pass takes a switch whose arms jump with constants to
-one join, but the simplifier rewrites a join whose continuation only returns into a return in each arm
-(`straightened` in `questlang/ir/simplify`), so a function whose body is the switch never has the join. clang makes
-the returns a table of values.
-
-**Where to start.** `questlang/ssa/passes/tables.mod.quest`: take a switch whose arms each return constants as one
-whose arms jump to a join that returns, making the table's loads and one return. Any other function whose body maps
-an option to constants gains alike (`opcodeName` is likely one: 396 instructions through arm64 against ssac's 16).
-
-**Done when.** `opcodeIndex` is a range check and a load through arm64, `ssa_tables` and an SSA golden show it, and
-the compiler's samples are measured again.
 
 ## The arm64-built compiler's larger heap
 
@@ -166,28 +150,6 @@ the live bytes after a collection differ, and if so which stack maps keep more. 
 callee-saved register past its last use, which a stack map counts as live, is the likeliest cause.
 
 **Done when.** The cause is named and fixed, or shown to be the stack maps' precision and recorded as such.
-
-## An unproxy first made inside a loop, hoisted
-
-**Problem.** The loops pass hoists invariant values, but not an `unproxy` first made inside the loop (benchmarks.md
-§22.2 item 6): `movable` in `ssa/passes/loops` does not list `opUnproxy`, and rotation's walk stops at one.
-
-**Where to start.** `questlang/ssa/passes/loops.mod.quest`, `movable` and rotation's walk; the `unproxy` must stay
-after any check that guards it.
-
-**Done when.** A loop over a record's fields tests its proxy once before the loop, with a test, and the counts are
-measured.
-
-## Loads reused across a join
-
-**Problem.** Value numbering starts a new memory generation at a join, continuing one only from a single
-predecessor, so a load after an `if` without an `else` is not reused (benchmarks.md §24.3, batch 7). No benchmark
-showed one hot then.
-
-**Where to start.** `questlang/ssa/passes/valueNumbers`: a join whose predecessors all keep a generation (no store, no
-call) can continue it.
-
-**Done when.** Measured on the suite, and kept or moved to optimization-experiments.md.
 
 ## Fewer exception handlers entered
 

@@ -253,8 +253,10 @@ internal error.
   taken apart into a base, an index, and a constant offset through `ptrAdd`s, so that `load8 %4 + 0` of `%4 = ptrAdd %1,
   const 8` is `load8 %1 + 8`). An invariant load (§2.1) is available across anything; an ordinary one only within a
   memory generation, which a store, a call that may write memory (any but of a runtime function whose effects say it
-  does not, `quest_alloc` among them), and a try's handler start anew, and which a block continues from its predecessor
-  when it has one. A whole word's store makes its value what a load of its address reads in the generation it starts. A
+  does not, `quest_alloc` among them), and a try's handler start anew, and which a block continues from its predecessors
+  when they all end in the same one and have all been walked (the dominator tree in preorder): a join no path into
+  which writes continues the generation, while a loop's header, which its back edge reaches unwalked, starts anew. The
+  rule for joins (2026-11-25) took 3.4% of wc-scanStream's instructions through arm64 and 0.69% of the compiler's. A whole word's store makes its value what a load of its address reads in the generation it starts. A
   whole word's load whose neighbor its block also loads is kept though an equal is available from another block, so that
   arm64 loads the two as a pair: a lone load of half of a pair just stored, after `quest_alloc` cleared its first word,
   took psdes-random's loop from 1.39 to 1.90 of C's time. A `copy` becomes its argument; and a block's parameter that

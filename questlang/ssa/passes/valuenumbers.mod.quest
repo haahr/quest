@@ -191,10 +191,11 @@ export
              * only while its defining block dominates the current block;
              * entries from already-finished subtrees are overwritten on
              * collision. Memory state is tracked by a generation counter that
-             * increments on any store or writing call; a block inherits its
-             * sole predecessor's generation unless it is a try handler (since
-             * the try body may have written memory before raising), and
-             * otherwise starts a fresh generation. *)
+             * increments on any store or writing call; a block inherits the
+             * generation its predecessors all end in, when they have all been
+             * walked, unless it is a try handler (since the try body may have
+             * written memory before raising), and otherwise starts a fresh
+             * generation. *)
             let table = hashMap.new(:String :Int stringOp.equal hash.string)
             let madeIn = hashMap.new(:String :Int stringOp.equal hash.string)
             let enter(text: String v: Int b: Int): Ok =
@@ -207,6 +208,7 @@ export
                 case ssa.block(f b).term when termTry with x then handler[x.handler] := true else ok end
             end
             let memoryAtEnd = array of(nBlocks 0)
+            let walked = array of(nBlocks false)
             let var generations = 0
             let stack = vector.new(:Int)
             if nBlocks > 0 then vector.append(stack 0) end
@@ -237,8 +239,19 @@ export
                         false
                     end
                 let var memory = 0
-                if {extent g.preds[b] is 1} andif not(handler[b]) then
-                    memory := memoryAtEnd[g.preds[b][0]]
+                (* A join continues a generation that every predecessor, each
+                 * already walked, ends in: nothing on any path into it wrote
+                 * memory since that generation began. A predecessor not yet
+                 * walked (a loop's back edge) starts a fresh one. *)
+                let preds = g.preds[b]
+                let var shared = {extent preds > 0} andif not(handler[b])
+                for k = 0 upto {extent preds - 1} do
+                    if not(walked[preds[k]]) orif {memoryAtEnd[preds[k]] isnot memoryAtEnd[preds[0]]} then
+                        shared := false
+                    end
+                end
+                if shared then
+                    memory := memoryAtEnd[preds[0]]
                 else
                     generations := generations + 1
                     memory := generations
@@ -277,6 +290,7 @@ export
                     end
                 end
                 memoryAtEnd[b] := memory
+                walked[b] := true
                 vector.clear(blk.insts)
                 for k = 0 upto {vector.length(kept) - 1} do
                     vector.append(blk.insts vector.get(kept k))
