@@ -3590,11 +3590,11 @@ assembly for every unit. Instructions retired (`/usr/bin/time -l`); the seconds,
 
 ## 40. The median programs' first fixes, by counts (2026-11-23)
 
-The first part of the plan for §38's findings (`docs/mlton-median-plan.md`), and one item of its second, each measured
-by instructions retired (`tools/perf/counts.py`, profiling.md §3.1) against the baseline at `73bb9e45`, whole programs
-at a thirty-second of the suite's counts. The counts are in `benchmarks/mlton/baselines/2026-11-23/`: `counts-73bb9e45`
-before, `counts-5e9365cc` after, both named by commits before the steps were rebased onto `6921cbe2` (the
-commits below are the rebased ones). Timed in §41.
+The first part of the plan for §38's findings (what it did not make is in optimization-experiments.md), and one item of
+its second, each measured by instructions retired (`tools/perf/counts.py`, profiling.md §3.1) against the baseline at
+`73bb9e45`, whole programs at a thirty-second of the suite's counts. The counts are in
+`benchmarks/mlton/baselines/2026-11-23/`: `counts-73bb9e45` before, `counts-5e9365cc` after, both named by commits
+before the steps were rebased onto `6921cbe2` (the commits below are the rebased ones). Timed in §41.
 
 | Step | What | Commit |
 |---|---|---|
@@ -3642,10 +3642,10 @@ Tried and not kept:
 - **The entry's parameters that nothing reads** (a loop's static closure) left out of block 0 on arm64, so that a
   self tail call moves nothing into them: tyan and logic 0.995.
 
-Measured for a decision (the plan's step 5): with no proxy tests at all (a build in which nothing may be a proxy,
-unsound but exact for these programs, which make none), tyan retired 0.74 of the baseline's instructions through ssac
-and 0.73 through arm64, logic 0.83 and 0.80, mpuz 0.83 and 0.76. Proxy tests are the largest item left for code that
-walks lists and trees; the plan has two designs for removing them.
+Measured for a decision (optimization-experiments.md §2.1 and §3.1): with no proxy tests at all (a build in which
+nothing may be a proxy, unsound but exact for these programs, which make none), tyan retired 0.74 of the baseline's
+instructions through ssac and 0.73 through arm64, logic 0.83 and 0.80, mpuz 0.83 and 0.76. Proxy tests are the largest
+item left for code that walks lists and trees; optimization-experiments.md has two designs for removing them.
 
 checksum and wc-input1 retire 4 to 8 times MLton's instructions but take 1.2 to 1.35 times its time (§35.3): their
 extra instructions are cheap ones, and none of these steps was aimed at them.
@@ -3782,9 +3782,9 @@ and most variants are within 3%. What is left:
 - **Indices that step together:** tensor's folds pass two or three indices that each step by one; a single one, the
   others an offset from it, saves 3%.
 - **arm64 and a `while` on a flag:** mandelbrot's inner loop as a `while` on a `var` flag retires 1.25 times the
-  recursive version's instructions through arm64, though 0.88 through ssac. Not taken apart; likely step 14's kind
-  of cost (mlton-median-plan.md), moves on the back edge. Not a cost of the recursive form, which the suite uses,
-  but of Quest's own loops.
+  recursive version's instructions through arm64, though 0.88 through ssac. Not taken apart; likely moves on the back
+  edge (optimization-experiments.md §7). Not a cost of the recursive form, which the suite uses, but of Quest's own
+  loops.
 - **imp-for through arm64** retires 324 times ssac's instructions in all three forms, about 5 an innermost pass: clang
   computes the nest's result without the loops, as it does fib's (§2.3). Not a cost of the form either.
 
@@ -3867,3 +3867,57 @@ agree, as a whole program's do. It gained the same and cost 3.4 times a build wi
 sources loaded and nothing copied, 1,808 G with no bound, against 491 G): 65% of that build's samples were in the
 substitution through each type before its shape was taken. Now every shape stays opaque, and a copy's code meets the
 unit's values through represent's conversions, which change no value where the layouts agree.
+
+
+## 44. Loops in recursive form made loops in the SSA (2026-11-24)
+
+Five changes, each measured by instructions retired (`tools/perf/counts.py`, profiling.md §3.1) against the commit
+before it, whole programs at a thirty-second of the suite's counts, unit by unit through arm64 and ssac, on a loaded
+machine (counts do not depend on load, though the counts of programs that allocate much, tailmerge's, vary by up to 4%
+from run to run). Four are in `ssa/passes/loops` ([ssa.md](ssa.md) §4.1); what was considered and not made is in
+[optimization-experiments.md](optimization-experiments.md) §5.5 to §5.7.
+
+| Change | Commit |
+|---|---|
+| `real.int` an SSA conversion, `intToReal`, not a call | `5ec7c544` |
+| A self tail call a loop; a module cell a register across it | `7eb661a9` |
+| Invariants hoisted, loops rotated past invariant checks | `4b7b93ac` |
+| Bounds checks that comparisons decide removed | `2f883f97` |
+| Every testable loop rotated on arm64; Real constants before loops | `1ee88274` |
+
+### 44.1. Each change
+
+Each against the one before, as ssac and arm64 (one figure: arm64 alone); no program got worse by 1% at any step
+(tailmerge's 1.05 at the bounds checks was noise: its binaries' code is the same, and two counts of each agree).
+
+- **`real.int`** (in `calls.inlineExternal`, which every path to a runtime external reaches): mandelbrot 0.878 and
+  0.925, zern 0.899 and 0.950, ray 0.957 and 0.988, fft 0.987 and 0.991.
+- **Self tail calls and module cells:** mandelbrot 0.895 and 0.891 (its `sumIterations.n`, §42.3), DLXSimulator 0.987
+  through ssac, ratio-regions 0.993 and 0.984.
+- **Hoisting and rotation**, through arm64: matrix-multiply 0.840, fft 0.873, pidigits and vector-rev 0.879, vector32-
+  and vector64-concat 0.886, smith-normal-form 0.899, tensor 0.938, mandelbrot 0.939, ray 0.943, zern 0.967,
+  psdes-random 0.973; through ssac, whose clang hoisted most of it already, tensor 0.952, ratio-regions 0.969,
+  flat-array 0.988. Rotation is full: the guard's checks enter the header's successor and the header becomes the
+  bottom test, since a guard that entered the header again tested twice per entry (mpuz's loops over three to five
+  characters took 1.026 of their arm64 instructions). Hoisting had been tried on 2026-11-03 and found almost nothing,
+  since a loop's invariant loads sit behind its null and bounds checks; rotating first is what let them move.
+- **Bounds checks.** A build with none at all (unsound) bounded the gain first: through arm64 0.75 to 0.88 of the
+  instructions of a dozen programs, through ssac as little as 0.18 (clang vectorizes the vector programs' loops once
+  the checks are gone). Made, through arm64: vector32- and vector64-concat 0.83, matrix-multiply 0.905,
+  smith-normal-form 0.925, pidigits 0.949, checksum 0.950, tensor, psdes-random, and mpuz 0.96, zern 0.964,
+  ratio-regions 0.968; through ssac, smith-normal-form 0.941, the vector programs 0.95.
+- **Rotation on arm64 alone, and Real constants:** imp-for 0.769, fib, tak, and mandelbrot 0.87, vector32- and
+  vector64-concat 0.90, string-concat 0.914, vector-rev 0.931, output1 0.957, smith-normal-form and wc-scanStream 0.96,
+  fft 0.974, tensor 0.984 (0.992 of it from arm64's block layout no longer starting a chain at a block that one
+  unplaced block alone goes to, a loop's bottom test). Through ssac nothing moved by 1%.
+
+Found on the way: ssac printed a branch whose arm passes arguments as invalid C, which no pass had made before; a
+terminator's arrays may be shared between blocks (two returns of one value), which the JIT's verifier caught; and the
+pass, rebuilding its graph and loop bodies for every block, doubled the whole-program compile of `ssa_escape` (6.9 s
+of processor time against 3.0) until each block got a cheap header test first (`3daeb07b`: 3.5 s). Left: the `fmov`s
+on the back edge of mandelbrot's inner loop, which register assignment makes from a permuted pair.
+
+### 44.2. Times
+
+To follow: the suite at `run.py time --clean --scale 0.25`, before (`31dc2eac`) and after (`3daeb07b`), through C,
+ssac, arm64, and arm64 whole program.

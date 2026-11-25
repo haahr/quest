@@ -316,7 +316,7 @@ internal error.
   ([exceptions.md](exceptions.md) §6), and a traceback through the loop's levels shows one frame, as through tail calls
   (`repl/module_errors` subtracts, to keep its frames). `ssa_accumulate` shows each case.
 - **`ssa/passes/loops`** makes the loop that recursion is visible to the SSA, and keeps module cells in registers
-  across loops (mlton-median-plan.md step 25). A recursive loop that stays a function, because the IR could not
+  across loops (benchmarks.md §44). A recursive loop that stays a function, because the IR could not
   contify it (mandelbrot's `loop1`, called from `doit` and the top level), is a self tail call, which only the backends
   made a jump. A function that calls itself in tail position once, from which no slot's address escapes, gets a header
   as `accumulate`'s, and the call becomes a jump to it. One that calls itself so twice or more is left to the backends:
@@ -329,7 +329,7 @@ internal error.
   at an overlapping offset through another address but a slot's or a global's own word, or an invariant load); the
   loop stores nothing to the global, calls only runtime functions that write no memory and cannot raise, and enters no
   try. mandelbrot retires 0.90 of its instructions through `ssac` and 0.89 through arm64. Last, what a loop computes
-  the same on every pass moves before it, into a preheader (mlton-median-plan.md step 8): pure operations (constants,
+  the same on every pass moves before it, into a preheader (benchmarks.md §44): pure operations (constants,
   symbols, and nulls copied, not moved, and comparisons left with the branches arm64 fuses them into) and loads that
   cannot fault there (a slot's, a global's the loop does not store to, an invariant load of an object a check before
   the loop found not null). When the loop's header only tests whether to leave and its first pass checks invariant
@@ -342,7 +342,7 @@ internal error.
   across a collection without its object's own pointer. Through arm64, matrix-multiply retires 0.84 of its
   instructions, fft 0.87, pidigits and vector-rev 0.88, smith-normal-form 0.90; through `ssac`, whose clang hoisted
   most of it already, tensor 0.95. Then a bounds check goes when the comparisons before it decide it
-  (mlton-median-plan.md step 9): its index is never negative (a constant, a length, either plus a small constant, or a
+  (benchmarks.md §44): its index is never negative (a constant, a length, either plus a small constant, or a
   block parameter that every jump binds such a value to) and at most the length less one, by a comparison on a branch
   that dominates it or, for a block parameter, on every jump into the block, by the value bound there or, for a jump
   binding x + 1, by a test there that x is not the bound (a `for` loop's, by induction). Values compare by form, a base
@@ -354,7 +354,7 @@ internal error.
   loop is rotated whether or not it has checks to move, when its header only tests whether to leave, so that each pass
   ends in the test rather than in a jump back to it (the guard binding the parameters of the header's successor from
   its copies); and a Real constant used in a loop that calls nothing, which takes two instructions to make, is made
-  once before it (mlton-median-plan.md step 14): imp-for retires 0.77 of its instructions, fib, tak, and mandelbrot
+  once before it (benchmarks.md §44): imp-for retires 0.77 of its instructions, fib, tak, and mandelbrot
   0.87, the vector programs 0.90. `language/module_cells_in_loops`, `language/hoisted_loop_checks`, and
   `language/decided_bounds_checks` show each case.
 - **`ssa/passes/tailCalls`** marks calls in tail position (§3, arm64.md §3.7): a call whose block returns its results

@@ -397,3 +397,5 @@ C runtime), which link to the rest.
 - [docs/release-compiler.md](docs/release-compiler.md): releases of the self-hosted compiler (`tools/release`), from
   which `./quest` is built.
 - [docs/tasklist.md](docs/tasklist.md): open bugs and planned tasks.
+- [docs/optimization-experiments.md](docs/optimization-experiments.md): optimization attempts that did not end in a
+  change, and why.
