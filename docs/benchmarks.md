@@ -26,8 +26,9 @@ ssac's `volatile` locals (§33) and adapter closures made once (§34), times eve
 program included (§35), measures what inlining three library modules into their importers would gain (§36),
 makes whole program as fast as unit by unit (§37), counts where the median programs' instructions go against
 MLton's (§38), takes one-block large objects from the collector's free list (§39), counts the first fixes for
-the median programs (§40), times them, with two regressions the timing found and fixed (§41), and inlines three
-library modules into their importers (§43).
+the median programs (§40), times them, with two regressions the timing found and fixed (§41), inlines three
+library modules into their importers (§43), makes loops in recursive form loops in the SSA (§44), and times the
+ssac-built compiler against the arm64-built one (§45).
 
 > **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
 > no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
@@ -3955,3 +3956,30 @@ Each found by cycles against instructions (`/usr/bin/time -l`), which load barel
 Against `3daeb07b`, all 46 at a thirty-second of the counts (`counts-3daeb07b.jsonl`, `counts-fixes.jsonl`): through
 arm64, 0.998 of the instructions and 0.989 of the cycles, fib 0.781 of the cycles and peek 0.831; through ssac 1.000
 and 0.997. No program retires 1% more but vliw (1.010, its cycles 1.003).
+
+## 45. The ssac-built compiler against the arm64-built one (2026-11-25)
+
+The compiler as ssac builds it and as arm64 builds it, last compared in §5.1 (2026-10-30), when the ssac-built one
+took 1.23 to 1.44 times the C-built one's time and the arm64-built one 1.58 to 2.24. Since then only the arm64-built
+and C-built compilers were compared (§21.2, §22).
+
+At `0dafc16a`, each stage 2 (`./quest` with `QUEST_BACKEND` unset, then `ssac`, each copied out of its stage
+directory) compiled the driver through arm64 from an empty build directory, the two alternating for three rounds,
+first at `-j 1` and then at `-j 8`, under `tools/exclusive` after three minutes with the load below 5, by §22's
+script (`benchmarks/mlton/baselines/2026-11-12/compiler-alternating.sh`). The output is
+`benchmarks/mlton/baselines/2026-11-25/compiler-ssac-arm64-0dafc16a.txt`; the script sorts it, so the times below are
+sorted, not paired by round.
+
+| | arm64-built | ssac-built | arm64 / ssac |
+|---|--:|--:|--:|
+| `-j 1` wall | 78.34, 80.01, 82.47 s | 74.72, 75.34, 77.01 s | 1.05 (best), 1.06 (mean) |
+| `-j 1` user | 71.69, 72.07, 74.22 s | 67.67, 68.38, 69.75 s | **1.06** (best and mean) |
+| `-j 8` wall | 25.51, 25.82, 26.62 s | 23.95, 24.45, 25.14 s | 1.07 (best), 1.06 (mean) |
+| `-j 8` user | 97.94, 99.86, 100.22 s | 92.39, 93.79, 95.65 s | 1.06 |
+
+The ssac-built compiler takes 0.94 of the arm64-built one's time, about the gap §22 left between the arm64-built and
+C-built ones (1.05). On the MLton suite the gap is wider: arm64's code takes about 1.4 times ssac's (§41.2, geometric
+means over MLton's of 1.68 and 1.21). The compiler, which spends its time allocating, in hash maps, and in pattern
+matching, likely gains less from clang's optimizations than the suite's loops do (not profiled). The load stayed below 5 through the `-j 1`
+rounds and reached 17 by the end of the `-j 8` ones, mostly their own; every round put ssac ahead, and each
+compiler's three rounds are within 5% of each other.
