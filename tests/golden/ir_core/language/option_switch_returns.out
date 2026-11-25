@@ -1,0 +1,178 @@
+import conv = "conv" : Conv
+import writer = "writer" : Writer
+main {
+  funs {
+    fun put(s: String): Ok {
+      let %1: writer.T = member writer.output @8:43
+      let %2: Ok = call writer.putString(%1, s) @8:26
+      return %2
+    }
+  }
+  let %3: Op = option(load) @13:5
+  let %4: Op = option(store) @14:5
+  let %5: Op = option(add) @15:5
+  let %6: Op = option(sub) @16:5
+  let %7: Op = option(mul) @17:5
+  let %8: Op = option(div) @18:5
+  let %9: Op = option(jump) @19:5
+  let %10: Op = option(branch) @20:5
+  let %11: Op = option(call) @21:5
+  let %12: Op = option(ret) @22:5
+  let %13: Op = option(halt) @23:5
+  let %14: Op = option(nop) @24:5
+  let all: Array(Op) = array(%3, %4, %5, %6, %7, %8, %9, %10, %11, %12, %13, %14) @12:11
+  funs {
+    fun index(op: Op): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        switch tag(op) { @29:5
+          case load: {
+            jump k1(0) @29:5
+          }
+          case store: {
+            jump k1(1) @29:5
+          }
+          case add: {
+            jump k1(2) @29:5
+          }
+          case sub: {
+            jump k1(3) @29:5
+          }
+          case mul: {
+            jump k1(4) @29:5
+          }
+          case div: {
+            jump k1(5) @29:5
+          }
+          case jump: {
+            jump k1(6) @29:5
+          }
+          case branch: {
+            jump k1(7) @29:5
+          }
+          case call: {
+            jump k1(8) @29:5
+          }
+          case ret: {
+            jump k1(9) @29:5
+          }
+          case halt: {
+            jump k1(10) @29:5
+          }
+          case nop: {
+            jump k1(11) @29:5
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun name(op.1: Op): String {
+      join k2(r.1: String) {
+        return r.1
+      } in {
+        switch tag(op.1) { @46:5
+          case load: {
+            jump k2("LD") @46:5
+          }
+          case store: {
+            jump k2("ST") @46:5
+          }
+          case add: {
+            jump k2("ADD") @46:5
+          }
+          case sub: {
+            jump k2("SUB") @46:5
+          }
+          case mul: {
+            jump k2("MUL") @46:5
+          }
+          case div: {
+            jump k2("DIV") @46:5
+          }
+          case jump: {
+            jump k2("J") @46:5
+          }
+          case branch: {
+            jump k2("B") @46:5
+          }
+          case call: {
+            jump k2("CALL") @46:5
+          }
+          case ret: {
+            jump k2("RET") @46:5
+          }
+          case halt: {
+            jump k2("HLT") @46:5
+          }
+          case nop: {
+            jump k2("NOP") @46:5
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun cost(op.2: Op): Int {
+      join k3(r.2: Int) {
+        return r.2
+      } in {
+        switch tag(op.2) { @63:5
+          case load: {
+            jump k3(3) @63:5
+          }
+          case store: {
+            jump k3(3) @63:5
+          }
+          case mul: {
+            jump k3(4) @63:5
+          }
+          case div: {
+            jump k3(20) @63:5
+          }
+          case call: {
+            jump k3(5) @63:5
+          }
+          case ret: {
+            jump k3(2) @63:5
+          }
+          else: {
+            jump k3(1) @63:5
+          }
+        }
+      }
+    }
+  }
+  var indexOf: Fun(op: Op): Int = index @75:1
+  var nameOf: Fun(op: Op): String = name @76:1
+  var costOf: Fun(op: Op): Int = cost @77:1
+  let %15: Int = prim extent(all) @79:17
+  let %16: Int = prim -(%15, 1) @79:17
+  var i: Int = 0 @79:1
+  let %17: Bool = prim <=(i, %16) @79:1
+  if %17 { @79:1
+    loop L1 {
+      let i.1: Int = i @79:1
+      let op.3: Op = index(all, i.1) @80:14
+      let %18: Int = call indexOf(op.3) @81:18
+      let %19: String = call conv.int(%18) @81:9
+      let %20: String = call nameOf(op.3) @81:41
+      let %21: Int = call costOf(op.3) @81:71
+      let %22: String = call conv.int(%21) @81:62
+      let %23: String = prim <>(%22, "\n") @81:62
+      let %24: String = prim <>(" ", %23) @81:55
+      let %25: String = prim <>(%20, %24) @81:41
+      let %26: String = prim <>(" ", %25) @81:34
+      let %27: String = prim <>(%19, %26) @81:9
+      do call put(%27) @81:5
+      let %28: Bool = prim is(i, %16) @79:1
+      if %28 { @79:1
+        break L1 @79:1
+      }
+      let %29: Int = prim +(i, 1) @79:1
+      i := %29 @79:1
+    }
+  }
+}
+

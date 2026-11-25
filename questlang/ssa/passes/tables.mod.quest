@@ -32,9 +32,16 @@ export
             all
         end
 
+    (* The join of a switch whose arms return rather than jump: their returns
+     * act as jumps to one block that returns its parameters *)
+    let returns = ~1
+
     (* Follow a switch arm starting at target t through up to `longest`
      * parameterless, constant-only jump blocks, returning the first target
-     * that passes arguments (or none if the arm does not fit that shape) *)
+     * that passes arguments, or a return of values as a target of the block
+     * returns (or none if the arm does not fit that shape). A function whose
+     * body is the switch has arms that return, since the simplifier turns a
+     * join that only returns into a return in each arm. *)
     let follow(f: Function t: ssa.Target): maybe.T(ssa.Target) =
         begin
             let var at = t
@@ -53,9 +60,9 @@ export
                                 at := x.target
                                 steps := steps + 1
                                 going := true
-                            when termNone, termBranch, termSwitch, termReturn, termTailCall, termTry,
-                                    termUnreachable then
-                                ok
+                            when termReturn with x then
+                                if extent x.values > 0 then result := maybe.some(ssa.target(returns x.values)) end
+                            when termNone, termBranch, termSwitch, termTailCall, termTry, termUnreachable then ok
                         end
                     end
                 end
@@ -125,9 +132,10 @@ export
                 let defaultArm = maybe.isSome(other) andif {maybe.unwrap(other).block is join}
                 if gaps andif not(defaultArm) then fits := false end
                 for k = 0 upto {extent cases - 1} do
-                    if maybe.unwrap(arms[k]).block isnot join then fits := false end
+                    let arm = maybe.unwrap(arms[k])
+                    if {arm.block isnot join} orif {extent arm.args isnot n} then fits := false end
                 end
-                let params = ssa.block(f join).params
+                if defaultArm andif {extent maybe.unwrap(other).args isnot n} then fits := false end
                 let varies = array of(n false)
                 let same = array of(n 0)
                 let words = array of(n array of :ssa.Word end)
@@ -142,7 +150,9 @@ export
                         if gaps andif {maybe.unwrap(other).args[p] isnot v} then varies[p] := true end
                         if varies[p] then
                             anyVaries := true
-                            case ssa.typeOf(f vector.get(params p))
+                            (* The first arm's argument has the type of the
+                             * join's parameter, or of the value returned *)
+                            case ssa.typeOf(f v)
                                 when typeReal then fits := false
                                 when typeInt, typePtr, typeVal then ok
                             end
@@ -188,7 +198,9 @@ export
     (* Replace block b's switch on value with a range check (branching to
      * default when out of range) and a new block that loads each varying
      * argument from its static table (appended to u.data as symbol, symbol_1,
-     * ...) before jumping to p.join *)
+     * ...) before jumping to p.join, or returning them when p.join is
+     * returns. A load takes the type of the first arm's argument (p.same's),
+     * which is the join parameter's, or the value returned. *)
     let convert(u: ssa.Unit f: Function b: Int value: Int default: ssa.Target p: Plan symbol: String): Ok =
         begin
             let blk = ssa.block(f b)
@@ -203,7 +215,6 @@ export
                 let ifTrue = ssa.target(load array of :Int end)
                 let ifFalse = default
             end
-            let params = ssa.block(f p.join).params
             let args = array of(extent p.same 0)
             let var tables = 0
             let offset = ssa.binary(f load ssa.opShl index ssa.constant(f load 3))
@@ -213,12 +224,16 @@ export
                     tables := tables + 1
                     vector.append(u.data ssa.words(name false false p.words[k]))
                     let address = ssa.ptrAdd(f load ssa.symbolAddress(f load name) offset)
-                    args[k] := ssa.invariantLoad(f load address 0 8 false ssa.typeOf(f vector.get(params k)))
+                    args[k] := ssa.invariantLoad(f load address 0 8 false ssa.typeOf(f p.same[k]))
                 else
                     args[k] := p.same[k]
                 end
             end
-            ssa.terminate(f load option termJump of ssa.Terminator with let target = ssa.target(p.join args) end)
+            if p.join is returns then
+                ssa.terminate(f load option termReturn of ssa.Terminator with let values = args end)
+            else
+                ssa.terminate(f load option termJump of ssa.Terminator with let target = ssa.target(p.join args) end)
+            end
         end
 
     let tableFunction(u: ssa.Unit f: Function): Ok =

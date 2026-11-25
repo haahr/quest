@@ -1,0 +1,181 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedLetValue 'put' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedVar 's' :type String)
+          ))))
+    (TypedLetType 'Op' :kind TYPE)
+    (TypedLetValue 'all' :type Array(Op)
+      :value (TypedArray :type Array(Op)
+        :elements (
+          (TypedOption 'load' :type Op)
+          (TypedOption 'store' :type Op)
+          (TypedOption 'add' :type Op)
+          (TypedOption 'sub' :type Op)
+          (TypedOption 'mul' :type Op)
+          (TypedOption 'div' :type Op)
+          (TypedOption 'jump' :type Op)
+          (TypedOption 'branch' :type Op)
+          (TypedOption 'call' :type Op)
+          (TypedOption 'ret' :type Op)
+          (TypedOption 'halt' :type Op)
+          (TypedOption 'nop' :type Op)
+        )))
+    (TypedLetValue 'index' :type Fun(op: Op): Int
+      :value (TypedFun :params (('op' : Op)) :type Fun(op: Op): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'op' :type Op)
+          :branches (
+            (TypedCaseBranch tags=(load)
+              :body (TypedInt 0 :type Int))
+            (TypedCaseBranch tags=(store)
+              :body (TypedInt 1 :type Int))
+            (TypedCaseBranch tags=(add)
+              :body (TypedInt 2 :type Int))
+            (TypedCaseBranch tags=(sub)
+              :body (TypedInt 3 :type Int))
+            (TypedCaseBranch tags=(mul)
+              :body (TypedInt 4 :type Int))
+            (TypedCaseBranch tags=(div)
+              :body (TypedInt 5 :type Int))
+            (TypedCaseBranch tags=(jump)
+              :body (TypedInt 6 :type Int))
+            (TypedCaseBranch tags=(branch)
+              :body (TypedInt 7 :type Int))
+            (TypedCaseBranch tags=(call)
+              :body (TypedInt 8 :type Int))
+            (TypedCaseBranch tags=(ret)
+              :body (TypedInt 9 :type Int))
+            (TypedCaseBranch tags=(halt)
+              :body (TypedInt 10 :type Int))
+            (TypedCaseBranch tags=(nop)
+              :body (TypedInt 11 :type Int))
+          ))))
+    (TypedLetValue 'name' :type Fun(op: Op): String
+      :value (TypedFun :params (('op' : Op)) :type Fun(op: Op): String
+        :body (TypedCase :type String
+          :target (TypedVar 'op' :type Op)
+          :branches (
+            (TypedCaseBranch tags=(load)
+              :body (TypedString 'LD' :type String))
+            (TypedCaseBranch tags=(store)
+              :body (TypedString 'ST' :type String))
+            (TypedCaseBranch tags=(add)
+              :body (TypedString 'ADD' :type String))
+            (TypedCaseBranch tags=(sub)
+              :body (TypedString 'SUB' :type String))
+            (TypedCaseBranch tags=(mul)
+              :body (TypedString 'MUL' :type String))
+            (TypedCaseBranch tags=(div)
+              :body (TypedString 'DIV' :type String))
+            (TypedCaseBranch tags=(jump)
+              :body (TypedString 'J' :type String))
+            (TypedCaseBranch tags=(branch)
+              :body (TypedString 'B' :type String))
+            (TypedCaseBranch tags=(call)
+              :body (TypedString 'CALL' :type String))
+            (TypedCaseBranch tags=(ret)
+              :body (TypedString 'RET' :type String))
+            (TypedCaseBranch tags=(halt)
+              :body (TypedString 'HLT' :type String))
+            (TypedCaseBranch tags=(nop)
+              :body (TypedString 'NOP' :type String))
+          ))))
+    (TypedLetValue 'cost' :type Fun(op: Op): Int
+      :value (TypedFun :params (('op' : Op)) :type Fun(op: Op): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'op' :type Op)
+          :branches (
+            (TypedCaseBranch tags=(load)
+              :body (TypedInt 3 :type Int))
+            (TypedCaseBranch tags=(store)
+              :body (TypedInt 3 :type Int))
+            (TypedCaseBranch tags=(mul)
+              :body (TypedInt 4 :type Int))
+            (TypedCaseBranch tags=(div)
+              :body (TypedInt 20 :type Int))
+            (TypedCaseBranch tags=(call)
+              :body (TypedInt 5 :type Int))
+            (TypedCaseBranch tags=(ret)
+              :body (TypedInt 2 :type Int))
+          )
+          :else (TypedInt 1 :type Int))))
+    (TypedLetValue 'indexOf' :type Fun(op: Op): Int
+      :value (TypedVar 'index' :type Fun(op: Op): Int))
+    (TypedLetValue 'nameOf' :type Fun(op: Op): String
+      :value (TypedVar 'name' :type Fun(op: Op): String))
+    (TypedLetValue 'costOf' :type Fun(op: Op): Int
+      :value (TypedVar 'cost' :type Fun(op: Op): Int))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [Option load store add sub mul div jump branch call ret halt nop end] :type Fun(a: Array(Option load store add sub mul div jump branch call ret halt nop end)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'all' :type Array(Op))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'op' :type Op
+              :value (TypedIndex :type Op
+                :target (TypedVar 'all' :type Array(Op))
+                :index (TypedVar 'i' :type Int)))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedVar 'put' :type Fun(s: String): Ok)
+            :args (
+              (TypedInfix '<>' :type String
+                :left (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Int
+                      :func (TypedDerefCell :type Fun(op: Op): Int
+                        :target (TypedVar 'indexOf' :type Var(Fun(op: Op): Int)))
+                      :args (
+                        (TypedVar 'op' :type Op)
+                      ))
+                  ))
+                :right (TypedInfix '<>' :type String
+                  :left (TypedString ' ' :type String)
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedApp :type String
+                      :func (TypedDerefCell :type Fun(op: Op): String
+                        :target (TypedVar 'nameOf' :type Var(Fun(op: Op): String)))
+                      :args (
+                        (TypedVar 'op' :type Op)
+                      ))
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedString ' ' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedApp :type String
+                          :func (TypedSelect 'int' :type Fun(n: Int): String
+                            :target (TypedVar 'conv' :type Module 'conv'))
+                          :args (
+                            (TypedApp :type Int
+                              :func (TypedDerefCell :type Fun(op: Op): Int
+                                :target (TypedVar 'costOf' :type Var(Fun(op: Op): Int)))
+                              :args (
+                                (TypedVar 'op' :type Op)
+                              ))
+                          ))
+                        :right (TypedString '\n' :type String))))))
+            )))))
+  ))

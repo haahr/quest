@@ -1,0 +1,82 @@
+(* Language: functions whose body is a case on an option, each arm giving a constant, so that each arm returns (which
+   the self-hosted compiler's SSA makes a load from a table and one return): integers in an order other than the
+   tags', strings, and an else that gives the values no case has. Each is called with every value. *)
+
+import conv : Conv
+import writer : Writer
+
+let put(s: String): Ok = writer.putString(writer.output s)
+
+Def Op = Option load store add sub mul div jump branch call ret halt nop end
+
+let all = array of
+    option load of Op end
+    option store of Op end
+    option add of Op end
+    option sub of Op end
+    option mul of Op end
+    option div of Op end
+    option jump of Op end
+    option branch of Op end
+    option call of Op end
+    option ret of Op end
+    option halt of Op end
+    option nop of Op end
+end
+
+(* Integers, in declaration order, which is not the tags' alphabetical order *)
+let index(op: Op): Int =
+    case op
+        when load then 0
+        when store then 1
+        when add then 2
+        when sub then 3
+        when mul then 4
+        when div then 5
+        when jump then 6
+        when branch then 7
+        when call then 8
+        when ret then 9
+        when halt then 10
+        when nop then 11
+    end
+
+(* Strings *)
+let name(op: Op): String =
+    case op
+        when load then "LD"
+        when store then "ST"
+        when add then "ADD"
+        when sub then "SUB"
+        when mul then "MUL"
+        when div then "DIV"
+        when jump then "J"
+        when branch then "B"
+        when call then "CALL"
+        when ret then "RET"
+        when halt then "HLT"
+        when nop then "NOP"
+    end
+
+(* An else, which takes the values no case names *)
+let cost(op: Op): Int =
+    case op
+        when load then 3
+        when store then 3
+        when mul then 4
+        when div then 20
+        when call then 5
+        when ret then 2
+        else 1
+    end
+
+(* Called through variables, so that they are not inlined into the loop, where each case would be a value a let
+   binds and keep its join *)
+let var indexOf = index
+let var nameOf = name
+let var costOf = cost
+
+for i = 0 upto {extent all - 1} do
+    let op = all[i]
+    put(conv.int(indexOf(op)) <> " " <> nameOf(op) <> " " <> conv.int(costOf(op)) <> "\n")
+end

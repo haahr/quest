@@ -3,9 +3,13 @@
  * This pass turns constant-returning switches into static lookup-table loads
  * (docs/ssa.md section 4.1). A switch qualifies if every arm jumps (possibly
  * through blocks containing only constant definitions) to the same join block
- * and passes constant arguments. It is replaced by a range check on the
- * switched value and, for each join-block parameter that varies across arms,
- * a load from a read-only static table indexed by `value - minCase`. For
+ * and passes constant arguments, or every arm returns constants. It is
+ * replaced by a range check on the switched value and, for each join-block
+ * parameter (or value returned) that varies across arms, a load from a
+ * read-only static table indexed by `value - minCase`; then a jump to the
+ * join, or a return. The arms of a function whose body is the switch return,
+ * since the simplifier turns a join that only returns into a return in each
+ * arm. For
  * example, nodes.opcodeIndex maps each opcode to an integer; without this
  * pass, the arm64 backend emits a compare-and-branch chain instead of a
  * single indexed load.

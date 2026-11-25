@@ -298,12 +298,16 @@ internal error.
   value in the range, `qt_<function>_<n>`) at that index, then jumps to the join. An argument is an integer or a
   symbol's address (`opConst`, `opSymbol`), or a value every arm passes alike; a `real` keeps the switch. A value in
   the range that no case has takes the default's arguments, so a switch with such gaps is converted only when its
-  default passes constants to the join too. `nodes.opcodeIndex`, a case of 52 arms each an integer, was arm64's
-  compare and branch for each case, 1,555 of the compiler's samples against the C build's 196, where clang made it a
-  load ([benchmarks.md](benchmarks.md) §21.5). A case whose arms each give a string literal is converted too, since
+  default passes constants to the join too. A switch whose arms each return constants instead (through such blocks
+  too) is taken as one whose arms jump to a join that returns them: the block that loads returns. A function whose
+  body is a case has such arms, since the IR's simplifier turns a join whose continuation only returns into a return
+  in each arm. `nodes.opcodeIndex`, a case of 54 arms each an integer and the whole of its function, was arm64's jump
+  table to 54 blocks of a `mov` and an epilogue before this rule (1,682 of the arm64-built compiler's samples against the
+  ssac-built one's 544, [benchmarks.md](benchmarks.md) §47; before §22, a compare and branch for each case, §21.5). A case whose arms each give a string literal is converted too, since
   a literal is its static object's address (`symbol qso_N + 8`, past its header word; [c-representation.md](c-representation.md)
-  §3.2), so the table holds the literals' addresses. `ssa_tables` shows each case, and
-  `language/string_literals_read_only`'s SSA a case of literals.
+  §3.2), so the table holds the literals' addresses. `ssa_tables` shows each case,
+  `language/string_literals_read_only`'s SSA a case of literals, and `language/option_switch_returns`'s functions whose
+  body is a case.
 - **`ssa/passes/accumulate`** makes loops of recursion through an associative operation (LLVM's accumulator recursion
   elimination; [benchmarks.md](benchmarks.md) §14): in a function of one `int` result, from which no slot's address
   escapes, a block whose last instructions are a call of the function itself and an `add`, `mul`, `and`, `or`, or `xor`

@@ -235,6 +235,135 @@ b3():
 }
 
 data qt_pair_0 words [5, 6, 7, 8]
+== arms that return, cases 0 to 4, a default that raises
+function index(%0: int): int {
+b0(%0: int):
+  switch %0 [0: b1(), 1: b2(), 2: b3(), 3: b4(), 4: b5()] default b6()
+b1():
+  %1: int = const 10
+  return %1
+b2():
+  %2: int = const 11
+  return %2
+b3():
+  %3: int = const 12
+  return %3
+b4():
+  %4: int = const 13
+  return %4
+b5():
+  %5: int = const 14
+  return %5
+b6():
+  call quest_raise_variant_error()
+  unreachable
+}
+-- after tables
+function index(%0: int): int {
+b0(%0: int):
+  %6: int = const 5
+  %7: int = ult %0, %6
+  branch %7, b2(), b1()
+b1():
+  call quest_raise_variant_error()
+  unreachable
+b2():
+  %8: int = const 3
+  %9: int = shl %0, %8
+  %10: ptr = symbol qt_index_0
+  %11: ptr = ptrAdd %10, %9
+  %12: int = load8 %11 + 0 invariant
+  return %12
+}
+
+data qt_index_0 words [10, 11, 12, 13, 14]
+== arms that return, through a block, with gaps filled by a default that returns
+function name(%0: int): ptr {
+b0(%0: int):
+  switch %0 [1: b1(), 2: b2(), 4: b3(), 5: b4()] default b5()
+b1():
+  %1: ptr = symbol qs_1
+  return %1
+b2():
+  jump b6()
+b3():
+  %3: ptr = symbol qs_3
+  return %3
+b4():
+  %4: ptr = symbol qs_4
+  return %4
+b5():
+  %5: ptr = symbol qs_0
+  return %5
+b6():
+  %2: ptr = symbol qs_2
+  return %2
+}
+-- after tables
+function name(%0: int): ptr {
+b0(%0: int):
+  %6: int = const 1
+  %7: int = sub %0, %6
+  %8: int = const 5
+  %9: int = ult %7, %8
+  branch %9, b2(), b1()
+b1():
+  %5: ptr = symbol qs_0
+  return %5
+b2():
+  %10: int = const 3
+  %11: int = shl %7, %10
+  %12: ptr = symbol qt_name_0
+  %13: ptr = ptrAdd %12, %11
+  %14: ptr = load8 %13 + 0 invariant
+  return %14
+}
+
+data qt_name_0 words [qs_1, qs_2, qs_0, qs_3, qs_4]
+== left: arms that return, and one that jumps to a join that returns
+function index(%0: int): int {
+b0(%0: int):
+  switch %0 [0: b1(), 1: b2(), 2: b3(), 3: b4()] default b5()
+b1():
+  %1: int = const 10
+  return %1
+b2():
+  %2: int = const 11
+  return %2
+b3():
+  %3: int = const 12
+  return %3
+b4():
+  %4: int = const 13
+  jump b6(%4)
+b5():
+  call quest_raise_variant_error()
+  unreachable
+b6(%5: int):
+  return %5
+}
+-- after tables
+function index(%0: int): int {
+b0(%0: int):
+  switch %0 [0: b1(), 1: b2(), 2: b3(), 3: b4()] default b5()
+b1():
+  %1: int = const 10
+  return %1
+b2():
+  %2: int = const 11
+  return %2
+b3():
+  %3: int = const 12
+  return %3
+b4():
+  %4: int = const 13
+  jump b6(%4)
+b5():
+  call quest_raise_variant_error()
+  unreachable
+b6(%5: int):
+  return %5
+}
 == left: gaps and a default that raises
 function holes(%0: int): int {
 b0(%0: int):

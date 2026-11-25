@@ -5,8 +5,10 @@
  * pass and verified. Made tables: integers from cases 0 to 4 with a default
  * that raises, strings (symbols' addresses) from cases starting at 3, cases
  * with gaps whose default passes a constant too, negative cases, arms that
- * pass through more than one block, and a join of two parameters, one passed
- * alike by every arm. Left: cases with gaps and a default that raises, sparse
+ * pass through more than one block, a join of two parameters, one passed
+ * alike by every arm, and arms that return constants rather than jump (with a
+ * default that raises, and with gaps a default that returns fills). Left:
+ * arms some of which return and some jump, cases with gaps and a default that raises, sparse
  * cases, three cases, an arm with an addition, arms going to different
  * blocks, arms passing reals, and arms passing an argument alike but not a
  * constant where they differ. *)
@@ -165,6 +167,79 @@ show("two parameters, one passed alike" array of
     "  %8: int = load8 %6 + 0"
     "  %9: int = add %8, %7"
     "  return %9"
+    "}"
+end)
+
+show("arms that return, cases 0 to 4, a default that raises" array of
+    "function index(%0: int): int {"
+    "b0(%0: int):"
+    "  switch %0 [0: b1(), 1: b2(), 2: b3(), 3: b4(), 4: b5()] default b6()"
+    "b1():"
+    "  %1: int = const 10"
+    "  return %1"
+    "b2():"
+    "  %2: int = const 11"
+    "  return %2"
+    "b3():"
+    "  %3: int = const 12"
+    "  return %3"
+    "b4():"
+    "  %4: int = const 13"
+    "  return %4"
+    "b5():"
+    "  %5: int = const 14"
+    "  return %5"
+    "b6():"
+    "  call quest_raise_variant_error()"
+    "  unreachable"
+    "}"
+end)
+
+show("arms that return, through a block, with gaps filled by a default that returns" array of
+    "function name(%0: int): ptr {"
+    "b0(%0: int):"
+    "  switch %0 [1: b1(), 2: b2(), 4: b3(), 5: b4()] default b5()"
+    "b1():"
+    "  %1: ptr = symbol qs_1"
+    "  return %1"
+    "b2():"
+    "  jump b6()"
+    "b6():"
+    "  %2: ptr = symbol qs_2"
+    "  return %2"
+    "b3():"
+    "  %3: ptr = symbol qs_3"
+    "  return %3"
+    "b4():"
+    "  %4: ptr = symbol qs_4"
+    "  return %4"
+    "b5():"
+    "  %5: ptr = symbol qs_0"
+    "  return %5"
+    "}"
+end)
+
+show("left: arms that return, and one that jumps to a join that returns" array of
+    "function index(%0: int): int {"
+    "b0(%0: int):"
+    "  switch %0 [0: b1(), 1: b2(), 2: b3(), 3: b4()] default b5()"
+    "b1():"
+    "  %1: int = const 10"
+    "  return %1"
+    "b2():"
+    "  %2: int = const 11"
+    "  return %2"
+    "b3():"
+    "  %3: int = const 12"
+    "  return %3"
+    "b4():"
+    "  %4: int = const 13"
+    "  jump b6(%4)"
+    "b5():"
+    "  call quest_raise_variant_error()"
+    "  unreachable"
+    "b6(%5: int):"
+    "  return %5"
     "}"
 end)
 
