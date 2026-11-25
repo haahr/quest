@@ -15,7 +15,7 @@ and words are the same."""
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Iterable, Optional
 
 from quest.syntax.tokens import DELIMITERS, KEYWORDS, RESERVED_PUNCTUATION, Token, TokenKind
 
@@ -123,3 +123,21 @@ def describe(names: Iterable[str], token: Token) -> str:
     if not phrases:
         return f"Unexpected {found(token)}"
     return f"Expected {_listed(phrases)}, found {found(token)}"
+
+
+# Help for slips carried over from other languages, by the token found
+_COMMA_HELP = (
+    "parameters and arguments are separated by spaces, not commas "
+    "(a comma joins names that share a type, as in a, b: Int)"
+)
+_ASSIGN_HELP = "a variable is assigned with ':=', not '='"
+
+
+def slip_help(names: Iterable[str], token: Token) -> Optional[str]:
+    """Help for a syntax error at token that is a common slip: a comma
+    between parameters or arguments, or = where := assigns."""
+    if token.kind == TokenKind.COMMA:
+        return _COMMA_HELP
+    if token.kind == TokenKind.EQUAL and "ASSIGN" in set(names):
+        return _ASSIGN_HELP
+    return None

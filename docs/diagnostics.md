@@ -99,6 +99,9 @@ are any.
   (`parsing stopped here`, or the note `parsing stopped at the end of the file`). An opener the parse stopped at is
   what the parser rejected (`(1 + 2)`, since braces group), so it keeps the usual error. The REPL and the language
   server ask where the parse stopped (`parser.stoppedAt`), not where the error is located.
+- **Common slips.** A syntax error at a comma gets the help that parameters and arguments are separated by spaces
+  (a comma only joins names that share a type, `a, b: Int`), and one at `=` where `:=` was expected gets the help
+  that `:=` assigns (`slip_help`, `expected.slipHelp`).
 
 ### 4.2. Kinds and Types
 - **The first error, or several.** The bootstrap raises at the first kind or type error, and the pipeline reports it.

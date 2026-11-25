@@ -442,7 +442,12 @@ export
                 diagbag.add(ps.bag d)
                 raise diagbag.fatalError with d end
             else
-                diagbag.addStoppingError(ps.bag sp expected.describe(vector.toArray(ps.expected) tok))
+                let names = vector.toArray(ps.expected)
+                let d = diagnostics.error(expected.describe(names tok) sp)
+                let help = expected.slipHelp(names tok)
+                if maybe.isSome(help) then diagnostics.setHelp(d maybe.unwrap(help)) end
+                diagbag.add(ps.bag d)
+                raise diagbag.fatalError with d end
             end
             absent
         end

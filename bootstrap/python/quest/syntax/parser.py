@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Optional as Opt
 
 from quest.common.location import SourceMap
-from quest.syntax.expected import describe as describe_expected
+from quest.syntax.expected import describe as describe_expected, slip_help
 from quest.syntax.tokens import Token, TokenKind
 from quest.syntax.unclosed import find as find_unclosed
 from quest.common.diagnostics import Diagnostic, DiagnosticLabel, QuestCompilerError
@@ -226,6 +226,7 @@ class ParserError(QuestCompilerError):
         token: Opt[Token] = None,
         notes: Opt[list[str]] = None,
         stopped: Opt[Token] = None,
+        help_text: Opt[str] = None,
     ):
         super().__init__(message=message, offset=offset, length=length)
         # The token the parse stopped at, the farthest any construct reached
@@ -235,6 +236,7 @@ class ParserError(QuestCompilerError):
         # Where the parse stopped, when the error is located elsewhere: a
         # secondary label, "parsing stopped here"
         self.stopped = stopped
+        self.help_text = help_text
 
     def to_diagnostic(self, length: Opt[int] = None) -> Diagnostic:
         diagnostic = Diagnostic.make_error(
@@ -242,6 +244,7 @@ class ParserError(QuestCompilerError):
             offset=self.offset,
             length=length if length is not None else self.length,
             notes=self.notes,
+            help_text=self.help_text,
         )
         if self.stopped is not None:
             diagnostic.secondary_labels.append(
@@ -371,6 +374,7 @@ class Parser:
             farthest_token.offset,
             max(1, farthest_token.length),
             token=farthest_token,
+            help_text=slip_help(self.expected_at_farthest, farthest_token),
         )
 
     def parse_target(self, target: SyntaxTarget, pos: int) -> tuple[Opt[Any], int]:

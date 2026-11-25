@@ -181,6 +181,10 @@ from other languages:
 
 Only slips seen in practice go in the table; each gets an error test.
 
+As built: the comma and `=` rows, with tests (`comma_between_parameters`, `comma_between_arguments`,
+`equals_for_assignment`). The semicolon row needed nothing new, since step 5's wording already says what each
+semicolon test expected, and the bracket row is step 4's.
+
 ## 4. Order and Testing
 
 Steps 1 to 3 (names) and 4 to 6 (syntax) are independent; within each part, the order is the one above. Step 5
