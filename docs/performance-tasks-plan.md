@@ -146,6 +146,14 @@ the runtime rather than jumping (benchmarks.md §3.5; arm64.md §6.2). Inlining 
   are shared behavior goldens, so the bootstrap writes them; every mode, WebAssembly included; the stress tier, since
   handlers are roots.
 - **Done when:** both are in and measured on the three programs, or recorded.
+- **Result (2026-11-25):** the gate passed, but on another cost, and the user chose a different change.
+  - The cost was the exception state's thread-local lookup: `_tlv_get_addr` was 13–26% of the three programs'
+    samples. The hot `try`s have calls in their bodies and catch raises from other functions, so the change above
+    would not have reached them.
+  - The state is now plain globals, and the SSA's `threadLocal` and its lowering are deleted (ABI 92).
+  - knuth-bendix, boyer and model-elimination run in 0.86–0.91 of their time on arm64 and 0.78–0.90 on ssac.
+  - The change above, no handler for a body that cannot raise, is not made: these programs show no need of it.
+    Details are in benchmarks.md §48.
 
 ### Step 5: The small recursions on arm64
 

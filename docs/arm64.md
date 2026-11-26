@@ -27,7 +27,7 @@ The code says **arm64** in directory, module, and option names; this document sa
   the layout, and the lowering before any arm64 code exists, and stays as a third backend to compare against.
 - **Choosing a unit's backend is explicit.** A unit the arm64 backend cannot compile is an error, never silently
   compiled with C; mixed builds name their units' backends (§3.12).
-- **The exception state stays thread-local** (§3.6), as it is for C.
+- **The exception state is global** (§3.6), as it is for C.
 - **Shared passes are the self-hosted compiler's.** Decisions moved out of the C printer into passes both of its
   backends use (§3.1) are not made in the bootstrap, whose C printer keeps making them itself.
 - **Debug information:** DWARF line tables (`.file` and `.loc` directives, from the IR's source offsets, §3.16); no
@@ -132,8 +132,7 @@ after it has goldens, since machine code changes with almost any backend change.
   declares takes or returns another (`quest_system_init`'s and `quest_builtins_init`'s `int argc` alone, the first
   argument, in a register). `modules/wide_calls` calls across units with arguments past the registers of each kind,
   which the backends' mixed modes compile natively on one side and through C on the other.
-- **Symbols the unit does not define** are reached through the GOT, and a thread-local through its descriptor's
-  accessor, so that one spelling serves the runtime, other units, and the system's libraries.
+- **Symbols the unit does not define** are reached through the GOT, so that one spelling serves the runtime, other units, and the system's libraries.
 - **A unit's interface to others** is what its C would define: the exported wrappers `qv_<mod>_<fn>`, the module
   record and initializer (`qv_mod_<M>_init`, [build-process.md](build-process.md) §8), the registration of record
   dictionaries and function tables, and `main` for a program. A C unit importing a native one includes the same
@@ -150,8 +149,7 @@ data are relocations. Read-only data goes in `__TEXT,__const` or `__TEXT,__cstri
 The data is the SSA's, not the C declarations': a unit's data is words, text, and zeros ([ssa.md](ssa.md) §5), its
 descriptors laid out by `ssa/statics` from `repr/staticdata`'s descriptions (§7.5), and its function types'
 adapters, thunks, and invokers, its exported functions, its function table, and `qr_register_dicts` are SSA
-functions, so that `ssac` and arm64 emit the same data and code. Static data cannot hold a thread-local's address,
-which is not a constant.
+functions, so that `ssac` and arm64 emit the same data and code.
 
 ### 3.5. Instruction selection
 
@@ -199,7 +197,7 @@ half of a pair's store, which cost psdes-random a fifth of its time once a tuple
 
 ### 3.6. Exceptions
 
-**In C** a `try` pushes a `QExceptionHandler` holding a `jmp_buf` (`runtime/quest_runtime.h`) onto a thread-local
+**In C** a `try` pushes a `QExceptionHandler` holding a `jmp_buf` (`runtime/quest_runtime.h`) onto a global
 chain and calls `_setjmp`; a raise walks the chain (exceptions.md §5.1) and `_longjmp`s. `_setjmp` stores all the
 callee-saved registers (`x19`–`x28`, `fp`, `lr`, `sp`, `d8`–`d15`) through a dyld stub: no system call, but
 flat-array, with a `try` in its innermost loop, spent 69 percent of its time there ([benchmarks.md](benchmarks.md)
@@ -232,9 +230,14 @@ reliably is enter fewer handlers (§6.2).
   handler or after the `try` (ir.md §6.4), the SSA keeps in a stack slot each mutable variable that a block a `try`'s
   handler reaches loads or stores ([ssa.md](ssa.md) §4.1). Every other value the handler uses dominates the `try`'s
   entry, so the handler block needs no parameters from the points that raise.
-- **The chain stays thread-local** (`_Thread_local`, though Quest has no threads). On Darwin, native code gets a
-  thread-local's address from its descriptor's accessor (`_tlv_get_addr`, a call; the SSA's `threadLocal`), taken at
-  each use. Raises go through the runtime.
+- **The chain is global,** since Quest has no threads: native code reaches it through the GOT, as any runtime global.
+  It was thread-local until 2026-11-25. On Darwin each use of a thread-local calls its descriptor's accessor
+  (`_tlv_get_addr`), and these calls were 13 to 26 percent of the samples of programs that raise often
+  ([benchmarks.md](benchmarks.md) §48). If Quest gains threads, the state becomes thread-local again, but reached
+  more cheaply than a call per use: preferably through a dedicated register holding the thread's state, else one
+  lookup per function (`runtime/quest_runtime.h`). The SSA's `threadLocal` and its lowering, through the
+  descriptor's accessor, were deleted with it: a way back would not be the one that cost. Raises go through the
+  runtime.
 - **Tracebacks** need no change to the runtime: native functions are in their units' function tables, have frame
   pointers, and have unwind information (§3.10).
 
@@ -317,8 +320,8 @@ So a value lives in pieces, each in a register or in memory:
   one move's source is copied to the scratch register `x10` (through `fmov` for a `d` register), which breaks its
   cycle, so a frame needs no copy area. A branch's edges each have their own code (after `cbz`, on each
   side), so no critical edge needs splitting.
-- **Rematerialization.** A constant, a real constant, the null, a slot's address, or a symbol's address (not a
-  thread-local's) needs no slot. Where it is in memory it is computed again, and if its first piece is in memory,
+- **Rematerialization.** A constant, a real constant, the null, a slot's address, or a symbol's address needs no
+  slot. Where it is in memory it is computed again, and if its first piece is in memory,
   its instruction emits nothing.
 - **`try` functions.** A function that enters a `try` is allocated like any other. What its handler uses is in
   memory at the handler's start, so the handler's code reloads it. The function still saves every callee-saved
@@ -418,7 +421,7 @@ reports `stack.overflow`.
 **Assembly text first,** assembled by `clang -c`: the assembler does instruction encoding, relocations, Mach-O, and
 unwind tables, the text is readable when debugging, and assembling it is a check in itself. Darwin's spellings:
 `_` before every C symbol, `L` before local labels, `sym@PAGE`/`sym@PAGEOFF` for addresses, `@GOTPAGE`/`@GOTPAGEOFF`
-for data in dylibs, `@TLVPPAGE`/`@TLVPPAGEOFF` for thread-locals' descriptors, `bl _f` for any call (the linker
+for data in dylibs, `bl _f` for any call (the linker
 adds stubs). The linker signs arm64 executables ad hoc. All of
 this is in one module, so that another object format would replace only it.
 
@@ -538,8 +541,7 @@ only prints what the SSA says, so a test that passes through it checks the SSA's
 (its units link with the C backend's, which assert their offsets), and every lowering before instruction selection.
 
 - **No header.** `ssac`'s C includes nothing and declares everything itself, so that nothing it prints conflicts with
-  the runtime's declarations: a symbol the unit does not define is `extern char name[]` (a thread-local, `extern
-  __thread`). Its units compile as GNU C, with `-fno-strict-aliasing` (they read and write a word of memory as
+  the runtime's declarations: a symbol the unit does not define is `extern char name[]`. Its units compile as GNU C, with `-fno-strict-aliasing` (they read and write a word of memory as
   different C types) and `-fno-builtin` (`ssac.cFlags`).
 - **Calls** are C calls through a pointer to a function of the types the call's arguments and results have (a 16-byte
   composite a struct of two words, one passed through memory a struct of its bytes), so clang applies the ABI as the
@@ -679,7 +681,7 @@ names), which are allocatable, caller-saved, and callee-saved, its argument and 
 registers, its stack alignment, and its word size. `codegen/arm64/target` is the only one; nothing outside a target's
 own modules names a register. Selection gives each conditional branch's target a block of its own, where its edge's
 moves go, and a `try` a block beside it that a raise enters; the printer expands three pseudo-instructions (a constant,
-a symbol's address, a thread-local's). An x86-64 backend would be a selection, a printer, and a target description,
+a symbol's address). An x86-64 backend would be a selection, a printer, and a target description,
 reusing everything in `codegen/machine/machine`; an LLVM or WASM backend would print the SSA with its signatures (WASM
 would also need `try` through its exception handling, slots on a shadow stack, and precise roots).
 

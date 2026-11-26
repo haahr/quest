@@ -246,8 +246,7 @@ export
                         opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub,
                         opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
                         opBitsReal, opIntToReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy,
-                        opPtrAdd,
-                        opThreadLocal, opToVal, opFromVal, opSelect, opUnproxy then
+                        opPtrAdd, opToVal, opFromVal, opSelect, opUnproxy then
                     maybe.none()
             end
         end
@@ -335,9 +334,7 @@ export
                     opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt,
                     opRealBits,
                     opBitsReal, opIntToReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy,
-                    opPtrAdd,
-                    opThreadLocal,
-                    opToVal, opFromVal, opSelect, opUnproxy then
+                    opPtrAdd, opToVal, opFromVal, opSelect, opUnproxy then
                 minst.condEq
         end
     let isComparison(op: ssa.Opcode): Bool =
@@ -349,9 +346,7 @@ export
                     opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt,
                     opRealBits,
                     opBitsReal, opIntToReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy,
-                    opPtrAdd,
-                    opThreadLocal,
-                    opToVal, opFromVal, opSelect, opUnproxy then
+                    opPtrAdd, opToVal, opFromVal, opSelect, opUnproxy then
                 false
         end
     let isRealComparison(op: ssa.Opcode): Bool =
@@ -362,7 +357,7 @@ export
                     opFadd,
                     opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opIntToReal, opSext8,
                     opZext8, opLoad,
-                    opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal, opFromVal, opSelect,
+                    opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opToVal, opFromVal, opSelect,
                     opUnproxy then
                 false
         end
@@ -393,7 +388,7 @@ export
                                 opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge,
                                 opIsNaN, opRealBits, opBitsReal, opIntToReal, opSext8, opZext8, opLoad, opStore, opCall,
                                 opCallIndirect,
-                                opPtrAdd, opThreadLocal, opSelect, opUnproxy then
+                                opPtrAdd, opSelect, opUnproxy then
                             a
                     end
                 else
@@ -592,10 +587,6 @@ export
                 when opNull then emit(s minst.movConst(d 0))
                 when opSymbol then
                     emit(s minst.symbolAddress(d i.symbol i.imm hashMap.contains(s.defined i.symbol)))
-                (* A thread-local's address is a call of its accessor *)
-                when opThreadLocal then
-                    emitFull(s machine.kindCall minst.tlvAddress(x0 i.symbol) none none ~1)
-                    emitMove(s d x0)
                 when opSlot then spPlus(s d s.slotAt[i.imm])
                 when opAdd, opPtrAdd then add(s d i.args[0] i.args[1])
                 when opSub then sub(s d i.args[0] i.args[1])
@@ -1211,7 +1202,7 @@ export
             machine.isKind(i machine.kindOrdinary) andif case vector.get(s.ops i.op)
                 when opMovConst, opSymbolAddress then true
                 when opAddImm then readsSp
-                when opMovImm, opMovz, opMovk, opTlvAddress, opMov, opArith, opSubImm, opLogicImm, opShiftImm, opMsub,
+                when opMovImm, opMovz, opMovk, opMov, opArith, opSubImm, opLogicImm, opShiftImm, opMsub,
                         opSxtb, opSxtw, opScvtf, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad,
                         opStore,
                         opLdp,

@@ -304,7 +304,7 @@ the walk on macOS uses the symbol table.)
 Both searches for a start are slow, and `dladdr` scans the whole symbol table, the debug map's entries for the line tables too
 ([arm64.md](arm64.md) §3.16), so a program that raises often from the same calls spent most of its time in them
 (zebra under arm64 ran at 2.07 times C's time instead of 1.45). The runtime caches each return address's start, in a
-direct-mapped table of 1024 entries per thread; code is never unloaded, so an entry stays right.
+direct-mapped table of 1024 entries; code is never unloaded, so an entry stays right.
 
 Exact matching attributes nothing by proximity. Frames in the runtime, in the C library, below `main`, and in
 compiler-generated functions match no entry and are skipped. An inlined function's code belongs to the function it

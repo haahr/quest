@@ -101,7 +101,7 @@ made at run time; and a list of them is passed as an array in a stack slot.
 
 ## Exceptions
 
-A `try` builds the runtime's handler record in a stack slot, links it onto the thread-local handler chain
+A `try` builds the runtime's handler record in a stack slot, links it onto the runtime's global handler chain
 (`quest_current_exception_handler`), and ends the block with the SSA's `try` terminator, whose handler block the
 backend resumes at when the body raises. Every way out of the body (falling off its end, a `break`, a jump to a join
 point outside, a `return`) first pops the handler, which is why the builder remembers how many handlers were entered
@@ -135,8 +135,8 @@ variables, words), `representation` (slots, aggregates' components, proxies, all
 
 ## Further reading
 
-- [docs/ssa.md](../../../docs/ssa.md) §4 (the builder's rules for variables, memory, closures, thread-locals, and
-  inline helpers) and §5 (what a unit contains).
+- [docs/ssa.md](../../../docs/ssa.md) §4 (the builder's rules for variables, memory, closures, the exception
+  state, and inline helpers) and §5 (what a unit contains).
 - [docs/arm64.md](../../../docs/arm64.md) §7: each decision the C backend leaves to C and clang, and where the builder
   makes it.
 - [docs/ir.md](../../../docs/ir.md) §8.4, the described IR.

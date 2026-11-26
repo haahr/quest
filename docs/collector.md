@@ -405,7 +405,7 @@ serialization would need, are in §9.2.
   which the metadata of §3.1 is reached.
 - **The JIT:** its data regions are ambiguous roots, registered with `quest_gc_add_roots`; its inputs' module
   records are reached through them, which is right (their addresses are in JIT code's GOT).
-- **Thread-locals** (`quest_current_exception`, the handler chain) are listed roots.
+- **The exception state** (`quest_current_exception`, the handler chain) is a listed root.
 - **The stack:** by the frame tables for arm64 frames, conservatively for every other (§3.3).
 - **The `roots` check** (§7) scans the executable's data segment (`getsegmentdata` on Darwin, `__data_start` to
   `_end` on Linux) for a heap pointer no table or listed root covers, naming the symbol.

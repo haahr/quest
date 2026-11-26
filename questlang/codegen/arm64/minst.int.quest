@@ -26,9 +26,8 @@ export
         arithFadd arithFsub arithFmul arithFdiv
     end
     (* Relocation kinds for addressing a symbol: the symbol's own page and
-     * offset, its GOT (Global Offset Table) entry for external symbols, or
-     * its Darwin thread-local variable descriptor *)
-    Def Reloc = Option relocPage relocGot relocTlv end
+     * offset, or its GOT (Global Offset Table) entry for external symbols *)
+    Def Reloc = Option relocPage relocGot end
     (* Memory addressing modes relative to a base register: base plus
      * immediate offset, base alone, pre-indexed (update base before access),
      * post-indexed (update base after access), base plus a symbol's page
@@ -63,9 +62,6 @@ export
          * is defined in this unit and addressed directly; otherwise its
          * address is loaded from the GOT. Large offsets use x17 as scratch. *)
         opSymbolAddress with symbol: String offset: Int local: Bool end
-        (* d (x0) := a thread-local variable's address, obtained by calling
-         * its Darwin TLV accessor (clobbers x16 and lr) *)
-        opTlvAddress with symbol: String end
         (* d, s: a register's copy, of either class *)
         opMov
         (* d, x, y *)
@@ -199,7 +195,6 @@ export
 
     relocPage: Reloc
     relocGot: Reloc
-    relocTlv: Reloc
 
     offset(imm: Int): Mode
     modeBase: Mode
@@ -222,7 +217,6 @@ export
     movk(d: Int imm: Int shift: Int): Inst
     movConst(d: Int imm: Int): Inst
     symbolAddress(d: Int symbol: String offset: Int local: Bool): Inst
-    tlvAddress(d: Int symbol: String): Inst
     mov(d: Int s: Int): Inst
     arith(a: Arith d: Int x: Int y: Int): Inst
     addImm(d: Int s: Int imm: Int shift: Int): Inst

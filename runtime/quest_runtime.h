@@ -198,7 +198,7 @@ typedef struct QTrace {
     int64_t     counts[Q_MAX_TRACE_RUNS];
 } QTrace;
 
-/* Thread-local active exception state: the exception raised, its payload, the site it was raised at
+/* Active exception state: the exception raised, its payload, the site it was raised at
    ("file:line:col", or NULL inside an external; docs/exceptions.md §3.3), and the frames captured there, if any,
    which a re-raise keeps; and for a payload of a type other than Ok, its type's descriptor and its type as the raise
    wrote it, by which an uncaught exception's payload is shown as the interpreters show it (docs/exceptions.md §2.1) */
@@ -236,7 +236,7 @@ typedef struct QRaised {
 #  define Q_LONGJMP(env, val) longjmp(env, val)
 #endif
 
-/* Linked node in thread-local exception handler stack: a try's handler, of one of two kinds (docs/arm64.md §3.6). A C
+/* Linked node in the exception handler stack: a try's handler, of one of two kinds (docs/arm64.md §3.6). A C
    handler's resume is NULL, and a raise resumes it with Q_LONGJMP to env_jmp. A native handler's is where its code
    resumes, with sp and fp (x29) as they were when it was entered: its function saved every callee-saved register on
    entry, so no other register need be restored. */
@@ -269,9 +269,19 @@ Q_NORETURN QVal quest_raised_reraise(const QTypeDescriptor *a, QRaised *r);
    calls Q_SETJMP; leaving its body, normally or by a jump or return out of it, pops it. A raise (quest_reraise) does
    not pop: it sets quest_current_exception and transfers to the top handler, which pops itself, reads
    quest_current_exception, and raises it again if none of its patterns match. Both are roots of the collector, since
-   a payload may point into the heap. */
-extern Q_THREAD_LOCAL QExceptionHandler *quest_current_exception_handler;
-extern Q_THREAD_LOCAL QExceptionState    quest_current_exception;
+   a payload may point into the heap.
+
+   They are plain globals, as is the rest of the runtime's exception state (quest_fatal_handler, the function-start
+   cache, os/code's caught exception), since Quest has no threads. As thread-locals, each use cost a call of the
+   variable's accessor on macOS (_tlv_get_addr): one per try entered, one per catch, and two per raise, 13 to 26% of
+   the samples of programs that raise often (knuth-bendix, boyer, model-elimination; docs/benchmarks.md §48). If
+   Quest gains threads, this state becomes thread-local again, but reached more cheaply than a lookup per use. The
+   preferred way is a dedicated register holding the thread's state (on arm64, a callee-saved register the backend
+   reserves, or x18 where the platform leaves it free), set once per thread and read by every try and raise without
+   a call; a lookup per function is the fallback, where native code and C must share the state and a register
+   cannot be reserved. */
+extern QExceptionHandler *quest_current_exception_handler;
+extern QExceptionState    quest_current_exception;
 
 /* Built-in singleton exception descriptors */
 extern const QException quest_exc_arrayOp_error;
@@ -1191,7 +1201,6 @@ void         quest_code_write32(QCodeRegion *r, int64_t offset, QArray *words);
 void         quest_code_write64(QCodeRegion *r, int64_t offset, QArray *words);
 void        *quest_code_symbol(const QString *name);
 bool         quest_code_is_null(void *v);
-void        *quest_code_tlv_getter(void);
 bool         quest_code_call(void *entry);
 QRaised     *quest_code_last_raised(void);
 QString     *quest_code_exception_name(QRaised *r);

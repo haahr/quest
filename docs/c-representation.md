@@ -1160,7 +1160,8 @@ every variable into a heap cell:
 
 ## 7. Exception Handling with `setjmp` and `longjmp`
 
-Quest's `try...when...else` and `raise` are lowered using a thread-local exception handler stack:
+Quest's `try...when...else` and `raise` are lowered using a global exception handler stack (global, not
+thread-local, since Quest has no threads; `runtime/quest_runtime.h`):
 
 ```c
 #include <setjmp.h>
@@ -1188,15 +1189,10 @@ typedef struct QExceptionHandler {
     jmp_buf                     env_jmp;    /* a C handler's */
 } QExceptionHandler;
 
-/* Thread-local exception handler chain */
-#if defined(_MSC_VER)
-#  define Q_THREAD_LOCAL __declspec(thread)
-#else
-#  define Q_THREAD_LOCAL _Thread_local
-#endif
-
-extern Q_THREAD_LOCAL QExceptionHandler *quest_current_exception_handler;
-extern Q_THREAD_LOCAL QExceptionState    quest_current_exception;
+/* The exception handler chain, and the exception raised: globals, since
+   Quest has no threads */
+extern QExceptionHandler *quest_current_exception_handler;
+extern QExceptionState    quest_current_exception;
 ```
 
 A C try sets its handler's `resume` to `NULL` and its `env_jmp` with `Q_SETJMP`, and a raise jumps to it with

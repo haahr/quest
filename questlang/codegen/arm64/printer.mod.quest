@@ -97,7 +97,7 @@ export
                 "ccmp " <> operands(array of n.full(rs[0]) n.full(rs[1]) immediate(x.nzcv) condition(x.cond) end)
             when opCcmpImm with x then
                 "ccmp " <> operands(array of n.full(rs[0]) immediate(x.imm) immediate(x.nzcv) condition(x.cond) end)
-            when opMovConst, opSymbolAddress, opTlvAddress then
+            when opMovConst, opSymbolAddress then
                 raise unexpanded with "a pseudo-instruction, unexpanded" end
             when opLogicImm with x then
                 let hex = "#0x" <> strutil.formatWord(word.fromInt(x.imm) 16)
@@ -217,15 +217,6 @@ export
                         vector.append(code minst.movImm(target.x(17) x.offset))
                         vector.append(code minst.arith(minst.arithAdd d d target.x(17)))
                     end
-                (* Darwin thread-local access loads the variable's descriptor
-                 * address into d (x0) and calls the accessor function stored
-                 * in the descriptor's first word, which returns the
-                 * thread-local variable's address in x0 *)
-                when opTlvAddress with x then
-                    vector.append(code minst.adrp(d x.symbol minst.relocTlv))
-                    vector.append(code minst.load(minst.load64 d d minst.pageOff(x.symbol minst.relocTlv)))
-                    vector.append(code minst.load(minst.load64 target.x(16) d minst.modeBase))
-                    vector.append(code minst.blr(target.x(16)))
                 when opMovImm, opMovz, opMovk, opMov, opArith, opAddImm, opSubImm, opLogicImm, opShiftImm, opMsub,
                         opSxtb, opSxtw, opScvtf, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad,
                         opStore,
@@ -242,7 +233,7 @@ export
     let count(op: minst.Op): Int =
         case op
             when opLabel, opJumpTable, opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then 0
-            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
+            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith, opAddImm,
                     opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opScvtf, opCmp, opFcmp, opCmpImm, opCcmp,
                     opCcmpImm,
                     opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl,
@@ -257,7 +248,7 @@ export
             (* Emit the .data_region directive so disassemblers treat the
              * jump-table entries as data, followed by the table's label *)
             when opJumpTable with x then array of "\t.data_region jt32" x.label <> ":" end
-            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
+            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith, opAddImm,
                     opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opScvtf, opCmp, opFcmp, opCmpImm, opCcmp,
                     opCcmpImm,
                     opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl,

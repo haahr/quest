@@ -15,9 +15,9 @@
 
 #include "quest_runtime_internal.h"
 
-/* Exception handling globals */
-Q_THREAD_LOCAL QExceptionHandler *quest_current_exception_handler = NULL;
-Q_THREAD_LOCAL QExceptionState    quest_current_exception = { NULL, { .u = 0 }, NULL, NULL };
+/* Exception handling globals (not thread-locals: quest_runtime.h) */
+QExceptionHandler *quest_current_exception_handler = NULL;
+QExceptionState    quest_current_exception = { NULL, { .u = 0 }, NULL, NULL };
 
 /* Built-in singleton exception descriptors */
 const QException quest_exc_arrayOp_error = { "arrayOp.error" };
@@ -153,7 +153,7 @@ typedef struct QFunctionStart {
     const void *start;
 } QFunctionStart;
 
-static Q_THREAD_LOCAL QFunctionStart quest_function_starts[Q_FUNCTION_START_CACHE];
+static QFunctionStart quest_function_starts[Q_FUNCTION_START_CACHE];
 
 /* The functions whose code no image describes, registered by os/code
    (quest_code_add_function) for the JIT's code (docs/jit.md §3.6), each from
@@ -361,7 +361,7 @@ Q_NORETURN void quest_fail_at(const char *loc) {
     quest_fail_with(loc, NULL);
 }
 
-Q_THREAD_LOCAL QExceptionHandler *quest_fatal_handler = NULL;
+QExceptionHandler *quest_fatal_handler = NULL;
 
 Q_NORETURN void quest_fatal(const char *message, const char *loc) {
     QExceptionHandler *h = quest_fatal_handler;

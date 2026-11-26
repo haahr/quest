@@ -276,10 +276,6 @@ catches a case missing from either. What the encoder does in place of the assemb
   slot in the arena (`adrp`/`ldr`), which the loader fills with its address.
 - **Calls** (`bl _f`): `bl` reaches ±128 MB. A call to the host goes to a stub in the arena (`adrp x16` of its GOT
   slot, `ldr x16`, `br x16`), as the linker's stubs do; calls within the arena are direct.
-- **Thread-locals** (`relocTlv`, for `quest_current_exception_handler` and `quest_current_exception`): the code reads
-  a descriptor and calls its first word, which returns the variable's address on the current thread. The loader puts
-  the driver's own descriptor of the variable, which `dlsym` gives, in the GOT slot. Code generation is unchanged, and
-  the encoder treats the reference as any other GOT entry.
 - **Data:** the static data's words, with absolute relocations for pointers to functions and other data.
 - **Unwind directives:** dropped, since frames need no unwind information (§3.9). **`.loc`:** kept as a table of
   positions by code offset, for a debugger (§3.12).
@@ -304,9 +300,7 @@ relocations aside. Forms the backend can emit that no such program uses are enco
   behind, unused.
 - **Symbols** (`jit/loader`): a unit's own symbols resolve first, then those the units before it export (the entries,
   the records), then the driver's (`dlsym`). A unit's other symbols (`qr_register_dicts`, its functions' names) are
-  its own, so that units do not collide. A thread-local's slot holds the driver's own descriptor of it, which is what
-  `dlsym` gives for a thread-local, so JIT code reads it as compiled code does; `os/code`'s `threadLocalGetter` is not
-  needed.
+  its own, so that units do not collide.
 - **Registration,** done by the entry as by a program's `main`: function tables (`quest_register_funcs`), record offset
   tables (`quest_register_record_dict`), and abstract types (`quest_register_abstract_type`). The runtime compares
   type descriptors structurally (`quest_is_subtype`; an opaque one by its name), not by address, so an input's

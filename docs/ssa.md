@@ -40,7 +40,6 @@ register allocation) walk the arrays; only the passes that care what an instruct
 | `const` | → `int` | the immediate |
 | `realConst` | → `real` | the double whose bits are the immediate |
 | `symbol` | → `ptr` | the address of the symbol (static data, a function, a runtime global), plus the immediate in bytes |
-| `threadLocal` | → `ptr` | the address of the runtime's thread-local variable the symbol names, in this thread |
 | `null` | → `ptr` | the null pointer |
 | `slot` | → `ptr` | the address of the stack slot numbered by the immediate |
 | `ptrAdd` | `ptr int` → `ptr` | the pointer plus a byte offset: every field's, element's, and slot's address |
@@ -166,9 +165,9 @@ and `unit` (functions, static data, registration, and the unit).
   is an external's thunk (`qx_`, ir.md §8.4.1), which only forwards its arguments, the call is of the external C
   function itself, as the C compiler makes it by inlining the thunk. A call of an imported member that is one of the
   standard library's externals (`repr/externals`) calls the C function, as the C printer's `libraryExternal` does.
-- **Thread-locals.** The handler chain and the current exception are the runtime's thread-local variables, whose
-  addresses `threadLocal` takes: the native backend calls their accessor (arm64.md §3.6), which clobbers what a call
-  does and is not rematerialized, and `ssac` takes the address with `&`; neither keeps a list of their names.
+- **The exception state.** The handler chain and the current exception are the runtime's globals, whose addresses
+  `symbol` takes. They were thread-locals, reached by an instruction of their own, until each use's call of the
+  accessor proved costly (arm64.md §3.6).
 - **Runtime helpers expanded inline,** as the C printer gets them from the header's `static inline` functions, so that
   `ssac` and arm64 both gain: an option's tag and unproxying, by a test of the proxy bit (`representation.choose`), the
   runtime called only for a proxy; real `+`, `-`, `*`, and `/` by their instruction and an `isNaN` test; `Int` `div` and
@@ -565,8 +564,7 @@ The builder makes, besides the IR's functions and the module initializers and `m
   unit views at supertypes;
 - a static closure (`<function>_closure`) of each function, and the data of globals and strings.
 
-What a unit refers to and does not define is another unit's or the runtime's; the runtime's thread-locals are the
-symbols its `threadLocal` instructions name (§4).
+What a unit refers to and does not define is another unit's or the runtime's.
 
 ## 6. The Textual Form
 
@@ -618,7 +616,7 @@ check holds the passes to that, by a forward dataflow over each function with st
 (a `quest_alloc`'s result, until a call that may collect: a function's of the program, or a runtime function's that
 allocates), met by intersection, and the stores owed a barrier, met by union. A store of a `ptr` or a `val` that is
 not a symbol's address or null, at an address that comes (through `ptrAdd` and `copy`) from a value that is neither
-young nor a slot's, a symbol's, or a thread-local's address, is owed one; the object's barrier on that value
+young nor a slot's or a symbol's address, is owed one; the object's barrier on that value
 answers every store into it, the slot's the stores at its address; and a store still owed at a call that may
 collect, a return, or a tail call is a problem, reported with its block and instruction. A missed barrier otherwise
 shows only when a collection falls between the store and the next barrier, which the `stress` mode makes likely

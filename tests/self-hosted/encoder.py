@@ -28,12 +28,10 @@ RUN_GOLDEN_DIR = ROOT_DIR / "tests" / "golden" / "run"
 PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-arm64.txt"
 
 # Mach-O's arm64 relocation types, by the encoder's names for them
-RELOC_TYPES = {"absolute64": 0, "branch26": 2, "page21": 3, "pageoff12": 4, "gotpage21": 5, "gotpageoff12": 6,
-               "tlvpage21": 8, "tlvpageoff12": 9}
+RELOC_TYPES = {"absolute64": 0, "branch26": 2, "page21": 3, "pageoff12": 4, "gotpage21": 5, "gotpageoff12": 6}
 ADDEND = 10
 # The bits of an instruction a relocation of each type leaves alone
-KEPT_BITS = {2: 0xFC000000, 3: 0x9F00001F, 5: 0x9F00001F, 8: 0x9F00001F,
-             4: 0xFFC003FF, 6: 0xFFC003FF, 9: 0xFFC003FF}
+KEPT_BITS = {2: 0xFC000000, 3: 0x9F00001F, 5: 0x9F00001F, 4: 0xFFC003FF, 6: 0xFFC003FF}
 
 
 class MachO:

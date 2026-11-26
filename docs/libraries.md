@@ -2542,8 +2542,6 @@ export
     write64(r: Region offset: Int words: Array(Int)): Ok
     (* A symbol of the running binary, by its C name (dlsym) *)
     symbol(name: String): maybe.T(value.T)
-    (* A function for a thread-local's descriptor that returns the descriptor's second word *)
-    threadLocalGetter(): value.T
     (* Call a function of no arguments under a handler that catches everything: none if it returned *)
     call(entry: value.T): maybe.T(raised.T)
     exceptionName(r: raised.T): String
@@ -2556,9 +2554,7 @@ end
 ```
 
 Executable regions are Darwin arm64's: writing toggles `pthread_jit_write_protect_np` for the thread and ends with
-`sys_icache_invalidate`. Compiled code reads a thread-local by calling its descriptor's first word with the
-descriptor in `x0`, and expects only `x0`, `x16`, and `x17` to change, so `threadLocalGetter` is two instructions of
-assembly (`ldr x0, [x0, #8]; ret`). `call` sets a handler record whose resume address is null, so a raise from code
+`sys_icache_invalidate`. `call` sets a handler record whose resume address is null, so a raise from code
 built by either backend jumps to it with `longjmp`. `addFunction` registers code no image describes, which the frame
 walk ([exceptions.md](exceptions.md) §5.3) consults before `dladdr`.
 

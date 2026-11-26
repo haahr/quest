@@ -177,34 +177,11 @@ bool quest_code_is_null(void *v) {
     return v == NULL;
 }
 
-/* Compiled code reads a thread-local through its descriptor: it loads the
-   descriptor's first word, a function, and calls it with the descriptor in
-   x0, and the function returns the variable's address, changing no register
-   but x0, x16, and x17. This one returns the descriptor's second word, so a
-   descriptor of the loader's, holding the address on the main thread, serves
-   for JIT code (docs/jit.md section 3.5). */
-#ifdef Q_HAVE_CODE_REGIONS
-__asm__(".text\n"
-        ".p2align 2\n"
-        "_quest_code_tlv_get:\n"
-        "\tldr x0, [x0, #8]\n"
-        "\tret\n");
-extern char quest_code_tlv_get[] __asm__("_quest_code_tlv_get");
-
-void *quest_code_tlv_getter(void) {
-    return quest_code_tlv_get;
-}
-#else
-void *quest_code_tlv_getter(void) {
-    quest_value_fail();
-}
-#endif
-
 /* ============================================================================
  * os/code: calls
  * ============================================================================ */
 
-static Q_THREAD_LOCAL QRaised *quest_code_raised = NULL;
+static QRaised *quest_code_raised = NULL;
 
 void quest_code_roots(QRootVisitor add) {
     add(&quest_code_raised, 1);

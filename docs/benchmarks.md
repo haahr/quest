@@ -424,7 +424,7 @@ and model-elimination raise and catch constantly. Options:
   10.1, model-elimination 47.2 to 46.1. Quest programs have one thread.
 
 *Done* for native code: an arm64 `try` stores where to resume instead of calling `_setjmp` ([arm64.md](arm64.md)
-§3.6). C's `try` still calls `_setjmp`, and the exception state stays thread-local in both.
+§3.6). C's `try` still calls `_setjmp`. The exception state stayed thread-local in both until §48 made it global.
 
 ### 3.6. Payload-free option cases allocate
 
@@ -4052,10 +4052,81 @@ export and its body summed, since ssac names the body `qv_...` and arm64 the exp
   `tests/golden/ssa/language/option_switches.out` has its tables only in such `let`s.
 - **The collector does more** (+1,640): the arm64-built compiler's heap is 1.25 times the ssac-built one's at its
   largest, and `quest_gc_alloc_slow` (+569), `quest_gc_mark_object` (+406), `quest_gc_mark_word` (+213), and
-  `quest_gc_scan_object` (+156) follow. Why it keeps more was not taken apart: values held in spill slots or
-  callee-saved registers past their last use, which a stack map counts as live, are the likeliest.
+  `quest_gc_scan_object` (+156) follow. *Corrected in §48.1:* the heap's size is not the backend's. It is the
+  collector's schedule, which differs between runs of one binary, and it moves the instruction counts by up to 3%.
 - **The rest is spread thin.** No other name differs by more than 570 samples (functions of one name summed):
   `append` +461, `hash.string` +450 (84 instructions against 59), `equal` +430, `int` +328, `insert` +271 (696
   against 426), `unionWith` +244, `get` +226, `contains` +180. These are the hot functions §21.5 found 1.2 to 1.4 times
   as long, and what is left of them is the register allocator's (§22.3). A few are faster through arm64, where
   inlining differs: `intersection` −526.
+
+## 48. The exception state made global (2026-11-25)
+
+The runtime's handler chain and current exception were `_Thread_local`, though Quest has no threads (§3.5 tried plain
+globals when the cost was 7% of knuth-bendix's samples, and kept the thread-locals). On macOS each use of a
+thread-local calls its descriptor's accessor, `_tlv_get_addr`. That's one call per `try` entered, one per catch, and two
+per raise, in the compiled code and in the runtime alike.
+
+### 48.1. The larger heap of §47
+
+§47's 1.25× heap is the collector's schedule, not the backend (performance-tasks-plan.md step 8).
+
+- One ssac-built stage 2 peaked at 5.54 GB in one run and 6.98 GB in the next. Track B's baseline at f47a1c00 had
+  §47's order reversed.
+- Both compilers allocate the same 75.2 GB, in 11 full and about 450 minor collections, and keep the same live bytes
+  where their schedules match.
+- The schedule turns on wall-clock time. A full collection marks in slices only if the last one took at least 10 ms,
+  and the first ones take 7–15 ms. A cycle lets the heap pass its target, so the collection points drift apart from
+  there on.
+- The schedule moves instruction counts too: 526.3 G in the 5.54 GB run, 543.8 G in the 6.98 GB one.
+
+### 48.2. Where the time went
+
+Before the change, by `tools/perf/profile.py` at 1/32 of the suite's counts:
+
+| | `_tlv_get_addr`, arm64 | ssac | `quest_reraise`, arm64 |
+|---|--:|--:|--:|
+| knuth-bendix | 25.8% | 23.4% | 3.9% |
+| boyer | 15.8% | 17.9% | 2.1% |
+| model-elimination | 12.8% | | 1.8% |
+
+A sampler that also records the link register puts about half of arm64's calls in `quest_reraise` and half in compiled
+`try`s (`tryFindRec`, `rewriteWithLemmas`, `g`). The hot `try`s have calls in their bodies and catch raises from other
+functions, so the plan's step 4 (no handler for a body that cannot raise, a raise in the same function as a jump)
+would not have reached them.
+
+### 48.3. The change
+
+- The exception state is plain globals: the handler chain, the current exception, the fatal handler, the
+  function-start cache, and os/code's caught exception.
+- The SSA builder takes their addresses with `symbol`, so arm64 reaches them through the GOT. A `try` enters its
+  handler in four instructions, with no call.
+- The SSA's `threadLocal`, arm64's `tlvAddress` and its relocations, ssac's `extern __thread`, the JIT loader's
+  thread-local relocations, and `os/code.threadLocalGetter` are deleted. Nothing else used them.
+- ABI 92.
+- `runtime/quest_runtime.h` says how the state would become thread-local again if Quest gains threads. The preferred way
+  is a dedicated register holding the thread's state; a lookup per function is the fallback. Per use was the cost.
+
+### 48.4. Results
+
+Instructions, at 1/32 of the suite's counts, against f47a1c00:
+
+| | ssac | arm64 |
+|---|--:|--:|
+| knuth-bendix | 0.882 | 0.878 |
+| boyer | 0.915 | 0.919 |
+| model-elimination | 0.931 | 0.941 |
+| count-graphs | 0.932 | 0.944 |
+| hamlet | 0.993 | 0.947 |
+| flat-array | 0.949 | 0.855 |
+
+- The geometric mean over all 46 programs and both backends is 0.990.
+- The worst are tailfib at 1.008 and imp-for and ratio-regions at 1.006, none of which raises in its loop.
+
+User time, best of three rounds, the binaries interleaved, at a load of about 5:
+
+| | arm64 | ssac |
+|---|--:|--:|
+| knuth-bendix | 2.32 → 1.99 s (0.86) | 3.70 → 2.88 s (0.78) |
+| boyer | 2.18 → 1.94 s (0.89) | 2.52 → 2.11 s (0.84) |
+| model-elimination | 14.14 → 12.89 s (0.91) | 14.53 → 13.03 s (0.90) |

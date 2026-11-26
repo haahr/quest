@@ -25,7 +25,7 @@ import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let RelocKind = Option
-        relocBranch26 relocPage21 relocPageOff12 relocGotPage21 relocGotPageOff12 relocTlvPage21 relocTlvPageOff12
+        relocBranch26 relocPage21 relocPageOff12 relocGotPage21 relocGotPageOff12
         relocAbsolute64
     end
     Let Reloc = Tuple offset: Int kind: RelocKind symbol: String addend: Int end
@@ -165,14 +165,12 @@ export
         case r
             when relocPage then option relocPageOff12 of RelocKind end
             when relocGot then option relocGotPageOff12 of RelocKind end
-            when relocTlv then option relocTlvPageOff12 of RelocKind end
         end
 
     let pageKind(r: minst.Reloc): RelocKind =
         case r
             when relocPage then option relocPage21 of RelocKind end
             when relocGot then option relocGotPage21 of RelocKind end
-            when relocTlv then option relocTlvPage21 of RelocKind end
         end
 
     (* Encodes op on registers rs at byte offset at, appending any needed
@@ -368,7 +366,7 @@ export
                 when opJumpEntry with x then
                     words.toInt(words.andBits(words.fromInt(labelOffset(x.label) - labelOffset(x.table))
                             words.fromInt(0xFFFFFFFF)))
-                when opMovConst, opSymbolAddress, opTlvAddress, opLabel, opJumpTable, opJumpTableEnd, opCfiDefCfa,
+                when opMovConst, opSymbolAddress, opLabel, opJumpTable, opJumpTableEnd, opCfiDefCfa,
                         opCfiOffset, opLoc then
                     raise unencodable with "a pseudo-instruction, label, or directive" end
             end
@@ -559,7 +557,6 @@ export
         case k
             when relocBranch26 then "branch26" when relocPage21 then "page21" when relocPageOff12 then "pageoff12"
             when relocGotPage21 then "gotpage21" when relocGotPageOff12 then "gotpageoff12"
-            when relocTlvPage21 then "tlvpage21" when relocTlvPageOff12 then "tlvpageoff12"
             when relocAbsolute64 then "absolute64"
         end
 

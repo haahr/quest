@@ -343,17 +343,17 @@ export
 
     let newBlock(fn: vals.Fn): Int = ssa.newBlock(fn.f)
 
-    (* The runtime's chain of handlers (thread-local; docs/arm64.md section
-     * 3.6) *)
+    (* The runtime's chain of handlers, and the exception raised: globals,
+     * since Quest has no threads (docs/arm64.md section 3.6) *)
     let handlerChain = "quest_current_exception_handler"
     let currentException = "quest_current_exception"
 
-    (* Unwinds the thread-local exception handler chain back to nesting depth,
+    (* Unwinds the exception handler chain back to nesting depth,
      * used when jumping or returning out of enclosing try blocks *)
     let leaveTo(fn: vals.Fn depth: Int): Ok =
         if vector.length(fn.handlers) > depth then
             let h = vector.get(fn.handlers depth)
-            vals.store(fn vals.threadLocal(fn handlerChain) 0 8 vals.loadWord(fn h
+            vals.store(fn vals.symbolAt(fn handlerChain) 0 8 vals.loadWord(fn h
                     runtimeLayout.offset("QExceptionHandler" "prev") vals.tPtr))
         end
 
@@ -730,8 +730,8 @@ export
         end
 
     (* Lowers a try statement (docs/ssa.md section 3). Allocates a stack
-     * QExceptionHandler record, pushes it onto the thread-local handler chain
-     * with the caught exceptions (docs/exceptions.md section 5.1), and emits a
+     * QExceptionHandler record, pushes it onto the handler chain with the
+     * caught exceptions (docs/exceptions.md section 5.1), and emits a
      * termTry terminator whose handler block the runtime resumes when the body
      * raises. The handler variable binds a stack copy of the exception
      * state. *)
@@ -740,7 +740,7 @@ export
             let handlerRecord = maybe.unwrap(runtimeLayout.struct("QExceptionHandler"))
             let slot = ssa.newSlot(fn.f handlerRecord.bytes 16)
             let h = ssa.slotAddress(fn.f fn.cur slot)
-            let chain = vals.threadLocal(fn handlerChain)
+            let chain = vals.symbolAt(fn handlerChain)
             vals.store(fn h runtimeLayout.offset("QExceptionHandler" "prev") 8 vals.loadWord(fn chain 0 vals.tPtr))
             (* A null resume marks a C handler's record, which a raise
              * resumes by _longjmp; the arm64 backend stores its handler
@@ -777,20 +777,20 @@ export
             body(fn x.body)
             vector.pop(fn.handlers)
             if not(vals.terminated(fn)) then
-                vals.store(fn vals.threadLocal(fn handlerChain) 0 8 vals.loadWord(fn h
+                vals.store(fn vals.symbolAt(fn handlerChain) 0 8 vals.loadWord(fn h
                         runtimeLayout.offset("QExceptionHandler" "prev") vals.tPtr))
                 vals.jump(fn after vals.noValues)
             end
             fn.cur := handlerB
-            vals.store(fn vals.threadLocal(fn handlerChain) 0 8 vals.loadWord(fn h
+            vals.store(fn vals.symbolAt(fn handlerChain) 0 8 vals.loadWord(fn h
                     runtimeLayout.offset("QExceptionHandler" "prev") vals.tPtr))
             (* Copy quest_current_exception to a stack slot for the handler's
              * variable, because any raise inside the handler (even one it
-             * catches itself) overwrites the thread-local global *)
+             * catches itself) overwrites the global *)
             let stateRecord = maybe.unwrap(runtimeLayout.struct("QExceptionState"))
             let stateSlot = ssa.newSlot(fn.f stateRecord.bytes 8)
             let state = ssa.slotAddress(fn.f fn.cur stateSlot)
-            let current = vals.threadLocal(fn currentException)
+            let current = vals.symbolAt(fn currentException)
             for k = 0 upto {{stateRecord.bytes / 8} - 1} do
                 vals.store(fn state 8 * k 8 vals.loadWord(fn current 8 * k vals.tInt))
             end

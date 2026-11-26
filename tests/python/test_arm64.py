@@ -77,8 +77,8 @@ class TestArm64(unittest.TestCase):
         self.assertEqual(len(re.findall(r"\]!\n", text)), len(framed))
         self.assertIn("stp d15, d14, [sp, #-160]!\n\tstp d13, d12, [sp, #16]", text)
         self.assertEqual(text.count(".cfi_startproc"), text.count(".cfi_endproc"))
-        # A thread-local through its descriptor, an undefined symbol through the GOT
-        self.assertIn("_quest_current_exception_handler@TLVPPAGE", text)
+        # Undefined symbols through the GOT
+        self.assertIn("_quest_current_exception_handler@GOTPAGE", text)
         self.assertIn("_quest_type_Int+48", text)
         self.assertTrue(re.search(r"ldr (x\d+), \[\1, _quest_type_Int@GOTPAGEOFF\]", text), text)
         # The narrow arguments are packed on the stack, a byte each

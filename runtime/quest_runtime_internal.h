@@ -34,7 +34,7 @@ void quest_install_stack_guard(void);
  * call, as an exception named "fatal: " and the message, so that the JIT
  * reports it as the program compiled would, and a REPL goes on */
 Q_NORETURN void quest_fatal(const char *message, const char *loc);
-extern Q_THREAD_LOCAL QExceptionHandler *quest_fatal_handler;
+extern QExceptionHandler *quest_fatal_handler;
 
 /* quest_print.c: formats r without its sign, as the interpreter does */
 void quest_format_real(double r, char *out, size_t n);

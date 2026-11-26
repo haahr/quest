@@ -234,7 +234,6 @@ export
                         elsif i.width is 4 then memory(p "int32_t" i.args[0] i.imm) <> " = (int32_t)" <> a(1) <> ";"
                         else memory(p "uint8_t" i.args[0] i.imm) <> " = (uint8_t)" <> a(1) <> ";" end)
                 when opCall, opCallIndirect then call(p i)
-                when opThreadLocal then set("(char *)&" <> i.symbol)
                 when opPtrAdd then set(a(0) <> " + " <> a(1))
                 (* A QVal word is an int64_t *)
                 when opToVal, opFromVal then
@@ -550,15 +549,10 @@ export
      * Data and the unit
      * ====================================================================== *)
 
-    let wordText(w: ssa.Word threadLocals: hashMap.T(String Bool)): String =
+    let wordText(w: ssa.Word): String =
         case w
             when wordInt with x then "(void *)(uintptr_t)" <> intLiteral(x.n)
-            when wordSymbol with x then
-                (* A thread-local's address is not a constant *)
-                if hashMap.contains(threadLocals x.symbol) then
-                    raise unsupported with "ssac: static data holding a thread-local's address, " <> x.symbol end
-                end
-                "(void *)((char *)(void *)" <> x.symbol <> " + " <> decimal(x.addend) <> ")"
+            when wordSymbol with x then "(void *)((char *)(void *)" <> x.symbol <> " + " <> decimal(x.addend) <> ")"
         end
 
     (* A datum's C declaration, without its contents *)
@@ -577,13 +571,13 @@ export
             end
         end
 
-    let dataDefinition(d: ssa.Data threadLocals: hashMap.T(String Bool)): String =
+    let dataDefinition(d: ssa.Data): String =
         case d.contents
             when contentsZero then dataDeclaration(d) <> ";"
             when contentsText with x then dataDeclaration(d) <> " = " <> syntax.cString(x.text) <> ";"
             when contentsWords with x then
                 let ws = vector.new(:String)
-                for k = 0 upto {extent x.words - 1} do vector.append(ws wordText(x.words[k] threadLocals)) end
+                for k = 0 upto {extent x.words - 1} do vector.append(ws wordText(x.words[k])) end
                 if extent x.words is 0 then vector.append(ws "0") end
                 dataDeclaration(d) <> " = { " <> syntax.comma(ws) <> " };"
         end
@@ -597,8 +591,6 @@ export
         begin
             let buf = sb.new()
             let defined = hashMap.new(:String :Bool eq hash.string)
-            (* The thread-locals the unit's code takes the addresses of *)
-            let threadLocals = hashMap.new(:String :Bool eq hash.string)
             for k = 0 upto {vector.length(u.functions) - 1} do
                 put(defined vector.get(u.functions k).symbol true)
             end
@@ -617,10 +609,6 @@ export
             let referInst(f: Function i: ssa.Inst): Ok =
                 begin
                     if ssa.isOp(i ssa.opSymbol) orif ssa.isOp(i ssa.opCall) then refer(i.symbol) end
-                    if ssa.isOp(i ssa.opThreadLocal) then
-                        put(threadLocals i.symbol true)
-                        refer(i.symbol)
-                    end
                     for k = 0 upto {extent i.signature.params - 1} do
                         case i.signature.params[k]
                             when passMemory with x then put(memorySizes x.bytes true)
@@ -666,12 +654,7 @@ export
              * arbitrary *)
             for k = 0 upto {vector.length(externs) - 1} do
                 let symbol = vector.get(externs k)
-                sb.str(buf
-                        if hashMap.contains(threadLocals symbol) then
-                            "extern __thread uint64_t " <> symbol <> "[8];\n"
-                        else
-                            "extern char " <> symbol <> "[];\n"
-                        end)
+                sb.str(buf "extern char " <> symbol <> "[];\n")
             end
             sb.str(buf "\n")
             for k = 0 upto {vector.length(u.data) - 1} do
@@ -682,7 +665,7 @@ export
             end
             sb.str(buf "\n")
             for k = 0 upto {vector.length(u.data) - 1} do
-                sb.str(buf dataDefinition(vector.get(u.data k) threadLocals) <> "\n")
+                sb.str(buf dataDefinition(vector.get(u.data k)) <> "\n")
             end
             sb.str(buf "\n")
             for k = 0 upto {vector.length(u.functions) - 1} do function(buf vector.get(u.functions

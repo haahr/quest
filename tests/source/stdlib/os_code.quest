@@ -1,5 +1,5 @@
 (* os/code: hand-encoded arm64 functions written into a code region and called, one storing a word into a data region,
-   one raising, and one calling a thread-local descriptor's getter; and the running binary's symbols. Only an unsound
+   and one raising; and the running binary's symbols. Only an unsound
    module may import it, and neither interpreter runs it (docs/jit.md section 3.11). *)
 (* @skip-phase: interpret, run_ir_core, run_ir_simplified, run_ir_specialized, run_ir_closed, run_ir_represented, run_ir_described *)
 
@@ -10,7 +10,6 @@ export
     returns(): String
     stores(): String
     raises(): String
-    getter(): String
     symbols(): String
     outOfRange(): String
 end
@@ -33,11 +32,6 @@ export
     let brX16 = 3592356352        (* br x16 *)
     let pushFrame = 2847898621    (* stp x29, x30, [sp, #-16]! *)
     let setFrame = 2432697341     (* mov x29, sp *)
-    let ldrX0At32 = 1476395264    (* ldr x0, #32 *)
-    let ldrX8AtX0 = 4181721096    (* ldr x8, [x0] *)
-    let blrX8 = 3594453248        (* blr x8 *)
-    let ldrX16At28 = 1476395248   (* ldr x16, #28 *)
-    let strX0AtX16 = 4177527296   (* str x0, [x16] *)
     let popFrame = 2831252477     (* ldp x29, x30, [sp], #16 *)
 
     let word(v: value.T): Int = value.be(:Int v)
@@ -74,22 +68,6 @@ export
             outcome(raised) <> ", site \"" <> code.raiseSite(e) <> "\""
         end
 
-    (* A function that reads a thread-local through a descriptor whose getter
-     * is threadLocalGetter's, as compiled code does, and stores the address it
-     * gets *)
-    let getter(): String =
-        begin
-            let data = code.reserve(4096 false)
-            let d = code.base(data)
-            code.write64(data 0 array of word(code.threadLocalGetter()) 12345 0 end)
-            let r = code.reserve(4096 true)
-            code.write32(r 0
-                    array of pushFrame setFrame ldrX0At32 ldrX8AtX0 blrX8 ldrX16At28 strX0AtX16 popFrame ret end)
-            code.write64(r 40 array of word(d) {word(d) + 24} end)
-            let result = outcome(code.call(code.base(r)))
-            result <> " " <> conv.int(value.be(:Int value.fetch(d 24)))
-        end
-
     let symbols(): String =
         conv.bool(maybe.isSome(:value.T code.symbol("quest_raise_dynamic_error"))) <> " "
             <> conv.bool(maybe.isSome(:value.T code.symbol("quest_no_such_symbol")))
@@ -105,6 +83,5 @@ let print(s: String): Ok = begin writer.putString(writer.output s) writer.putStr
 print(run.returns())
 print(run.stores())
 print(run.raises())
-print(run.getter())
 print(run.symbols())
 print(run.outOfRange())

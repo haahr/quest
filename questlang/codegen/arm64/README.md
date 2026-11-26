@@ -77,8 +77,8 @@ Beyond ordinary code generation, three features of the runtime shape this backen
 [`printer`](printer.int.quest) is the only module that writes instructions as text; it expands the
 pseudo-instructions (an arbitrary 64-bit constant as `mov` and `movk`s, a symbol's address as `adrp` and `add`).
 [`asm`](asm.int.quest) holds everything specific to Darwin's assembler and object format: symbol names with their
-leading underscore, sections, the relocations that address a symbol (directly, through the GOT for one defined
-elsewhere, or through a thread-local's descriptor), and data directives, so that another object format would replace
+leading underscore, sections, the relocations that address a symbol (directly, or through the GOT for one defined
+elsewhere), and data directives, so that another object format would replace
 only it.
 
 [`encode`](encode.int.quest) does the assembler's job for the JIT: each instruction becomes its 32-bit word, labels
