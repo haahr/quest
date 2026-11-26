@@ -119,7 +119,10 @@ export
      * one, so staleness can only miss a follow-on conversion, never make an
      * unsound one. *)
     (* Merges each block that only jumps to a block whose sole predecessor
-     * it is with that block: a conversion leaves the branch's block jumping
+     * it is with that block, at the end of the SSA's passes (straightenUnit):
+     * merged before the loops pass, a loop's header took in its body and was
+     * no longer rotated, and the compiler retired 0.9% more instructions. A
+     * conversion leaves the branch's block jumping
      * to the join, so that what was one diamond after another is a chain of
      * blocks, and what is decided within a block (value numbering's loads,
      * arm64's fused flags, a load paired with its neighbor) stops at each
@@ -166,6 +169,10 @@ export
             end
         end
 
+    (* The functions selectUnit converted a branch of, which straightenUnit
+     * merges the chains of once the passes after it have run *)
+    let converted = vector.new(:Function)
+
     let selectFunction(f: Function): Ok =
         begin
             let g = cfg.graph(f)
@@ -188,12 +195,21 @@ export
             end
             if changed then
                 cfg.dropUnreached(f)
-                straighten(f)
+                vector.append(converted f)
             end
         end
 
     let selectUnit(u: ssa.Unit): Ok =
-        for i = 0 upto {vector.length(u.functions) - 1} do
-            selectFunction(vector.get(u.functions i))
+        begin
+            vector.clear(converted)
+            for i = 0 upto {vector.length(u.functions) - 1} do
+                selectFunction(vector.get(u.functions i))
+            end
+        end
+
+    let straightenUnit(u: ssa.Unit): Ok =
+        begin
+            for i = 0 upto {vector.length(converted) - 1} do straighten(vector.get(converted i)) end
+            vector.clear(converted)
         end
 end
