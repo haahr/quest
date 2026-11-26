@@ -1,0 +1,63 @@
+(* Quest Self-Hosted Compiler: Strongly Connected Components Implementation *)
+
+module scc : SCC
+import
+    collections/vector : collections/Vector
+export
+    (* A node being walked, and the position of the next successor to take *)
+    Let Frame = Tuple v: Int successors: Array(Int) var next: Int end
+
+    let components(n: Int successors: All(v: Int) Array(Int)): Array(Int) =
+        begin
+            let order = array of(n ~1)
+            let low = array of(n 0)
+            let onStack = array of(n false)
+            let component = array of(n ~1)
+            let stack = vector.new(:Int)
+            let work = vector.new(:Frame)
+            let counts = tuple let var visited = 0 let var components = 0 end
+            let enter = fun(v: Int): Ok
+                begin
+                    order[v] := counts.visited
+                    low[v] := counts.visited
+                    counts.visited := counts.visited + 1
+                    vector.append(stack v)
+                    onStack[v] := true
+                    vector.append(work tuple let v = v let successors = successors(v) let var next = 0 end)
+                end
+            for root = 0 upto {n - 1} do
+                if order[root] < 0 then
+                    enter(root)
+                    while not(vector.empty(work)) do
+                        let top = vector.last(work)
+                        let v = top.v
+                        if top.next < extent top.successors then
+                            let w = top.successors[top.next]
+                            top.next := top.next + 1
+                            if order[w] < 0 then
+                                enter(w)
+                            elsif onStack[w] andif {order[w] < low[v]} then
+                                low[v] := order[w]
+                            end
+                        else
+                            let ignored = vector.pop(work)
+                            if not(vector.empty(work)) then
+                                let parent = vector.last(work).v
+                                if low[v] < low[parent] then low[parent] := low[v] end
+                            end
+                            if low[v] is order[v] then
+                                let var w = ~1
+                                while w isnot v do
+                                    w := vector.pop(stack)
+                                    onStack[w] := false
+                                    component[w] := counts.components
+                                end
+                                counts.components := counts.components + 1
+                            end
+                        end
+                    end
+                end
+            end
+            component
+        end
+end

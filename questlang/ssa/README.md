@@ -170,7 +170,7 @@ it compiles; and the Jupyter kernel's driver turns on interrupt checks (`pipelin
 test of the runtime's interrupt flag at each function's entry and loop head.
 
 Inside, the builder depends on [`../ir`](../ir) for its input and on [`../repr`](../repr) for layouts and descriptor
-descriptions; the passes depend only on the SSA's own modules.
+descriptions; the passes depend only on the SSA's own modules and on [`../common`](../common).
 
 ## Further reading
 

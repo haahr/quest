@@ -1,0 +1,18 @@
+(* Quest Self-Hosted Compiler: Strongly Connected Components Interface
+ *
+ * Tarjan's algorithm over a graph whose nodes are the integers from 0 to
+ * n - 1, for the passes that ask which nodes reach each other: mutual tail
+ * recursion in the SSA (ssa/passes/tailJumps) and recursion among the IR's
+ * functions (ir/inline). It walks with a stack of its own rather than by
+ * recursion, so a long chain of nodes does not deepen the call stack.
+ * types/canonical keeps its own walk, since it does each component's work
+ * as the walk completes it. *)
+
+interface SCC
+export
+    (* Each node's component's number. Roots are taken from 0 up and each
+     * node's successors in successors' order, and components are numbered in
+     * the order the walk completes them, so that a component's successors'
+     * components have lower numbers *)
+    components(n: Int successors: All(v: Int) Array(Int)): Array(Int)
+end

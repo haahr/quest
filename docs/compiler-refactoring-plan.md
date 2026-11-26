@@ -38,7 +38,6 @@ deleted.
 | 4. Small and mechanical | 8 | IR passes' state in their records; IR stages as an option | small |
 | | 9 | C representations as an option | small |
 | | 10 | One kernel for both interpreters | small to medium |
-| | 13 | One strongly-connected-components routine | small |
 
 Group 1 comes first because each of its steps fixes a copy that has already drifted. Group 2 makes the SSA's facts one
 table, after group 1 has removed the copies that would otherwise be converted twice. Group 3 is the largest step taken
@@ -101,14 +100,6 @@ a spelling (`nodes.primName`) to call the same functions.
   lands before this step.
 
 **Tests.** The shared behavior goldens through both interpreters; `run_ir_*` at every stage.
-
-### Step 13: One strongly-connected-components routine
-
-**Problem.** Tarjan's algorithm is written three times: `ssa/passes/tailjumps:38`, `ir/inline:101`, and
-`types/canonical:898-961`.
-
-**Change.** One generic routine over integer nodes and a successor function, in a shared utility module. If
-canonical's version interleaves work with the walk, it keeps its own and says why.
 
 ## 4. Later
 

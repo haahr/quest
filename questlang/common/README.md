@@ -75,6 +75,11 @@ several times slower. [`keys.int.quest`](keys.int.quest) instead numbers each di
 appearance: the caller writes a key's parts into a reusable buffer (`start`, then `int`, `bool`, `str`) and asks for
 its number (`find` or `intern`), so a lookup allocates nothing.
 
+[`scc.int.quest`](scc.int.quest) finds the strongly connected components of a graph of numbered nodes, by Tarjan's
+algorithm with a stack of its own rather than recursion: the tail jumps pass uses it for mutual tail recursion among
+the SSA's functions, and the inliner for recursion among the IR's. `types/canonical` keeps its own walk, since it does
+each component's work as the walk completes it.
+
 [`strings.int.quest`](strings.int.quest) holds the one string helper the compiler needs beyond `lib/util/strutil`. It
 lives here rather than in `lib/` because the released compiler that builds this one compiles it against the release's
 own `lib/`.

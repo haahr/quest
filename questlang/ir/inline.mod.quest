@@ -10,6 +10,7 @@ import
     util/hash : util/Hash
     util/maybe : util/Maybe
 
+    questlang/common/scc : questlang/common/SCC
     questlang/ir/clone : questlang/ir/Clone
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/walk : questlang/ir/Walk
@@ -96,52 +97,24 @@ export
             vector.toArray(found)
         end
 
-    (* Tarjan's strongly connected components of the graph of which functions
-     * name which, numbered in the order they are completed *)
+    (* The strongly connected components of the graph of which functions
+     * name which, by function id, numbered in the order they are completed,
+     * with the walk's roots taken in order's order *)
     let components(order: vector.T(nodes.Function) functions: hashMap.T(Int nodes.Function)): hashMap.T(Int Int) =
         begin
-            let result = hashMap.new(:Int :Int intEqual hash.int)
+            let n = vector.length(order)
             let index = hashMap.new(:Int :Int intEqual hash.int)
-            let low = hashMap.new(:Int :Int intEqual hash.int)
-            let onStack = hashMap.new(:Int :Bool intEqual hash.int)
-            let stack = vector.new(:Int)
-            let numbers = tuple let var next = 0 let var count = 0 end
-            let rec visit(id: Int): Ok =
+            for i = 0 upto {n - 1} do hashMap.insert(index vector.get(order i).v.id i) end
+            let successors(i: Int): Array(Int) =
                 begin
-                    hashMap.insert(index id numbers.next)
-                    hashMap.insert(low id numbers.next)
-                    numbers.next := numbers.next + 1
-                    vector.append(stack id)
-                    hashMap.insert(onStack id true)
-                    let targets = named(hashMap.find(functions id) functions)
-                    for k = 0 upto {extent targets - 1} do
-                        let t = targets[k]
-                        if not(hashMap.contains(index t)) then
-                            visit(t)
-                            if hashMap.find(low t) < hashMap.find(low id) then
-                                hashMap.insert(low id hashMap.find(low t))
-                            end
-                        elsif hashMap.contains(onStack t) then
-                            if hashMap.find(index t) < hashMap.find(low id) then
-                                hashMap.insert(low id hashMap.find(index t))
-                            end
-                        end
-                    end
-                    if hashMap.find(low id) is hashMap.find(index id) then
-                        let var more = true
-                        while more do
-                            let member = vector.pop(stack)
-                            hashMap.delete(onStack member)
-                            hashMap.insert(result member numbers.count)
-                            more := member isnot id
-                        end
-                        numbers.count := numbers.count + 1
-                    end
+                    let targets = named(vector.get(order i) functions)
+                    let found = array of(extent targets 0)
+                    for k = 0 upto {extent targets - 1} do found[k] := hashMap.find(index targets[k]) end
+                    found
                 end
-            for i = 0 upto {vector.length(order) - 1} do
-                let id = vector.get(order i).v.id
-                if not(hashMap.contains(index id)) then visit(id) end
-            end
+            let numbers = scc.components(n successors)
+            let result = hashMap.new(:Int :Int intEqual hash.int)
+            for i = 0 upto {n - 1} do hashMap.insert(result vector.get(order i).v.id numbers[i]) end
             result
         end
 

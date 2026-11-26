@@ -9,6 +9,7 @@ import
     util/hash : util/Hash
     util/maybe : util/Maybe
 
+    questlang/common/scc : questlang/common/SCC
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let Function = ssa.Function
@@ -31,47 +32,6 @@ export
                 end
             end
             callees
-        end
-
-    (* The strongly connected components of a graph (Tarjan's algorithm), as
-     * each node's component's number *)
-    let components(edges: Array(vector.T(Int))): Array(Int) =
-        begin
-            let n = extent edges
-            let order = array of(n ~1)
-            let low = array of(n 0)
-            let onStack = array of(n false)
-            let component = array of(n ~1)
-            let stack = vector.new(:Int)
-            let counts = tuple let var visited = 0 let var components = 0 end
-            let rec visit(v: Int): Ok =
-                begin
-                    order[v] := counts.visited
-                    low[v] := counts.visited
-                    counts.visited := counts.visited + 1
-                    vector.append(stack v)
-                    onStack[v] := true
-                    for k = 0 upto {vector.length(edges[v]) - 1} do
-                        let w = vector.get(edges[v] k)
-                        if order[w] < 0 then
-                            visit(w)
-                            if low[w] < low[v] then low[v] := low[w] end
-                        elsif onStack[w] andif {order[w] < low[v]} then
-                            low[v] := order[w]
-                        end
-                    end
-                    if low[v] is order[v] then
-                        let var w = ~1
-                        while w isnot v do
-                            w := vector.pop(stack)
-                            onStack[w] := false
-                            component[w] := counts.components
-                        end
-                        counts.components := counts.components + 1
-                    end
-                end
-            for v = 0 upto {n - 1} do if order[v] < 0 then visit(v) end end
-            component
         end
 
     (* Whether a parameter is passed in a register, as a jump passes it: as a
@@ -233,7 +193,7 @@ export
             for k = 0 upto {n - 1} do let ignored = hashMap.insert(numbers function(k).symbol k) end
             let edges = array of(n vector.new(:Int))
             for k = 0 upto {n - 1} do edges[k] := tailCallees(function(k) numbers) end
-            let component = components(edges)
+            let component = scc.components(n fun(v: Int): Array(Int) vector.toArray(edges[v]))
             let members = array of(n 0)
             for k = 0 upto {n - 1} do members[component[k]] := members[component[k]] + 1 end
             (* Each function's blocks and values before any copy is made *)
