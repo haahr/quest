@@ -4,9 +4,9 @@
  * allocator and codegen/machine/machine; docs/arm64.md section 3.17) needs
  * to know about a target architecture: its numbered registers (each with a
  * class and a name), which registers are allocatable and which are preserved
- * across calls, the argument and result registers, scratch registers
- * reserved for target code, stack alignment, and word size. Register names
- * are used only for printing and tests; shared code compares register
+ * across calls, and its calling convention's registers and sizes, which the
+ * target's instruction selection and the allocator's lowering read. Register
+ * names are used only for printing and tests; shared code compares register
  * numbers. *)
 
 interface Target
@@ -28,8 +28,13 @@ export
          * order *)
         arguments: Array(Array(Int))
         results: Array(Array(Int))
-        (* Registers no value is given, for the target's own code *)
-        scratch: Array(Int)
+        (* Registers no value is given, by class, in the order the
+         * allocator's rewrite uses them for operands in memory
+         * (machine.Lowering's scratch) *)
+        scratch: Array(Array(Int))
+        (* The stack's alignment at a call, and a word's size, in bytes:
+         * each argument passed on the stack takes a word unless the target
+         * packs it narrower *)
         stackAlign: Int
         wordBytes: Int
     end

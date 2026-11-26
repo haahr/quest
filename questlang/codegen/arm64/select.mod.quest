@@ -32,9 +32,7 @@ export
     let alignUp(n: Int a: Int): Int = {{{n + a} - 1} / a} * a
     let isReal(t: ssa.Type): Bool = case t when typeInt, typePtr, typeVal then false when typeReal then true end
     let x0 = target.x(0)
-    let x1 = target.x(1)
     let x9 = target.x(9)
-    let d0 = target.d(0)
     let sp = target.sp
     let fp = target.fp
     let xzr = target.xzr
@@ -51,11 +49,13 @@ export
         end
 
     (* Assigns AAPCS64 argument locations for types[first..] according to
-     * passed. Integers, pointers, and addresses of large composites take the
-     * next x register; doubles take the next d register; 16-byte composites
-     * take two consecutive x registers or go wholly on the stack. Overflow
-     * arguments are packed on the stack using Darwin's ABI rules: 1 byte for
-     * a C bool or char, 4 aligned bytes for a C int, and 8 bytes otherwise. *)
+     * passed, from the target description's argument registers, by class,
+     * its stack alignment, and its word size. Integers, pointers, and
+     * addresses of large composites take the next x register; doubles take
+     * the next d register; 16-byte composites take two consecutive x
+     * registers or go wholly on the stack. Overflow arguments are packed on
+     * the stack using Darwin's ABI rules: 1 byte for a C bool or char, 4
+     * aligned bytes for a C int, and a word otherwise. *)
     let placeArguments(types: Array(ssa.Type) passed: Array(ssa.Passed) first: Int): Placed =
         begin
             (* AAPCS64 tracks the next general register (ngrn), the next
@@ -63,11 +63,14 @@ export
              * (nsaa). A 16-byte pair that does not fit in the remaining x
              * registers goes wholly on the stack, and no later integer
              * argument may use a register. *)
-            let places = array of(extent types tuple let reg = memory let offset = 0 let bytes = 8 end)
+            let word = target.description.wordBytes
+            let ints = target.description.arguments[targets.index(option classInt of targets.Class end)]
+            let reals = target.description.arguments[targets.index(option classReal of targets.Class end)]
+            let places = array of(extent types tuple let reg = memory let offset = 0 let bytes = word end)
             let var ngrn = 0
             let var nsrn = 0
             let var nsaa = 0
-            let x(n: Int): ArgumentPlace = tuple let reg = target.x(n) let offset = 0 let bytes = 8 end
+            let x(n: Int): ArgumentPlace = tuple let reg = ints[n] let offset = 0 let bytes = word end
             (* Computes the stack slot for argument k starting at offset at,
              * aligned to its C type's size under Darwin's ABI (1 byte for a
              * C bool or char, 4 for a C int, 8 otherwise). Runtime functions
@@ -80,19 +83,19 @@ export
                         case passed[k]
                             when passByte then 1
                             when passInt32 then 4
-                            when passWord, passReal, passPair, passPairRest, passMemory then 8
+                            when passWord, passReal, passPair, passPairRest, passMemory then word
                         end
                     tuple let reg = memory let offset = alignUp(at bytes) let bytes = bytes end
                 end
             let var k = first
             while k < extent types do
                 if isPair(passed[k]) then
-                    if ngrn <= 6 then
+                    if {ngrn + 2} <= extent ints then
                         places[k] := x(ngrn)
                         places[k + 1] := x(ngrn + 1)
                         ngrn := ngrn + 2
                     else
-                        ngrn := 8
+                        ngrn := extent ints
                         places[k] := stackAfter(nsaa k)
                         places[k + 1] := stackAfter({places[k].offset + places[k].bytes} {k + 1})
                         nsaa := places[k + 1].offset + places[k + 1].bytes
@@ -100,15 +103,15 @@ export
                     k := k + 2
                 else
                     if isReal(types[k]) then
-                        if nsrn < 8 then
-                            places[k] := tuple let reg = target.d(nsrn) let offset = 0 let bytes = 8 end
+                        if nsrn < extent reals then
+                            places[k] := tuple let reg = reals[nsrn] let offset = 0 let bytes = word end
                             nsrn := nsrn + 1
                         else
                             places[k] := stackAfter(nsaa k)
                             nsaa := places[k].offset + places[k].bytes
                         end
                     else
-                        if ngrn < 8 then
+                        if ngrn < extent ints then
                             begin places[k] := x(ngrn) ngrn := ngrn + 1 end
                         else
                             places[k] := stackAfter(nsaa k)
@@ -118,7 +121,7 @@ export
                     k := k + 1
                 end
             end
-            tuple let places = places let stackBytes = alignUp(nsaa 16) end
+            tuple let places = places let stackBytes = alignUp(nsaa target.description.stackAlign) end
         end
 
     (* A call's argument places *)
@@ -515,11 +518,24 @@ export
             false
         end
 
-    (* The registers results come back in *)
+    (* The registers results come back in, from the target description's:
+     * one result in its class's first, two (a 16-byte composite) in the
+     * first two integer ones *)
     let resultRegisters(f: ssa.Function results: Array(Int)): Array(Int) =
-        if extent results is 1 then array of if isReal(ssa.typeOf(f results[0])) then d0 else x0 end end
-        elsif extent results is 2 then array of x0 x1 end
-        else none
+        begin
+            let rs = target.description.results
+            let ints = rs[targets.index(option classInt of targets.Class end)]
+            if extent results is 1 then
+                array of if isReal(ssa.typeOf(f results[0])) then
+                    rs[targets.index(option classReal of targets.Class end)][0]
+                else
+                    ints[0]
+                end end
+            elsif extent results is 2 then
+                array of ints[0] ints[1] end
+            else
+                none
+            end
         end
 
     (* Moves a call's arguments into their ABI locations and returns the

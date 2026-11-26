@@ -122,7 +122,10 @@ after it has goldens, since machine code changes with almost any backend change.
   `x0`–`x7`, `double`s in `d0`–`d7`, the rest on the stack; a 16-byte composite that is not all `double`s in two `x`
   registers, even if it holds a `double`; results in `x0`/`x1` or `d0`; the caller extends arguments narrower than 32
   bits. The closure calling convention of [runtime-design.md](runtime-design.md) §4.1 and the signatures of
-  [c-representation.md](c-representation.md) §6.2 are the contract.
+  [c-representation.md](c-representation.md) §6.2 are the contract. The registers and sizes are data, the target
+  description's `arguments`, `results`, `scratch`, `stackAlign`, and `wordBytes` (`codegen/arm64/target`), which
+  `select.placeArguments`, `select.resultRegisters`, and the allocator's lowering read (2026-11-25); the rules for
+  placing each argument, and Darwin's packing, stay code.
 - **Narrow arguments.** Darwin places arguments past the registers at their natural size and alignment, not in 8-byte
   slots as standard AAPCS64 does, so a C `bool` or `QChar` on the stack takes a byte. The SSA marks such parameters and
   results (`narrow`, [ssa.md](ssa.md) §2.2), `placeArguments` places each stack argument at its size and alignment (a

@@ -59,9 +59,12 @@ export
     (* Caller-saved registers are listed in order of preference: first those
      * that do not carry call arguments, then the argument registers from
      * highest to lowest, since higher argument registers are needed by fewer
-     * calls. The allocator excludes x9-x11, x16, x17, d30, and d31 (the
-     * backend's scratch registers), x18 (reserved by Darwin), and fp, lr,
-     * xzr, and sp. *)
+     * calls. The allocator excludes x9-x11, d30, and d31 (the scratch
+     * registers for operands in memory), x16 and x17 (scratch within one
+     * sequence of the backend's, such as a large frame offset's, and the
+     * linker's veneers'), x18 (reserved by Darwin), and fp, lr, xzr, and sp.
+     * The convention is AAPCS64's: eight x and eight d registers for
+     * arguments, x0 and x1 or d0 for results, the stack 16-byte aligned. *)
     let description: targets.Target = tuple
         let registers = registers
         let callerSaved = array of concat(range(x(12) x(15)) downFrom(x(8) x(0)))
@@ -70,7 +73,7 @@ export
         let calleeSaved = array of range(x(19) x(28)) range(d(8) d(15)) end
         let arguments = array of range(x(0) x(7)) range(d(0) d(7)) end
         let results = array of range(x(0) x(1)) range(d(0) d(0)) end
-        let scratch = array of x(9) x(10) x(11) x(16) x(17) d(30) d(31) end
+        let scratch = array of array of x(9) x(10) x(11) end array of d(30) d(31) end end
         let stackAlign = 16
         let wordBytes = 8
     end
