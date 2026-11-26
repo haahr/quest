@@ -435,27 +435,7 @@ export
         begin
             let f = s.f
             let nBlocks = vector.length(f.blocks)
-            let onlyProxyTests(v: Int): Bool =
-                begin
-                    let var only = true
-                    for b = 0 upto {nBlocks - 1} do
-                        if s.reach[b] then
-                            let blk = ssa.block(f b)
-                            for k = 0 upto {vector.length(blk.insts) - 1} do
-                                let i = vector.get(blk.insts k)
-                                for j = 0 upto {extent i.args - 1} do
-                                    if {i.args[j] is v}
-                                            andif {{extent i.results is 0} orif not(isProxyTest(s i.results[0]))} then
-                                        only := false
-                                    end
-                                end
-                            end
-                            let uses = ssa.terminatorUses(blk.term)
-                            for j = 0 upto {extent uses - 1} do if uses[j] is v then only := false end end
-                        end
-                    end
-                    only
-                end
+            let onlyProxyTests(v: Int): Bool = proxyFold.onlyProxyTests(f s.reach v fun(r: Int): Bool isProxyTest(s r))
             for b = 0 upto {nBlocks - 1} do
                 if s.reach[b] then
                     let blk = ssa.block(f b)

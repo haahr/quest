@@ -34,7 +34,6 @@ deleted.
 
 | Group | Step | What | Size |
 |---|---|---|---|
-| 1. Drift already seen | 4 | One `onlyProxyTests` | small |
 | 2. SSA facts | 5 | The opcode table | medium |
 | | 6 | Definitions, constants, and terminator operands, once | small to medium |
 | 3. IR structure | 7 | One visitor for IR nodes, with positions in one place | medium |
@@ -50,13 +49,6 @@ different files. Steps are not renumbered as they are done. §4 lists the larger
 not taken.
 
 ## 3. Steps
-
-### Step 4: One `onlyProxyTests`
-
-**Problem.** `escape:229` and `scalars:437` share 21 identical lines.
-
-**Change.** One function, in `proxyFold`, which the two already import. The rest of the two passes'
-provenance machinery stays as it is (§4).
 
 ### Step 5: The opcode table
 
