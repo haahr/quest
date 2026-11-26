@@ -1,0 +1,368 @@
+# Plan: Refactoring the Self-Hosted Compiler
+
+Refactorings that make `questlang/` easier to change without mistakes. They come from a read-only review of the whole
+compiler on 2026-11-20 (f0f13513). On 2026-11-25 (f47a1c00), after 63 commits to `questlang/`, the review's ideas were
+checked against the code again, and the counts below are from that second check. The new `loops`, `nanchecks`, and
+`conditions` passes had added their own copies of most of the SSA duplication the review found.
+
+The plan starts once [performance-tasks-plan.md](performance-tasks-plan.md) has landed, because both change
+`ssa/passes/*` and `codegen/arm64`. Two of its ideas, §2.2's machine-instruction table and §6.5's calling convention,
+are made with that plan's step 9 (the register allocator), not here (§4). When a step is done, its section is deleted,
+and what it leaves that lasts goes into the documents that describe the code: [ssa.md](ssa.md), [ir.md](ir.md),
+[arm64.md](arm64.md), [wasm.md](wasm.md), [build-process.md](build-process.md), [testing.md](testing.md), and the
+READMEs. The plan is deleted when the order in §2 is done; §5 and §6 then go to whatever document fits them, or are
+deleted.
+
+## 1. Rules
+
+- **Behavior does not change.** A refactoring step leaves the SSA, IR, C, assembly, and WebAssembly goldens byte for
+  byte as they were. The one exception is step 1's bug fix (`ssa_scalars`). A step that changes output is two steps.
+- **Self-hosted compiler only.** None of these steps changes shared behavior, so under the two-compilers policy the
+  bootstrap does not follow. Where an error, usage, or log text is shared, it stays identical.
+- **Derive before testing.** Where two lists must agree, one is computed from the other. Where the compiler can check
+  a fact (an exhaustive `case` with no `else`), it does. A test is for what is left over: facts that must agree but
+  cannot be derived, and prose that lists what the code defines.
+- **Tests per step:** the suites the step touches. For SSA steps, those are the SSA goldens, the self-hosted arm64,
+  ssac, and JIT runs, and `ssa_*` phase dumps. Each step also needs the arm64 fixed point. The C fixed point and
+  `tools/check` run once, at the end of each group in §2.
+- **Performance:** none of these is meant to change the compiler's speed. A step whose restructuring sits on a hot
+  path (§3's opcode table; `subtyping`'s keys, §6) counts the compiler's instructions before and after, by
+  performance-tasks-plan.md §1's method, and stays within 1%.
+
+## 2. Order
+
+| Group | Step | What | Size |
+|---|---|---|---|
+| 1. Drift already seen | 1 | The SSA pass table, phases derived from it, and a test of every phase | small |
+| | 2 | `ssa.copyInst` | small |
+| | 3 | One dead-parameter removal and one entry split | small |
+| | 4 | One `onlyProxyTests` | small |
+| 2. SSA facts | 5 | The opcode table | medium |
+| | 6 | Definitions, constants, and terminator operands, once | small to medium |
+| 3. IR structure | 7 | One visitor for IR nodes, with positions in one place | medium |
+| 4. Small and mechanical | 8 | IR passes' state in their records; IR stages as an option | small |
+| | 9 | C representations as an option | small |
+| | 10 | One kernel for both interpreters | small to medium |
+| | 11 | A build session record | small to medium |
+| | 12 | The build engine's queue lookups by hash map | small |
+| | 13 | One strongly-connected-components routine | small |
+
+Group 1 comes first because each of its steps fixes a copy that has already drifted. Group 2 makes the SSA's facts one
+table, after group 1 has removed the copies that would otherwise be converted twice. Group 3 is the largest step taken
+here. Group 4's steps are independent of each other and can run in any order, or in parallel sessions, since they touch
+different files. §5 lists the larger ideas left for later, and §6 those not taken.
+
+## 3. Steps
+
+### Step 1: The SSA pass table
+
+**Problem.** The SSA passes are named in three hand-kept lists and three prose ones, and the lists already disagree:
+- `ssa/pipeline.passes`, an array of 15 names, dispatched by a string if-chain (`pipeline.mod.quest:58-75`);
+- `driver/options.ssaPhases` (`options.mod.quest:68-72`), which leaves out `ssa_scalars`, so `--dump-after` and
+  `--stop-after` cannot name the `scalars` pass;
+- `ssa/README.md` (11 passes, without `concats`, `nanChecks`, `conditions`, and `loops`), `ssa/passes/README.md`
+  ("the first thirteen", without `concats` and `loops`), and the dump list in ssa.md §4.1 (without `scalars` and
+  `loops`).
+
+**Change.**
+- `pipeline.passes` becomes an array of records: name, run function, and whether the pass changes the CFG.
+  `changesCfg` is recorded now for a later analysis cache (§5), and no pass reads it yet.
+- `options.ssaPhases` is computed from that array: `ssa_built`, then `"ssa_" <> name` for each pass, then `ssa`.
+- The prose lists either name every pass or point to `ssa/pipeline`; the second is preferred where the list only
+  repeats names.
+
+**Tests.** A case in `tests/self-hosted/compile_command.py` compiles a small program with `--dump-after PHASE` for every
+SSA phase the usage text names, and checks that each is accepted and prints a function. A missing name in either
+direction then fails. If any prose list of passes is kept, the same script compares it with the pipeline's; one that
+only repeats names is replaced by a pointer to `ssa/pipeline` instead, and testing.md records the case.
+
+**Done when.** `ssa_scalars` dumps; no SSA pass name is written by hand outside `ssa/pipeline` and the pass itself;
+the test is in the suite.
+
+### Step 2: `ssa.copyInst`
+
+**Problem.** Five sites rebuild an `Inst` with `ssa.instruction(i.op … i.signature)` and then patch `loc` and
+`invariant` by hand: `tailjumps:173`, `nanchecks:220`, and `loops:529`, `:850`, and `:950`. Two of them, `loops.copyOf`
+(`:529`) and the branch condition's copy (`:950`), already drop `invariant`. This is harmless only while neither copies
+a load.
+
+**Change.** `ssa.copyInst(i args results)`: every field of `i`, with new arguments and results. The five sites call
+it, and a field added to `Inst` later is copied everywhere by adding it in one place.
+
+**Tests.** The SSA goldens, unchanged.
+
+### Step 3: One dead-parameter removal and one entry split
+
+**Problem.** Removing a block parameter that no jump needs is written three times: `valuenumbers`' trivial-parameter
+collapse (`:86-130`), `scalars.dropDeadParams` (`:734`), and `loops.dropDeadParams` (`:1050-1127`). "Filter each
+target's arguments by the kept parameters, then clear" appears five times: `scalars:799` and `:873`, `escape:567`,
+`valuenumbers:311`, and `loops:1109`. Splitting a function's entry into a header block is written twice, in
+`loops.loopFunction` (`:76-104`) and `accumulate` (`:110-130`).
+
+**Change.** A module in `ssa/`, beside `cfg`, for these edits: `dropParams(f keep)`, `removeTrivialParams(f)`, and
+`splitEntry(f)`. The three passes call them.
+
+**Tests.** The SSA goldens, unchanged; `ssa_valuenumbers`, `ssa_scalars`, and `ssa_loops` show each case.
+
+### Step 4: One `onlyProxyTests`
+
+**Problem.** `escape:229` and `scalars:437` share 21 identical lines.
+
+**Change.** One function, in the module the two already import or in step 3's. The rest of the two passes'
+provenance machinery stays as it is (§5).
+
+### Step 5: The opcode table
+
+**Problem.**
+- 18 functions case over all 54 opcodes:
+  - `ssa/nodes`: `resultType`, `opcodeIndex`, `opcodeName`, `opcodes`;
+  - `valuenumbers.numbered`, `selects.speculable`, and `tailcalls`' `from`;
+  - `verify`, the parser, and the printer;
+  - six in `codegen/arm64/select`: `constOf`, `condition`, `isComparison`, `isRealComparison`, `bitOf`, `instruction`;
+  - `ssac`'s instruction case.
+- Nine predicates end in `else` and so skip the exhaustiveness check: `valuenumbers.local` and `commutative`,
+  `loops.movable`, `comparison`, `remade`, and `reinterprets`, `conditions.compared`, and `nanchecks.propagates` and
+  `allowed`. `nanchecks.allowed` defaults to `true`, so a new opcode that writes memory would be allowed in a region.
+- Three predicates mean "may run where it was not": `selects.speculable`, `loops.movable`, and `nanchecks.allowed`.
+  They must agree, and nothing checks that they do.
+
+**Change.** An `OpInfo` record per opcode, made by one exhaustive `case` in `ssa/nodes` with no `else`, and an array of
+them indexed by `opcodeIndex`. Its fields: name, arity, effect (pure, reads, writes, calls), traps (never, divides),
+commutative, provenance (the arguments a pointer result derives from), and accumulate's identity. The fact-only
+predicates become field reads:
+- `opcodeName`, `numbered`, `commutative`, `propagates`, and `allowed`;
+- `verify`'s arity check;
+- `accumulate.identity`;
+- escape's and scalars' tests of `opPtrAdd` and `opUnproxy`.
+
+`speculable` and `movable` become "pure and never traps" plus each one's own rule that looks at an argument. What
+stays an exhaustive `case`:
+- each backend's emission;
+- `resultType` for the opcodes whose result depends on their arguments;
+- `verify`'s checks of calls and widths.
+
+**Open.** Whether `local` is a field (the reply that asked for this plan has the trade-off). Until decided, it stays
+in `valuenumbers`, rewritten as an exhaustive `case` with no `else`.
+
+**Tests.**
+- The SSA goldens, unchanged.
+- The table checks itself once when built: a speculable opcode is pure and never traps; an opcode `allowed` in a NaN
+  check's region neither writes nor calls; arity agrees with the parser's operand count.
+- A round trip in the SSA unit tests: each `name` parses back to its opcode.
+- The compiler's instructions before and after (§1). The step lands after performance-tasks-plan.md step 1, which
+  compiles `opcodeIndex` and `opcodeName` as tables.
+
+### Step 6: Definitions, constants, and terminator operands, once
+
+**Problem.**
+- There is no use-list analysis. Use counting is written by hand in `valuenumbers:317`, `select:993`, `nanchecks:165`,
+  `loops.dropDeadParams:1050`, `concats`, and `scalars`.
+- A value's defining instruction is found six ways: `ssa.definitions`, `proxyFold.Defs`, and copies in `tables:228`,
+  `barriers:87-101`, `select:991`, and `loops:1135-1145`.
+- A value's constant is found seven ways: `valuenumbers.constantOf`, `loops.constantOf`, `select.constOf`, `constant`,
+  and `constAt`, `allocations.constants`, and `proxyfold.isConstant`.
+- A terminator's operands other than its targets are listed by hand seven times: `nodes.replaceUses`, `escape` twice,
+  `scalars` twice, and `loops` twice. `ssa.terminatorUses` exists and covers reading them, but not rewriting them.
+
+**Change.**
+- One `Defs` with `defOf` and `constantOf`.
+- `uses(f)`, built in one sweep when asked for.
+- `mapOperands(t f)` beside `terminatorUses`.
+
+The passes use them where the copies were.
+
+**Tests.** The SSA goldens, unchanged.
+
+### Step 7: One visitor for IR nodes
+
+**Problem.** `Op` has 34 cases and `Stmt` 25. About twelve chains re-list their fields: `walk`'s `statementBodies`,
+`statementBinders`, `opUses`, `statementUses`, `mapInOp`, and `mapInStmt`; `clone`'s `copyOp` and `copyStmt`;
+`describe`'s `opTypes` and `stmtTypes`; `verifycore`, the printer, and `irinterp`. Each backend has its own
+chain too. Adding `opIsSet` touched 14 files. The renaming walk once missed descriptors that cloning copied (fixed in
+4a7cea93), the kind of mistake that comes from keeping copies in step. 18 `Stmt` cases carry `var pos`, so `stmtPos`
+and `positionAt` are 18 identical arms each.
+
+**Change.**
+- `visitOp` and `visitStmt` in `ir/walk`, taking one closure per kind of child (atom, variable, type, descriptor, plan,
+  function, body, binder), with in-place variants.
+- `opUses`, `statementUses`, `mapInOp`, `mapInStmt`, describe's collector, and most of `clone` follow from them.
+- The printer, `verifycore`, `irinterp`, and the backends keep their own exhaustive cases: they do different things
+  per case, not the same thing to each child.
+- Positions move out of the cases: `Stmt = Tuple var pos kind: StmtKind`. If that change is too wide for the backends
+  in one step, it is a step of its own after this one.
+
+**Tests.** IR goldens at every stage, unchanged, and `verify` at every stage as always.
+
+### Step 8: IR passes' state in their records
+
+**Problem.** `represent.typeVarsMemo`, `planning`, and `adapting`, `describe.uses`, and `nodes.counter` are module-level
+state, cleared by hand (`hashMap.clear(typeVarsMemo)`, `represent:1502`). The passes are not reentrant, which the JIT
+and the kernel would want. IR stages are strings (`unit.stage := "simplified"`) compared by `atLeast` six times.
+
+**Change.** The state moves into `Representer` and `Describer`, and the counter into the unit. `Stage` becomes an
+option, with its name for printing.
+
+### Step 9: C representations as an option
+
+**Problem.** The C printer decides by comparing type spellings: 11 comparisons with `"QVal"` or `"QVariantVal"`, and
+3 tests of `endsWith(… "*")`, which grew with `opIsSet`.
+
+**Change.** A `CRep` option, made by `layout` and spelled only when printed.
+
+**Tests.** The C goldens, unchanged.
+
+### Step 10: One kernel for both interpreters
+
+**Problem.** `treewalk.optionAssertion` (`:446`) and `irinterp.payloadOf` (`:381`) are near copies that already
+differ: treewalk checks `i < extent labels`, and irinterp does not. Bounds checks are written inline three times in
+treewalk and four in irinterp. treewalk dispatches operators by their spelling, and irinterp maps each `Prim` back to
+a spelling (`nodes.primName`) to call the same functions.
+
+**Change.**
+- The value-level operations move into `interpreter/primitives`: option assertion and payload, the indexed access with
+  its bounds check, and arithmetic by operator.
+- Both interpreters call them.
+- Whether irinterp should check the labels' bound is decided first. If it should, adding the check is a fix that
+  lands before this step.
+
+**Tests.** The shared behavior goldens through both interpreters; `run_ir_*` at every stage.
+
+### Step 11: A build session record
+
+**Problem.**
+- `engine.T` has 12 fields and is rebuilt field by field in `changed` (`engine.mod.quest:160-176`).
+- `workers.Job` has 10 fields, written to argv by hand (`workers.mod.quest:185-225`) and parsed back in `unitMain`
+  (`:331-360`). Four flags were added since the review: `--inline-library`, `--inline-module`, `--unit-backend`, and
+  `--variant`.
+- `compileModuleFile` takes 11 positional parameters.
+- The environment is made in both `driver/main.quest:1104` and `engine.mod.quest:372`.
+
+**Change.** A `BuildSession` record with `newEnv`, and a `toArgs`/`fromArgs` pair that the worker and the engine
+share. `engine.T`, `Job`, and `compileModuleFile` carry it.
+
+**Tests.** `parallel_build.py`, `unit_artifacts.py`, `build_errors.py`, and the driver build, with logs unchanged.
+
+### Step 12: The build engine's queue lookups by hash map
+
+**Problem.** `engine.preparedIndex` (`:843-850`) is a linear scan, called inside the queue's loops (`:853`, `:857`,
+`:928`, `:938`, `:954`), which makes them quadratic. `detectModuleCycle` (`:478-520`) tests membership with a linear
+`contains`.
+
+**Change.** Hash maps for both. The rest of `unflushedBuildModules` (about 440 lines) stays as it is (§5).
+
+**Tests.** As step 11; the cycle errors in `build-errors/`, unchanged.
+
+### Step 13: One strongly-connected-components routine
+
+**Problem.** Tarjan's algorithm is written three times: `ssa/passes/tailjumps:38`, `ir/inline:101`, and
+`types/canonical:898-961`.
+
+**Change.** One generic routine over integer nodes and a successor function, in a shared utility module. If
+canonical's version interleaves work with the walk, it keeps its own and says why.
+
+## 4. With performance-tasks-plan.md Step 9
+
+The register allocator's step takes these two, since it edits the same code:
+- **Machine-instruction facts.** `minst.Op` (50 ops) is cased over in 14 functions: `results` and `pure`; the
+  printer's `instruction`, `expansion`, `count`, and `lines`; `encode`; peephole's `conditional`, `relaxBranches`,
+  `access`, and `crossing`; and `codegen.isBrk` (49 ops listed to return false) and `retarget`, and
+  `select.rematerializable`. An `MInfo` per op, made by one exhaustive `case`, holds defs, pure, mayLoad, mayStore,
+  isBranch, isCall, isTerminator, and isDirective, and a `labelOf`/`withLabel` pair. `select.make` and `emitFull`
+  (`:189`, `:1190`) mark the first `results(op)` registers as defined. They become operand roles read from the table.
+  The machine layer's `Operand` already records whether each operand defines or reads, so the convention stays only
+  where `minst` becomes `machine`. `movk`, which reads its destination, is made only after allocation, so this is a
+  latent hazard, not a live bug.
+- **The calling convention as data.** `targets.Target`'s `arguments`, `results`, `scratch`, `stackAlign`, and
+  `wordBytes` are set (`arm64/target.mod.quest:71-75`) and never read. `select.placeArguments` hard-codes AAPCS64's
+  counters, `resultRegisters` hard-codes `d0`, `x0`, and `x1`, and the allocator reads `lowering.scratch`, not
+  `description.scratch`. An ABI record that `placeArguments` and the allocator's lowering both read; Darwin's packing
+  of narrow arguments stays code.
+
+## 5. Later
+
+Worth doing, but larger or less urgent; each becomes a step when there is time for it.
+
+- **One traversal for types.** `TypeForm` has 28 cases. Full chains over it:
+  - in `types/model`: `formFree`, `typeKey`, `substituteFull`, `typeParts`, `rebuild`, `findPathTypes`,
+    `typeMentionsSymbolIds`, and `show`;
+  - in `canonical`: `canonicalNode` and `mayRecurParts`;
+  - in `dump`: `compact`, `className`, `typeDump`, and `shortTypeName`;
+  - elsewhere: `kinds.synthUncached`, `repr/shapes.shapeOf`, `interfacecompiler.formatType`, and
+    `digests.printedParts`.
+
+  That is about 16. A `children(t)` that yields each part with the ids bound at it, and a `rebuild(t f)`, would shrink
+  most of them. Part order must match `typeParts` for the bootstrap's parity. This has the largest payoff of anything
+  here, but the chains have not grown since the review.
+- **`Plan` as a sum type.** A `kind` and 8 var fields whose meaning depends on it. It is tested in about 82
+  `case … kind when planX` arms (24 in `nodes`, 18 in wasm's codegen, 12 each in the C printer and
+  `ssa/build/aggregates`) and built by hand 38 times. An option with one case per kind would touch every backend.
+- **`repr/staticdata` as options.** `Ref` encodes null as `symbol = ""` and a bound variable as a reserved symbol with
+  `index > 0`. `DescriptorForm.kind` is a string, which wasm maps to numbers by a linear list (`kindOf`) and a
+  hand-numbered `baseKinds`. Options for both, and one numbering per target.
+- **The WebAssembly builders.** `runtime.mod.quest` numbers its functions by hand (`24 + wasiCount + …`), its locals
+  by number (199 uses), its branches by depth, and its data string by counted offsets (`piece(39 6)`). These break
+  silently when an export or a string is added. A `wasm/build` with named functions, named locals, labels, and a
+  string pool would fix that half first. Symbolic function indices resolved at the end would then remove
+  `unitModule`'s pre-scan (`wasm/codegen.mod.quest:5850-6130`), and with it most of the externals table problem.
+- **Build keys.** Staleness is decided by file times (`manifest.isManifestStale`, `paths.dependencyChange`,
+  `interfacecompiler.current`), though `fingerprint` hashes an interface's meaning and only the JIT uses it. The
+  currency rules are spread over `manifest`, `engine`, `paths`, and `abi`, and a `.qi` is parsed three ways with
+  silent defaults. One recorded key per artifact (ABI, producer, backend, source digest, import resolutions,
+  dependency fingerprints), whose first differing part is the reason, and one schema with one encoder and decoder.
+  This is one project. It pays when a comment edit in a widely imported interface should rebuild nothing.
+- **An analysis cache for the SSA passes.** `cfg.graph` is rebuilt once per pass and four times inside `loops`. Step
+  1's `changesCfg` makes a cache per function possible. Count first.
+- **One provenance solver for escape and scalars.** Both keep a `State` with `defOf`, `takenTargets`, `setPointer`,
+  `pointers`, and `check`, nearly line for line, and both grew by about 200 lines since the review. One sparse solver,
+  with each pass supplying its lattice and legality checks, is the largest and riskiest idea here. The optimism the
+  scalars comments describe must carry over exactly.
+- **The rest of the build engine's scheduler.** `unflushedBuildModules` keeps its queue, predicted imports, deferred
+  notes, and conformance checks (three sites) in about 440 lines of closures, after step 12.
+
+## 6. Not Taken
+
+Each with its reason, so that it is not proposed again without new evidence:
+- **A table of WebAssembly externals** (review §2.4): `externalCall` shrank from 384 to 320 lines as externals moved to
+  Quest, and symbolic indices (§5) remove the part that hurts.
+- **A table of IR primitives** (§2.3): 26 prims, unchanged since the review; step 10 removes the interpreters' share.
+- **A generated IR node spec** (§3.2's second tier): generated sources in the tree, and field compatibility with the
+  bootstrap; step 7 gets most of the benefit by hand.
+- **One printer for types** (§3.4): six printers whose outputs each must stay as they are (two of them are formats
+  written to files).
+- **A locally nameless form for bound variables** (§4.5): the typed `ReservedSymbolUse` constructors and decoders
+  already exist; the encoding is provisional and the user may revisit it, which is a design decision, not a
+  refactoring.
+- **Tuple cache keys** (§4.6) and **exact use counts in the simplifier** (§5.8): these are compile-time performance,
+  judged under performance rules (a measured gain of 1%), not here.
+- **Machine labels as integers and one emission layer for arm64** (§4.7, §6.3): `QUEST_CHECK_ENCODING` already keeps
+  the three offset computations equal, and nothing has broken there.
+- **A C AST** (§6.4): large, and the C backend is no longer the default. The self-hosted printer's `callsFunction`
+  treats more text as a call than the bootstrap's `_CALL_RE` does, which is safe (extra barriers) and allowed, since
+  C goldens are per compiler.
+- **Fusion matched once in arm64 selection** (§6.6), **JIT relocations shared with the encoder** (§6.7), **one
+  logical-immediate routine** (§6.8): small, in code that rarely changes, guarded by the encoder test. §6.8's
+  parallel-move half was wrong: `ssac.jumpText` copies through temporaries and does not resolve parallel moves.
+- **Use-site expectations and an IR type check** (§5.7), **a context record in the typechecker** (§5.11), **one head
+  reduction for types** (§5.12): medium to large, in code that has not been changing, each with subtle differences
+  that would need to become explicit.
+- **Error recovery in the typechecker** (§8.1): already in place at every binding (`bindings.elaborateRecovering`,
+  diagnostics.md §4.5); finer recovery inside an expression would need an error type, which is a feature, not a
+  refactoring.
+- **Typed parser actions** (§8.2), **a condition context in lowering** (§8.3), **a declarative option table** beyond
+  step 1's phases (§7.5), **shared memo tables** (§7.7), **build errors as diagnostics** (§7.8): low payoff now.
+- From the review's own list: a rewrite DSL, a generic block-level dataflow framework, e-graphs, Pratt parsing, and a
+  Salsa-style query engine.
+
+## 7. What to Keep
+
+The review's reading of what the compiler already does well, which these steps should not undo:
+- **Types:** hash-consed nodes that cache their free ids and metavariables; the coinductive subtype prover; one
+  `elaborateX(expected)` per construct; canonicalization by partition refinement.
+- **IR:** ANF with structured join points; lowering by destination passing; `verify` and the IR interpreter at every
+  stage; the numbered rule list in front of `represent.plan`.
+- **SSA:** block parameters; one instruction shape with dense numbering; a verifier and a text form that round-trips;
+  the runtime functions' effects table; one `cfg` module; bisecting with `QUEST_SKIP_PASSES`.
+- **Machine code:** the target-independent machine layer and linear scan; an encoder separate from the printer and
+  checked against it; exhaustive `case` with no `else`.
+- **WebAssembly:** `wasm/model` as a typed module; one opcode table for `encode` and `printer`.
+- **Build:** `Diagnostic`, `SourceMap`, and atomic `.qi` writes.
