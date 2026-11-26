@@ -141,8 +141,22 @@ stays an exhaustive `case`:
 - `resultType` for the opcodes whose result depends on their arguments;
 - `verify`'s checks of calls and widths.
 
-**Open.** Whether `local` is a field (the reply that asked for this plan has the trade-off). Until decided, it stays
-in `valuenumbers`, rewritten as an exhaustive `case` with no `else`.
+**`local` becomes `rematerializable`** (decided 2026-11-25). `valuenumbers.local` mixes two reasons for keeping an
+equal block-local: constants, symbol addresses, and nulls are cheap to recompute in any block, while compares,
+`opAnd`, `opMul`, and `opPtrAdd` are there only because arm64 selection fuses them into a same-block branch or memory
+access. The first is a fact about the opcode; the second is a fact about one backend.
+- The table gets a `rematerializable` field, the target-independent default: `opConst`, `opRealConst`, `opSymbol`,
+  `opNull`.
+- A backend adds to it through a policy record that `codegen/native` passes to `pipeline.run`, in place of a global
+  setter like `setRotateAll`: arm64's adds the opcodes its selector fuses (the `fused` and `indexOf` fields of
+  `select.Selection`). The record holds a predicate over opcodes, defaulting to the table's field.
+- `valuenumbers` reads the record's predicate and keeps its " @block" keying as it is.
+- The comment's claim that arm64 does not rematerialize is stale (`select.rematerializable` covers `opMovConst` and
+  `opSymbolAddress`); the new comment says why each half is there.
+
+In this step every backend passes the current set, so the goldens stay byte for byte. Narrowing ssac and wasm to the
+table's default, and asking whether arm64 still needs constants kept block-local, are measured changes after it:
+instructions retired on the benchmarks and the compiler, and hamlet's stack accesses (docs/ssa.md §4.1).
 
 **Tests.**
 - The SSA goldens, unchanged.
