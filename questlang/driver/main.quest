@@ -1045,9 +1045,17 @@ let compileUnitFile(): Ok =
                     ok
                 when moduleUnit then
                     if maybe.isSome(outputDir) then system.makeDirectory(maybe.unwrap(outputDir)) end
-                    moduleCompiler.compileModuleFile(files.absolute(options.file) outputDir includes maybe.none()
-                            options.nogc vector.toArray(vector.new(:String)) options.buildDir maybe.none()
-                            maybe.none() options.backends options.reportInferable)
+                    let settings = tuple
+                        let includePaths = includes
+                        let compiler = maybe.none(:String)
+                        let nogc = options.nogc
+                        let extraFlags = array of :String end
+                        let buildDir = options.buildDir
+                        let programDir = maybe.none(:String)
+                        let backends = options.backends
+                        let reportInferable = options.reportInferable
+                    end
+                    moduleCompiler.compileModuleFile(files.absolute(options.file) outputDir settings maybe.none())
                     ok
                 else
                     diagbag.add(bag diagnostics.error("'" <> options.file <> "' is a program, not a unit file"

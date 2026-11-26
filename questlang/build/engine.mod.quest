@@ -9,6 +9,7 @@ import
     writer : Writer
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     os/fileStats : os/FileStats
     pathLib = os/path : os/Path
@@ -183,6 +184,21 @@ export
     let reportingInferable(eng: T mode: String): T = changed(eng eng.jobs eng.driver eng.backends mode)
 
     let log(eng: T tag: String message: String): Ok = logger.log(eng.logger tag message)
+
+    (* What compiling each of the program's modules depends on, here or in a
+     * worker: search is searchPaths(eng), and programDir names the units under
+     * no include root *)
+    let settings(eng: T search: Array(String) programDir: maybe.T(String)): moduleCompiler.Settings =
+        tuple
+            let includePaths = search
+            let compiler = eng.compiler
+            let nogc = eng.nogc
+            let extraFlags = eng.extraCFlags
+            let buildDir = maybe.some(str(eng.buildDir))
+            let programDir = programDir
+            let backends = eng.backends
+            let reportInferable = eng.reportInferable
+        end
 
     (* The include paths of the units the engine compiles: the build directory,
      * the extra objects' directories, the include paths, lib/, and the project
@@ -474,30 +490,30 @@ export
 
     (* A cycle in the modules' import graph, if there is one, found by
      * depth-first search: the path from the module that starts it back to
-     * that module *)
+     * that module. A node listed twice has its last list of neighbors. *)
     let detectModuleCycle(g: vector.T(Edges)): maybe.T(Array(String)) =
         begin
-            let visited = vector.new(:String)
+            let visited = hashSet.new(:String stringOp.equal hash.string)
             let stack = vector.new(:String)
+            let onStack = hashSet.new(:String stringOp.equal hash.string)
+            let edges = hashMap.new(:String :Array(String) stringOp.equal hash.string)
+            for i = 0 upto {vector.length(g) - 1} do
+                hashMap.insert(edges vector.get(g i).node vector.get(g i).neighbors)
+            end
             let neighbors = fun(node: String): Array(String)
-                begin
-                    let var found = array of :String end
-                    for i = 0 upto {vector.length(g) - 1} do
-                        if eq(vector.get(g i).node node) then found := vector.get(g i).neighbors end
-                    end
-                    found
-                end
+                maybe.unwrapOr(hashMap.get(edges node) array of :String end)
             let rec dfs(node: String): maybe.T(Array(String)) =
                 begin
-                    vector.append(visited node)
+                    hashSet.insert(visited node)
                     vector.append(stack node)
+                    hashSet.insert(onStack node)
                     let var cycle = maybe.none(:Array(String))
                     let next = neighbors(node)
                     for i = 0 upto {extent next - 1} do
                         if maybe.isNone(cycle) then
-                            if not(contains(visited next[i])) then
+                            if not(hashSet.contains(visited next[i])) then
                                 cycle := dfs(next[i])
-                            elsif contains(stack next[i]) then
+                            elsif hashSet.contains(onStack next[i]) then
                                 let path = vector.new(:String)
                                 let var on = false
                                 for j = 0 upto {vector.length(stack) - 1} do
@@ -509,13 +525,16 @@ export
                             end
                         end
                     end
-                    if maybe.isNone(cycle) then vector.pop(stack) ok end
+                    if maybe.isNone(cycle) then
+                        hashSet.delete(onStack vector.pop(stack))
+                        ok
+                    end
                     cycle
                 end
             let var cycle = maybe.none(:Array(String))
             for i = 0 upto {vector.length(g) - 1} do
                 let node = vector.get(g i).node
-                if maybe.isNone(cycle) andif not(contains(visited node)) then cycle := dfs(node) end
+                if maybe.isNone(cycle) andif not(hashSet.contains(visited node)) then cycle := dfs(node) end
             end
             cycle
         end
@@ -547,19 +566,9 @@ export
             end
             let n = vector.length(indexes)
             if {eng.jobs > 1} andif {n > 1} then
+                let shared = settings(eng search programDir)
                 let jobOf = fun(p: Popped): workers.Job
-                    tuple
-                        let source = maybe.unwrap(p.src)
-                        let targetDir = p.targetDir
-                        let searchPaths = search
-                        let compiler = eng.compiler
-                        let nogc = eng.nogc
-                        let extraCFlags = eng.extraCFlags
-                        let buildDir = maybe.some(str(eng.buildDir))
-                        let programDir = programDir
-                        let backends = eng.backends
-                        let reportInferable = eng.reportInferable
-                    end
+                    tuple let source = maybe.unwrap(p.src) let targetDir = p.targetDir let settings = shared end
                 let jobs = array of(n jobOf(wave[vector.get(indexes 0)]))
                 for k = 1 upto {n - 1} do jobs[k] := jobOf(wave[vector.get(indexes k)]) end
                 let results = workers.compileAll(jobs eng.jobs eng.driver)
@@ -621,6 +630,8 @@ export
                     begin hashMap.insert(sources name file) ok end
                 end
             let linked = vector.fromArray(strs(eng.extraObjects))
+            let isLinked = hashSet.new(:String stringOp.equal hash.string)
+            for i = 0 upto {vector.length(linked) - 1} do hashSet.insert(isLinked vector.get(linked i)) end
             for i = 0 upto {extent eng.extraObjects - 1} do
                 discover(files.stem(str(eng.extraObjects[i])))
                 discover(paths.lower(files.stem(str(eng.extraObjects[i]))))
@@ -840,14 +851,9 @@ export
              * order. *)
             let prepared = vector.new(:Popped)
             let outcomes = vector.new(:maybe.T(workers.Outcome))
-            let preparedIndex = fun(item: String): Int
-                begin
-                    let var found = ~1
-                    for i = 0 upto {vector.length(prepared) - 1} do
-                        if {found < 0} andif eq(vector.get(prepared i).item item) then found := i end
-                    end
-                    found
-                end
+            (* Each module's index in prepared, where it is popped once *)
+            let preparedAt = hashMap.new(:String :Int stringOp.equal hash.string)
+            let preparedIndex = fun(item: String): Int maybe.unwrapOr(hashMap.get(preparedAt item) ~1)
             let preparedOf = fun(item: String): maybe.T(Popped)
                 begin
                     let i = preparedIndex(item)
@@ -920,6 +926,9 @@ export
                 let add = fun(p: Popped): Ok
                     begin
                         vector.append(wave p)
+                        if not(hashMap.contains(preparedAt p.item)) then
+                            hashMap.insert(preparedAt p.item vector.length(prepared))
+                        end
                         vector.append(prepared p)
                         vector.append(outcomes maybe.none(:workers.Outcome))
                     end
@@ -972,8 +981,7 @@ export
                             else
                                 typecheck.install()
                                 moduleCompiler.compileModuleFile(maybe.unwrap(p.src) maybe.some(p.targetDir)
-                                        search eng.compiler eng.nogc eng.extraCFlags maybe.some(str(eng.buildDir))
-                                        programDir maybe.some(eng.resolver) eng.backends eng.reportInferable)
+                                        settings(eng search programDir) maybe.some(eng.resolver))
                                 ok
                             end
                             manifest.readQm(p.a.qm)
@@ -998,7 +1006,7 @@ export
                         else
                             array of :manifest.ImportedModuleRef end
                         end
-                    if not(contains(linked p.a.o)) then vector.append(linked p.a.o) end
+                    if hashSet.insert(isLinked p.a.o) then vector.append(linked p.a.o) end
                     let deps = array of(extent imported "")
                     for i = 0 upto {extent imported - 1} do deps[i] := imported[i].name end
                     vector.append(moduleGraph tuple let node = p.item let neighbors = deps end)

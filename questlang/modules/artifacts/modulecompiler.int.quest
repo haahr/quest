@@ -18,16 +18,33 @@ import
 export
     Def ModuleCompileResult = Tuple c: String o: String qm: String end
 
+    (* What compiling a module file depends on besides the file, the same for
+     * every module of a build: the build engine makes one, and a worker
+     * (build/workers) reads one back from its command line *)
+    Def Settings = Tuple
+        (* The directories its imports are searched in *)
+        includePaths: Array(String)
+        (* The C compiler, if not the default, and the flags it adds *)
+        compiler: maybe.T(String)
+        nogc: Bool
+        extraFlags: Array(String)
+        buildDir: maybe.T(String)
+        (* The directory of the program the module is built for, which names
+         * units under no include root *)
+        programDir: maybe.T(String)
+        (* The backend that compiles each unit, which its manifest records *)
+        backends: choice.T
+        (* The driver's --report-inferable mode (env.T's reportInferable): the
+         * calls found are written to standard error after the module is
+         * checked *)
+        reportInferable: String
+    end
+
     (* Compiles a module file: its artifacts go in outputDir, else under
-     * buildDir, else beside it. programDir is the directory of the program the
-     * module is built for, which names units under no include root; res
-     * resolves its imports (a new resolver if none). backends names the backend
-     * that compiles it, which its manifest records. reportInferable is the
-     * driver's --report-inferable mode (env.T's reportInferable): the calls
-     * found are written to standard error after the module is checked. *)
-    compileModuleFile(file: String outputDir: maybe.T(String) includePaths: Array(String) compiler: maybe.T(String)
-            nogc: Bool extraFlags: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
-            res: maybe.T(graph.Resolver) backends: choice.T reportInferable: String): ModuleCompileResult
+     * s.buildDir, else beside it. res resolves its imports (a new resolver if
+     * none). *)
+    compileModuleFile(file: String outputDir: maybe.T(String) s: Settings res: maybe.T(graph.Resolver))
+            : ModuleCompileResult
 
     (* Elaborates a module file as compileModuleFile does and lowers it to a
      * standalone IR unit for the JIT to compile and load (docs/jit.md section

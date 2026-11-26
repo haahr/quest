@@ -6,7 +6,8 @@ checked against the code again, and the counts below are from that second check.
 `conditions` passes had added their own copies of most of the SSA duplication the review found.
 
 The plan starts once [performance-tasks-plan.md](performance-tasks-plan.md) has landed, because both change
-`ssa/passes/*` and `codegen/arm64`. Two of its ideas, §2.2's machine-instruction table and §6.5's calling convention,
+`ssa/passes/*` and `codegen/arm64`; steps 11 and 12, in the build engine, which that plan does not touch, were made
+while it ran and are done. Two of its ideas, §2.2's machine-instruction table and §6.5's calling convention,
 are made with that plan's step 9 (the register allocator), not here (§4). When a step is done, its section is deleted,
 and what it leaves that lasts goes into the documents that describe the code: [ssa.md](ssa.md), [ir.md](ir.md),
 [arm64.md](arm64.md), [wasm.md](wasm.md), [build-process.md](build-process.md), [testing.md](testing.md), and the
@@ -43,14 +44,13 @@ deleted.
 | 4. Small and mechanical | 8 | IR passes' state in their records; IR stages as an option | small |
 | | 9 | C representations as an option | small |
 | | 10 | One kernel for both interpreters | small to medium |
-| | 11 | A build session record | small to medium |
-| | 12 | The build engine's queue lookups by hash map | small |
 | | 13 | One strongly-connected-components routine | small |
 
 Group 1 comes first because each of its steps fixes a copy that has already drifted. Group 2 makes the SSA's facts one
 table, after group 1 has removed the copies that would otherwise be converted twice. Group 3 is the largest step taken
 here. Group 4's steps are independent of each other and can run in any order, or in parallel sessions, since they touch
-different files. §5 lists the larger ideas left for later, and §6 those not taken.
+different files. Steps are not renumbered as they are done. §5 lists the larger ideas left for later, and §6 those
+not taken.
 
 ## 3. Steps
 
@@ -227,31 +227,6 @@ a spelling (`nodes.primName`) to call the same functions.
 
 **Tests.** The shared behavior goldens through both interpreters; `run_ir_*` at every stage.
 
-### Step 11: A build session record
-
-**Problem.**
-- `engine.T` has 12 fields and is rebuilt field by field in `changed` (`engine.mod.quest:160-176`).
-- `workers.Job` has 10 fields, written to argv by hand (`workers.mod.quest:185-225`) and parsed back in `unitMain`
-  (`:331-360`). Four flags were added since the review: `--inline-library`, `--inline-module`, `--unit-backend`, and
-  `--variant`.
-- `compileModuleFile` takes 11 positional parameters.
-- The environment is made in both `driver/main.quest:1104` and `engine.mod.quest:372`.
-
-**Change.** A `BuildSession` record with `newEnv`, and a `toArgs`/`fromArgs` pair that the worker and the engine
-share. `engine.T`, `Job`, and `compileModuleFile` carry it.
-
-**Tests.** `parallel_build.py`, `unit_artifacts.py`, `build_errors.py`, and the driver build, with logs unchanged.
-
-### Step 12: The build engine's queue lookups by hash map
-
-**Problem.** `engine.preparedIndex` (`:843-850`) is a linear scan, called inside the queue's loops (`:853`, `:857`,
-`:928`, `:938`, `:954`), which makes them quadratic. `detectModuleCycle` (`:478-520`) tests membership with a linear
-`contains`.
-
-**Change.** Hash maps for both. The rest of `unflushedBuildModules` (about 440 lines) stays as it is (§5).
-
-**Tests.** As step 11; the cycle errors in `build-errors/`, unchanged.
-
 ### Step 13: One strongly-connected-components routine
 
 **Problem.** Tarjan's algorithm is written three times: `ssa/passes/tailjumps:38`, `ir/inline:101`, and
@@ -316,6 +291,12 @@ Worth doing, but larger or less urgent; each becomes a step when there is time f
   `pointers`, and `check`, nearly line for line, and both grew by about 200 lines since the review. One sparse solver,
   with each pass supplying its lattice and legality checks, is the largest and riskiest idea here. The optimism the
   scalars comments describe must carry over exactly.
+- **What step 11 left of the build's settings.** `moduleCompiler.Settings` now carries what compiling a module
+  depends on, through the engine (`engine.settings`), the workers' `Job`, and the command line a worker reads back
+  (`workers.command` and `parseCommand`, side by side). Two parts were left: `engine.T` is still rebuilt field by
+  field in `changed` for `parallel`, `withBackends`, and `reportingInferable`, which only the driver calls, once each;
+  and the environment is set up both in `driver/main.run` and `engine.compileMainUnit`, which differ (interactive
+  mode, the JIT's in-memory artifacts, whole-program compiling) more than they repeat.
 - **The rest of the build engine's scheduler.** `unflushedBuildModules` keeps its queue, predicted imports, deferred
   notes, and conformance checks (three sites) in about 440 lines of closures, after step 12.
 

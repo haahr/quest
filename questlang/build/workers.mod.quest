@@ -24,18 +24,7 @@ import
     questlang/modules/stdlib : questlang/modules/Stdlib
     questlang/typechecker/typecheck : questlang/typechecker/Typecheck
 export
-    Let Job = Tuple
-        source: String
-        targetDir: String
-        searchPaths: Array(String)
-        compiler: maybe.T(String)
-        nogc: Bool
-        extraCFlags: Array(String)
-        buildDir: maybe.T(String)
-        programDir: maybe.T(String)
-        backends: choice.T
-        reportInferable: String
-    end
+    Let Job = Tuple source: String targetDir: String settings: moduleCompiler.Settings end
 
     Let Outcome = Tuple source: String stderr: String failure: maybe.T(String) end
 
@@ -174,12 +163,13 @@ export
      * ====================================================================== *)
 
     (* The arguments that run driver in unit mode on a batch of jobs, which
-     * share all but their sources and target directories *)
+     * share all but their sources and target directories. parseCommand, in
+     * section 3, reads them back, so an option added here is added there. *)
     let command(driver: String batch: Array(Job) worker: Int): Array(String) =
         begin
             let args = vector.new(:String)
             let add = fun(s: String): Ok vector.append(args s)
-            let job = batch[0]
+            let job = batch[0].settings
             add(driver)
             for b = 0 upto {extent batch - 1} do
                 add("--unit-module")
@@ -189,9 +179,9 @@ export
             end
             add("--worker")
             add(conv.int(worker))
-            for i = 0 upto {extent job.searchPaths - 1} do
+            for i = 0 upto {extent job.includePaths - 1} do
                 add("-I")
-                add(job.searchPaths[i])
+                add(job.includePaths[i])
             end
             if maybe.isSome(job.buildDir) then
                 add("--build-dir")
@@ -206,9 +196,9 @@ export
                 add(maybe.unwrap(job.compiler))
             end
             if job.nogc then add("--nogc") end
-            for i = 0 upto {extent job.extraCFlags - 1} do
+            for i = 0 upto {extent job.extraFlags - 1} do
                 add("--cflag")
-                add(job.extraCFlags[i])
+                add(job.extraFlags[i])
             end
             let backendArgs = choice.arguments(job.backends)
             for i = 0 upto {extent backendArgs - 1} do add(backendArgs[i]) end
@@ -306,7 +296,19 @@ export
 
     let isUnitMode(args: Array(String)): Bool = {extent args > 1} andif eq(args[1] "--unit-module")
 
-    let unitMain(args: Array(String)): Ok =
+    (* What a child's command line says: the modules to compile and where, its
+     * tag, the settings they share, and the process's inlined modules *)
+    Let Batch = Tuple
+        sources: Array(String)
+        targetDirs: Array(String)
+        worker: String
+        settings: moduleCompiler.Settings
+        inlineLibrary: Bool
+        inlinedNames: Array(String)
+    end
+
+    (* Reads back the arguments command writes *)
+    let parseCommand(args: Array(String)): Batch =
         begin
             let sources = vector.new(:String)
             let targetDirs = vector.new(:String)
@@ -366,30 +368,49 @@ export
                 let step = if eq(arg "--nogc") then 1 else 2 end
                 i := i + step
             end
-            inlined.setInlined(inlineLibrary vector.toArray(inlinedNames))
+            tuple
+                let sources = vector.toArray(sources)
+                let targetDirs = vector.toArray(targetDirs)
+                let worker = worker
+                let settings = tuple
+                    let includePaths = vector.toArray(searchPaths)
+                    let compiler = compiler
+                    let nogc = nogc
+                    let extraFlags = vector.toArray(cflags)
+                    let buildDir = buildDir
+                    let programDir = programDir
+                    let backends = tuple
+                        let default = backend
+                        let overrides = vector.toArray(overrides)
+                        let variants = vector.toArray(variants)
+                    end
+                    let reportInferable = reportInferable
+                end
+                let inlineLibrary = inlineLibrary
+                let inlinedNames = vector.toArray(inlinedNames)
+            end
+        end
+
+    let unitMain(args: Array(String)): Ok =
+        begin
+            let batch = parseCommand(args)
+            inlined.setInlined(batch.inlineLibrary batch.inlinedNames)
             (* Give this worker a distinct tag for files.writeAtomically temp
              * files *)
-            files.setWorkerTag("." <> worker)
+            files.setWorkerTag("." <> batch.worker)
             stdlib.install()
             (* One resolver for the batch, as a serial build has one for all *)
-            let backends = tuple
-                let default = backend
-                let overrides = vector.toArray(overrides)
-                let variants = vector.toArray(variants)
-            end
             let resolver = graph.newResolver()
-            resolver.variantOf := fun(unit: String): String choice.variantFor(backends unit)
+            resolver.variantOf := fun(unit: String): String choice.variantFor(batch.settings.backends unit)
             let var failed = maybe.none(:String)
-            for b = 0 upto {vector.length(sources) - 1} do
+            for b = 0 upto {extent batch.sources - 1} do
                 if maybe.isNone(failed) then
                     let failure =
                         try
                             begin
                                 typecheck.install()
-                                moduleCompiler.compileModuleFile(vector.get(sources b)
-                                        maybe.some(vector.get(targetDirs b)) vector.toArray(searchPaths)
-                                        compiler nogc vector.toArray(cflags) buildDir programDir
-                                        maybe.some(resolver) backends reportInferable)
+                                moduleCompiler.compileModuleFile(batch.sources[b] maybe.some(batch.targetDirs[b])
+                                        batch.settings maybe.some(resolver))
                                 maybe.none(:String)
                             end
                         when diagnostics.compilerError with err then

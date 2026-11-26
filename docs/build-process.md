@@ -863,7 +863,10 @@ artifacts as a serial one, and the same `build.log` entries in the same order; o
   makes, and any error it raises.
 - **The stale modules compile in child processes.** They are dealt round robin into at most N batches. Each batch is
   compiled in order by one child, the driver run in unit mode (`--unit-module`, one per module, with the engine's
-  search paths and options), so that it loads the interfaces its modules share once, as a serial build does.
+  search paths and options), so that it loads the interfaces its modules share once, as a serial build does. What a
+  module's compilation depends on besides its file is one record, `moduleCompiler.Settings`, which the engine makes
+  for a serial compile and for a child alike; `workers.command` writes it as the child's arguments and
+  `workers.parseCommand` reads them back.
 - **Then the queue is followed as a serial build follows it.** Each module in turn writes its log entries, raises its
   error if popping or compiling it failed, reads its manifest, verifies interfaces, and queues its imports. A child
   stops at its first failure and writes the error to its standard output; the engine raises it again in its turn, so

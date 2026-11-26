@@ -44,6 +44,16 @@ export
     Let ModuleCompileResult = Tuple c: String o: String qm: String end
     Let ModuleImport = Tuple name: String source: String offset: Int end
     Let ModuleUnit = Tuple unit: nodes.Unit sourceMap: location.SourceMap imports: Array(ModuleImport) end
+    Let Settings = Tuple
+        includePaths: Array(String)
+        compiler: maybe.T(String)
+        nogc: Bool
+        extraFlags: Array(String)
+        buildDir: maybe.T(String)
+        programDir: maybe.T(String)
+        backends: choice.T
+        reportInferable: String
+    end
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
@@ -377,24 +387,23 @@ export
                 end)
         end
 
-    let compileModuleFile(file: String outputDir: maybe.T(String) includePaths: Array(String) compiler: maybe.T(String)
-            nogc: Bool extraFlags: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
-            res: maybe.T(graph.Resolver) backends: choice.T reportInferable: String): ModuleCompileResult =
-        withModuleFile(file includePaths buildDir programDir res fun(m: ModuleFile):
+    let compileModuleFile(file: String outputDir: maybe.T(String) s: Settings res: maybe.T(graph.Resolver))
+            : ModuleCompileResult =
+        withModuleFile(file s.includePaths s.buildDir s.programDir res fun(m: ModuleFile):
                 ModuleCompileResult
             begin
-                m.e.reportInferable := reportInferable
+                m.e.reportInferable := s.reportInferable
                 let outDir =
-                    if maybe.isSome(buildDir) andif maybe.isNone(outputDir) then
-                        graph.unitArtifactDir(files.absolute(maybe.unwrap(buildDir)) m.canon)
+                    if maybe.isSome(s.buildDir) andif maybe.isNone(outputDir) then
+                        graph.unitArtifactDir(files.absolute(maybe.unwrap(s.buildDir)) m.canon)
                     elsif maybe.isNone(outputDir) then
                         files.parent(m.modPath)
                     else
                         files.absolute(maybe.unwrap(outputDir))
                     end
                 compilingApart(fun(): ModuleCompileResult
-                    compileModule(m.decl m.offset m.e outDir m.searchPaths compiler nogc extraFlags m.sm m.stem m.canon
-                            m.modPath buildDir backends))
+                    compileModule(m.decl m.offset m.e outDir m.searchPaths s.compiler s.nogc s.extraFlags m.sm m.stem
+                            m.canon m.modPath s.buildDir s.backends))
             end)
 
     let moduleFileUnit(file: String includePaths: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
