@@ -688,7 +688,13 @@ would need `else` for the rest. What is specific to a target happens after the S
 1. **The SSA** ([ssa.md](ssa.md)), target-independent.
 2. **A target's machine instructions** (`codegen/arm64/minst`): `arm64.Op`, an option of the target's operations with
    their immediates, conditions, and addressing modes, made by instruction selection over virtual registers and cased
-   on, without `else`, only by that target's selection (`codegen/arm64/select`), printer, and encoder.
+   on only by that target's selection (`codegen/arm64/select`), printer, encoder, and peephole pass. What each
+   operation is, apart from its fields, is `minst.info`'s `Info`, from one exhaustive case: how many registers it
+   writes, whether it is pure, whether it touches only registers and flags (so a load or store may be paired across
+   it), whether it emits no instruction, and whether it is a constant made again anywhere (2026-11-25; these had been
+   listed in nine functions). The functions that do what only one or two operations do (`isBrk`, a label's position,
+   `access`, `lines`, `expansion`) take the rest with `else`; those where a wrong default would go unnoticed (each
+   operation's text and encoding, `withLabel`, the peephole pass's conditional branches) list every operation.
 3. **Shared machine-level code over a structural shape** (`codegen/machine/machine`): a machine function's blocks hold
    instructions, each with its operands (each a virtual or physical register, used or defined) and a shared kind
    (`kindOrdinary`, `kindMove`, `kindJump`, `kindBranch`, `kindCall`, `kindReturn`); the target's `Op` sits in a table

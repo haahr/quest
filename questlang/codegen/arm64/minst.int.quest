@@ -173,11 +173,34 @@ export
     (* Whether one mov makes n: movz of its one nonzero halfword, movn of its
      * complement's, or orr of a logical immediate *)
     isMovImm(n: Int): Bool
+    (* What an operation is, apart from its own fields. info lists every
+     * operation's facts in one exhaustive case, so that a new operation is
+     * classified in one place, and the backend's passes read these rather
+     * than listing operations themselves. *)
+    Def Info = Tuple
+        (* How many leading registers in its register array it writes *)
+        defs: Int
+        (* Whether it is a pure value computation, with no memory, flag,
+         * control, or partial-register effects *)
+        pure: Bool
+        (* Whether it touches only registers and flags, so that a load or a
+         * store may be moved across it (a load's mode decides for a load) *)
+        registersOnly: Bool
+        (* Whether it emits no machine instruction: a label, a jump table's
+         * start or end, an unwind directive, a source position *)
+        directive: Bool
+        (* Whether it makes its result from no register, the same wherever
+         * it is made (a constant, a symbol's address) *)
+        constant: Bool
+    end
+    info(op: Op): Info
     (* How many leading registers in its register array op writes *)
     results(op: Op): Int
-    (* Whether op is a pure value computation with no memory, flag, control,
-     * or partial-register effects *)
+    (* Whether op is a pure value computation (Info's pure) *)
     pure(op: Op): Bool
+    (* op with the label it branches to or refers to replaced by l: a branch,
+     * an adr, or a jump table's entry; any other operation is op itself *)
+    withLabel(op: Op l: String): Op
 
     arithAdd: Arith
     arithSub: Arith

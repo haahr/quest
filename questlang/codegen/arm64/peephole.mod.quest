@@ -84,16 +84,7 @@ export
                     let i = vector.get(current k)
                     case i.op
                         when opLabel with x then put(at x.label n)
-                        when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith,
-                                opAdds,
-                                opAddImm, opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opScvtf, opCmp,
-                                opFcmp,
-                                opCmpImm,
-                                opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff,
-                                opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond,
-                                opBrk, opNop, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa, opCfiOffset,
-                                opLoc then
-                            n := n + printer.count(i.op)
+                        else n := n + printer.count(i.op)
                     end
                 end
                 let next = vector.new(:minst.Inst)
@@ -162,16 +153,7 @@ export
                         when store64 then at(false x.mode)
                         when store32, store8 then maybe.none()
                     end
-                when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith, opAdds,
-                        opAddImm,
-                        opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opScvtf, opCmp, opFcmp, opCmpImm,
-                        opCcmp,
-                        opCcmpImm, opCset, opCsel, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl,
-                        opBlr,
-                        opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable,
-                        opJumpEntry,
-                        opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
-                    maybe.none()
+                else maybe.none()
             end
         end
     (* Classifies whether an intervening instruction allows pairing across it:
@@ -184,22 +166,12 @@ export
     let barrier = 2
     let crossing(op: minst.Op): Int =
         case op
-            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith, opAdds, opAddImm, opSubImm,
-                    opLogicImm,
-                    opShiftImm, opMsub, opSxtb, opSxtw, opScvtf, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset,
-                    opCsel,
-                    opAdrp,
-                    opAddPageOff, opAdr, opLoc then
-                registersOnly
             when opLoad with x then
                 case x.mode
                     when modeOffset, modeBase, modePageOff, modeIndex then aLoad
                     when modePre, modePost then barrier
                 end
-            when opStore, opLdp, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz,
-                    opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa,
-                    opCfiOffset then
-                barrier
+            else if minst.info(op).registersOnly then registersOnly else barrier end
         end
     (* Reports whether b can be paired with a given the registers written and
      * read between them. Both must be the same kind of access (load or store)

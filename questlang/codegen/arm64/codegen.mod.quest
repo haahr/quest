@@ -125,18 +125,7 @@ export
      * by the br before the table, not by returning *)
     let isTableEnd(op: minst.Op): Bool = case op when opJumpTableEnd then true else false end
 
-    let isBrk(op: minst.Op): Bool =
-        case op
-            when opBrk then true
-            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith, opAdds, opAddImm,
-                    opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opScvtf, opCmp, opFcmp, opCmpImm, opCcmp,
-                    opCcmpImm,
-                    opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl,
-                    opBlr,
-                    opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opNop, opLabel, opJumpTable, opJumpEntry,
-                    opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
-                false
-        end
+    let isBrk(op: minst.Op): Bool = case op when opBrk then true else false end
 
     (* Whether an operation calls the runtime for a proxy: the slow path of a
      * tuple's or option's access that may meet one, which programs rarely
@@ -538,25 +527,6 @@ export
             emit(e minst.ldp(fp lr sp minst.post(16)))
         end
 
-    (* An operation's branch retargeted to a label *)
-    let retarget(op: minst.Op l: String): minst.Op =
-        case op
-            when opB then minst.b(l).op
-            when opCbz then option opCbz of minst.Op with let label = l end
-            when opCbnz then option opCbnz of minst.Op with let label = l end
-            when opTbz with x then minst.tbz(0 x.bit l).op
-            when opTbnz with x then minst.tbnz(0 x.bit l).op
-            when opBCond with x then minst.bCond(x.cond l).op
-            when opAdr then option opAdr of minst.Op with let label = l end
-            when opJumpEntry with x then minst.jumpEntry(x.table l).op
-            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith, opAdds, opAddImm,
-                    opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opScvtf, opCmp, opFcmp, opCmpImm, opCcmp,
-                    opCcmpImm,
-                    opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opBSymbol, opBl, opBlr, opBr,
-                    opRet, opBrk, opNop, opLabel, opJumpTable, opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
-                op
-        end
-
     (* =========================================================================
      * Functions and the unit
      * ====================================================================== *)
@@ -765,7 +735,7 @@ export
                     let regs = array of(extent i.operands 0)
                     for r = 0 upto {extent regs - 1} do regs[r] := i.operands[r].reg end
                     let base = vector.get(s.ops i.op)
-                    let op = if i.target >= 0 then retarget(base select.label(s final[i.target])) else base end
+                    let op = if i.target >= 0 then minst.withLabel(base select.label(s final[i.target])) else base end
                     (* If a conditional branch targets the next block and is
                      * immediately followed by a trailing unconditional jump,
                      * invert the condition to branch to the jump's target and

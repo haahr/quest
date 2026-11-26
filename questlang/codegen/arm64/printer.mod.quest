@@ -218,31 +218,13 @@ export
                         vector.append(code minst.movImm(target.x(17) x.offset))
                         vector.append(code minst.arith(minst.arithAdd d d target.x(17)))
                     end
-                when opMovImm, opMovz, opMovk, opMov, opArith, opAdds, opAddImm, opSubImm, opLogicImm, opShiftImm,
-                        opMsub,
-                        opSxtb, opSxtw, opScvtf, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad,
-                        opStore,
-                        opLdp,
-                        opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz,
-                        opTbz,
-                        opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa,
-                        opCfiOffset, opLoc then
+                else
                     vector.append(code tuple let op = op let regs = rs end)
             end
             vector.toArray(code)
         end
 
-    let count(op: minst.Op): Int =
-        case op
-            when opLabel, opJumpTable, opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then 0
-            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith, opAdds, opAddImm,
-                    opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opScvtf, opCmp, opFcmp, opCmpImm, opCcmp,
-                    opCcmpImm,
-                    opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl,
-                    opBlr,
-                    opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opJumpEntry then
-                extent expansion(op array of 0 end)
-        end
+    let count(op: minst.Op): Int = if minst.info(op).directive then 0 else extent expansion(op array of 0 end) end
 
     let lines(op: minst.Op regs: Array(Int) n: Names): Array(String) =
         case op
@@ -250,13 +232,7 @@ export
             (* Emit the .data_region directive so disassemblers treat the
              * jump-table entries as data, followed by the table's label *)
             when opJumpTable with x then array of "\t.data_region jt32" x.label <> ":" end
-            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith, opAdds, opAddImm,
-                    opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opScvtf, opCmp, opFcmp, opCmpImm, opCcmp,
-                    opCcmpImm,
-                    opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl,
-                    opBlr,
-                    opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opJumpEntry, opJumpTableEnd,
-                    opCfiDefCfa, opCfiOffset, opLoc then
+            else
                 let expanded = expansion(op regs)
                 let ls = array of(extent expanded "")
                 for k = 0 upto {extent expanded - 1} do

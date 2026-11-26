@@ -177,31 +177,66 @@ export
     let store32: Store = option store32 of Store end
     let store8: Store = option store8 of Store end
 
-    let results(op: Op): Int =
-        case op
-            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith, opAdds, opAddImm,
-                    opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opScvtf, opCset, opCsel, opLoad, opAdrp,
-                    opAddPageOff,
-                    opAdr then
-                1
-            when opLdp then 2
-            when opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opStore, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet,
-                    opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opLabel, opJumpTable, opJumpEntry,
-                    opJumpTableEnd, opCfiDefCfa,
-                    opCfiOffset, opLoc then
-                0
+    Def Info = Tuple defs: Int pure: Bool registersOnly: Bool directive: Bool constant: Bool end
+
+    let fact(defs: Int pure: Bool registersOnly: Bool directive: Bool constant: Bool): Info =
+        tuple
+            let defs = defs
+            let pure = pure
+            let registersOnly = registersOnly
+            let directive = directive
+            let constant = constant
         end
-    let pure(op: Op): Bool =
+    (* The kinds of operation, by their facts *)
+    let computes = fact(1 true true false false)
+    let constantValue = fact(1 true true false true)
+    (* movk reads the register it writes; adds, cset, and csel set or read the
+     * flags *)
+    let partial = fact(1 false true false false)
+    let compares = fact(0 false true false false)
+    let loads = fact(1 false false false false)
+    let loadsPair = fact(2 false false false false)
+    let stores = fact(0 false false false false)
+    let control = fact(0 false false false false)
+    let marks = fact(0 false false true false)
+    let position = fact(0 false true true false)
+
+    let info(op: Op): Info =
         case op
-            when opMovImm, opMovz, opMovConst, opSymbolAddress, opMov, opArith, opAddImm, opSubImm, opLogicImm,
-                    opShiftImm, opMsub, opSxtb, opSxtw, opScvtf, opAdrp, opAddPageOff, opAdr then
-                true
-            when opMovk, opAdds, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad,
-                    opStore,
-                    opLdp, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond,
-                    opBrk,
-                    opNop, opLabel, opJumpTable, opJumpEntry, opJumpTableEnd, opCfiDefCfa, opCfiOffset, opLoc then
-                false
+            when opMovImm, opMovz, opMov, opArith, opAddImm, opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw,
+                    opScvtf, opAdrp, opAddPageOff, opAdr then
+                computes
+            when opMovConst, opSymbolAddress then constantValue
+            when opMovk, opAdds, opCset, opCsel then partial
+            when opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm then compares
+            when opLoad then loads
+            when opLdp then loadsPair
+            when opStore, opStp then stores
+            when opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop,
+                    opJumpEntry then
+                control
+            when opLabel, opJumpTable, opJumpTableEnd, opCfiDefCfa, opCfiOffset then marks
+            when opLoc then position
+        end
+    let results(op: Op): Int = info(op).defs
+    let pure(op: Op): Bool = info(op).pure
+
+    let withLabel(op: Op l: String): Op =
+        case op
+            when opB then option opB of Op with let label = l end
+            when opCbz then option opCbz of Op with let label = l end
+            when opCbnz then option opCbnz of Op with let label = l end
+            when opTbz with x then option opTbz of Op with let bit = x.bit let label = l end
+            when opTbnz with x then option opTbnz of Op with let bit = x.bit let label = l end
+            when opBCond with x then option opBCond of Op with let cond = x.cond let label = l end
+            when opAdr then option opAdr of Op with let label = l end
+            when opJumpEntry with x then option opJumpEntry of Op with let table = x.table let label = l end
+            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith, opAdds, opAddImm,
+                    opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opScvtf, opCmp, opFcmp, opCmpImm, opCcmp,
+                    opCcmpImm, opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opBSymbol, opBl,
+                    opBlr, opBr, opRet, opBrk, opNop, opLabel, opJumpTable, opJumpTableEnd, opCfiDefCfa, opCfiOffset,
+                    opLoc then
+                op
         end
 
     let inst(op: Op regs: Array(Int)): Inst = tuple let op = op let regs = regs end
