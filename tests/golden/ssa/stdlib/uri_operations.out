@@ -8,7 +8,7 @@ b0(%0: ptr, %1: ptr):
   %7: ptr = ptrAdd %4, %6
   %8: ptr = load8 %7 + 0
   %9: ptr = slot 0
-  %10: ptr = symbol quest_current_exception_handler
+  %10: ptr = threadLocal quest_current_exception_handler
   %11: ptr = load8 %10 + 0
   store8 %9 + 0, %11
   %12: ptr = null
@@ -46,14 +46,20 @@ b2():
   %21: ptr = symbol qso_1 + 8
   %22: ptr = symbol qso_2 + 8
   %154: ptr = select %20, %21, %22
-  jump b5(%154)
+  @25:13
+  %23: ptr = unproxy %16
+  %24: ptr = load8 %23 + 0
+  @25:38
+  %25: int = ptrToInt %16
+  %26: int = const 1
+  %27: int = and %25, %26
+  branch %27, b5(), b6()
 b3():
   @17:40
-  %109: ptr = symbol quest_current_exception_handler
   %110: ptr = load8 %9 + 0
-  store8 %109 + 0, %110
+  store8 %10 + 0, %110
   %111: ptr = slot 2
-  %112: ptr = symbol quest_current_exception
+  %112: ptr = threadLocal quest_current_exception
   %113: int = load8 %112 + 0
   store8 %111 + 0, %113
   %114: int = load8 %112 + 8
@@ -68,41 +74,31 @@ b3():
   store8 %111 + 40, %118
   %119: ptr = load8 %111 + 0
   %120: int = peq %119, %8
-  branch %120, b24(), b25()
+  branch %120, b23(), b24()
 b4():
   @17:40
-  %105: ptr = symbol quest_current_exception_handler
   %106: ptr = load8 %9 + 0
-  store8 %105 + 0, %106
+  store8 %10 + 0, %106
   jump b1(%104)
-b5(%17: ptr):
-  @25:13
-  %23: ptr = unproxy %16
-  %24: ptr = load8 %23 + 0
-  @25:38
-  %25: int = ptrToInt %16
-  %26: int = const 1
-  %27: int = and %25, %26
-  branch %27, b6(), b7()
-b6():
+b5():
   @25:38
   %29: int = const 1
   %30: val = call quest_proxy_element(%16, %29)
-  jump b8(%30)
-b7():
+  jump b7(%30)
+b6():
   @25:38
   %31: int = const 8
   %32: ptr = ptrAdd %16, %31
   %33: val = load8 %32 + 0
-  jump b8(%33)
-b8(%28: val):
+  jump b7(%33)
+b7(%28: val):
   @16:44
   %35: ptr = symbol quest_type_String
   %36: int = call qv_util__maybe_isSome(%35, %28) result narrow
   %37: int = zext8 %36
   @16:41
-  branch %37, b10(), b11()
-b9(%34: ptr):
+  branch %37, b9(), b10()
+b8(%34: ptr):
   @25:63
   %47: int = const 16
   %48: ptr = ptrAdd %23, %47
@@ -110,8 +106,8 @@ b9(%34: ptr):
   @25:88
   %51: int = const 1
   %52: int = and %25, %51
-  branch %52, b12(), b13()
-b10():
+  branch %52, b11(), b12()
+b9():
   @16:73
   %38: ptr = symbol quest_type_String
   %39: val = call qv_util__maybe_unwrap(%38, %28)
@@ -122,35 +118,35 @@ b10():
   %134: ptr = null
   %44: ptr = call quest_string_concat_n(%133, %41, %40, %41, %134, %134, %134, %134)
   @16:41
-  jump b9(%44)
-b11():
+  jump b8(%44)
+b10():
   @16:41
   %45: ptr = symbol qso_4 + 8
-  jump b9(%45)
-b12():
+  jump b8(%45)
+b11():
   @25:88
   %54: int = const 3
   %55: val = call quest_proxy_element(%16, %54)
-  jump b14(%55)
-b13():
+  jump b13(%55)
+b12():
   @25:88
   %56: int = const 24
   %57: ptr = ptrAdd %16, %56
   %58: val = load8 %57 + 0
-  jump b14(%58)
-b14(%53: val):
+  jump b13(%58)
+b13(%53: val):
   @16:44
   %60: ptr = symbol quest_type_String
   %61: int = call qv_util__maybe_isSome(%60, %53) result narrow
   %62: int = zext8 %61
   @16:41
-  branch %62, b16(), b17()
-b15(%59: ptr):
+  branch %62, b15(), b16()
+b14(%59: ptr):
   @26:26
   %72: int = const 1
   %73: int = and %25, %72
-  branch %73, b18(), b19()
-b16():
+  branch %73, b17(), b18()
+b15():
   @16:73
   %63: ptr = symbol quest_type_String
   %64: val = call qv_util__maybe_unwrap(%63, %53)
@@ -161,30 +157,30 @@ b16():
   %139: ptr = null
   %69: ptr = call quest_string_concat_n(%138, %66, %65, %66, %139, %139, %139, %139)
   @16:41
-  jump b15(%69)
-b17():
+  jump b14(%69)
+b16():
   @16:41
   %70: ptr = symbol qso_4 + 8
-  jump b15(%70)
-b18():
+  jump b14(%70)
+b17():
   @26:26
   %75: int = const 4
   %76: val = call quest_proxy_element(%16, %75)
-  jump b20(%76)
-b19():
+  jump b19(%76)
+b18():
   @26:26
   %77: int = const 32
   %78: ptr = ptrAdd %16, %77
   %79: val = load8 %78 + 0
-  jump b20(%79)
-b20(%74: val):
+  jump b19(%79)
+b19(%74: val):
   @16:44
   %81: ptr = symbol quest_type_String
   %82: int = call qv_util__maybe_isSome(%81, %74) result narrow
   %83: int = zext8 %82
   @16:41
-  branch %83, b22(), b23()
-b21(%80: ptr):
+  branch %83, b21(), b22()
+b20(%80: ptr):
   @25:100
   %93: ptr = symbol qso_5 + 8
   @25:73
@@ -196,9 +192,9 @@ b21(%80: ptr):
   %143: ptr = call quest_string_concat_n(%144, %24, %93, %34, %99, %49, %96, %59)
   %145: int = const 4
   %146: ptr = null
-  %104: ptr = call quest_string_concat_n(%145, %143, %93, %80, %17, %146, %146, %146)
+  %104: ptr = call quest_string_concat_n(%145, %143, %93, %80, %154, %146, %146, %146)
   jump b4()
-b22():
+b21():
   @16:73
   %84: ptr = symbol quest_type_String
   %85: val = call qv_util__maybe_unwrap(%84, %74)
@@ -209,12 +205,12 @@ b22():
   %150: ptr = null
   %90: ptr = call quest_string_concat_n(%149, %87, %86, %87, %150, %150, %150, %150)
   @16:41
-  jump b21(%90)
-b23():
+  jump b20(%90)
+b22():
   @16:41
   %91: ptr = symbol qso_4 + 8
-  jump b21(%91)
-b24():
+  jump b20(%91)
+b23():
   @17:40
   %121: val = load8 %111 + 8
   %122: ptr = fromVal %121
@@ -223,7 +219,7 @@ b24():
   %124: ptr = call quest_string_concat(%123, %122)
   @17:40
   jump b1(%124)
-b25():
+b24():
   @17:40
   call quest_reraise(%111) memory [0:48]
   unreachable
@@ -334,7 +330,7 @@ b0(%0: int, %1: ptr):
   branch %60, b1(), b2()
 b1():
   @55:1
-  jump b141()
+  jump b139()
 b2():
   @55:1
   jump b3()
@@ -376,7 +372,51 @@ b3():
   %109: ptr = symbol qso_36 + 8
   %110: ptr = symbol qso_37 + 8
   %870: ptr = select %108, %109, %110
-  jump b16()
+  @15:45
+  %111: ptr = symbol qm_writer
+  %112: ptr = load8 %111 + 0
+  %113: ptr = load8 %111 + 8
+  %114: int = load8 %113 + 40
+  %115: ptr = ptrAdd %112, %114
+  %116: ptr = load8 %115 + 0
+  @15:59
+  %117: ptr = symbol qso_9 + 8
+  %118: ptr = call quest_string_concat(%870, %117)
+  @15:28
+  call quest_writer_put_string(%116, %118)
+  @60:7
+  %119: ptr = symbol qso_38 + 8
+  %120: ptr = call qv_util__uri_decode(%119)
+  @15:45
+  %122: ptr = load8 %111 + 0
+  %123: ptr = load8 %111 + 8
+  %124: int = load8 %123 + 40
+  %125: ptr = ptrAdd %122, %124
+  %126: ptr = load8 %125 + 0
+  @15:59
+  %128: ptr = call quest_string_concat(%120, %117)
+  @15:28
+  call quest_writer_put_string(%126, %128)
+  @17:53
+  %130: ptr = symbol qm_util__uri
+  %131: ptr = load8 %130 + 0
+  %132: ptr = load8 %130 + 8
+  %133: int = load8 %132 + 16
+  %134: ptr = ptrAdd %131, %133
+  %135: ptr = load8 %134 + 0
+  %136: ptr = slot 0
+  %137: ptr = threadLocal quest_current_exception_handler
+  %138: ptr = load8 %137 + 0
+  store8 %136 + 0, %138
+  %139: ptr = null
+  store8 %136 + 24, %139
+  %140: ptr = slot 1
+  store8 %140 + 0, %135
+  store8 %136 + 8, %140
+  %141: int = const 1
+  store8 %136 + 16, %141
+  store8 %137 + 0, %136
+  try slot 0, b19(), handler b20
 b4():
   @55:46
   %63: int = const 256
@@ -432,56 +472,10 @@ b15():
   %83: int = add %881, %82
   jump b4()
 b16():
-  @15:45
-  %111: ptr = symbol qm_writer
-  %112: ptr = load8 %111 + 0
-  %113: ptr = load8 %111 + 8
-  %114: int = load8 %113 + 40
-  %115: ptr = ptrAdd %112, %114
-  %116: ptr = load8 %115 + 0
-  @15:59
-  %117: ptr = symbol qso_9 + 8
-  %118: ptr = call quest_string_concat(%870, %117)
-  @15:28
-  call quest_writer_put_string(%116, %118)
-  @60:7
-  %119: ptr = symbol qso_38 + 8
-  %120: ptr = call qv_util__uri_decode(%119)
-  @15:45
-  %122: ptr = load8 %111 + 0
-  %123: ptr = load8 %111 + 8
-  %124: int = load8 %123 + 40
-  %125: ptr = ptrAdd %122, %124
-  %126: ptr = load8 %125 + 0
-  @15:59
-  %128: ptr = call quest_string_concat(%120, %117)
-  @15:28
-  call quest_writer_put_string(%126, %128)
-  @17:53
-  %130: ptr = symbol qm_util__uri
-  %131: ptr = load8 %130 + 0
-  %132: ptr = load8 %130 + 8
-  %133: int = load8 %132 + 16
-  %134: ptr = ptrAdd %131, %133
-  %135: ptr = load8 %134 + 0
-  %136: ptr = slot 0
-  %137: ptr = symbol quest_current_exception_handler
-  %138: ptr = load8 %137 + 0
-  store8 %136 + 0, %138
-  %139: ptr = null
-  store8 %136 + 24, %139
-  %140: ptr = slot 1
-  store8 %140 + 0, %135
-  store8 %136 + 8, %140
-  %141: int = const 1
-  store8 %136 + 16, %141
-  store8 %137 + 0, %136
-  try slot 0, b20(), handler b21
-b17():
   @15:28
   %862: int = const 0
   return %862
-b18(%129: ptr):
+b17(%129: ptr):
   @15:45
   %162: ptr = symbol qm_writer
   %163: ptr = load8 %162 + 0
@@ -502,8 +496,7 @@ b18(%129: ptr):
   %175: ptr = ptrAdd %172, %174
   %176: ptr = load8 %175 + 0
   %177: ptr = slot 3
-  %178: ptr = symbol quest_current_exception_handler
-  %179: ptr = load8 %178 + 0
+  %179: ptr = load8 %137 + 0
   store8 %177 + 0, %179
   %180: ptr = null
   store8 %177 + 24, %180
@@ -512,27 +505,25 @@ b18(%129: ptr):
   store8 %177 + 8, %181
   %182: int = const 1
   store8 %177 + 16, %182
-  store8 %178 + 0, %177
-  try slot 3, b26(), handler b27
-b19():
+  store8 %137 + 0, %177
+  try slot 3, b25(), handler b26
+b18():
   @15:28
-  jump b17()
-b20():
+  jump b16()
+b19():
   @61:29
   %142: ptr = symbol qso_39 + 8
   %143: ptr = call qv_util__uri_decode(%142)
   @17:40
-  %144: ptr = symbol quest_current_exception_handler
   %145: ptr = load8 %136 + 0
-  store8 %144 + 0, %145
-  jump b18(%143)
-b21():
+  store8 %137 + 0, %145
+  jump b17(%143)
+b20():
   @17:40
-  %146: ptr = symbol quest_current_exception_handler
   %147: ptr = load8 %136 + 0
-  store8 %146 + 0, %147
+  store8 %137 + 0, %147
   %148: ptr = slot 2
-  %149: ptr = symbol quest_current_exception
+  %149: ptr = threadLocal quest_current_exception
   %150: int = load8 %149 + 0
   store8 %148 + 0, %150
   %151: int = load8 %149 + 8
@@ -547,8 +538,8 @@ b21():
   store8 %148 + 40, %155
   %156: ptr = load8 %148 + 0
   %157: int = peq %156, %135
-  branch %157, b22(), b23()
-b22():
+  branch %157, b21(), b22()
+b21():
   @17:40
   %158: val = load8 %148 + 8
   %159: ptr = fromVal %158
@@ -556,12 +547,12 @@ b22():
   %160: ptr = symbol qso_8 + 8
   %161: ptr = call quest_string_concat(%160, %159)
   @17:40
-  jump b18(%161)
-b23():
+  jump b17(%161)
+b22():
   @17:40
   call quest_reraise(%148) memory [0:48]
   unreachable
-b24(%170: ptr):
+b23(%170: ptr):
   @15:45
   %203: ptr = symbol qm_writer
   %204: ptr = load8 %203 + 0
@@ -582,8 +573,7 @@ b24(%170: ptr):
   %216: ptr = ptrAdd %213, %215
   %217: ptr = load8 %216 + 0
   %218: ptr = slot 6
-  %219: ptr = symbol quest_current_exception_handler
-  %220: ptr = load8 %219 + 0
+  %220: ptr = load8 %137 + 0
   store8 %218 + 0, %220
   %221: ptr = null
   store8 %218 + 24, %221
@@ -592,27 +582,25 @@ b24(%170: ptr):
   store8 %218 + 8, %222
   %223: int = const 1
   store8 %218 + 16, %223
-  store8 %219 + 0, %218
-  try slot 6, b32(), handler b33
-b25():
+  store8 %137 + 0, %218
+  try slot 6, b31(), handler b32
+b24():
   @15:28
-  jump b19()
-b26():
+  jump b18()
+b25():
   @62:29
   %183: ptr = symbol qso_40 + 8
   %184: ptr = call qv_util__uri_decode(%183)
   @17:40
-  %185: ptr = symbol quest_current_exception_handler
   %186: ptr = load8 %177 + 0
-  store8 %185 + 0, %186
-  jump b24(%184)
-b27():
+  store8 %137 + 0, %186
+  jump b23(%184)
+b26():
   @17:40
-  %187: ptr = symbol quest_current_exception_handler
   %188: ptr = load8 %177 + 0
-  store8 %187 + 0, %188
+  store8 %137 + 0, %188
   %189: ptr = slot 5
-  %190: ptr = symbol quest_current_exception
+  %190: ptr = threadLocal quest_current_exception
   %191: int = load8 %190 + 0
   store8 %189 + 0, %191
   %192: int = load8 %190 + 8
@@ -627,8 +615,8 @@ b27():
   store8 %189 + 40, %196
   %197: ptr = load8 %189 + 0
   %198: int = peq %197, %176
-  branch %198, b28(), b29()
-b28():
+  branch %198, b27(), b28()
+b27():
   @17:40
   %199: val = load8 %189 + 8
   %200: ptr = fromVal %199
@@ -636,12 +624,12 @@ b28():
   %201: ptr = symbol qso_8 + 8
   %202: ptr = call quest_string_concat(%201, %200)
   @17:40
-  jump b24(%202)
-b29():
+  jump b23(%202)
+b28():
   @17:40
   call quest_reraise(%189) memory [0:48]
   unreachable
-b30(%211: ptr):
+b29(%211: ptr):
   @15:45
   %244: ptr = symbol qm_writer
   %245: ptr = load8 %244 + 0
@@ -687,26 +675,24 @@ b30(%211: ptr):
   %272: int = const 0
   store8 %271 + 0, %272
   %276: int = le %272, %270
-  branch %276, b36(), b37()
-b31():
+  branch %276, b35(), b36()
+b30():
   @15:28
-  jump b25()
-b32():
+  jump b24()
+b31():
   @63:29
   %224: ptr = symbol qso_41 + 8
   %225: ptr = call qv_util__uri_decode(%224)
   @17:40
-  %226: ptr = symbol quest_current_exception_handler
   %227: ptr = load8 %218 + 0
-  store8 %226 + 0, %227
-  jump b30(%225)
-b33():
+  store8 %137 + 0, %227
+  jump b29(%225)
+b32():
   @17:40
-  %228: ptr = symbol quest_current_exception_handler
   %229: ptr = load8 %218 + 0
-  store8 %228 + 0, %229
+  store8 %137 + 0, %229
   %230: ptr = slot 8
-  %231: ptr = symbol quest_current_exception
+  %231: ptr = threadLocal quest_current_exception
   %232: int = load8 %231 + 0
   store8 %230 + 0, %232
   %233: int = load8 %231 + 8
@@ -721,8 +707,8 @@ b33():
   store8 %230 + 40, %237
   %238: ptr = load8 %230 + 0
   %239: int = peq %238, %217
-  branch %239, b34(), b35()
-b34():
+  branch %239, b33(), b34()
+b33():
   @17:40
   %240: val = load8 %230 + 8
   %241: ptr = fromVal %240
@@ -730,18 +716,18 @@ b34():
   %242: ptr = symbol qso_8 + 8
   %243: ptr = call quest_string_concat(%242, %241)
   @17:40
-  jump b30(%243)
-b35():
+  jump b29(%243)
+b34():
   @17:40
   call quest_reraise(%230) memory [0:48]
   unreachable
+b35():
+  @74:1
+  jump b138()
 b36():
   @74:1
-  jump b140()
+  jump b37()
 b37():
-  @74:1
-  jump b38()
-b38():
   @80:1
   %329: ptr = symbol qso_51 + 8
   @17:53
@@ -752,8 +738,7 @@ b38():
   %335: ptr = ptrAdd %332, %334
   %336: ptr = load8 %335 + 0
   %337: ptr = slot 10
-  %338: ptr = symbol quest_current_exception_handler
-  %339: ptr = load8 %338 + 0
+  %339: ptr = load8 %137 + 0
   store8 %337 + 0, %339
   %340: ptr = null
   store8 %337 + 24, %340
@@ -762,21 +747,21 @@ b38():
   store8 %337 + 8, %341
   %342: int = const 1
   store8 %337 + 16, %342
-  store8 %338 + 0, %337
-  try slot 10, b54(), handler b55
-b39():
+  store8 %137 + 0, %337
+  try slot 10, b52(), handler b53
+b38():
   @74:1
   %278: int = load8 %271 + 0
   @75:26
-  jump b41()
-b40():
+  jump b40()
+b39():
   @74:1
-  jump b38()
-b41():
+  jump b37()
+b40():
   @75:26
   %283: int = ult %278, %268
-  branch %283, b42(), b43()
-b42():
+  branch %283, b41(), b42()
+b41():
   @75:26
   %285: int = const 8
   %286: int = mul %278, %285
@@ -789,13 +774,33 @@ b42():
   @76:16
   %293: ptr = call qv_util__uri_toPath(%292)
   @77:39
-  jump b46()
-b43():
+  jump b44()
+b42():
   @75:26
   %284: ptr = symbol qs_48
   call quest_raise_array_error_at(%284)
   unreachable
+b43():
+  @74:1
+  jump b38()
 b44():
+  @77:39
+  jump b45()
+b45():
+  @77:39
+  %301: int = const 8
+  %302: int = mul %278, %301
+  %304: ptr = ptrAdd %254, %301
+  %305: ptr = ptrAdd %304, %302
+  %306: val = load8 %305 + 0
+  %307: ptr = fromVal %306
+  @77:19
+  %308: int = call quest_string_equal(%293, %307) result narrow
+  %309: int = zext8 %308
+  @77:16
+  %310: ptr = symbol qso_1 + 8
+  %311: ptr = symbol qso_50 + 8
+  %871: ptr = select %309, %310, %311
   @15:45
   %313: ptr = symbol qm_writer
   %314: ptr = load8 %313 + 0
@@ -813,42 +818,20 @@ b44():
   @74:1
   %322: int = load8 %271 + 0
   %323: int = eq %322, %270
-  branch %323, b48(), b49()
-b45():
+  branch %323, b46(), b47()
+b46():
   @74:1
   jump b39()
-b46():
-  @77:39
-  jump b47()
 b47():
-  @77:39
-  %301: int = const 8
-  %302: int = mul %278, %301
-  %304: ptr = ptrAdd %254, %301
-  %305: ptr = ptrAdd %304, %302
-  %306: val = load8 %305 + 0
-  %307: ptr = fromVal %306
-  @77:19
-  %308: int = call quest_string_equal(%293, %307) result narrow
-  %309: int = zext8 %308
-  @77:16
-  %310: ptr = symbol qso_1 + 8
-  %311: ptr = symbol qso_50 + 8
-  %871: ptr = select %309, %310, %311
-  jump b44()
+  @74:1
+  jump b48()
 b48():
-  @74:1
-  jump b40()
-b49():
-  @74:1
-  jump b50()
-b50():
   @74:1
   %326: int = const 1
   %327: int = add %322, %326
   store8 %271 + 0, %327
-  jump b45()
-b51():
+  jump b43()
+b49():
   @81:1
   %370: ptr = symbol qso_52 + 8
   @17:53
@@ -859,8 +842,7 @@ b51():
   %376: ptr = ptrAdd %373, %375
   %377: ptr = load8 %376 + 0
   %378: ptr = slot 13
-  %379: ptr = symbol quest_current_exception_handler
-  %380: ptr = load8 %379 + 0
+  %380: ptr = load8 %137 + 0
   store8 %378 + 0, %380
   %381: ptr = null
   store8 %378 + 24, %381
@@ -869,12 +851,12 @@ b51():
   store8 %378 + 8, %382
   %383: int = const 1
   store8 %378 + 16, %383
-  store8 %379 + 0, %378
-  try slot 13, b61(), handler b62
-b52():
+  store8 %137 + 0, %378
+  try slot 13, b59(), handler b60
+b50():
   @15:28
-  jump b31()
-b53(%330: ptr):
+  jump b30()
+b51(%330: ptr):
   @15:45
   %362: ptr = symbol qm_writer
   %363: ptr = load8 %362 + 0
@@ -887,22 +869,20 @@ b53(%330: ptr):
   %369: ptr = call quest_string_concat(%330, %368)
   @15:28
   call quest_writer_put_string(%367, %369)
-  jump b51()
-b54():
+  jump b49()
+b52():
   @79:62
   %343: ptr = call qv_util__uri_toPath(%329)
   @17:40
-  %344: ptr = symbol quest_current_exception_handler
   %345: ptr = load8 %337 + 0
-  store8 %344 + 0, %345
-  jump b53(%343)
-b55():
+  store8 %137 + 0, %345
+  jump b51(%343)
+b53():
   @17:40
-  %346: ptr = symbol quest_current_exception_handler
   %347: ptr = load8 %337 + 0
-  store8 %346 + 0, %347
+  store8 %137 + 0, %347
   %348: ptr = slot 12
-  %349: ptr = symbol quest_current_exception
+  %349: ptr = threadLocal quest_current_exception
   %350: int = load8 %349 + 0
   store8 %348 + 0, %350
   %351: int = load8 %349 + 8
@@ -917,8 +897,8 @@ b55():
   store8 %348 + 40, %355
   %356: ptr = load8 %348 + 0
   %357: int = peq %356, %336
-  branch %357, b56(), b57()
-b56():
+  branch %357, b54(), b55()
+b54():
   @17:40
   %358: val = load8 %348 + 8
   %359: ptr = fromVal %358
@@ -926,12 +906,12 @@ b56():
   %360: ptr = symbol qso_8 + 8
   %361: ptr = call quest_string_concat(%360, %359)
   @17:40
-  jump b53(%361)
-b57():
+  jump b51(%361)
+b55():
   @17:40
   call quest_reraise(%348) memory [0:48]
   unreachable
-b58():
+b56():
   @82:1
   %411: ptr = symbol qso_22 + 8
   @17:53
@@ -942,8 +922,7 @@ b58():
   %417: ptr = ptrAdd %414, %416
   %418: ptr = load8 %417 + 0
   %419: ptr = slot 16
-  %420: ptr = symbol quest_current_exception_handler
-  %421: ptr = load8 %420 + 0
+  %421: ptr = load8 %137 + 0
   store8 %419 + 0, %421
   %422: ptr = null
   store8 %419 + 24, %422
@@ -952,12 +931,12 @@ b58():
   store8 %419 + 8, %423
   %424: int = const 1
   store8 %419 + 16, %424
-  store8 %420 + 0, %419
-  try slot 16, b68(), handler b69
-b59():
+  store8 %137 + 0, %419
+  try slot 16, b66(), handler b67
+b57():
   @15:28
-  jump b52()
-b60(%371: ptr):
+  jump b50()
+b58(%371: ptr):
   @15:45
   %403: ptr = symbol qm_writer
   %404: ptr = load8 %403 + 0
@@ -970,22 +949,20 @@ b60(%371: ptr):
   %410: ptr = call quest_string_concat(%371, %409)
   @15:28
   call quest_writer_put_string(%408, %410)
-  jump b58()
-b61():
+  jump b56()
+b59():
   @79:62
   %384: ptr = call qv_util__uri_toPath(%370)
   @17:40
-  %385: ptr = symbol quest_current_exception_handler
   %386: ptr = load8 %378 + 0
-  store8 %385 + 0, %386
-  jump b60(%384)
-b62():
+  store8 %137 + 0, %386
+  jump b58(%384)
+b60():
   @17:40
-  %387: ptr = symbol quest_current_exception_handler
   %388: ptr = load8 %378 + 0
-  store8 %387 + 0, %388
+  store8 %137 + 0, %388
   %389: ptr = slot 15
-  %390: ptr = symbol quest_current_exception
+  %390: ptr = threadLocal quest_current_exception
   %391: int = load8 %390 + 0
   store8 %389 + 0, %391
   %392: int = load8 %390 + 8
@@ -1000,8 +977,8 @@ b62():
   store8 %389 + 40, %396
   %397: ptr = load8 %389 + 0
   %398: int = peq %397, %377
-  branch %398, b63(), b64()
-b63():
+  branch %398, b61(), b62()
+b61():
   @17:40
   %399: val = load8 %389 + 8
   %400: ptr = fromVal %399
@@ -1009,12 +986,12 @@ b63():
   %401: ptr = symbol qso_8 + 8
   %402: ptr = call quest_string_concat(%401, %400)
   @17:40
-  jump b60(%402)
-b64():
+  jump b58(%402)
+b62():
   @17:40
   call quest_reraise(%389) memory [0:48]
   unreachable
-b65():
+b63():
   @83:1
   %452: ptr = symbol qso_53 + 8
   @17:53
@@ -1025,8 +1002,7 @@ b65():
   %458: ptr = ptrAdd %455, %457
   %459: ptr = load8 %458 + 0
   %460: ptr = slot 19
-  %461: ptr = symbol quest_current_exception_handler
-  %462: ptr = load8 %461 + 0
+  %462: ptr = load8 %137 + 0
   store8 %460 + 0, %462
   %463: ptr = null
   store8 %460 + 24, %463
@@ -1035,12 +1011,12 @@ b65():
   store8 %460 + 8, %464
   %465: int = const 1
   store8 %460 + 16, %465
-  store8 %461 + 0, %460
-  try slot 19, b75(), handler b76
-b66():
+  store8 %137 + 0, %460
+  try slot 19, b73(), handler b74
+b64():
   @15:28
-  jump b59()
-b67(%412: ptr):
+  jump b57()
+b65(%412: ptr):
   @15:45
   %444: ptr = symbol qm_writer
   %445: ptr = load8 %444 + 0
@@ -1053,22 +1029,20 @@ b67(%412: ptr):
   %451: ptr = call quest_string_concat(%412, %450)
   @15:28
   call quest_writer_put_string(%449, %451)
-  jump b65()
-b68():
+  jump b63()
+b66():
   @79:62
   %425: ptr = call qv_util__uri_toPath(%411)
   @17:40
-  %426: ptr = symbol quest_current_exception_handler
   %427: ptr = load8 %419 + 0
-  store8 %426 + 0, %427
-  jump b67(%425)
-b69():
+  store8 %137 + 0, %427
+  jump b65(%425)
+b67():
   @17:40
-  %428: ptr = symbol quest_current_exception_handler
   %429: ptr = load8 %419 + 0
-  store8 %428 + 0, %429
+  store8 %137 + 0, %429
   %430: ptr = slot 18
-  %431: ptr = symbol quest_current_exception
+  %431: ptr = threadLocal quest_current_exception
   %432: int = load8 %431 + 0
   store8 %430 + 0, %432
   %433: int = load8 %431 + 8
@@ -1083,8 +1057,8 @@ b69():
   store8 %430 + 40, %437
   %438: ptr = load8 %430 + 0
   %439: int = peq %438, %418
-  branch %439, b70(), b71()
-b70():
+  branch %439, b68(), b69()
+b68():
   @17:40
   %440: val = load8 %430 + 8
   %441: ptr = fromVal %440
@@ -1092,12 +1066,12 @@ b70():
   %442: ptr = symbol qso_8 + 8
   %443: ptr = call quest_string_concat(%442, %441)
   @17:40
-  jump b67(%443)
-b71():
+  jump b65(%443)
+b69():
   @17:40
   call quest_reraise(%430) memory [0:48]
   unreachable
-b72():
+b70():
   @84:1
   %493: ptr = symbol qso_54 + 8
   @17:53
@@ -1108,8 +1082,7 @@ b72():
   %499: ptr = ptrAdd %496, %498
   %500: ptr = load8 %499 + 0
   %501: ptr = slot 22
-  %502: ptr = symbol quest_current_exception_handler
-  %503: ptr = load8 %502 + 0
+  %503: ptr = load8 %137 + 0
   store8 %501 + 0, %503
   %504: ptr = null
   store8 %501 + 24, %504
@@ -1118,12 +1091,12 @@ b72():
   store8 %501 + 8, %505
   %506: int = const 1
   store8 %501 + 16, %506
-  store8 %502 + 0, %501
-  try slot 22, b82(), handler b83
-b73():
+  store8 %137 + 0, %501
+  try slot 22, b80(), handler b81
+b71():
   @15:28
-  jump b66()
-b74(%453: ptr):
+  jump b64()
+b72(%453: ptr):
   @15:45
   %485: ptr = symbol qm_writer
   %486: ptr = load8 %485 + 0
@@ -1136,22 +1109,20 @@ b74(%453: ptr):
   %492: ptr = call quest_string_concat(%453, %491)
   @15:28
   call quest_writer_put_string(%490, %492)
-  jump b72()
-b75():
+  jump b70()
+b73():
   @79:62
   %466: ptr = call qv_util__uri_toPath(%452)
   @17:40
-  %467: ptr = symbol quest_current_exception_handler
   %468: ptr = load8 %460 + 0
-  store8 %467 + 0, %468
-  jump b74(%466)
-b76():
+  store8 %137 + 0, %468
+  jump b72(%466)
+b74():
   @17:40
-  %469: ptr = symbol quest_current_exception_handler
   %470: ptr = load8 %460 + 0
-  store8 %469 + 0, %470
+  store8 %137 + 0, %470
   %471: ptr = slot 21
-  %472: ptr = symbol quest_current_exception
+  %472: ptr = threadLocal quest_current_exception
   %473: int = load8 %472 + 0
   store8 %471 + 0, %473
   %474: int = load8 %472 + 8
@@ -1166,8 +1137,8 @@ b76():
   store8 %471 + 40, %478
   %479: ptr = load8 %471 + 0
   %480: int = peq %479, %459
-  branch %480, b77(), b78()
-b77():
+  branch %480, b75(), b76()
+b75():
   @17:40
   %481: val = load8 %471 + 8
   %482: ptr = fromVal %481
@@ -1175,12 +1146,12 @@ b77():
   %483: ptr = symbol qso_8 + 8
   %484: ptr = call quest_string_concat(%483, %482)
   @17:40
-  jump b74(%484)
-b78():
+  jump b72(%484)
+b76():
   @17:40
   call quest_reraise(%471) memory [0:48]
   unreachable
-b79():
+b77():
   @85:1
   %534: ptr = symbol qso_55 + 8
   @17:53
@@ -1191,8 +1162,7 @@ b79():
   %540: ptr = ptrAdd %537, %539
   %541: ptr = load8 %540 + 0
   %542: ptr = slot 25
-  %543: ptr = symbol quest_current_exception_handler
-  %544: ptr = load8 %543 + 0
+  %544: ptr = load8 %137 + 0
   store8 %542 + 0, %544
   %545: ptr = null
   store8 %542 + 24, %545
@@ -1201,12 +1171,12 @@ b79():
   store8 %542 + 8, %546
   %547: int = const 1
   store8 %542 + 16, %547
-  store8 %543 + 0, %542
-  try slot 25, b89(), handler b90
-b80():
+  store8 %137 + 0, %542
+  try slot 25, b87(), handler b88
+b78():
   @15:28
-  jump b73()
-b81(%494: ptr):
+  jump b71()
+b79(%494: ptr):
   @15:45
   %526: ptr = symbol qm_writer
   %527: ptr = load8 %526 + 0
@@ -1219,22 +1189,20 @@ b81(%494: ptr):
   %533: ptr = call quest_string_concat(%494, %532)
   @15:28
   call quest_writer_put_string(%531, %533)
-  jump b79()
-b82():
+  jump b77()
+b80():
   @79:62
   %507: ptr = call qv_util__uri_toPath(%493)
   @17:40
-  %508: ptr = symbol quest_current_exception_handler
   %509: ptr = load8 %501 + 0
-  store8 %508 + 0, %509
-  jump b81(%507)
-b83():
+  store8 %137 + 0, %509
+  jump b79(%507)
+b81():
   @17:40
-  %510: ptr = symbol quest_current_exception_handler
   %511: ptr = load8 %501 + 0
-  store8 %510 + 0, %511
+  store8 %137 + 0, %511
   %512: ptr = slot 24
-  %513: ptr = symbol quest_current_exception
+  %513: ptr = threadLocal quest_current_exception
   %514: int = load8 %513 + 0
   store8 %512 + 0, %514
   %515: int = load8 %513 + 8
@@ -1249,8 +1217,8 @@ b83():
   store8 %512 + 40, %519
   %520: ptr = load8 %512 + 0
   %521: int = peq %520, %500
-  branch %521, b84(), b85()
-b84():
+  branch %521, b82(), b83()
+b82():
   @17:40
   %522: val = load8 %512 + 8
   %523: ptr = fromVal %522
@@ -1258,12 +1226,12 @@ b84():
   %524: ptr = symbol qso_8 + 8
   %525: ptr = call quest_string_concat(%524, %523)
   @17:40
-  jump b81(%525)
-b85():
+  jump b79(%525)
+b83():
   @17:40
   call quest_reraise(%512) memory [0:48]
   unreachable
-b86():
+b84():
   @86:1
   %575: ptr = symbol qso_56 + 8
   @17:53
@@ -1274,8 +1242,7 @@ b86():
   %581: ptr = ptrAdd %578, %580
   %582: ptr = load8 %581 + 0
   %583: ptr = slot 28
-  %584: ptr = symbol quest_current_exception_handler
-  %585: ptr = load8 %584 + 0
+  %585: ptr = load8 %137 + 0
   store8 %583 + 0, %585
   %586: ptr = null
   store8 %583 + 24, %586
@@ -1284,12 +1251,12 @@ b86():
   store8 %583 + 8, %587
   %588: int = const 1
   store8 %583 + 16, %588
-  store8 %584 + 0, %583
-  try slot 28, b96(), handler b97
-b87():
+  store8 %137 + 0, %583
+  try slot 28, b94(), handler b95
+b85():
   @15:28
-  jump b80()
-b88(%535: ptr):
+  jump b78()
+b86(%535: ptr):
   @15:45
   %567: ptr = symbol qm_writer
   %568: ptr = load8 %567 + 0
@@ -1302,22 +1269,20 @@ b88(%535: ptr):
   %574: ptr = call quest_string_concat(%535, %573)
   @15:28
   call quest_writer_put_string(%572, %574)
-  jump b86()
-b89():
+  jump b84()
+b87():
   @79:62
   %548: ptr = call qv_util__uri_toPath(%534)
   @17:40
-  %549: ptr = symbol quest_current_exception_handler
   %550: ptr = load8 %542 + 0
-  store8 %549 + 0, %550
-  jump b88(%548)
-b90():
+  store8 %137 + 0, %550
+  jump b86(%548)
+b88():
   @17:40
-  %551: ptr = symbol quest_current_exception_handler
   %552: ptr = load8 %542 + 0
-  store8 %551 + 0, %552
+  store8 %137 + 0, %552
   %553: ptr = slot 27
-  %554: ptr = symbol quest_current_exception
+  %554: ptr = threadLocal quest_current_exception
   %555: int = load8 %554 + 0
   store8 %553 + 0, %555
   %556: int = load8 %554 + 8
@@ -1332,8 +1297,8 @@ b90():
   store8 %553 + 40, %560
   %561: ptr = load8 %553 + 0
   %562: int = peq %561, %541
-  branch %562, b91(), b92()
-b91():
+  branch %562, b89(), b90()
+b89():
   @17:40
   %563: val = load8 %553 + 8
   %564: ptr = fromVal %563
@@ -1341,12 +1306,12 @@ b91():
   %565: ptr = symbol qso_8 + 8
   %566: ptr = call quest_string_concat(%565, %564)
   @17:40
-  jump b88(%566)
-b92():
+  jump b86(%566)
+b90():
   @17:40
   call quest_reraise(%553) memory [0:48]
   unreachable
-b93():
+b91():
   @87:1
   %616: ptr = symbol qso_57 + 8
   @17:53
@@ -1357,8 +1322,7 @@ b93():
   %622: ptr = ptrAdd %619, %621
   %623: ptr = load8 %622 + 0
   %624: ptr = slot 31
-  %625: ptr = symbol quest_current_exception_handler
-  %626: ptr = load8 %625 + 0
+  %626: ptr = load8 %137 + 0
   store8 %624 + 0, %626
   %627: ptr = null
   store8 %624 + 24, %627
@@ -1367,12 +1331,12 @@ b93():
   store8 %624 + 8, %628
   %629: int = const 1
   store8 %624 + 16, %629
-  store8 %625 + 0, %624
-  try slot 31, b103(), handler b104
-b94():
+  store8 %137 + 0, %624
+  try slot 31, b101(), handler b102
+b92():
   @15:28
-  jump b87()
-b95(%576: ptr):
+  jump b85()
+b93(%576: ptr):
   @15:45
   %608: ptr = symbol qm_writer
   %609: ptr = load8 %608 + 0
@@ -1385,22 +1349,20 @@ b95(%576: ptr):
   %615: ptr = call quest_string_concat(%576, %614)
   @15:28
   call quest_writer_put_string(%613, %615)
-  jump b93()
-b96():
+  jump b91()
+b94():
   @79:62
   %589: ptr = call qv_util__uri_toPath(%575)
   @17:40
-  %590: ptr = symbol quest_current_exception_handler
   %591: ptr = load8 %583 + 0
-  store8 %590 + 0, %591
-  jump b95(%589)
-b97():
+  store8 %137 + 0, %591
+  jump b93(%589)
+b95():
   @17:40
-  %592: ptr = symbol quest_current_exception_handler
   %593: ptr = load8 %583 + 0
-  store8 %592 + 0, %593
+  store8 %137 + 0, %593
   %594: ptr = slot 30
-  %595: ptr = symbol quest_current_exception
+  %595: ptr = threadLocal quest_current_exception
   %596: int = load8 %595 + 0
   store8 %594 + 0, %596
   %597: int = load8 %595 + 8
@@ -1415,8 +1377,8 @@ b97():
   store8 %594 + 40, %601
   %602: ptr = load8 %594 + 0
   %603: int = peq %602, %582
-  branch %603, b98(), b99()
-b98():
+  branch %603, b96(), b97()
+b96():
   @17:40
   %604: val = load8 %594 + 8
   %605: ptr = fromVal %604
@@ -1424,12 +1386,12 @@ b98():
   %606: ptr = symbol qso_8 + 8
   %607: ptr = call quest_string_concat(%606, %605)
   @17:40
-  jump b95(%607)
-b99():
+  jump b93(%607)
+b97():
   @17:40
   call quest_reraise(%594) memory [0:48]
   unreachable
-b100():
+b98():
   @88:1
   %657: ptr = symbol qso_58 + 8
   @17:53
@@ -1440,8 +1402,7 @@ b100():
   %663: ptr = ptrAdd %660, %662
   %664: ptr = load8 %663 + 0
   %665: ptr = slot 34
-  %666: ptr = symbol quest_current_exception_handler
-  %667: ptr = load8 %666 + 0
+  %667: ptr = load8 %137 + 0
   store8 %665 + 0, %667
   %668: ptr = null
   store8 %665 + 24, %668
@@ -1450,12 +1411,12 @@ b100():
   store8 %665 + 8, %669
   %670: int = const 1
   store8 %665 + 16, %670
-  store8 %666 + 0, %665
-  try slot 34, b110(), handler b111
-b101():
+  store8 %137 + 0, %665
+  try slot 34, b108(), handler b109
+b99():
   @15:28
-  jump b94()
-b102(%617: ptr):
+  jump b92()
+b100(%617: ptr):
   @15:45
   %649: ptr = symbol qm_writer
   %650: ptr = load8 %649 + 0
@@ -1468,22 +1429,20 @@ b102(%617: ptr):
   %656: ptr = call quest_string_concat(%617, %655)
   @15:28
   call quest_writer_put_string(%654, %656)
-  jump b100()
-b103():
+  jump b98()
+b101():
   @79:62
   %630: ptr = call qv_util__uri_toPath(%616)
   @17:40
-  %631: ptr = symbol quest_current_exception_handler
   %632: ptr = load8 %624 + 0
-  store8 %631 + 0, %632
-  jump b102(%630)
-b104():
+  store8 %137 + 0, %632
+  jump b100(%630)
+b102():
   @17:40
-  %633: ptr = symbol quest_current_exception_handler
   %634: ptr = load8 %624 + 0
-  store8 %633 + 0, %634
+  store8 %137 + 0, %634
   %635: ptr = slot 33
-  %636: ptr = symbol quest_current_exception
+  %636: ptr = threadLocal quest_current_exception
   %637: int = load8 %636 + 0
   store8 %635 + 0, %637
   %638: int = load8 %636 + 8
@@ -1498,8 +1457,8 @@ b104():
   store8 %635 + 40, %642
   %643: ptr = load8 %635 + 0
   %644: int = peq %643, %623
-  branch %644, b105(), b106()
-b105():
+  branch %644, b103(), b104()
+b103():
   @17:40
   %645: val = load8 %635 + 8
   %646: ptr = fromVal %645
@@ -1507,12 +1466,12 @@ b105():
   %647: ptr = symbol qso_8 + 8
   %648: ptr = call quest_string_concat(%647, %646)
   @17:40
-  jump b102(%648)
-b106():
+  jump b100(%648)
+b104():
   @17:40
   call quest_reraise(%635) memory [0:48]
   unreachable
-b107():
+b105():
   @89:1
   %698: ptr = symbol qso_59 + 8
   @17:53
@@ -1523,8 +1482,7 @@ b107():
   %704: ptr = ptrAdd %701, %703
   %705: ptr = load8 %704 + 0
   %706: ptr = slot 37
-  %707: ptr = symbol quest_current_exception_handler
-  %708: ptr = load8 %707 + 0
+  %708: ptr = load8 %137 + 0
   store8 %706 + 0, %708
   %709: ptr = null
   store8 %706 + 24, %709
@@ -1533,12 +1491,12 @@ b107():
   store8 %706 + 8, %710
   %711: int = const 1
   store8 %706 + 16, %711
-  store8 %707 + 0, %706
-  try slot 37, b117(), handler b118
-b108():
+  store8 %137 + 0, %706
+  try slot 37, b115(), handler b116
+b106():
   @15:28
-  jump b101()
-b109(%658: ptr):
+  jump b99()
+b107(%658: ptr):
   @15:45
   %690: ptr = symbol qm_writer
   %691: ptr = load8 %690 + 0
@@ -1551,22 +1509,20 @@ b109(%658: ptr):
   %697: ptr = call quest_string_concat(%658, %696)
   @15:28
   call quest_writer_put_string(%695, %697)
-  jump b107()
-b110():
+  jump b105()
+b108():
   @79:62
   %671: ptr = call qv_util__uri_toPath(%657)
   @17:40
-  %672: ptr = symbol quest_current_exception_handler
   %673: ptr = load8 %665 + 0
-  store8 %672 + 0, %673
-  jump b109(%671)
-b111():
+  store8 %137 + 0, %673
+  jump b107(%671)
+b109():
   @17:40
-  %674: ptr = symbol quest_current_exception_handler
   %675: ptr = load8 %665 + 0
-  store8 %674 + 0, %675
+  store8 %137 + 0, %675
   %676: ptr = slot 36
-  %677: ptr = symbol quest_current_exception
+  %677: ptr = threadLocal quest_current_exception
   %678: int = load8 %677 + 0
   store8 %676 + 0, %678
   %679: int = load8 %677 + 8
@@ -1581,8 +1537,8 @@ b111():
   store8 %676 + 40, %683
   %684: ptr = load8 %676 + 0
   %685: int = peq %684, %664
-  branch %685, b112(), b113()
-b112():
+  branch %685, b110(), b111()
+b110():
   @17:40
   %686: val = load8 %676 + 8
   %687: ptr = fromVal %686
@@ -1590,12 +1546,12 @@ b112():
   %688: ptr = symbol qso_8 + 8
   %689: ptr = call quest_string_concat(%688, %687)
   @17:40
-  jump b109(%689)
-b113():
+  jump b107(%689)
+b111():
   @17:40
   call quest_reraise(%676) memory [0:48]
   unreachable
-b114():
+b112():
   @90:1
   %739: ptr = symbol qso_60 + 8
   @17:53
@@ -1606,8 +1562,7 @@ b114():
   %745: ptr = ptrAdd %742, %744
   %746: ptr = load8 %745 + 0
   %747: ptr = slot 40
-  %748: ptr = symbol quest_current_exception_handler
-  %749: ptr = load8 %748 + 0
+  %749: ptr = load8 %137 + 0
   store8 %747 + 0, %749
   %750: ptr = null
   store8 %747 + 24, %750
@@ -1616,12 +1571,12 @@ b114():
   store8 %747 + 8, %751
   %752: int = const 1
   store8 %747 + 16, %752
-  store8 %748 + 0, %747
-  try slot 40, b124(), handler b125
-b115():
+  store8 %137 + 0, %747
+  try slot 40, b122(), handler b123
+b113():
   @15:28
-  jump b108()
-b116(%699: ptr):
+  jump b106()
+b114(%699: ptr):
   @15:45
   %731: ptr = symbol qm_writer
   %732: ptr = load8 %731 + 0
@@ -1634,22 +1589,20 @@ b116(%699: ptr):
   %738: ptr = call quest_string_concat(%699, %737)
   @15:28
   call quest_writer_put_string(%736, %738)
-  jump b114()
-b117():
+  jump b112()
+b115():
   @79:62
   %712: ptr = call qv_util__uri_toPath(%698)
   @17:40
-  %713: ptr = symbol quest_current_exception_handler
   %714: ptr = load8 %706 + 0
-  store8 %713 + 0, %714
-  jump b116(%712)
-b118():
+  store8 %137 + 0, %714
+  jump b114(%712)
+b116():
   @17:40
-  %715: ptr = symbol quest_current_exception_handler
   %716: ptr = load8 %706 + 0
-  store8 %715 + 0, %716
+  store8 %137 + 0, %716
   %717: ptr = slot 39
-  %718: ptr = symbol quest_current_exception
+  %718: ptr = threadLocal quest_current_exception
   %719: int = load8 %718 + 0
   store8 %717 + 0, %719
   %720: int = load8 %718 + 8
@@ -1664,8 +1617,8 @@ b118():
   store8 %717 + 40, %724
   %725: ptr = load8 %717 + 0
   %726: int = peq %725, %705
-  branch %726, b119(), b120()
-b119():
+  branch %726, b117(), b118()
+b117():
   @17:40
   %727: val = load8 %717 + 8
   %728: ptr = fromVal %727
@@ -1673,12 +1626,12 @@ b119():
   %729: ptr = symbol qso_8 + 8
   %730: ptr = call quest_string_concat(%729, %728)
   @17:40
-  jump b116(%730)
-b120():
+  jump b114(%730)
+b118():
   @17:40
   call quest_reraise(%717) memory [0:48]
   unreachable
-b121():
+b119():
   @17:53
   %781: ptr = symbol qm_util__uri
   %782: ptr = load8 %781 + 0
@@ -1687,8 +1640,7 @@ b121():
   %785: ptr = ptrAdd %782, %784
   %786: ptr = load8 %785 + 0
   %787: ptr = slot 43
-  %788: ptr = symbol quest_current_exception_handler
-  %789: ptr = load8 %788 + 0
+  %789: ptr = load8 %137 + 0
   store8 %787 + 0, %789
   %790: ptr = null
   store8 %787 + 24, %790
@@ -1697,12 +1649,12 @@ b121():
   store8 %787 + 8, %791
   %792: int = const 1
   store8 %787 + 16, %792
-  store8 %788 + 0, %787
-  try slot 43, b130(), handler b131
-b122():
+  store8 %137 + 0, %787
+  try slot 43, b128(), handler b129
+b120():
   @15:28
-  jump b115()
-b123(%740: ptr):
+  jump b113()
+b121(%740: ptr):
   @15:45
   %772: ptr = symbol qm_writer
   %773: ptr = load8 %772 + 0
@@ -1715,22 +1667,20 @@ b123(%740: ptr):
   %779: ptr = call quest_string_concat(%740, %778)
   @15:28
   call quest_writer_put_string(%777, %779)
-  jump b121()
-b124():
+  jump b119()
+b122():
   @79:62
   %753: ptr = call qv_util__uri_toPath(%739)
   @17:40
-  %754: ptr = symbol quest_current_exception_handler
   %755: ptr = load8 %747 + 0
-  store8 %754 + 0, %755
-  jump b123(%753)
-b125():
+  store8 %137 + 0, %755
+  jump b121(%753)
+b123():
   @17:40
-  %756: ptr = symbol quest_current_exception_handler
   %757: ptr = load8 %747 + 0
-  store8 %756 + 0, %757
+  store8 %137 + 0, %757
   %758: ptr = slot 42
-  %759: ptr = symbol quest_current_exception
+  %759: ptr = threadLocal quest_current_exception
   %760: int = load8 %759 + 0
   store8 %758 + 0, %760
   %761: int = load8 %759 + 8
@@ -1745,8 +1695,8 @@ b125():
   store8 %758 + 40, %765
   %766: ptr = load8 %758 + 0
   %767: int = peq %766, %746
-  branch %767, b126(), b127()
-b126():
+  branch %767, b124(), b125()
+b124():
   @17:40
   %768: val = load8 %758 + 8
   %769: ptr = fromVal %768
@@ -1754,12 +1704,12 @@ b126():
   %770: ptr = symbol qso_8 + 8
   %771: ptr = call quest_string_concat(%770, %769)
   @17:40
-  jump b123(%771)
-b127():
+  jump b121(%771)
+b125():
   @17:40
   call quest_reraise(%758) memory [0:48]
   unreachable
-b128(%780: ptr):
+b126(%780: ptr):
   @15:45
   %813: ptr = symbol qm_writer
   %814: ptr = load8 %813 + 0
@@ -1780,8 +1730,7 @@ b128(%780: ptr):
   %826: ptr = ptrAdd %823, %825
   %827: ptr = load8 %826 + 0
   %828: ptr = slot 46
-  %829: ptr = symbol quest_current_exception_handler
-  %830: ptr = load8 %829 + 0
+  %830: ptr = load8 %137 + 0
   store8 %828 + 0, %830
   %831: ptr = null
   store8 %828 + 24, %831
@@ -1790,27 +1739,25 @@ b128(%780: ptr):
   store8 %828 + 8, %832
   %833: int = const 1
   store8 %828 + 16, %833
-  store8 %829 + 0, %828
-  try slot 46, b136(), handler b137
-b129():
+  store8 %137 + 0, %828
+  try slot 46, b134(), handler b135
+b127():
   @15:28
-  jump b122()
-b130():
+  jump b120()
+b128():
   @91:29
   %793: ptr = symbol qso_61 + 8
   %794: ptr = call qv_util__uri_fromPath(%793)
   @17:40
-  %795: ptr = symbol quest_current_exception_handler
   %796: ptr = load8 %787 + 0
-  store8 %795 + 0, %796
-  jump b128(%794)
-b131():
+  store8 %137 + 0, %796
+  jump b126(%794)
+b129():
   @17:40
-  %797: ptr = symbol quest_current_exception_handler
   %798: ptr = load8 %787 + 0
-  store8 %797 + 0, %798
+  store8 %137 + 0, %798
   %799: ptr = slot 45
-  %800: ptr = symbol quest_current_exception
+  %800: ptr = threadLocal quest_current_exception
   %801: int = load8 %800 + 0
   store8 %799 + 0, %801
   %802: int = load8 %800 + 8
@@ -1825,8 +1772,8 @@ b131():
   store8 %799 + 40, %806
   %807: ptr = load8 %799 + 0
   %808: int = peq %807, %786
-  branch %808, b132(), b133()
-b132():
+  branch %808, b130(), b131()
+b130():
   @17:40
   %809: val = load8 %799 + 8
   %810: ptr = fromVal %809
@@ -1834,12 +1781,12 @@ b132():
   %811: ptr = symbol qso_8 + 8
   %812: ptr = call quest_string_concat(%811, %810)
   @17:40
-  jump b128(%812)
-b133():
+  jump b126(%812)
+b131():
   @17:40
   call quest_reraise(%799) memory [0:48]
   unreachable
-b134(%821: ptr):
+b132(%821: ptr):
   @15:45
   %854: ptr = symbol qm_writer
   %855: ptr = load8 %854 + 0
@@ -1852,26 +1799,24 @@ b134(%821: ptr):
   %861: ptr = call quest_string_concat(%821, %860)
   @15:28
   call quest_writer_put_string(%859, %861)
-  jump b135()
-b135():
+  jump b133()
+b133():
   @15:28
-  jump b129()
-b136():
+  jump b127()
+b134():
   @92:29
   %834: ptr = symbol qso_1 + 8
   %835: ptr = call qv_util__uri_fromPath(%834)
   @17:40
-  %836: ptr = symbol quest_current_exception_handler
   %837: ptr = load8 %828 + 0
-  store8 %836 + 0, %837
-  jump b134(%835)
-b137():
+  store8 %137 + 0, %837
+  jump b132(%835)
+b135():
   @17:40
-  %838: ptr = symbol quest_current_exception_handler
   %839: ptr = load8 %828 + 0
-  store8 %838 + 0, %839
+  store8 %137 + 0, %839
   %840: ptr = slot 48
-  %841: ptr = symbol quest_current_exception
+  %841: ptr = threadLocal quest_current_exception
   %842: int = load8 %841 + 0
   store8 %840 + 0, %842
   %843: int = load8 %841 + 8
@@ -1886,8 +1831,8 @@ b137():
   store8 %840 + 40, %847
   %848: ptr = load8 %840 + 0
   %849: int = peq %848, %827
-  branch %849, b138(), b139()
-b138():
+  branch %849, b136(), b137()
+b136():
   @17:40
   %850: val = load8 %840 + 8
   %851: ptr = fromVal %850
@@ -1895,23 +1840,23 @@ b138():
   %852: ptr = symbol qso_8 + 8
   %853: ptr = call quest_string_concat(%852, %851)
   @17:40
-  jump b134(%853)
-b139():
+  jump b132(%853)
+b137():
   @17:40
   call quest_reraise(%840) memory [0:48]
   unreachable
-b140():
+b138():
   @75:26
-  jump b39()
-b141():
+  jump b38()
+b139():
   @55:23
   %67: int = load8 %53 + 0 invariant
   %69: ptr = load8 %53 + 8 invariant
   @55:46
   %873: int = const 256
   %874: int = ult %883, %873
-  branch %874, b142(), b7()
-b142():
+  branch %874, b140(), b7()
+b140():
   @55:46
   jump b6(%883)
 }

@@ -41,7 +41,7 @@ b3(%8: ptr):
   %22: ptr = ptrAdd %19, %21
   %23: ptr = load8 %22 + 0
   %24: ptr = slot 0
-  %25: ptr = symbol quest_current_exception_handler
+  %25: ptr = threadLocal quest_current_exception_handler
   %26: ptr = load8 %25 + 0
   store8 %24 + 0, %26
   %27: ptr = null
@@ -52,7 +52,7 @@ b3(%8: ptr):
   %29: int = const 1
   store8 %24 + 16, %29
   store8 %25 + 0, %24
-  try slot 0, b10(), handler b11
+  try slot 0, b9(), handler b10
 b4():
   @20:1
   %118: int = const 0
@@ -68,34 +68,31 @@ b6():
   %15: ptr = symbol qso_4 + 8
   %16: ptr = symbol qso_5 + 8
   %133: ptr = select %14, %15, %16
-  jump b7(%133)
-b7(%12: ptr):
   @11:12
-  jump b3(%12)
-b8(%17: int):
+  jump b3(%133)
+b7(%17: int):
   @13:36
   %50: int = const 2
   %51: int = gt %7, %50
   @13:33
-  branch %51, b18(), b19()
-b9():
+  branch %51, b17(), b18()
+b8():
   @20:1
   jump b4()
-b10():
+b9():
   @12:27
   %30: int = const 100
   %31: int = mul %7, %30
   @12:16
   %32: int = const 256
   %33: int = ult %31, %32
-  branch %33, b12(), b13()
-b11():
+  branch %33, b11(), b12()
+b10():
   @12:12
-  %36: ptr = symbol quest_current_exception_handler
   %37: ptr = load8 %24 + 0
-  store8 %36 + 0, %37
+  store8 %25 + 0, %37
   %38: ptr = slot 2
-  %39: ptr = symbol quest_current_exception
+  %39: ptr = threadLocal quest_current_exception
   %40: int = load8 %39 + 0
   store8 %38 + 0, %40
   %41: int = load8 %39 + 8
@@ -110,26 +107,25 @@ b11():
   store8 %38 + 40, %45
   %46: ptr = load8 %38 + 0
   %47: int = peq %46, %23
-  branch %47, b14(), b15()
-b12():
+  branch %47, b13(), b14()
+b11():
   @12:12
-  %34: ptr = symbol quest_current_exception_handler
   %35: ptr = load8 %24 + 0
-  store8 %34 + 0, %35
-  jump b8(%31)
-b13():
+  store8 %25 + 0, %35
+  jump b7(%31)
+b12():
   @12:16
   call quest_raise_ascii_error()
   unreachable
-b14():
+b13():
   @12:12
   %48: int = const 63
-  jump b8(%48)
-b15():
+  jump b7(%48)
+b14():
   @12:12
   call quest_reraise(%38) memory [0:48]
   unreachable
-b16(%49: val):
+b15(%49: val):
   @13:33
   %57: int = const 0
   %58: val = toVal %57
@@ -144,28 +140,9 @@ b16(%49: val):
   %65: int = const 10
   %66: int = const 20
   %134: int = select %64, %65, %66
-  jump b20(%134)
-b17():
-  @20:1
-  jump b9()
-b18():
-  @13:33
-  %52: val = toVal %7
-  @13:47
-  %53: ptr = symbol quest_type_Int
-  %54: val = call qv_util__maybe_some(%53, %52)
-  @13:33
-  jump b16(%54)
-b19():
-  @13:71
-  %55: ptr = symbol quest_type_Int
-  %56: val = call qv_util__maybe_none(%55)
-  @13:33
-  jump b16(%56)
-b20(%62: int):
   @14:1
   %67: ptr = slot 3
-  store8 %67 + 0, %62
+  store8 %67 + 0, %134
   @18:18
   %69: ptr = symbol qm_writer
   %70: ptr = load8 %69 + 0
@@ -217,10 +194,27 @@ b20(%62: int):
   %117: ptr = call quest_string_concat_n(%122, %109, %77, %112, %86, %120, %120, %120)
   @20:1
   call quest_writer_put_string(%101, %117)
-  jump b21()
-b21():
+  jump b19()
+b16():
   @20:1
-  jump b17()
+  jump b8()
+b17():
+  @13:33
+  %52: val = toVal %7
+  @13:47
+  %53: ptr = symbol quest_type_Int
+  %54: val = call qv_util__maybe_some(%53, %52)
+  @13:33
+  jump b15(%54)
+b18():
+  @13:71
+  %55: ptr = symbol quest_type_Int
+  %56: val = call qv_util__maybe_none(%55)
+  @13:33
+  jump b15(%56)
+b19():
+  @20:1
+  jump b16()
 }
 
 data qs_1 text "<main>"

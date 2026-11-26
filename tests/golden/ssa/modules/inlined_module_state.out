@@ -72,7 +72,7 @@ b0(%0: int, %1: ptr):
   %17: ptr = ptrAdd %14, %16
   %18: ptr = load8 %17 + 0
   %19: ptr = slot 0
-  %20: ptr = symbol quest_current_exception_handler
+  %20: ptr = threadLocal quest_current_exception_handler
   %21: ptr = load8 %20 + 0
   store8 %19 + 0, %21
   %22: ptr = null
@@ -113,53 +113,6 @@ b1():
   %61: ptr = symbol qso_6 + 8
   %62: ptr = symbol qso_7 + 8
   %180: ptr = select %60, %61, %62
-  jump b7(%180)
-b2():
-  @11:26
-  %179: int = const 0
-  return %179
-b3():
-  @13:18
-  %25: ptr = symbol g_error
-  %26: ptr = load8 %25 + 0
-  @2:5:44
-  %27: int = const 0
-  %28: val = toVal %27
-  %29: ptr = symbol qs_4
-  call quest_raise_at(%26, %28, %29)
-  unreachable
-b4():
-  @2:5:44
-  %30: ptr = symbol quest_current_exception_handler
-  %31: ptr = load8 %19 + 0
-  store8 %30 + 0, %31
-  %32: ptr = slot 2
-  %33: ptr = symbol quest_current_exception
-  %34: int = load8 %33 + 0
-  store8 %32 + 0, %34
-  %35: int = load8 %33 + 8
-  store8 %32 + 8, %35
-  %36: int = load8 %33 + 16
-  store8 %32 + 16, %36
-  %37: int = load8 %33 + 24
-  store8 %32 + 24, %37
-  %38: int = load8 %33 + 32
-  store8 %32 + 32, %38
-  %39: int = load8 %33 + 40
-  store8 %32 + 40, %39
-  @13:5
-  %40: ptr = load8 %32 + 0
-  %41: int = peq %40, %18
-  branch %41, b5(), b6()
-b5():
-  @13:5
-  %42: ptr = symbol qso_5 + 8
-  jump b1()
-b6():
-  @13:5
-  call quest_reraise(%32) memory [0:48]
-  unreachable
-b7(%51: ptr):
   @11:43
   %63: ptr = symbol qm_writer
   %64: ptr = load8 %63 + 0
@@ -169,7 +122,7 @@ b7(%51: ptr):
   %68: ptr = load8 %67 + 0
   @11:57
   %69: ptr = symbol qso_3 + 8
-  %70: ptr = call quest_string_concat(%51, %69)
+  %70: ptr = call quest_string_concat(%180, %69)
   @11:26
   call quest_writer_put_string(%68, %70)
   @15:1
@@ -199,8 +152,7 @@ b7(%51: ptr):
   %89: ptr = ptrAdd %86, %88
   %90: ptr = load8 %89 + 0
   %91: ptr = slot 3
-  %92: ptr = symbol quest_current_exception_handler
-  %93: ptr = load8 %92 + 0
+  %93: ptr = load8 %20 + 0
   store8 %91 + 0, %93
   %94: ptr = null
   store8 %91 + 24, %94
@@ -209,12 +161,56 @@ b7(%51: ptr):
   store8 %91 + 8, %95
   %96: int = const 1
   store8 %91 + 16, %96
-  store8 %92 + 0, %91
-  try slot 3, b11(), handler b12
-b8():
+  store8 %20 + 0, %91
+  try slot 3, b10(), handler b11
+b2():
+  @11:26
+  %179: int = const 0
+  return %179
+b3():
+  @13:18
+  %25: ptr = symbol g_error
+  %26: ptr = load8 %25 + 0
+  @2:5:44
+  %27: int = const 0
+  %28: val = toVal %27
+  %29: ptr = symbol qs_4
+  call quest_raise_at(%26, %28, %29)
+  unreachable
+b4():
+  @2:5:44
+  %31: ptr = load8 %19 + 0
+  store8 %20 + 0, %31
+  %32: ptr = slot 2
+  %33: ptr = threadLocal quest_current_exception
+  %34: int = load8 %33 + 0
+  store8 %32 + 0, %34
+  %35: int = load8 %33 + 8
+  store8 %32 + 8, %35
+  %36: int = load8 %33 + 16
+  store8 %32 + 16, %36
+  %37: int = load8 %33 + 24
+  store8 %32 + 24, %37
+  %38: int = load8 %33 + 32
+  store8 %32 + 32, %38
+  %39: int = load8 %33 + 40
+  store8 %32 + 40, %39
+  @13:5
+  %40: ptr = load8 %32 + 0
+  %41: int = peq %40, %18
+  branch %41, b5(), b6()
+b5():
+  @13:5
+  %42: ptr = symbol qso_5 + 8
+  jump b1()
+b6():
+  @13:5
+  call quest_reraise(%32) memory [0:48]
+  unreachable
+b7():
   @11:26
   jump b2()
-b9(%84: ptr):
+b8(%84: ptr):
   @11:43
   %115: ptr = symbol qm_writer
   %116: ptr = load8 %115 + 0
@@ -297,48 +293,45 @@ b9(%84: ptr):
   %178: ptr = call quest_string_concat(%170, %121)
   @11:26
   call quest_writer_put_string(%176, %178)
-  jump b10()
-b10():
+  jump b9()
+b9():
   @11:26
-  jump b8()
-b11():
+  jump b7()
+b10():
   @18:18
   %97: int = const 1
   %98: int = call qv_tests__source__modules__openedstate_counted(%97)
   @18:9
   %99: ptr = call qv_conv_int(%98)
   @18:5
-  %100: ptr = symbol quest_current_exception_handler
   %101: ptr = load8 %91 + 0
-  store8 %100 + 0, %101
-  jump b9(%99)
-b12():
+  store8 %20 + 0, %101
+  jump b8(%99)
+b11():
   @18:5
-  %102: ptr = symbol quest_current_exception_handler
   %103: ptr = load8 %91 + 0
-  store8 %102 + 0, %103
+  store8 %20 + 0, %103
   %104: ptr = slot 5
-  %105: ptr = symbol quest_current_exception
-  %106: int = load8 %105 + 0
+  %106: int = load8 %33 + 0
   store8 %104 + 0, %106
-  %107: int = load8 %105 + 8
+  %107: int = load8 %33 + 8
   store8 %104 + 8, %107
-  %108: int = load8 %105 + 16
+  %108: int = load8 %33 + 16
   store8 %104 + 16, %108
-  %109: int = load8 %105 + 24
+  %109: int = load8 %33 + 24
   store8 %104 + 24, %109
-  %110: int = load8 %105 + 32
+  %110: int = load8 %33 + 32
   store8 %104 + 32, %110
-  %111: int = load8 %105 + 40
+  %111: int = load8 %33 + 40
   store8 %104 + 40, %111
   %112: ptr = load8 %104 + 0
   %113: int = peq %112, %90
-  branch %113, b13(), b14()
-b13():
+  branch %113, b12(), b13()
+b12():
   @18:5
   %114: ptr = symbol qso_8 + 8
-  jump b9(%114)
-b14():
+  jump b8(%114)
+b13():
   @18:5
   call quest_reraise(%104) memory [0:48]
   unreachable

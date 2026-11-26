@@ -184,10 +184,8 @@ b0(%0: int, %1: ptr):
   %61: int = const 1
   %62: int = const 0
   %176: int = select %60, %61, %62
-  jump b1(%176)
-b1(%58: int):
   @10:31
-  %63: ptr = call qv_conv_int(%58)
+  %63: ptr = call qv_conv_int(%176)
   @10:9
   call quest_writer_put_string(%7, %63)
   @11:9
@@ -196,36 +194,36 @@ b1(%58: int):
   @39:15
   %65: int = const 0
   %66: int = eq %52, %65
-  branch %66, b3(), b4()
-b2():
+  branch %66, b2(), b3()
+b1():
   @11:9
   %175: int = const 0
   return %175
-b3():
+b2():
   @39:15
   %68: ptr = fromVal %53
   %69: int = ptrToInt %68
   %70: int = const 1
   %71: int = and %69, %70
-  branch %71, b5(), b6()
-b4():
+  branch %71, b4(), b5()
+b3():
   @39:15
   %67: ptr = symbol qs_13
   call quest_raise_variant_error_at(%67)
   unreachable
-b5():
+b4():
   @39:15
   %73: int = const 1
   %74: val = call quest_proxy_element(%68, %73)
   %75: ptr = fromVal %74
-  jump b7(%75)
-b6():
+  jump b6(%75)
+b5():
   @39:15
   %76: int = const 8
   %77: ptr = ptrAdd %68, %76
   %78: ptr = load8 %77 + 0
-  jump b7(%78)
-b7(%72: ptr):
+  jump b6(%78)
+b6(%72: ptr):
   @39:15
   %79: int = load8 %72 + 0
   %80: val = load8 %72 + 8
@@ -255,10 +253,8 @@ b7(%72: ptr):
   %97: int = const 1
   %98: int = const 0
   %177: int = select %96, %97, %98
-  jump b8(%177)
-b8(%94: int):
   @10:31
-  %99: ptr = call qv_conv_int(%94)
+  %99: ptr = call qv_conv_int(%177)
   @10:9
   call quest_writer_put_string(%7, %99)
   @11:9
@@ -315,7 +311,7 @@ b8(%94: int):
   %134: ptr = ptrAdd %131, %133
   %135: ptr = load8 %134 + 0
   %136: ptr = slot 0
-  %137: ptr = symbol quest_current_exception_handler
+  %137: ptr = threadLocal quest_current_exception_handler
   %138: ptr = load8 %137 + 0
   store8 %136 + 0, %138
   store8 %136 + 24, %125
@@ -324,11 +320,11 @@ b8(%94: int):
   store8 %136 + 8, %140
   store8 %136 + 16, %101
   store8 %137 + 0, %136
-  try slot 0, b12(), handler b13
-b9():
+  try slot 0, b10(), handler b11
+b7():
   @11:9
-  jump b2()
-b10(%129: int):
+  jump b1()
+b8(%129: int):
   @10:31
   %173: ptr = call qv_conv_int(%129)
   @10:9
@@ -336,11 +332,11 @@ b10(%129: int):
   @11:9
   %174: ptr = symbol qso_12 + 8
   call quest_writer_put_string(%7, %174)
-  jump b11()
-b11():
-  @11:9
   jump b9()
-b12():
+b9():
+  @11:9
+  jump b7()
+b10():
   @56:10
   %143: ptr = call quest_variant_box(%18, %28) pairs [0]
   %144: val = toVal %143
@@ -358,14 +354,16 @@ b12():
   %154: int = const 1
   %155: int = const 0
   %178: int = select %153, %154, %155
-  jump b14(%178)
-b13():
   @54:5
-  %160: ptr = symbol quest_current_exception_handler
+  %157: ptr = load8 %136 + 0
+  store8 %137 + 0, %157
+  jump b8(%178)
+b11():
+  @54:5
   %161: ptr = load8 %136 + 0
-  store8 %160 + 0, %161
+  store8 %137 + 0, %161
   %162: ptr = slot 2
-  %163: ptr = symbol quest_current_exception
+  %163: ptr = threadLocal quest_current_exception
   %164: int = load8 %163 + 0
   store8 %162 + 0, %164
   %165: int = load8 %163 + 8
@@ -380,18 +378,12 @@ b13():
   store8 %162 + 40, %169
   %170: ptr = load8 %162 + 0
   %171: int = peq %170, %135
-  branch %171, b15(), b16()
-b14(%142: int):
-  @54:5
-  %156: ptr = symbol quest_current_exception_handler
-  %157: ptr = load8 %136 + 0
-  store8 %156 + 0, %157
-  jump b10(%142)
-b15():
+  branch %171, b12(), b13()
+b12():
   @54:5
   %172: int = const ~1
-  jump b10(%172)
-b16():
+  jump b8(%172)
+b13():
   @54:5
   call quest_reraise(%162) memory [0:48]
   unreachable
