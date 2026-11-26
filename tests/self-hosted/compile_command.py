@@ -11,7 +11,12 @@ the two compilers write differently (docs/testing.md section 2.8): it must be C.
 The bootstrap compiles only through C, so the driver's compile is given
 --backend c; and its compile without one goes through arm64, its default,
 leaving the main unit's assembly and a binary that prints what C's does.
-run_tests.py --self-hosted runs it (docs/testing.md).
+
+The SSA's phases, which only the driver has, are checked on its own: each
+ssa_NAME phase its usage text names must dump a function, so that a pass the
+pipeline runs but the driver does not accept, or the reverse, fails; and the
+numbered passes in questlang/ssa/passes/README.md must be those phases' passes,
+in order. run_tests.py --self-hosted runs it (docs/testing.md).
 
     python tests/self-hosted/compile_command.py DRIVER
 """
@@ -19,6 +24,7 @@ run_tests.py --self-hosted runs it (docs/testing.md).
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -112,6 +118,33 @@ def check_default(driver: str) -> list[str]:
     return problems
 
 
+def usage_ssa_phases(driver: str) -> list[str]:
+    """The SSA phases the driver's usage text names, in order."""
+    text = subprocess.run([driver, "--help"], capture_output=True, text=True).stdout
+    return re.findall(r"\b(ssa(?:_[A-Za-z]+)?)\b[,:]", text.split("Phases (")[-1])
+
+
+def check_ssa_phases(driver: str) -> list[str]:
+    """The SSA phases the driver names that do not dump, and how the passes
+    README's numbered table differs from them."""
+    phases = usage_ssa_phases(driver)
+    problems = [] if "ssa_built" in phases and "ssa" in phases else [f"the usage text names SSA phases {phases!r}"]
+    environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
+    with tempfile.TemporaryDirectory() as d:
+        (Path(d) / "p.quest").write_text(PROGRAMS["p.quest"], encoding="utf-8")
+        for phase in phases:
+            p = subprocess.run([driver, "--dump-after", phase, "p.quest"], capture_output=True, text=True, cwd=d,
+                               env=environment)
+            if p.returncode != 0 or "function " not in p.stdout:
+                problems.append(f"--dump-after {phase}: exit status {p.returncode}, errors {p.stderr.strip()!r}")
+    readme = (ROOT_DIR / "questlang" / "ssa" / "passes" / "README.md").read_text(encoding="utf-8")
+    listed = re.findall(r"^\| *\d+ *\| *\[`([A-Za-z]+)`\]", readme, re.MULTILINE)
+    passes = [phase.removeprefix("ssa_") for phase in phases if phase not in ("ssa_built", "ssa")]
+    if listed != passes:
+        problems.append(f"questlang/ssa/passes/README.md numbers the passes {listed!r}, not {passes!r}")
+    return problems
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print(__doc__)
@@ -119,7 +152,10 @@ if __name__ == "__main__":
     driver = str(Path(sys.argv[1]).resolve())
     problems = [problem for args, writes_c in CASES for problem in check(driver, args, writes_c)]
     problems += check_default(driver)
-    for problem in problems:
+    ssa_problems = check_ssa_phases(driver)
+    for problem in problems + ssa_problems:
         print(problem)
     print(f"{len(CASES) + 1} command lines compared, {len(problems)} differences")
+    print(f"{len(usage_ssa_phases(driver))} SSA phases dumped, {len(ssa_problems)} problems")
+    problems += ssa_problems
     sys.exit(1 if problems else 0)

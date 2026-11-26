@@ -5,19 +5,19 @@ compiler on 2026-11-20 (f0f13513). On 2026-11-25 (f47a1c00), after 63 commits to
 checked against the code again, and the counts below are from that second check. The new `loops`, `nanchecks`, and
 `conditions` passes had added their own copies of most of the SSA duplication the review found.
 
-The plan starts once the performance-tasks plan ([benchmarks.md](benchmarks.md) §49) has landed, because both change
-`ssa/passes/*` and `codegen/arm64`; steps 11 and 12, in the build engine, which that plan does not touch, were made
-while it ran and are done. Two of its ideas, §2.2's machine-instruction table and §6.5's calling convention,
-are made with that plan's step 9 (the register allocator), not here (§4). When a step is done, its section is deleted,
+The performance-tasks plan ([benchmarks.md](benchmarks.md) §49), which changed `ssa/passes/*` and `codegen/arm64` too,
+has landed; steps 11 and 12, in the build engine, were made while it ran, and two of these ideas, the machine
+instructions' facts (`minst.info`, cc30757e) and the calling convention read from the target description (129eaf62),
+were made with its step 9. When a step is done, its section is deleted,
 and what it leaves that lasts goes into the documents that describe the code: [ssa.md](ssa.md), [ir.md](ir.md),
 [arm64.md](arm64.md), [wasm.md](wasm.md), [build-process.md](build-process.md), [testing.md](testing.md), and the
-READMEs. The plan is deleted when the order in §2 is done; §5 and §6 then go to whatever document fits them, or are
+READMEs. The plan is deleted when the order in §2 is done; §4 and §5 then go to whatever document fits them, or are
 deleted.
 
 ## 1. Rules
 
 - **Behavior does not change.** A refactoring step leaves the SSA, IR, C, assembly, and WebAssembly goldens byte for
-  byte as they were. The one exception is step 1's bug fix (`ssa_scalars`). A step that changes output is two steps.
+  byte as they were. A step that changes output is two steps.
 - **Self-hosted compiler only.** None of these steps changes shared behavior, so under the two-compilers policy the
   bootstrap does not follow. Where an error, usage, or log text is shared, it stays identical.
 - **Derive before testing.** Where two lists must agree, one is computed from the other. Where the compiler can check
@@ -27,15 +27,14 @@ deleted.
   ssac, and JIT runs, and `ssa_*` phase dumps. Each step also needs the arm64 fixed point. The C fixed point and
   `tools/check` run once, at the end of each group in §2.
 - **Performance:** none of these is meant to change the compiler's speed. A step whose restructuring sits on a hot
-  path (§3's opcode table; `subtyping`'s keys, §6) counts the compiler's instructions before and after, by
+  path (§3's opcode table; `subtyping`'s keys, §5) counts the compiler's instructions before and after, by
   benchmarks.md §49.1's method, and stays within 1%.
 
 ## 2. Order
 
 | Group | Step | What | Size |
 |---|---|---|---|
-| 1. Drift already seen | 1 | The SSA pass table, phases derived from it, and a test of every phase | small |
-| | 2 | `ssa.copyInst` | small |
+| 1. Drift already seen | 2 | `ssa.copyInst` | small |
 | | 3 | One dead-parameter removal and one entry split | small |
 | | 4 | One `onlyProxyTests` | small |
 | 2. SSA facts | 5 | The opcode table | medium |
@@ -49,35 +48,10 @@ deleted.
 Group 1 comes first because each of its steps fixes a copy that has already drifted. Group 2 makes the SSA's facts one
 table, after group 1 has removed the copies that would otherwise be converted twice. Group 3 is the largest step taken
 here. Group 4's steps are independent of each other and can run in any order, or in parallel sessions, since they touch
-different files. Steps are not renumbered as they are done. §5 lists the larger ideas left for later, and §6 those
+different files. Steps are not renumbered as they are done. §4 lists the larger ideas left for later, and §5 those
 not taken.
 
 ## 3. Steps
-
-### Step 1: The SSA pass table
-
-**Problem.** The SSA passes are named in three hand-kept lists and three prose ones, and the lists already disagree:
-- `ssa/pipeline.passes`, an array of 15 names, dispatched by a string if-chain (`pipeline.mod.quest:58-75`);
-- `driver/options.ssaPhases` (`options.mod.quest:68-72`), which leaves out `ssa_scalars`, so `--dump-after` and
-  `--stop-after` cannot name the `scalars` pass;
-- `ssa/README.md` (11 passes, without `concats`, `nanChecks`, `conditions`, and `loops`), `ssa/passes/README.md`
-  ("the first thirteen", without `concats` and `loops`), and the dump list in ssa.md §4.1 (without `scalars` and
-  `loops`).
-
-**Change.**
-- `pipeline.passes` becomes an array of records: name, run function, and whether the pass changes the CFG.
-  `changesCfg` is recorded now for a later analysis cache (§5), and no pass reads it yet.
-- `options.ssaPhases` is computed from that array: `ssa_built`, then `"ssa_" <> name` for each pass, then `ssa`.
-- The prose lists either name every pass or point to `ssa/pipeline`; the second is preferred where the list only
-  repeats names.
-
-**Tests.** A case in `tests/self-hosted/compile_command.py` compiles a small program with `--dump-after PHASE` for every
-SSA phase the usage text names, and checks that each is accepted and prints a function. A missing name in either
-direction then fails. If any prose list of passes is kept, the same script compares it with the pipeline's; one that
-only repeats names is replaced by a pointer to `ssa/pipeline` instead, and testing.md records the case.
-
-**Done when.** `ssa_scalars` dumps; no SSA pass name is written by hand outside `ssa/pipeline` and the pass itself;
-the test is in the suite.
 
 ### Step 2: `ssa.copyInst`
 
@@ -109,7 +83,7 @@ target's arguments by the kept parameters, then clear" appears five times: `scal
 **Problem.** `escape:229` and `scalars:437` share 21 identical lines.
 
 **Change.** One function, in the module the two already import or in step 3's. The rest of the two passes'
-provenance machinery stays as it is (§5).
+provenance machinery stays as it is (§4).
 
 ### Step 5: The opcode table
 
@@ -163,8 +137,8 @@ instructions retired on the benchmarks and the compiler, and hamlet's stack acce
 - The table checks itself once when built: a speculable opcode is pure and never traps; an opcode `allowed` in a NaN
   check's region neither writes nor calls; arity agrees with the parser's operand count.
 - A round trip in the SSA unit tests: each `name` parses back to its opcode.
-- The compiler's instructions before and after (§1). The step lands after the performance-tasks plan's step 1, which
-  compiles `opcodeIndex` and `opcodeName` as tables.
+- The compiler's instructions before and after (§1). The performance-tasks plan's step 1 (dfbd3d52) compiles
+  `opcodeIndex` and `opcodeName` as tables, so the table's array costs no more than those functions do.
 
 ### Step 6: Definitions, constants, and terminator operands, once
 
@@ -249,25 +223,7 @@ a spelling (`nodes.primName`) to call the same functions.
 **Change.** One generic routine over integer nodes and a successor function, in a shared utility module. If
 canonical's version interleaves work with the walk, it keeps its own and says why.
 
-## 4. With the Performance-Tasks Plan's Step 9
-
-The register allocator's step takes these two, since it edits the same code:
-- **Machine-instruction facts.** `minst.Op` (50 ops) is cased over in 14 functions: `results` and `pure`; the
-  printer's `instruction`, `expansion`, `count`, and `lines`; `encode`; peephole's `conditional`, `relaxBranches`,
-  `access`, and `crossing`; and `codegen.isBrk` (49 ops listed to return false) and `retarget`, and
-  `select.rematerializable`. An `MInfo` per op, made by one exhaustive `case`, holds defs, pure, mayLoad, mayStore,
-  isBranch, isCall, isTerminator, and isDirective, and a `labelOf`/`withLabel` pair. `select.make` and `emitFull`
-  (`:189`, `:1190`) mark the first `results(op)` registers as defined. They become operand roles read from the table.
-  The machine layer's `Operand` already records whether each operand defines or reads, so the convention stays only
-  where `minst` becomes `machine`. `movk`, which reads its destination, is made only after allocation, so this is a
-  latent hazard, not a live bug.
-- **The calling convention as data.** `targets.Target`'s `arguments`, `results`, `scratch`, `stackAlign`, and
-  `wordBytes` are set (`arm64/target.mod.quest:71-75`) and never read. `select.placeArguments` hard-codes AAPCS64's
-  counters, `resultRegisters` hard-codes `d0`, `x0`, and `x1`, and the allocator reads `lowering.scratch`, not
-  `description.scratch`. An ABI record that `placeArguments` and the allocator's lowering both read; Darwin's packing
-  of narrow arguments stays code.
-
-## 5. Later
+## 4. Later
 
 Worth doing, but larger or less urgent; each becomes a step when there is time for it.
 
@@ -299,8 +255,10 @@ Worth doing, but larger or less urgent; each becomes a step when there is time f
   silent defaults. One recorded key per artifact (ABI, producer, backend, source digest, import resolutions,
   dependency fingerprints), whose first differing part is the reason, and one schema with one encoder and decoder.
   This is one project. It pays when a comment edit in a widely imported interface should rebuild nothing.
-- **An analysis cache for the SSA passes.** `cfg.graph` is rebuilt once per pass and four times inside `loops`. Step
-  1's `changesCfg` makes a cache per function possible. Count first.
+- **An analysis cache for the SSA passes.** `cfg.graph` is rebuilt once per pass and four times inside `loops`. A
+  `changesCfg` flag in `ssa/pipeline`'s table of passes would make a cache per function possible; it was left out of
+  that table (step 1) because nothing reads it, and a wrong flag nothing checks would be worse than none. The cache
+  adds it, with a check under `QUEST_CHECK_IR` that a pass flagged as keeping the CFG did. Count first.
 - **One provenance solver for escape and scalars.** Both keep a `State` with `defOf`, `takenTargets`, `setPointer`,
   `pointers`, and `check`, nearly line for line, and both grew by about 200 lines since the review. One sparse solver,
   with each pass supplying its lattice and legality checks, is the largest and riskiest idea here. The optimism the
@@ -314,11 +272,11 @@ Worth doing, but larger or less urgent; each becomes a step when there is time f
 - **The rest of the build engine's scheduler.** `unflushedBuildModules` keeps its queue, predicted imports, deferred
   notes, and conformance checks (three sites) in about 440 lines of closures, after step 12.
 
-## 6. Not Taken
+## 5. Not Taken
 
 Each with its reason, so that it is not proposed again without new evidence:
 - **A table of WebAssembly externals** (review §2.4): `externalCall` shrank from 384 to 320 lines as externals moved to
-  Quest, and symbolic indices (§5) remove the part that hurts.
+  Quest, and symbolic indices (§4) remove the part that hurts.
 - **A table of IR primitives** (§2.3): 26 prims, unchanged since the review; step 10 removes the interpreters' share.
 - **A generated IR node spec** (§3.2's second tier): generated sources in the tree, and field compatibility with the
   bootstrap; step 7 gets most of the benefit by hand.
@@ -344,11 +302,11 @@ Each with its reason, so that it is not proposed again without new evidence:
   diagnostics.md §4.5); finer recovery inside an expression would need an error type, which is a feature, not a
   refactoring.
 - **Typed parser actions** (§8.2), **a condition context in lowering** (§8.3), **a declarative option table** beyond
-  step 1's phases (§7.5), **shared memo tables** (§7.7), **build errors as diagnostics** (§7.8): low payoff now.
+  the SSA's phases (§7.5), **shared memo tables** (§7.7), **build errors as diagnostics** (§7.8): low payoff now.
 - From the review's own list: a rewrite DSL, a generic block-level dataflow framework, e-graphs, Pratt parsing, and a
   Salsa-style query engine.
 
-## 7. What to Keep
+## 6. What to Keep
 
 The review's reading of what the compiler already does well, which these steps should not undo:
 - **Types:** hash-consed nodes that cache their free ids and metavariables; the coinductive subtype prover; one

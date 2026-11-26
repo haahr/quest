@@ -16,6 +16,7 @@ import
     questlang/common/strings : questlang/common/Strings
     questlang/jit/session : questlang/jit/Session
     questlang/modules/units : questlang/modules/Units
+    questlang/ssa/passNames : questlang/ssa/PassNames
 export
     (* The command line, parsed: the phase to stop after (and whether one was
      * given), the program (a file, standard input, -e's code, or the REPL's
@@ -64,12 +65,33 @@ export
     let irStages = array of "core" "simplified" "specialized" "closed" "represented" "described" end
 
     (* The SSA's phases (docs/ssa.md): the builder's, each pass's
-     * (questlang/ssa/pipeline), and the last *)
-    let ssaPhases = array of
-        "ssa_built" "ssa_escape" "ssa_promote" "ssa_constants" "ssa_concats" "ssa_nanChecks"
-        "ssa_valueNumbers" "ssa_conditions"
-        "ssa_selects" "ssa_tables" "ssa_accumulate" "ssa_loops" "ssa_tailCalls" "ssa_tailJumps" "ssa_trampolines" "ssa"
-    end
+     * (questlang/ssa/passNames), and the last *)
+    let ssaPhases =
+        begin
+            let all = vector.fromArray(array of "ssa_built" end)
+            for i = 0 upto {extent passNames.passes - 1} do vector.append(all "ssa_" <> passNames.passes[i]) end
+            vector.append(all "ssa")
+            vector.toArray(all)
+        end
+
+    (* The usage text's lines naming ssaPhases, wrapped at 100 columns, the
+     * last ending in what they are *)
+    let ssaPhaseLines =
+        begin
+            let lines = vector.new(:String)
+            let var line = " "
+            for i = 0 upto {extent ssaPhases - 1} do
+                let ending = if i is {extent ssaPhases - 1} then ": the SSA after each pass" else "," end
+                let word = " " <> ssaPhases[i] <> ending
+                if {stringOp.length(line) + stringOp.length(word)} > 100 then
+                    vector.append(lines line)
+                    line := "   "
+                end
+                line := line <> word
+            end
+            vector.append(lines line)
+            vector.toArray(lines)
+        end
 
     (* The phases of the backends: the program's code (C, arm64's assembly, or
      * a WebAssembly module's text), and its run *)
@@ -125,7 +147,8 @@ export
             "quest"
         end
 
-    (* The command line's forms, options, and phases, one to a line *)
+    (* The command line's forms, options, and phases, one to a line; the SSA's
+     * phases are ssaPhaseLines *)
     let usageText = strutil.joinArray("\n" array of
         "usage: quest [OPTION...] [OBJECT...] [FILE|- [ARG...] | -e PROGRAM [-- ARG...] | -- ARG...]"
         "       quest compile [OPTION...] [OBJECT...] [FILE|- | -e PROGRAM]"
@@ -174,10 +197,7 @@ export
         "  tokenize, parse, desugar, typecheck"
         "  ir_STAGE, run_ir_STAGE, with STAGE core, simplified, specialized, closed, represented,"
         "    or described: the IR at STAGE, printed or run"
-        "  ssa_built, ssa_escape, ssa_promote, ssa_constants, ssa_concats, ssa_nanChecks, ssa_valueNumbers,"
-        "    ssa_conditions,"
-        "    ssa_selects, ssa_tables, ssa_accumulate, ssa_loops, ssa_tailCalls, ssa_tailJumps, ssa_trampolines,"
-        "    ssa: the SSA after each pass"
+    end) <> "\n" <> strutil.joinArray("\n" ssaPhaseLines) <> "\n" <> strutil.joinArray("\n" array of
         "  interpret: run the program (not with compile)"
         "  codegen_c: the program's code (C, unless --backend arm64 gives assembly)"
         "  codegen_arm64: the program's arm64 assembly"

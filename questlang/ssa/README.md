@@ -109,11 +109,9 @@ phases:
 1. **The builder** ([`build/`](build/README.md)) turns each IR function, the module initializers, and the program's
    `main` into SSA, and lays out the unit's static data. It favors simplicity over quality: every mutable variable
    is a stack slot, loaded and stored, and every allocation is a call of the runtime's `quest_alloc`.
-2. **The passes** ([`passes/`](passes/README.md)) run in a fixed order, each on every function of the unit, listed by
-   name in `pipeline.passes`: escape analysis, slot promotion, scalar replacement, constant globals, value numbering,
-   if-conversion, switch tables, accumulator recursion, tail-call marking, mutual tail calls, and exports. The SSA is
-   valid after each one, so any pass can be left out (the environment variable `QUEST_SKIP_PASSES`), which is how a
-   miscompilation is bisected.
+2. **The passes** ([`passes/`](passes/README.md), whose README lists them) run in a fixed order, each on every
+   function of the unit, named in [`passnames.mod.quest`](passnames.mod.quest). The SSA is valid after each one, so
+   any pass can be left out (the environment variable `QUEST_SKIP_PASSES`), which is how a miscompilation is bisected.
 3. **Lowering**, which `pipeline.lower` runs just before code generation, expands two instructions that the passes
    prefer to see whole: `unproxy`, and calls of `quest_alloc`, which become the collector's inline bump-pointer
    sequence.

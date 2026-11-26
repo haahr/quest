@@ -20,23 +20,27 @@ together.
 | 2 | [`promote`](promote.int.quest) | stack slots become SSA values |
 | 3 | [`scalars`](../scalars.int.quest) | objects merged at block parameters become their words' values |
 | 4 | [`constants`](constants.int.quest) | globals stored once with a constant become read-only constants |
-| 5 | [`nanChecks`](nanchecks.int.quest) | NaN checks that a later check finds the NaN of are removed, keeping each site |
-| 6 | [`valueNumbers`](valuenumbers.int.quest) | redundant computations and loads are removed |
-| 7 | [`conditions`](conditions.int.quest) | branches a dominating branch on the same comparison decides become jumps |
-| 8 | [`selects`](selects.int.quest) | small two-armed branches become `select`s (if-conversion) |
-| 9 | [`tables`](tables.int.quest) | dense switches of constants become table loads |
-| 10 | [`accumulate`](accumulate.int.quest) | recursion through `+`, `*`, and the like becomes a loop |
-| 11 | [`tailCalls`](tailcalls.int.quest) | calls in tail position are marked |
-| 12 | [`tailJumps`](tailjumps.int.quest) | mutually tail-recursive functions become loops |
-| 13 | [`trampolines`](trampolines.int.quest) | an exported entry point gets a copy of the function it forwards to |
+| 5 | [`concats`](concats.int.quest) | chains of string concatenations become one allocation |
+| 6 | [`nanChecks`](nanchecks.int.quest) | NaN checks that a later check finds the NaN of are removed, keeping each site |
+| 7 | [`valueNumbers`](valuenumbers.int.quest) | redundant computations and loads are removed |
+| 8 | [`conditions`](conditions.int.quest) | branches a dominating branch on the same comparison decides become jumps |
+| 9 | [`selects`](selects.int.quest) | small two-armed branches become `select`s (if-conversion) |
+| 10 | [`tables`](tables.int.quest) | dense switches of constants become table loads |
+| 11 | [`accumulate`](accumulate.int.quest) | recursion through `+`, `*`, and the like becomes a loop |
+| 12 | [`loops`](loops.int.quest) | self tail calls become loops; module cells stay in registers and invariants move out |
+| 13 | [`tailCalls`](tailcalls.int.quest) | calls in tail position are marked |
+| 14 | [`tailJumps`](tailjumps.int.quest) | mutually tail-recursive functions become loops |
+| 15 | [`trampolines`](trampolines.int.quest) | an exported entry point gets a copy of the function it forwards to |
 | | [`interrupts`](interrupts.int.quest) | Jupyter kernel only: interrupt-flag checks at entries and loop heads |
 | | [`unproxies`](unproxies.int.quest) | lowering: each `unproxy` becomes a test and a branch |
 | | [`allocations`](allocations.int.quest) | lowering: each `quest_alloc` becomes the collector's inline fast path |
 
-The first thirteen are `pipeline.passes`, run by `pipeline.build`, and the driver can dump the SSA after each (phases
-`ssa_escape`, `ssa_promote`, and so on). Scalar replacement is a pass like the others, though its module is in the
-parent directory. The interrupt checks run at the end of `build`, and only when the kernel's driver turns them on.
-The last two are lowerings, run by `pipeline.lower` just before code generation, so they appear in no dump.
+The numbered ones are `pipeline.passes`, named in [`../passnames.mod.quest`](../passnames.mod.quest), run by
+`pipeline.build`, and the driver can dump the SSA after each (phases `ssa_escape`, `ssa_promote`, and so on);
+`tests/self-hosted/compile_command.py` checks that this table numbers the same passes in the same order. Scalar
+replacement is a pass like the others, though its module is in the parent directory. The interrupt checks run at the end
+of `build`, and only when the kernel's driver turns them on. The last two are lowerings, run by `pipeline.lower` just
+before code generation, so they appear in no dump.
 
 ## From the heap to registers
 

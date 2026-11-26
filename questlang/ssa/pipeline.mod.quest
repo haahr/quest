@@ -12,6 +12,7 @@ import
     questlang/ssa/barriers : questlang/ssa/Barriers
     ssaBuild = questlang/ssa/build : questlang/ssa/Build
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/passNames : questlang/ssa/PassNames
     questlang/ssa/passes/accumulate : questlang/ssa/passes/Accumulate
     questlang/ssa/passes/allocations : questlang/ssa/passes/Allocations
     questlang/ssa/passes/concats : questlang/ssa/passes/Concats
@@ -32,51 +33,61 @@ import
     questlang/ssa/scalars : questlang/ssa/Scalars
     questlang/ssa/verify : questlang/ssa/Verify
 export
-    let passes = array of
-        "escape"
-        "promote"
-        "scalars"
-        "constants"
-        "concats"
-        "nanChecks"
-        "valueNumbers"
-        "conditions"
-        "selects"
-        "tables"
-        "accumulate"
-        "loops"
-        "tailCalls"
-        "tailJumps"
-        "trampolines"
-    end
+    let passes = passNames.passes
 
     let settings = tuple let var interruptChecks = false end
     let setInterruptChecks(on: Bool): Ok = settings.interruptChecks := on
     let setRotateAll(on: Bool): Ok = loops.setRotateAll(on)
 
+    (* A pass: its name, and what runs it on a unit *)
+    Let Pass = Tuple name: String run: All(u: ssa.Unit) Ok end
+
     let unknownPass: Exception(String) = exception unknownPass: String end
 
-    let runPass(name: String u: ssa.Unit): Ok =
-        if stringOp.equal(name "scalars") then begin let ignored = scalars.replaceUnit(u) end
-        elsif stringOp.equal(name "escape") then begin let ignored = escape.escapeUnit(u) end
-        elsif stringOp.equal(name "promote") then begin let ignored = promote.promoteUnit(u) end
-        elsif stringOp.equal(name "constants") then constants.constantUnit(u)
-        elsif stringOp.equal(name "concats") then concats.concatUnit(u)
-        elsif stringOp.equal(name "nanChecks") then nanChecks.checkUnit(u)
-        elsif stringOp.equal(name "valueNumbers") then valueNumbers.numberUnit(u)
-        elsif stringOp.equal(name "conditions") then conditions.decideUnit(u)
-        elsif stringOp.equal(name "loops") then loops.loopUnit(u)
-        elsif stringOp.equal(name "selects") then selects.selectUnit(u)
-        elsif stringOp.equal(name "tables") then tables.tableUnit(u)
-        elsif stringOp.equal(name "accumulate") then accumulate.accumulateUnit(u)
-        elsif stringOp.equal(name "tailCalls") then tailCalls.markUnit(u)
-        elsif stringOp.equal(name "tailJumps") then
-            (* Copying a mutually recursive function into its caller can leave
-             * a self tail call, which loops makes a loop as it does before *)
+    (* The passes whose functions return what a pass's run does not *)
+    let escapeUnit(u: ssa.Unit): Ok = begin let ignored = escape.escapeUnit(u) end
+    let promoteUnit(u: ssa.Unit): Ok = begin let ignored = promote.promoteUnit(u) end
+    let replaceUnit(u: ssa.Unit): Ok = begin let ignored = scalars.replaceUnit(u) end
+
+    (* Copying a mutually recursive function into its caller can leave a self
+     * tail call, which loops makes a loop as it does before *)
+    let jumpUnit(u: ssa.Unit): Ok =
+        begin
             tailJumps.jumpUnit(u)
             loops.loopTailCalls(u)
-        elsif stringOp.equal(name "trampolines") then trampolines.trampolineUnit(u)
-        else raise unknownPass with name end
+        end
+
+    (* The pass passNames calls name; raises unknownPass if there is none, which
+     * the first compile through the SSA would show, since the table is built
+     * from every name when this module starts *)
+    let passOf(name: String): Pass =
+        begin
+            let pass = fun(run: All(u: ssa.Unit) Ok): Pass tuple name run end
+            if stringOp.equal(name "escape") then pass(escapeUnit)
+            elsif stringOp.equal(name "promote") then pass(promoteUnit)
+            elsif stringOp.equal(name "scalars") then pass(replaceUnit)
+            elsif stringOp.equal(name "constants") then pass(constants.constantUnit)
+            elsif stringOp.equal(name "concats") then pass(concats.concatUnit)
+            elsif stringOp.equal(name "nanChecks") then pass(nanChecks.checkUnit)
+            elsif stringOp.equal(name "valueNumbers") then pass(valueNumbers.numberUnit)
+            elsif stringOp.equal(name "conditions") then pass(conditions.decideUnit)
+            elsif stringOp.equal(name "selects") then pass(selects.selectUnit)
+            elsif stringOp.equal(name "tables") then pass(tables.tableUnit)
+            elsif stringOp.equal(name "accumulate") then pass(accumulate.accumulateUnit)
+            elsif stringOp.equal(name "loops") then pass(loops.loopUnit)
+            elsif stringOp.equal(name "tailCalls") then pass(tailCalls.markUnit)
+            elsif stringOp.equal(name "tailJumps") then pass(jumpUnit)
+            elsif stringOp.equal(name "trampolines") then pass(trampolines.trampolineUnit)
+            else raise unknownPass with name end
+            end
+        end
+
+    (* The passes, in passNames' order *)
+    let table: Array(Pass) =
+        begin
+            let t = vector.new(:Pass)
+            for i = 0 upto {extent passes - 1} do vector.append(t passOf(passes[i])) end
+            vector.toArray(t)
         end
 
     let skipped(name: String): Bool =
@@ -98,15 +109,16 @@ export
                 barriers.checkUnit(u)
             end
             after("built" u)
-            for i = 0 upto {extent passes - 1} do
-                if not(skipped(passes[i])) then
-                    runPass(passes[i] u)
+            for i = 0 upto {extent table - 1} do
+                let pass = table[i]
+                if not(skipped(pass.name)) then
+                    pass.run(u)
                     if checks then
                         verify.checkUnit(u)
                         barriers.checkUnit(u)
                     end
                 end
-                after(passes[i] u)
+                after(pass.name u)
             end
             (* The chains the selects pass's conversions left, merged only
              * now, so that the loops pass saw each loop's header apart *)
