@@ -924,3 +924,7 @@ empty recyclable blocks collects more often than its live data warrants ([benchm
 *Where to start:* the target's computation after the sweep, which could count a recyclable block's free lines (its
 holes) as free, as the allocator does (§3.1). *Done when* the target counts holes as free, and the suite and the
 compiler's timings (benchmarks.md §16.1) are no worse.
+
+*Tried 2026-11-25, not kept* ([optimization-experiments.md](optimization-experiments.md) §5.9). Two targets were
+measured on the compiler: the blocks in use plus the live lines, and twice the live lines. They saved 10% and 23% of
+peak memory, for 3–5% and 9–11% more cycles. barnes-hut's heap now stays at the floor.

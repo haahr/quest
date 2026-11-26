@@ -244,7 +244,7 @@ back edge (`mov x4, x3`).
 ### 5.9. The collector's growth target from live lines
 
 After a full collection the heap may grow to twice its blocks in use, and a recyclable block counts as wholly in use
-(collector.md §9.6). Measured 2026-11-25 (performance-tasks-plan.md step 10).
+(collector.md §9.6). Measured 2026-11-25 (the performance-tasks plan's step 10, benchmarks.md §49).
 
 - **The compiler.** Its blocks in use are 1.4–1.8 times its live lines, not §16.3's 3.2. The test was stage 2
   compiling the driver at `-j 1` through arm64, three runs of each target:
@@ -278,7 +278,7 @@ test, one instruction of each pass of loops of tens, is well under 1% of vliw; m
 model-elimination's and hamlet's none of the samples shown. **Why not:** under the bar on every program that has
 one.
 
-### 5.10. Coalescing a move's two registers
+### 5.11. Coalescing a move's two registers
 
 The performance-tasks plan's step 9 (2026-11-25) coalesced, before arm64's allocation, a jump's arguments with its
 target's parameters, and measured joining a move's two registers the same way, alone and with the jumps

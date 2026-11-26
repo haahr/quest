@@ -4069,7 +4069,7 @@ per raise, in the compiled code and in the runtime alike.
 
 ### 48.1. The larger heap of §47
 
-§47's 1.25× heap is the collector's schedule, not the backend (performance-tasks-plan.md step 8).
+§47's 1.25× heap is the collector's schedule, not the backend (§49.2, step 8).
 
 - One ssac-built stage 2 peaked at 5.54 GB in one run and 6.98 GB in the next. Track B's baseline at f47a1c00 had
   §47's order reversed.
@@ -4130,3 +4130,79 @@ User time, best of three rounds, the binaries interleaved, at a load of about 5:
 | knuth-bendix | 2.32 → 1.99 s (0.86) | 3.70 → 2.88 s (0.78) |
 | boyer | 2.18 → 1.94 s (0.89) | 2.52 → 2.11 s (0.84) |
 | model-elimination | 14.14 → 12.89 s (0.91) | 14.53 → 13.03 s (0.90) |
+
+## 49. The performance tasks left open (2026-11-26)
+
+Ten task-list entries, the eight performance tasks earlier sections named as left and the two §47's profile of the
+compiler added, each analyzed first and made only if the analysis showed it worth it. Two sessions made them at once:
+track A the SSA and arm64's code (steps 1, 2, 3, 5, 6, 7, 9), track B the IR, the heap, and the runtime (steps 4, 8,
+10). The two were merged at `a14f3cdd` and timed against `f47a1c00`, the commit both started from. What was not made is
+in [optimization-experiments.md](optimization-experiments.md); the task-list entries are gone.
+
+### 49.1. Measuring
+
+- **Counts, every step:** instructions retired and cycles, all 46 programs built unit by unit through ssac and arm64
+  (`tools/perf/variants.py --separate --backends ssac,arm64`) and counted at a thirty-second of the suite's counts
+  (`tools/perf/counts.py --tags ssac,arm64 --against`), against the step's parent commit. Counts need no quiet machine,
+  but they move with the collector's schedule (§48.1), which turns on wall-clock time: a loaded machine collects at
+  other points.
+- **The compiler's counts:** stage 2 compiling hamlet, mlyacc, model-elimination, and raytrace (`-j 1`, `--backend
+  arm64`, an empty build directory) with `QUEST_GC_NEVER=1`, under `/usr/bin/time -l`. Without the collector the
+  counts repeat to 0.014%; with it, a binary's instructions vary by 3% between runs (§48.1).
+- **The bar:** a change that saves under 1% of the instructions of every program it aims at, or of the compiler's, is
+  not made.
+- **Cycles with instructions:** a program whose cycles rise by 5% or more while its instructions fall is taken apart,
+  since a register's choice alone can cost a fifth of a loop's time (optimization-experiments.md §7).
+- **Times once, at the end:** `run.py time --clean --scale 0.25` through C, ssac, arm64, and arm64 whole program,
+  before and after, under the lock.
+
+### 49.2. The steps
+
+| Step | Task | Result | Measured |
+|---|---|---|---|
+| 1 | Tables for switches whose arms return | made (`d3fd5cbc`) | `opcodeIndex` a range check and a load; the compiler 0.998 |
+| 2 | An unproxy made inside a loop, hoisted | not made, under the bar | 41 invariant `unproxy`s in the suite's loops (optimization-experiments.md §5.10) |
+| 3 | Loads reused across a join | made (`e6955914`) | wc-scanStream 0.966 through arm64; the compiler 0.993 |
+| 4 | Fewer exception handlers entered | replaced: the exception state made global (§48) | knuth-bendix 0.86 of its time through arm64, boyer 0.89, model-elimination 0.91 |
+| 5 | The small recursions on arm64 | made (`2f90e0e2`): a self tail call `tailJumps` leaves is a loop | even-odd 0.72 of its instructions through arm64 |
+| 6 | arm64 against ssac on the bignum programs | made in part: a carry is `adds` and `cset hs`, the selects' chains merged, an element's shared address folded | smith-normal-form 0.913, pidigits 0.973 through arm64; the compiler 1.005 |
+| 7 | Spills in very large inlined functions | analyzed: `preflowPush` has about ssac's spills, 2.86 times its moves | handed to step 9 |
+| 8 | The arm64-built compiler's larger heap | analyzed: the collector's schedule, not the backend (§48.1) | nothing for step 9 |
+| 9 | arm64's register allocator | made (`89145ee8`): a jump's arguments coalesced with its target's parameters | instructions 0.976, cycles 0.960 through arm64; the compiler 1.001 (arm64.md §3.8) |
+| 10 | The collector's growth target | not made: memory down 10–23%, cycles up 3–11% | optimization-experiments.md §5.9 |
+
+What is left of steps 6, 7, and 9 is spill placement (hashMap's `findIndex`, `tfoCombine`) and a bounds check clang
+proves away, in optimization-experiments.md §6; even-odd's last instruction is clang's fold of two decrements (§7).
+
+### 49.3. Counts
+
+The merged tree against `f47a1c00`, at a thirty-second of the counts:
+
+- **arm64:** 0.973 of the instructions by geometric mean; 19 programs more than 2% better, 2 more than 2% worse (fft
+  1.045, output1 1.023). The most: even-odd 0.74, flat-array 0.86, knuth-bendix 0.88, smith-normal-form 0.89.
+- **ssac:** 1.014 in the full run. The seven worst, counted again side by side at `f47a1c00`, origin/main before the
+  merge, track B's tip, and the merged tree, were each within 0.994–1.005 of `f47a1c00`, so the full run's figure is
+  the collector's schedule under load (§48.1), not code.
+- **The compiler:** 160.19 G instructions against 160.58 G (0.998).
+
+### 49.4. Times
+
+`run.py time --clean --scale 0.25`, one run each, at a load under 5, the after times with Dropbox paused (a first run,
+while Dropbox uploaded the build directories and another session built a stage, put even C 4% behind and was
+discarded):
+
+| | Over `f47a1c00` | Programs 2% better | 2% worse | Over MLton, before → after |
+|---|--:|--:|--:|--:|
+| arm64 | 0.966 | 26 | 2 | 1.555 → 1.502 |
+| arm64 whole program | 0.988 | 12 | 9 | 1.518 → 1.501 |
+| ssac | 0.994 | 6 | 7 | 1.142 → 1.136 |
+| C | 1.010 | 3 | 22 | 1.655 → 1.672 |
+
+MLton's times are 2026-11-23's (`69f83386`); the times are in `benchmarks/mlton/baselines/2026-11-25` (before) and
+`2026-11-26` (after).
+
+- **peek through arm64:** 1.18 of its time (91 s against 77 s; 1.14 whole program) with 0.99 of its instructions.
+  It is optimization-experiments.md §7's reload stall again: step 9 moved `find`'s cell from `x20` to `x21`, and
+  swapping the two by hand gives the cycles back. Coalescing was kept with it.
+- **C:** only track B's change (the exception state's globals) reaches C's code. Most of the 22 are 2–4% worse,
+  which one run does not tell from the machine; smith-normal-form, 1.16, was not taken apart.

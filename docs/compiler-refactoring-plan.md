@@ -5,7 +5,7 @@ compiler on 2026-11-20 (f0f13513). On 2026-11-25 (f47a1c00), after 63 commits to
 checked against the code again, and the counts below are from that second check. The new `loops`, `nanchecks`, and
 `conditions` passes had added their own copies of most of the SSA duplication the review found.
 
-The plan starts once [performance-tasks-plan.md](performance-tasks-plan.md) has landed, because both change
+The plan starts once the performance-tasks plan ([benchmarks.md](benchmarks.md) §49) has landed, because both change
 `ssa/passes/*` and `codegen/arm64`; steps 11 and 12, in the build engine, which that plan does not touch, were made
 while it ran and are done. Two of its ideas, §2.2's machine-instruction table and §6.5's calling convention,
 are made with that plan's step 9 (the register allocator), not here (§4). When a step is done, its section is deleted,
@@ -28,7 +28,7 @@ deleted.
   `tools/check` run once, at the end of each group in §2.
 - **Performance:** none of these is meant to change the compiler's speed. A step whose restructuring sits on a hot
   path (§3's opcode table; `subtyping`'s keys, §6) counts the compiler's instructions before and after, by
-  performance-tasks-plan.md §1's method, and stays within 1%.
+  benchmarks.md §49.1's method, and stays within 1%.
 
 ## 2. Order
 
@@ -163,7 +163,7 @@ instructions retired on the benchmarks and the compiler, and hamlet's stack acce
 - The table checks itself once when built: a speculable opcode is pure and never traps; an opcode `allowed` in a NaN
   check's region neither writes nor calls; arity agrees with the parser's operand count.
 - A round trip in the SSA unit tests: each `name` parses back to its opcode.
-- The compiler's instructions before and after (§1). The step lands after performance-tasks-plan.md step 1, which
+- The compiler's instructions before and after (§1). The step lands after the performance-tasks plan's step 1, which
   compiles `opcodeIndex` and `opcodeName` as tables.
 
 ### Step 6: Definitions, constants, and terminator operands, once
@@ -249,7 +249,7 @@ a spelling (`nodes.primName`) to call the same functions.
 **Change.** One generic routine over integer nodes and a successor function, in a shared utility module. If
 canonical's version interleaves work with the walk, it keeps its own and says why.
 
-## 4. With performance-tasks-plan.md Step 9
+## 4. With the Performance-Tasks Plan's Step 9
 
 The register allocator's step takes these two, since it edits the same code:
 - **Machine-instruction facts.** `minst.Op` (50 ops) is cased over in 14 functions: `results` and `pure`; the

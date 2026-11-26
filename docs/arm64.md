@@ -357,7 +357,7 @@ target (`codegen/machine/target`) gives it register numbers.
   taken from the deepest loops out. The joined register is defined once for each value joined, which the scan allows (a
   value defined more than once is not rematerialized); the liveness is the SSA's, each value renamed by its group, not
   computed again. A function that enters a `try` is not coalesced. Joining a move's two registers too was measured and
-  not kept (optimization-experiments.md §5.10). Measured against `b14d643c`, unit by unit (the performance-tasks plan's
+  not kept (optimization-experiments.md §5.11). Measured against `b14d643c`, unit by unit (the performance-tasks plan's
   step 9): the 46 programs' instructions 0.976 by geometric mean and cycles 0.960, life 0.907, mpuz 0.921, wc-scanStream
   0.928, zebra 0.931, tsp 0.943, smith-normal-form 0.951, fib 0.953, and none above 1.000 in instructions; the compiler
   1.001 of its instructions and 1.002 of its cycles (the pass is about 0.6% of a compile, its code about as much

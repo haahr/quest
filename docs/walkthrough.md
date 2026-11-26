@@ -1020,20 +1020,18 @@ only raise errors left out:
 <!-- excerpt: self-hosted examples/argmax/argmax.quest ssa -->
 ```
 ...
-b6():
-...
   @18:27
   %46: ptr = load8 %21 + 0 invariant
   %47: int = callIndirect %46, %21, %45
 ...
-b11(%222: int, %225: int, %228: int):
+b10(%222: int, %225: int, %228: int):
+  @20:25
+  jump b12()
+...
+b12():
   @20:25
   jump b13()
-...
 b13():
-  @20:25
-  jump b14()
-b14():
   @20:25
   %66: int = const 8
   %67: int = mul %228, %66
@@ -1049,40 +1047,38 @@ b14():
   @21:13
   %237: int = select %79, %228, %222
   %238: int = select %79, %74, %225
-  jump b15()
-b15():
   @19:9
   %84: int = eq %228, %51
-  branch %84, b16(), b17()
+  branch %84, b14(), b15()
 ...
-b18():
+b16():
   @19:9
   %87: int = const 1
   %88: int = add %228, %87
-  jump b11(%237, %238, %88)
+  jump b10(%237, %238, %88)
 ...
-b46():
+b43():
   @21:16
   %75: ptr = load8 %22 + 0 invariant
   @20:25
-  jump b11(%30, %47, %50)
+  jump b10(%30, %47, %50)
 ...
 ```
 
-Block `b11` is the loop's head. Its parameters are `best` (`%222`), `bestKey` (`%225`), and `i` (`%228`); the jump
-into the loop, from `b46`, passes `0`, the first key, and `1`, and the jump at the end of `b18` passes the new `best`,
+Block `b10` is the loop's head. Its parameters are `best` (`%222`), `bestKey` (`%225`), and `i` (`%228`); the jump
+into the loop, from `b43`, passes `0`, the first key, and `1`, and the jump at the end of `b16` passes the new `best`,
 the new `bestKey`, and `i + 1`. Elsewhere in the function, `%6` is the `words` array, `%23` its length, `%51` is
-`n - 1`, and `%21` and `%22` are the closures for `key` and `isGreater`; `b6` calls `key` on the first element before
+`n - 1`, and `%21` and `%22` are the closures for `key` and `isGreater`; `b5` calls `key` on the first element before
 the loop.
 
 Reading `words[i]` takes two checks, and neither is left in the loop. The builder checked that the array pointer is not
 null, at this access as at every one, but reading the first element before the loop made the same check, and a pass
 (`ssa_conditions`) turns a branch that a dominating branch on the same comparison has already decided into a jump: all
-that is left of it is the head's `jump b13()`. The builder also checked that `i` is below the length (`ult`, an
+that is left of it is the head's `jump b12()`. The builder also checked that `i` is below the length (`ult`, an
 unsigned comparison, which also rejects a negative `i`), branching to a block that raises Quest's array error when it
-is not. The loops pass (`ssa_loops`) removed that check: `i` starts at `1` and grows by one only after `b15` found it
+is not. The loops pass (`ssa_loops`) removed that check: `i` starts at `1` and grows by one only after `b13` found it
 is not `n - 1`, which is the length less one, so it is never negative and always below the length. All that is left of
-the check is `b13`'s `jump b14()`. `b14` computes the element's address: an array is its length followed by its
+the check is `b12`'s `jump b13()`. `b13` computes the element's address: an array is its length followed by its
 elements, eight bytes each, so element `i` is at `8 + 8 * i`. The element is a `val`, a uniform word, since the
 array's representation does not depend on its element type, and `fromVal` reinterprets it as the pointer to a string
 it is known to be here.
@@ -1090,8 +1086,8 @@ it is known to be here.
 A call through a closure loads one word from the closure, the code, and calls the code with the closure itself as an
 extra first argument (`callIndirect`), from which the code reads its captures. The load is marked `invariant`: a
 closure never changes once made, which lets the optimizer treat repeated loads of it as the same value, as it does
-here: the loop's call of `key` reuses `%46`, the code `b6` loaded for the call before the loop. For the same reason the
-loops pass moved the load of `isGreater`'s code, `%75`, out of the loop into `b46`, the block before it, so it is made
+here: the loop's call of `key` reuses `%46`, the code `b5` loaded for the call before the loop. For the same reason the
+loops pass moved the load of `isGreater`'s code, `%75`, out of the loop into `b43`, the block before it, so it is made
 once. `result narrow` and `zext8` say that `isGreater` returns a `Bool` in the low byte of a register, which is widened
 to a full word.
 
@@ -1111,12 +1107,12 @@ The same loop:
 <!-- excerpt: self-hosted examples/argmax/argmax.quest codegen_arm64 -->
 ```
 ...
-Lf1_b47:
+Lf1_b44:
 	.loc 1 21 16
 	ldr x27, [x22, #0]
 	mov x28, x0
 	mov x19, x12
-Lf1_b15:
+Lf1_b14:
 	.loc 1 20 25
 	add x12, x20, #8
 	ldr x12, [x12, x19, lsl #3]
@@ -1136,14 +1132,13 @@ Lf1_b15:
 	csel x24, x19, x24, ne
 	cmp x12, #0
 	csel x28, x20, x28, ne
-Lf1_b16:
 	.loc 1 19 9
 	cmp x19, x26
-	b.eq Lf1_b20
-Lf1_b19:
+	b.eq Lf1_b18
+Lf1_b17:
 	add x19, x19, #1
 	ldr x20, [sp, #8]
-	b Lf1_b15
+	b Lf1_b14
 ...
 ```
 
@@ -1152,8 +1147,8 @@ arm64 has 31 general registers, `x0` to `x30`. Values that must survive a call l
 two closures, `x25` and `x27` the code of `key` and of `isGreater`, `x26` is `n - 1`, and the loop's three block
 parameters are `x24` (`best`), `x28` (`bestKey`), and `x19` (`i`). The key's result needs a register too, and the
 allocator gives it `x20`, reloading the array from the stack (`ldr x20, [sp, #8]`) before the jump back. The SSA's
-block numbers are not the assembly's, since the backend adds and removes blocks of its own: `Lf1_b47` is the SSA's
-`b46`, which loads `isGreater`'s code once and falls into the loop. Arguments go in `x0`, `x1`, `x2`,
+block numbers are not the assembly's, since the backend adds and removes blocks of its own: `Lf1_b44` is the SSA's
+`b43`, which loads `isGreater`'s code once and falls into the loop. Arguments go in `x0`, `x1`, `x2`,
 ... and a result comes back in `x0`, as the platform's calling convention says, so the C functions of the runtime and
 Quest's compiled functions can call each other.
 
@@ -1169,7 +1164,7 @@ Each SSA instruction is a few machine instructions, and some SSA instructions fo
   and `x27`.
 - The two `select`s are `csel`, conditional select, each after a `cmp` that sets the flags it tests.
 - The block parameters are registers: the `csel`s write the new `best` and `bestKey` straight into the registers the
-  loop's head expects them in, so the jump back to `b11` is only `i`'s `add` and a `b` to the head.
+  loop's head expects them in, so the jump back to `b10` is only `i`'s `add` and a `b` to the head.
 
 The `.loc` lines tie instructions to source lines and columns, which a debugger uses to show where a program is.
 `./quest compile` assembles and links this into a program; the JIT (`./quest examples/argmax/argmax.quest`) encodes
