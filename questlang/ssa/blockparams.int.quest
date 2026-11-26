@@ -1,0 +1,35 @@
+(* Quest Self-Hosted Compiler: The SSA's Block Parameter Edits Interface
+ *
+ * Edits of a function's block parameters that several passes make
+ * (docs/ssa.md section 4.1): dropping parameters with the arguments every
+ * jump passes them, finding the parameters nothing needs, and splitting the
+ * entry block so that a loop can jump to the function's start. *)
+
+interface BlockParams
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* Removes each parameter p of f's blocks for which drop(p), and the
+     * argument each jump passes it; returns how many it removed. A caller
+     * that must keep the function's own parameters does not name the
+     * entry's. *)
+    dropParams(f: ssa.Function drop: All(p: Int) Bool): Int
+
+    (* Indexed by value: the parameters of f's blocks other than the entry
+     * that nothing uses but jumps to parameters like them. Promotion leaves
+     * them where a variable's slot met itself (at a loop's header, where the
+     * parameter would be moved on every pass); a try's body is a jump like
+     * any other. *)
+    deadParams(f: ssa.Function): Array(Bool)
+
+    (* What splitEntry made: the header, and the renaming of the function's
+     * parameters to the header's, which leaves any other value as it is *)
+    Def Split = Tuple header: Int renamed: All(v: Int) Int end
+
+    (* Moves f's entry block's instructions and terminator into a new block,
+     * the header, with a fresh parameter for each of the function's, which
+     * replaces it everywhere; the entry is left empty, without a terminator,
+     * for the caller to make its jump to the header (with any parameters the
+     * caller adds to the header after). *)
+    splitEntry(f: ssa.Function): Split
+end

@@ -1,0 +1,110 @@
+(* Quest Self-Hosted Compiler: The SSA's Block Parameter Edits Implementation *)
+
+module blockParams : BlockParams
+import
+    collections/vector : collections/Vector
+
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    let dropParams(f: ssa.Function drop: All(p: Int) Bool): Int =
+        begin
+            let nBlocks = vector.length(f.blocks)
+            (* The arguments first, while each target's parameters still say
+             * which of them go *)
+            for b = 0 upto {nBlocks - 1} do
+                let ts = ssa.targets(ssa.block(f b).term)
+                for k = 0 upto {extent ts - 1} do
+                    let to = ssa.block(f ts[k].block).params
+                    let args = vector.new(:Int)
+                    for j = 0 upto {extent ts[k].args - 1} do
+                        if not(drop(vector.get(to j))) then vector.append(args ts[k].args[j]) end
+                    end
+                    ts[k].args := vector.toArray(args)
+                end
+            end
+            let var dropped = 0
+            for b = 0 upto {nBlocks - 1} do
+                let ps = ssa.block(f b).params
+                let kept = vector.new(:Int)
+                for j = 0 upto {vector.length(ps) - 1} do
+                    let p = vector.get(ps j)
+                    if drop(p) then dropped := dropped + 1 else vector.append(kept p) end
+                end
+                vector.clear(ps)
+                for j = 0 upto {vector.length(kept) - 1} do vector.append(ps vector.get(kept j)) end
+            end
+            dropped
+        end
+
+    let deadParams(f: ssa.Function): Array(Bool) =
+        begin
+            let nValues = vector.length(f.types)
+            let nBlocks = vector.length(f.blocks)
+            let used = array of(nValues false)
+            let isParam = array of(nValues false)
+            for b = 1 upto {nBlocks - 1} do
+                let ps = ssa.block(f b).params
+                for j = 0 upto {vector.length(ps) - 1} do isParam[vector.get(ps j)] := true end
+            end
+            for b = 0 upto {nBlocks - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
+                    for j = 0 upto {extent i.args - 1} do used[i.args[j]] := true end
+                end
+                (* The terminator's operands but its targets' arguments *)
+                let operands =
+                    case blk.term
+                        when termBranch with x then array of x.cond end
+                        when termSwitch with x then array of x.value end
+                        when termReturn with x then x.values
+                        when termTailCall with x then x.call.args
+                        when termNone, termJump, termTry, termUnreachable then array of :Int end
+                    end
+                for j = 0 upto {extent operands - 1} do used[operands[j]] := true end
+            end
+            (* An argument for a parameter that is used, or that is the
+             * entry's, is used *)
+            let var changed = true
+            while changed do
+                changed := false
+                for b = 0 upto {nBlocks - 1} do
+                    let ts = ssa.targets(ssa.block(f b).term)
+                    for k = 0 upto {extent ts - 1} do
+                        let ps = ssa.block(f ts[k].block).params
+                        for j = 0 upto {extent ts[k].args - 1} do
+                            let p = vector.get(ps j)
+                            let a = ts[k].args[j]
+                            if {used[p] orif not(isParam[p])} andif not(used[a]) then
+                                used[a] := true
+                                changed := true
+                            end
+                        end
+                    end
+                end
+            end
+            let dead = array of(nValues false)
+            for v = 0 upto {nValues - 1} do dead[v] := isParam[v] andif not(used[v]) end
+            dead
+        end
+
+    Let Split = Tuple header: Int renamed: All(v: Int) Int end
+
+    let splitEntry(f: ssa.Function): Split =
+        begin
+            let entry = ssa.block(f 0)
+            let header = ssa.newBlock(f)
+            let h = ssa.block(f header)
+            let ps = vector.toArray(entry.params)
+            let fresh = array of(vector.length(f.types) ~1)
+            for k = 0 upto {extent ps - 1} do fresh[ps[k]] := ssa.addParam(f header ssa.typeOf(f ps[k])) end
+            for k = 0 upto {vector.length(entry.insts) - 1} do vector.append(h.insts vector.get(entry.insts k)) end
+            vector.clear(entry.insts)
+            h.term := entry.term
+            h.termLoc := entry.termLoc
+            entry.term := ssa.termNone
+            let renamed(v: Int): Int = if {v < extent fresh} andif {fresh[v] >= 0} then fresh[v] else v end
+            ssa.replaceUses(f renamed)
+            tuple header renamed end
+        end
+end

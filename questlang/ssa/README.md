@@ -124,6 +124,9 @@ say) by the values of their words.
 
 Several modules here serve the builder, the passes, and the backends alike.
 
+- [`blockparams.int.quest`](blockparams.int.quest) has the edits of block parameters that several passes make:
+  dropping parameters with the arguments jumps pass them, finding the ones nothing needs, and splitting the entry into
+  a header block that a loop made from a self tail call jumps to.
 - [`cfg.int.quest`](cfg.int.quest) computes a function's control flow graph: predecessors and successors, reverse
   postorder, the dominator tree (by Cooper, Harvey, and Kennedy's algorithm), dominance frontiers, and loop depths.
   Promotion places block parameters at dominance frontiers; value numbering walks the dominator tree; the verifier

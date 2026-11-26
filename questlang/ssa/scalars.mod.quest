@@ -9,6 +9,7 @@ import
     util/hash : util/Hash
     util/maybe : util/Maybe
 
+    questlang/ssa/blockParams : questlang/ssa/BlockParams
     questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/passes/proxyFold : questlang/ssa/passes/ProxyFold
@@ -733,73 +734,8 @@ export
      * would keep the pointer's objects whole. Returns the number dropped. *)
     let dropDeadParams(f: Function): Int =
         begin
-            let nValues = vector.length(f.types)
-            let nBlocks = vector.length(f.blocks)
-            let used = array of(nValues false)
-            let isParam = array of(nValues false)
-            for b = 1 upto {nBlocks - 1} do
-                let params = ssa.block(f b).params
-                for j = 0 upto {vector.length(params) - 1} do isParam[vector.get(params j)] := true end
-            end
-            for b = 0 upto {nBlocks - 1} do
-                let blk = ssa.block(f b)
-                for k = 0 upto {vector.length(blk.insts) - 1} do
-                    let i = vector.get(blk.insts k)
-                    for j = 0 upto {extent i.args - 1} do used[i.args[j]] := true end
-                end
-                let operands =
-                    case blk.term
-                        when termBranch with x then array of x.cond end
-                        when termSwitch with x then array of x.value end
-                        when termReturn with x then x.values
-                        when termTailCall with x then x.call.args
-                        when termNone, termJump, termTry, termUnreachable then array of :Int end
-                    end
-                for j = 0 upto {extent operands - 1} do used[operands[j]] := true end
-            end
-            (* An argument for a used parameter is used *)
-            let var changed = true
-            while changed do
-                changed := false
-                for b = 0 upto {nBlocks - 1} do
-                    let ts = ssa.targets(ssa.block(f b).term)
-                    for k = 0 upto {extent ts - 1} do
-                        let params = ssa.block(f ts[k].block).params
-                        for j = 0 upto {extent ts[k].args - 1} do
-                            let p = vector.get(params j)
-                            let a = ts[k].args[j]
-                            if {used[p] orif not(isParam[p])} andif not(used[a]) then
-                                used[a] := true
-                                changed := true
-                            end
-                        end
-                    end
-                end
-            end
-            let var dropped = 0
-            for b = 0 upto {nBlocks - 1} do
-                let ts = ssa.targets(ssa.block(f b).term)
-                for k = 0 upto {extent ts - 1} do
-                    let params = ssa.block(f ts[k].block).params
-                    let args = vector.new(:Int)
-                    for j = 0 upto {extent ts[k].args - 1} do
-                        let p = vector.get(params j)
-                        if used[p] orif not(isParam[p]) then vector.append(args ts[k].args[j]) end
-                    end
-                    ts[k].args := vector.toArray(args)
-                end
-            end
-            for b = 1 upto {nBlocks - 1} do
-                let params = ssa.block(f b).params
-                let kept = vector.new(:Int)
-                for j = 0 upto {vector.length(params) - 1} do
-                    let p = vector.get(params j)
-                    if used[p] then vector.append(kept p) else dropped := dropped + 1 end
-                end
-                vector.clear(params)
-                for j = 0 upto {vector.length(kept) - 1} do vector.append(params vector.get(kept j)) end
-            end
-            dropped
+            let dead = blockParams.deadParams(f)
+            blockParams.dropParams(f fun(p: Int): Bool dead[p])
         end
 
     (* ======================================================================

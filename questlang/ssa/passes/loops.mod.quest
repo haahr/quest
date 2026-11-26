@@ -11,6 +11,7 @@ import
     util/strutil : util/Strutil
 
     questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    questlang/ssa/blockParams : questlang/ssa/BlockParams
     questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/passes/conditions : questlang/ssa/passes/Conditions
@@ -99,21 +100,9 @@ export
                 (* The header takes the entry's instructions and terminator,
                  * with fresh parameters that replace the function's *)
                 let entry = ssa.block(f 0)
-                let header = ssa.newBlock(f)
-                let h = ssa.block(f header)
                 let params = vector.toArray(entry.params)
-                let fresh = array of(vector.length(f.types) ~1)
-                for k = 0 upto {extent params - 1} do
-                    fresh[params[k]] := ssa.addParam(f header ssa.typeOf(f params[k]))
-                end
-                for k = 0 upto {vector.length(entry.insts) - 1} do
-                    vector.append(h.insts vector.get(entry.insts k))
-                end
-                vector.clear(entry.insts)
-                h.term := entry.term
-                h.termLoc := entry.termLoc
-                entry.term := ssa.termNone
-                ssa.replaceUses(f fun(v: Int): Int if {v < extent fresh} andif {fresh[v] >= 0} then fresh[v] else v end)
+                let header = blockParams.splitEntry(f).header
+                let h = ssa.block(f header)
                 (* Each site's call, its arguments renamed by replaceUses, is
                  * a jump to the header; a site in the entry is now in the
                  * header *)
@@ -1067,80 +1056,8 @@ export
      * parameter would be moved on every pass) *)
     let dropDeadParams(f: Function): Ok =
         begin
-            let n = vector.length(f.types)
-            let live = array of(n false)
-            (* Each parameter's block and position, for the jumps' arguments *)
-            let paramBlock = array of(n ~1)
-            let paramIndex = array of(n ~1)
-            for b = 1 upto {vector.length(f.blocks) - 1} do
-                let ps = ssa.block(f b).params
-                for k = 0 upto {vector.length(ps) - 1} do
-                    paramBlock[vector.get(ps k)] := b
-                    paramIndex[vector.get(ps k)] := k
-                end
-            end
-            let markAll = fun(vs: Array(Int)): Ok for j = 0 upto {extent vs - 1} do live[vs[j]] := true end
-            for b = 0 upto {vector.length(f.blocks) - 1} do
-                let blk = ssa.block(f b)
-                for k = 0 upto {vector.length(blk.insts) - 1} do markAll(vector.get(blk.insts k).args) end
-                case blk.term
-                    when termBranch with x then live[x.cond] := true
-                    when termSwitch with x then live[x.value] := true
-                    when termReturn with x then markAll(x.values)
-                    when termTailCall with x then markAll(x.call.args)
-                    when termTry with x then markAll(x.body.args)
-                    when termNone, termJump, termUnreachable then ok
-                end
-            end
-            (* An argument is live when the parameter it binds is *)
-            let var changed = true
-            while changed do
-                changed := false
-                for b = 0 upto {vector.length(f.blocks) - 1} do
-                    let ts = ssa.targets(ssa.block(f b).term)
-                    for t = 0 upto {extent ts - 1} do
-                        let params = ssa.block(f ts[t].block).params
-                        for j = 0 upto {extent ts[t].args - 1} do
-                            if {j < vector.length(params)} andif live[vector.get(params j)]
-                                    andif not(live[ts[t].args[j]]) then
-                                live[ts[t].args[j]] := true
-                                changed := true
-                            end
-                        end
-                    end
-                end
-            end
-            (* The entry's parameters are the function's *)
-            for b = 1 upto {vector.length(f.blocks) - 1} do
-                let blk = ssa.block(f b)
-                let var dead = false
-                for k = 0 upto {vector.length(blk.params) - 1} do
-                    if not(live[vector.get(blk.params k)]) then dead := true end
-                end
-                if dead then
-                    let keep = array of(vector.length(blk.params) true)
-                    for k = 0 upto {vector.length(blk.params) - 1} do keep[k] := live[vector.get(blk.params k)] end
-                    let kept = vector.new(:Int)
-                    for k = 0 upto {vector.length(blk.params) - 1} do
-                        if keep[k] then vector.append(kept vector.get(blk.params k)) end
-                    end
-                    vector.clear(blk.params)
-                    for k = 0 upto {vector.length(kept) - 1} do vector.append(blk.params vector.get(kept k)) end
-                    for p = 0 upto {vector.length(f.blocks) - 1} do
-                        let pb = ssa.block(f p)
-                        pb.term := ssa.mapTargets(pb.term fun(t: ssa.Target): ssa.Target
-                            if t.block isnot b then
-                                t
-                            else
-                                let args = vector.new(:Int)
-                                for j = 0 upto {extent t.args - 1} do
-                                    if keep[j] then vector.append(args t.args[j]) end
-                                end
-                                ssa.target(b vector.toArray(args))
-                            end)
-                    end
-                end
-            end
+            let dead = blockParams.deadParams(f)
+            let ignored = blockParams.dropParams(f fun(p: Int): Bool dead[p])
         end
 
     (* =========================================================================

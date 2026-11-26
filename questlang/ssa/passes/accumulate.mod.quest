@@ -6,6 +6,7 @@ import
 
     collections/vector : collections/Vector
 
+    questlang/ssa/blockParams : questlang/ssa/BlockParams
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/passes/tailCalls : questlang/ssa/passes/TailCalls
 export
@@ -109,23 +110,11 @@ export
                  * function's parameters (which replace them) plus the
                  * accumulator *)
                 let entry = ssa.block(f 0)
-                let header = ssa.newBlock(f)
-                let h = ssa.block(f header)
                 let params = vector.toArray(entry.params)
-                let fresh = array of(vector.length(f.types) ~1)
-                for k = 0 upto {extent params - 1} do
-                    fresh[params[k]] := ssa.addParam(f header ssa.typeOf(f params[k]))
-                end
+                let split = blockParams.splitEntry(f)
+                let header = split.header
+                let replace = split.renamed
                 let acc = ssa.addParam(f header ssa.typeInt)
-                for k = 0 upto {vector.length(entry.insts) - 1} do
-                    vector.append(h.insts vector.get(entry.insts k))
-                end
-                vector.clear(entry.insts)
-                h.term := entry.term
-                h.termLoc := entry.termLoc
-                entry.term := ssa.termNone
-                let replace(v: Int): Int = if {v < extent fresh} andif {fresh[v] >= 0} then fresh[v] else v end
-                ssa.replaceUses(f replace)
                 (* Each site jumps to the header, combining its other value
                  * with the accumulator. replaceUses has already renamed the
                  * site's call's arguments, an array it shares with the

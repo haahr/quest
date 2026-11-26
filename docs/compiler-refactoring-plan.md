@@ -34,8 +34,7 @@ deleted.
 
 | Group | Step | What | Size |
 |---|---|---|---|
-| 1. Drift already seen | 3 | One dead-parameter removal and one entry split | small |
-| | 4 | One `onlyProxyTests` | small |
+| 1. Drift already seen | 4 | One `onlyProxyTests` | small |
 | 2. SSA facts | 5 | The opcode table | medium |
 | | 6 | Definitions, constants, and terminator operands, once | small to medium |
 | 3. IR structure | 7 | One visitor for IR nodes, with positions in one place | medium |
@@ -52,24 +51,11 @@ not taken.
 
 ## 3. Steps
 
-### Step 3: One dead-parameter removal and one entry split
-
-**Problem.** Removing a block parameter that no jump needs is written three times: `valuenumbers`' trivial-parameter
-collapse (`:86-130`), `scalars.dropDeadParams` (`:734`), and `loops.dropDeadParams` (`:1050-1127`). "Filter each
-target's arguments by the kept parameters, then clear" appears five times: `scalars:799` and `:873`, `escape:567`,
-`valuenumbers:311`, and `loops:1109`. Splitting a function's entry into a header block is written twice, in
-`loops.loopFunction` (`:76-104`) and `accumulate` (`:110-130`).
-
-**Change.** A module in `ssa/`, beside `cfg`, for these edits: `dropParams(f keep)`, `removeTrivialParams(f)`, and
-`splitEntry(f)`. The three passes call them.
-
-**Tests.** The SSA goldens, unchanged; `ssa_valuenumbers`, `ssa_scalars`, and `ssa_loops` show each case.
-
 ### Step 4: One `onlyProxyTests`
 
 **Problem.** `escape:229` and `scalars:437` share 21 identical lines.
 
-**Change.** One function, in the module the two already import or in step 3's. The rest of the two passes'
+**Change.** One function, in `proxyFold`, which the two already import. The rest of the two passes'
 provenance machinery stays as it is (§4).
 
 ### Step 5: The opcode table
@@ -264,6 +250,9 @@ Worth doing, but larger or less urgent; each becomes a step when there is time f
 Each with its reason, so that it is not proposed again without new evidence:
 - **A table of WebAssembly externals** (review §2.4): `externalCall` shrank from 384 to 320 lines as externals moved to
   Quest, and symbolic indices (§4) remove the part that hurts.
+- **Value numbering's trivial-parameter collapse in `ssa/blockParams`** (step 3): it decides which parameters are
+  trivial through the pass's own union-find of equal values, so on its own it would find fewer; the removal that
+  follows it is `blockParams.dropParams`.
 - **A table of IR primitives** (§2.3): 26 prims, unchanged since the review; step 10 removes the interpreters' share.
 - **A generated IR node spec** (§3.2's second tier): generated sources in the tree, and field compatibility with the
   bootstrap; step 7 gets most of the benefit by hand.

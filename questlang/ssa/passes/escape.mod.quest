@@ -9,6 +9,7 @@ import
     collections/vector : collections/Vector
     util/hash : util/Hash
 
+    questlang/ssa/blockParams : questlang/ssa/BlockParams
     questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/passes/proxyFold : questlang/ssa/passes/ProxyFold
@@ -543,32 +544,7 @@ export
                 end
                 (* Remove block parameters that were candidate pointers and
                  * their jump arguments *)
-                for b = 0 upto {nBlocks - 1} do
-                    if s.reach[b] then
-                        let ts = ssa.targets(ssa.block(f b).term)
-                        for k = 0 upto {extent ts - 1} do
-                            let t = ts[k]
-                            let params = ssa.block(f t.block).params
-                            let args = vector.new(:Int)
-                            for j = 0 upto {extent t.args - 1} do
-                                if not(isPointer(vector.get(params j))) then vector.append(args t.args[j]) end
-                            end
-                            t.args := vector.toArray(args)
-                        end
-                    end
-                end
-                for b = 0 upto {nBlocks - 1} do
-                    let params = ssa.block(f b).params
-                    let left = vector.new(:Int)
-                    for j = 0 upto {vector.length(params) - 1} do
-                        let p = vector.get(params j)
-                        if not(isPointer(p)) then vector.append(left p) end
-                    end
-                    vector.clear(params)
-                    for j = 0 upto {vector.length(left) - 1} do
-                        vector.append(params vector.get(left j))
-                    end
-                end
+                let ignoredParams = blockParams.dropParams(f isPointer)
                 (* Drop blocks that were only reachable through folded
                  * proxy-test arms *)
                 cfg.dropUnreached(f)
