@@ -119,10 +119,8 @@ export
      * one, so staleness can only miss a follow-on conversion, never make an
      * unsound one. *)
     (* Merges each block that only jumps to a block whose sole predecessor
-     * it is with that block, at the end of the SSA's passes (straightenUnit):
-     * merged before the loops pass, a loop's header took in its body and was
-     * no longer rotated, and the compiler retired 0.9% more instructions. A
-     * conversion leaves the branch's block jumping
+     * it is with that block, at the end of the SSA's passes (straightenUnit),
+     * when the first ends in a conversion's selects. A conversion leaves the branch's block jumping
      * to the join, so that what was one diamond after another is a chain of
      * blocks, and what is decided within a block (value numbering's loads,
      * arm64's fused flags, a load paired with its neighbor) stops at each
@@ -140,7 +138,16 @@ export
                         case ssa.block(f b).term
                             when termJump with x then
                                 let c = x.target.block
-                                if {c isnot 0} andif {c isnot b} andif not(absorbed[c])
+                                let insts = ssa.block(f b).insts
+                                (* Only a conversion's block, which ends in its
+                                 * selects: other chains are left as they are,
+                                 * since merging them changed how arm64 laid
+                                 * out wc-scanStream's loop and the compiler's
+                                 * code, and cost 1% of the compiler's
+                                 * instructions *)
+                                let converted = {vector.length(insts) > 0}
+                                    andif ssa.isOp(vector.last(insts) ssa.opSelect)
+                                if converted andif {c isnot 0} andif {c isnot b} andif not(absorbed[c])
                                         andif {extent g.preds[c] is 1} then
                                     let blk = ssa.block(f b)
                                     let next = ssa.block(f c)
