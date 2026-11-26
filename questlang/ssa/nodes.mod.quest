@@ -20,6 +20,21 @@ export
         opMulHiU opSelect opUnproxy
     end
 
+    Def Effect = Option effectPure effectReads effectWrites effectCalls end
+    Def Compares = Option comparesNone comparesInts comparesReals comparesNaN end
+    Def OpInfo = Tuple
+        name: String
+        effect: Effect
+        traps: Bool
+        speculable: Bool
+        commutative: Bool
+        compares: Compares
+        rematerializable: Bool
+        propagatesNaN: Bool
+        identity: maybe.T(Int)
+    end
+    Def Policy = Tuple rotateAll: Bool rematerializable: All(op: Opcode) Bool end
+
     Def Passed = Option
         passWord passReal passPair passPairRest passByte passInt32
         passMemory with bytes: Int end
@@ -618,7 +633,8 @@ export
     let typeName(t: Type): String =
         case t when typeInt then "int" when typePtr then "ptr" when typeReal then "real" when typeVal then "val" end
 
-    let opcodeName(op: Opcode): String =
+    (* OpInfo's name *)
+    let nameOf(op: Opcode): String =
         case op
             when opConst then "const" when opRealConst then "realConst" when opSymbol then "symbol"
             when opNull then "null" when opSlot then "slot"
@@ -661,6 +677,143 @@ export
         opCopy
         opPtrAdd opToVal opFromVal opMulHiU opSelect opUnproxy
     end
+
+    (* OpInfo's effect *)
+    let effectOf(op: Opcode): Effect =
+        case op
+            when opLoad then option effectReads of Effect end
+            when opStore then option effectWrites of Effect end
+            when opCall, opCallIndirect then option effectCalls of Effect end
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor,
+                    opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub,
+                    opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
+                    opBitsReal, opIntToReal, opSext8, opZext8, opCopy, opPtrAdd, opToVal, opFromVal, opMulHiU, opSelect,
+                    opUnproxy then
+                option effectPure of Effect end
+        end
+
+    (* OpInfo's traps: a division by zero faults *)
+    let trapsOf(op: Opcode): Bool =
+        case op
+            when opDiv, opRem then true
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opAnd, opOr, opXor, opShl, opLshr,
+                    opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv,
+                    opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal,
+                    opIntToReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opToVal,
+                    opFromVal, opMulHiU, opSelect, opUnproxy then
+                false
+        end
+
+    (* OpInfo's speculable *)
+    let speculableOf(op: Opcode): Bool =
+        case op
+            when opSlot, opUnproxy, opDiv, opRem, opLoad, opStore, opCall, opCallIndirect then false
+            when opConst, opRealConst, opSymbol, opNull, opAdd, opSub, opMul, opAnd, opOr, opXor, opShl, opLshr, opAshr,
+                    opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq,
+                    opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opIntToReal,
+                    opSext8, opZext8, opCopy, opPtrAdd, opToVal, opFromVal, opMulHiU, opSelect then
+                true
+        end
+
+    (* OpInfo's commutative *)
+    let commutativeOf(op: Opcode): Bool =
+        case op
+            when opAdd, opMul, opMulHiU, opAnd, opOr, opXor, opEq, opNe, opPeq, opPne, opFadd, opFmul, opFeq then true
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opSub, opDiv, opRem, opShl, opLshr, opAshr, opLt, opLe,
+                    opGt, opGe, opUlt, opFsub, opFdiv, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt,
+                    opRealBits, opBitsReal, opIntToReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect,
+                    opCopy, opPtrAdd, opToVal, opFromVal, opSelect, opUnproxy then
+                false
+        end
+
+    (* OpInfo's compares *)
+    let comparesOf(op: Opcode): Compares =
+        case op
+            when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne then option comparesInts of Compares end
+            when opFeq, opFlt, opFle, opFgt, opFge then option comparesReals of Compares end
+            when opIsNaN then option comparesNaN of Compares end
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor,
+                    opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits,
+                    opBitsReal, opIntToReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy,
+                    opPtrAdd, opToVal, opFromVal, opMulHiU, opSelect, opUnproxy then
+                option comparesNone of Compares end
+        end
+
+    (* OpInfo's rematerializable *)
+    let rematerializableOf(op: Opcode): Bool =
+        case op
+            when opConst, opRealConst, opSymbol, opNull then true
+            when opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt,
+                    opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt,
+                    opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opIntToReal, opSext8, opZext8,
+                    opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opToVal, opFromVal, opMulHiU, opSelect,
+                    opUnproxy then
+                false
+        end
+
+    (* OpInfo's propagatesNaN *)
+    let propagatesNaNOf(op: Opcode): Bool =
+        case op
+            when opFadd, opFsub, opFmul, opFdiv then true
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor,
+                    opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle,
+                    opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opIntToReal, opSext8,
+                    opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opToVal, opFromVal, opMulHiU,
+                    opSelect, opUnproxy then
+                false
+        end
+
+    (* OpInfo's identity *)
+    let identityOf(op: Opcode): maybe.T(Int) =
+        case op
+            when opAdd, opOr, opXor then maybe.some(0)
+            when opMul then maybe.some(1)
+            when opAnd then maybe.some(~1)
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opSub, opDiv, opRem, opShl, opLshr, opAshr, opEq, opNe,
+                    opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle,
+                    opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opIntToReal, opSext8,
+                    opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opToVal, opFromVal, opMulHiU,
+                    opSelect, opUnproxy then
+                maybe.none()
+        end
+
+    let badOpInfo: Exception(String) = exception badOpInfo: String end
+
+    (* Each opcode's facts, by opcodeIndex, made once from the functions
+     * above, each an exhaustive case. A speculable opcode must be pure and
+     * never trap, which is checked here, when the compiler starts. *)
+    let infos: Array(OpInfo) =
+        begin
+            let infoOf = fun(op: Opcode): OpInfo
+                tuple
+                    let name = nameOf(op)
+                    let effect = effectOf(op)
+                    let traps = trapsOf(op)
+                    let speculable = speculableOf(op)
+                    let commutative = commutativeOf(op)
+                    let compares = comparesOf(op)
+                    let rematerializable = rematerializableOf(op)
+                    let propagatesNaN = propagatesNaNOf(op)
+                    let identity = identityOf(op)
+                end
+            let t = array of(extent opcodes infoOf(opConst))
+            for k = 0 upto {extent opcodes - 1} do
+                let i = infoOf(opcodes[k])
+                let pure =
+                    case i.effect when effectPure then true when effectReads, effectWrites, effectCalls then false end
+                if i.speculable andif {not(pure) orif i.traps} then
+                    raise badOpInfo with i.name <> " is speculable, but not pure or may trap" end
+                end
+                t[opcodeIndex(opcodes[k])] := i
+            end
+            t
+        end
+
+    let info(op: Opcode): OpInfo = infos[opcodeIndex(op)]
+    let opcodeName(op: Opcode): String = info(op).name
+
+    let defaultPolicy: Policy =
+        tuple let rotateAll = true let rematerializable = fun(op: Opcode): Bool info(op).rematerializable end
 
     let opcodeNamed(name: String): maybe.T(Opcode) =
         begin

@@ -16,18 +16,18 @@
  * the parameter itself) are replaced by that value.
  *
  * Several kinds of instructions are deduplicated only within their own block:
- * comparisons, bitwise ands, multiplications, and pointer additions (which
- * arm64 instruction selection fuses into their users within a block);
- * constants, symbol addresses, and nulls (which otherwise stay live across
- * blocks and increase register spills); and 8-byte loads whose neighboring
- * word is also loaded in the same block (so arm64 can combine them into a
- * pair load). Finally, pure instructions, loads, and copies left with no uses
+ * those the policy's rematerializable says (ssa/nodes' Policy: constants,
+ * symbol addresses, and nulls, which a backend makes again where they are
+ * used rather than keep live across blocks, and any a backend fuses into
+ * their users, as arm64 does comparisons, ands, multiplications, and pointer
+ * additions); and 8-byte loads whose neighboring word is also loaded in the
+ * same block (so arm64 can combine them into a pair load). Finally, pure instructions, loads, and copies left with no uses
  * are removed. *)
 
 interface ValueNumbers
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
-    numberFunction(f: ssa.Function): Ok
-    numberUnit(u: ssa.Unit): Ok
+    numberFunction(f: ssa.Function p: ssa.Policy): Ok
+    numberUnit(u: ssa.Unit p: ssa.Policy): Ok
 end

@@ -21,47 +21,19 @@ export
     Let Address = Tuple base: String offset: Int end
 
     (* Whether an instruction is numbered: a pure one, or a load (an
-     * ordinary one only while nothing writes memory) *)
+     * ordinary one only while nothing writes memory). A copy, though pure, is
+     * replaced by its argument instead. *)
     let numbered(i: ssa.Inst): Bool =
-        case i.op
-            when opConst, opRealConst, opSymbol, opNull, opSlot, opPtrAdd, opAdd, opSub, opMul,
-                    opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt,
-                    opGe,
-                    opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN,
-                    opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opIntToReal, opSext8, opZext8, opToVal, opFromVal,
-                    opSelect,
-                    opUnproxy then
-                true
-            when opLoad then true
-            when opStore, opCall, opCallIndirect, opCopy then false
-        end
-
-    (* Whether an instruction may be replaced only by an equal in its own
-     * block. This includes operations that arm64 instruction selection fuses
-     * into a same-block branch or memory access (codegen/arm64/select's fused
-     * and indexOf), plus constants, symbol addresses, and nulls, which
-     * otherwise stay live across blocks and spill to the stack because
-     * arm64's register allocator does not rematerialize (recompute) them
-     * (docs/ssa.md section 4.1: hamlet's stack accesses rose from 8,129 to
-     * 10,022). *)
-    let local(op: ssa.Opcode): Bool =
-        case op
-            when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN,
-                    opAnd, opMul, opPtrAdd, opConst, opRealConst, opSymbol, opNull then
-                true
-            else false
-        end
-
-    let commutative(op: ssa.Opcode): Bool =
-        case op
-            when opAdd, opMul, opMulHiU, opAnd, opOr, opXor, opEq, opNe, opPeq, opPne, opFadd, opFmul, opFeq then true
-            else false
+        case ssa.info(i.op).effect
+            when effectPure then not(ssa.isOp(i ssa.opCopy))
+            when effectReads then true
+            when effectWrites, effectCalls then false
         end
 
     (* Whether an instruction left without uses can be removed *)
     let removable(i: ssa.Inst): Bool = numbered(i) orif ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opCopy)
 
-    let numberFunction(f: Function): Ok =
+    let numberFunction(f: Function p: ssa.Policy): Ok =
         begin
             let n = vector.length(f.types)
             let nBlocks = vector.length(f.blocks)
@@ -177,14 +149,15 @@ export
                             args[a] := if maybe.isSome(c) then "#" <> conv.int(maybe.unwrap(c))
                                 else conv.int(v) end
                         end
-                        if commutative(i.op) andif {extent args is 2} andif stringOp.precedes(args[1] args[0]) then
+                        if ssa.info(i.op).commutative andif {extent args is 2}
+                                andif stringOp.precedes(args[1] args[0]) then
                             let first = args[0]
                             args[0] := args[1]
                             args[1] := first
                         end
                         ssa.opcodeName(i.op) <> " " <> t <> " " <> conv.int(i.imm) <> " " <> i.symbol
                             <> if extent args > 0 then " " <> strutil.joinArray(" " args) else "" end
-                            <> if local(i.op) then " @" <> conv.int(b) else "" end
+                            <> if p.rematerializable(i.op) then " @" <> conv.int(b) else "" end
                     end
                 end
 
@@ -349,8 +322,8 @@ export
             end
         end
 
-    let numberUnit(u: ssa.Unit): Ok =
+    let numberUnit(u: ssa.Unit p: ssa.Policy): Ok =
         for i = 0 upto {vector.length(u.functions) - 1} do
-            numberFunction(vector.get(u.functions i))
+            numberFunction(vector.get(u.functions i) p)
         end
 end

@@ -4,6 +4,7 @@ module ssaPhases : SSAPhases
 import
     stringOp = string : StringOp
 
+    arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
     questlang/ir/nodes : questlang/ir/Nodes
     ssaBuild = questlang/ssa/build : questlang/ssa/Build
     ssaNodes = questlang/ssa/nodes : questlang/ssa/Nodes
@@ -14,7 +15,8 @@ import
 export
     let run(unit: nodes.Unit shows: All(name: String) Bool dump: All(text: String) Ok checks: Bool): String =
         try
-            let built = ssaPipeline.run(unit fun(name: String u: ssaNodes.Unit): Ok
+            (* The SSA as the default backend's passes leave it *)
+            let built = ssaPipeline.run(unit arm64.ssaPolicy fun(name: String u: ssaNodes.Unit): Ok
                 if shows("ssa_" <> name) then dump(ssaPrinter.formatUnit(u)) end)
             let var failure = ""
             if shows("ssa") then

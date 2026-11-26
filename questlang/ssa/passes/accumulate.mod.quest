@@ -5,6 +5,7 @@ import
     stringOp = string : StringOp
 
     collections/vector : collections/Vector
+    util/maybe : util/Maybe
 
     questlang/ssa/blockParams : questlang/ssa/BlockParams
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
@@ -19,11 +20,9 @@ export
 
     (* Whether i is an operation an accumulator can combine with: associative
      * and commutative on wrapping ints *)
-    let combines(i: ssa.Inst): Bool =
-        ssa.isOp(i ssa.opAdd) orif ssa.isOp(i ssa.opMul) orif ssa.isOp(i ssa.opAnd) orif ssa.isOp(i ssa.opOr)
-            orif ssa.isOp(i ssa.opXor)
+    let combines(i: ssa.Inst): Bool = maybe.isSome(ssa.info(i.op).identity)
 
-    let identity(op: ssa.Inst): Int = if ssa.isOp(op ssa.opMul) then 1 elsif ssa.isOp(op ssa.opAnd) then ~1 else 0 end
+    let identity(op: ssa.Inst): Int = maybe.unwrapOr(ssa.info(op.op).identity 0)
 
     (* Whether f returns one int, passed as a word *)
     let returnsInt(f: Function): Bool =

@@ -35,6 +35,15 @@ the IR statement it builds (ir.md §5), or of the last one that had a position; 
 (`termLoc`), and a tail call its call's. Passes that care only about structure (the verifier, liveness, renaming,
 register allocation) walk the arrays; only the passes that care what an instruction means case on its opcode.
 
+What the passes need to know of an opcode is in one table, `nodes.info` (an `OpInfo` per opcode, made once from one
+exhaustive `case` per fact, so that an opcode added must say each): its name; its effect (pure, reads memory, writes
+it, or calls); whether it may trap (`div` and `rem`); whether it is speculable (pure, never trapping, and not tied to
+its place, which leaves out `slot` and `unproxy`), checked when the table is made; whether it is commutative; what it
+compares (ints or pointers, reals, or a real against NaN); whether it is rematerializable (a constant, a symbol's
+address, a null); whether it propagates a NaN; and an accumulator's identity. Value numbering's choice of what to number,
+if-conversion's and loop hoisting's of what may move, the NaN checks' regions, and accumulate's operations are read from
+it; `ssa_opcodes` prints it. A backend's own choices reach the passes in a `Policy` (§4.1).
+
 | Opcode | Arguments → results | Meaning |
 |---|---|---|
 | `const` | → `int` | the immediate |
@@ -197,7 +206,10 @@ internal error.
 
 ### 4.1. The Pipeline and Its Passes
 
-`questlang/ssa/pipeline` builds a unit and then runs its passes, by name, in order, each on every function:
+`questlang/ssa/pipeline` builds a unit and then runs its passes, by name, in order, each on every function, under the
+backend's `Policy` (`nodes.Policy`): whether every loop is rotated (`rotateAll`, off for ssac), and which opcodes value
+numbering keeps block-local (`rematerializable`; arm64's is `codegen.ssaPolicy`, which the JIT and the driver's SSA
+dumps use too):
 
 - **`ssa/passes/escape`** makes each allocation that does not leave its function a stack slot (§4.2), which promotion
   then makes values where it can.
@@ -260,9 +272,11 @@ internal error.
   whole word's load whose neighbor its block also loads is kept though an equal is available from another block, so that
   arm64 loads the two as a pair: a lone load of half of a pair just stored, after `quest_alloc` cleared its first word,
   took psdes-random's loop from 1.39 to 1.90 of C's time. A `copy` becomes its argument; and a block's parameter that
-  every jump binds to one value that value. The comparisons, `and`s, `mul`s, and `ptrAdd`s arm64's selection fuses into
-  the branch or access using them in their block are replaced only by an equal in their own block, and so are constants,
-  symbols, and nulls: shared across a function, they were live longer and spilled (hamlet's stack accesses rose from
+  every jump binds to one value that value. The opcodes the backend's policy calls rematerializable are replaced only by
+  an equal in their own block: the table's (constants, symbols, and nulls) and, for arm64, the comparisons, `and`s,
+  `mul`s, and `ptrAdd`s its selection fuses into the branch or access using them in their block (`select.fuses`; ssac
+  keeps arm64's set for now, since narrowing it is a change to measure). Constants shared across a function were live
+  longer and spilled (hamlet's stack accesses rose from
   8,129 to 10,022, mlyacc's from 4,522 to 5,713, and neither ran faster). The pure instructions and loads then left
   without uses are removed. `ssa_valuenumbers` shows each case.
   Hoisting loop-invariant pure values and invariant loads to preheaders was tried after it (2026-11-03) and not kept:

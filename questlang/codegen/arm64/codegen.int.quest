@@ -25,6 +25,15 @@ import
 export
     (* Raised when the backend cannot compile a construct, naming it *)
     unsupported: Exception(String)
+    (* What this backend tells the SSA's passes (ssa/nodes' Policy): every
+     * loop rotated, and value numbering keeping within its block an equal of
+     * a rematerializable value or of one selection fuses (select.fuses);
+     * value numbering would otherwise leave a constant, a symbol's address,
+     * or a null live across blocks and spill it (docs/ssa.md section 4.1:
+     * hamlet's stack accesses rose from 8,129 to 10,022), and a comparison,
+     * an and, a multiplication, or a pointer addition apart from what fuses
+     * it *)
+    ssaPolicy: ssa.Policy
     (* A unit's assembly *)
     assembleUnit(u: ssa.Unit): String
     (* A unit's code and data, encoded, for the JIT (docs/jit.md section

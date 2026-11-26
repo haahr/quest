@@ -27,15 +27,14 @@ deleted.
   ssac, and JIT runs, and `ssa_*` phase dumps. Each step also needs the arm64 fixed point. The C fixed point and
   `tools/check` run once, at the end of each group in §2.
 - **Performance:** none of these is meant to change the compiler's speed. A step whose restructuring sits on a hot
-  path (§3's opcode table; `subtyping`'s keys, §5) counts the compiler's instructions before and after, by
+  path (`subtyping`'s keys, §5) counts the compiler's instructions before and after, by
   benchmarks.md §49.1's method, and stays within 1%.
 
 ## 2. Order
 
 | Group | Step | What | Size |
 |---|---|---|---|
-| 2. SSA facts | 5 | The opcode table | medium |
-| | 6 | Definitions, constants, and terminator operands, once | small to medium |
+| 2. SSA facts | 6 | Definitions, constants, and terminator operands, once | small to medium |
 | 3. IR structure | 7 | One visitor for IR nodes, with positions in one place | medium |
 | 4. Small and mechanical | 8 | IR passes' state in their records; IR stages as an option | small |
 | | 9 | C representations as an option | small |
@@ -49,61 +48,6 @@ different files. Steps are not renumbered as they are done. §4 lists the larger
 not taken.
 
 ## 3. Steps
-
-### Step 5: The opcode table
-
-**Problem.**
-- 18 functions case over all 54 opcodes:
-  - `ssa/nodes`: `resultType`, `opcodeIndex`, `opcodeName`, `opcodes`;
-  - `valuenumbers.numbered`, `selects.speculable`, and `tailcalls`' `from`;
-  - `verify`, the parser, and the printer;
-  - six in `codegen/arm64/select`: `constOf`, `condition`, `isComparison`, `isRealComparison`, `bitOf`, `instruction`;
-  - `ssac`'s instruction case.
-- Nine predicates end in `else` and so skip the exhaustiveness check: `valuenumbers.local` and `commutative`,
-  `loops.movable`, `comparison`, `remade`, and `reinterprets`, `conditions.compared`, and `nanchecks.propagates` and
-  `allowed`. `nanchecks.allowed` defaults to `true`, so a new opcode that writes memory would be allowed in a region.
-- Three predicates mean "may run where it was not": `selects.speculable`, `loops.movable`, and `nanchecks.allowed`.
-  They must agree, and nothing checks that they do.
-
-**Change.** An `OpInfo` record per opcode, made by one exhaustive `case` in `ssa/nodes` with no `else`, and an array of
-them indexed by `opcodeIndex`. Its fields: name, arity, effect (pure, reads, writes, calls), traps (never, divides),
-commutative, provenance (the arguments a pointer result derives from), and accumulate's identity. The fact-only
-predicates become field reads:
-- `opcodeName`, `numbered`, `commutative`, `propagates`, and `allowed`;
-- `verify`'s arity check;
-- `accumulate.identity`;
-- escape's and scalars' tests of `opPtrAdd` and `opUnproxy`.
-
-`speculable` and `movable` become "pure and never traps" plus each one's own rule that looks at an argument. What
-stays an exhaustive `case`:
-- each backend's emission;
-- `resultType` for the opcodes whose result depends on their arguments;
-- `verify`'s checks of calls and widths.
-
-**`local` becomes `rematerializable`** (decided 2026-11-25). `valuenumbers.local` mixes two reasons for keeping an
-equal block-local: constants, symbol addresses, and nulls are cheap to recompute in any block, while compares,
-`opAnd`, `opMul`, and `opPtrAdd` are there only because arm64 selection fuses them into a same-block branch or memory
-access. The first is a fact about the opcode; the second is a fact about one backend.
-- The table gets a `rematerializable` field, the target-independent default: `opConst`, `opRealConst`, `opSymbol`,
-  `opNull`.
-- A backend adds to it through a policy record that `codegen/native` passes to `pipeline.run`, in place of a global
-  setter like `setRotateAll`: arm64's adds the opcodes its selector fuses (the `fused` and `indexOf` fields of
-  `select.Selection`). The record holds a predicate over opcodes, defaulting to the table's field.
-- `valuenumbers` reads the record's predicate and keeps its " @block" keying as it is.
-- The comment's claim that arm64 does not rematerialize is stale (`select.rematerializable` covers `opMovConst` and
-  `opSymbolAddress`); the new comment says why each half is there.
-
-In this step every backend passes the current set, so the goldens stay byte for byte. Narrowing ssac and wasm to the
-table's default, and asking whether arm64 still needs constants kept block-local, are measured changes after it:
-instructions retired on the benchmarks and the compiler, and hamlet's stack accesses (docs/ssa.md §4.1).
-
-**Tests.**
-- The SSA goldens, unchanged.
-- The table checks itself once when built: a speculable opcode is pure and never traps; an opcode `allowed` in a NaN
-  check's region neither writes nor calls; arity agrees with the parser's operand count.
-- A round trip in the SSA unit tests: each `name` parses back to its opcode.
-- The compiler's instructions before and after (§1). The performance-tasks plan's step 1 (dfbd3d52) compiles
-  `opcodeIndex` and `opcodeName` as tables, so the table's array costs no more than those functions do.
 
 ### Step 6: Definitions, constants, and terminator operands, once
 
@@ -220,6 +164,11 @@ Worth doing, but larger or less urgent; each becomes a step when there is time f
   silent defaults. One recorded key per artifact (ABI, producer, backend, source digest, import resolutions,
   dependency fingerprints), whose first differing part is the reason, and one schema with one encoder and decoder.
   This is one project. It pays when a comment edit in a widely imported interface should rebuild nothing.
+- **Narrowing the block-local opcodes** (after step 5): ssac keeps arm64's `rematerializable` set (the table's
+  constants, symbols, and nulls, and the comparisons, `and`s, `mul`s, and `ptrAdd`s arm64 fuses), since narrowing it
+  to the table's is a change of output. Whether ssac does better with the table's alone, and whether arm64 still needs
+  its constants kept block-local now that `select.rematerializable` makes them again, are measured changes:
+  instructions retired on the benchmarks and the compiler, and hamlet's stack accesses (ssa.md §4.1).
 - **An analysis cache for the SSA passes.** `cfg.graph` is rebuilt once per pass and four times inside `loops`. A
   `changesCfg` flag in `ssa/pipeline`'s table of passes would make a cache per function possible; it was left out of
   that table (step 1) because nothing reads it, and a wrong flag nothing checks would be worse than none. The cache

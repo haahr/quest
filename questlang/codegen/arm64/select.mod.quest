@@ -346,27 +346,28 @@ export
                 minst.condEq
         end
     let isComparison(op: ssa.Opcode): Bool =
-        case op
-            when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge,
-                    opIsNaN then
-                true
-            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd,
-                    opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt,
-                    opRealBits,
-                    opBitsReal, opIntToReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy,
-                    opPtrAdd, opToVal, opFromVal, opSelect, opUnproxy then
-                false
+        case ssa.info(op).compares
+            when comparesInts, comparesReals, comparesNaN then true
+            when comparesNone then false
         end
     let isRealComparison(op: ssa.Opcode): Bool =
+        case ssa.info(op).compares
+            when comparesReals, comparesNaN then true
+            when comparesInts, comparesNone then false
+        end
+    (* Whether selection fuses op's value into the instruction that uses it in
+     * the same block: a comparison or a NaN test into a branch or a select
+     * (Selection.fused), an and into a bit test, and a multiplication or a
+     * pointer addition into a load's or store's address (indexOf) *)
+    let fuses(op: ssa.Opcode): Bool =
         case op
-            when opFeq, opFlt, opFle, opFgt, opFge, opIsNaN then true
-            when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opConst, opRealConst, opSymbol, opNull,
-                    opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr,
-                    opFadd,
-                    opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opIntToReal, opSext8,
-                    opZext8, opLoad,
-                    opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opToVal, opFromVal, opSelect,
-                    opUnproxy then
+            when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN,
+                    opAnd, opMul, opPtrAdd then
+                true
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opDiv, opRem, opOr, opXor, opShl,
+                    opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal,
+                    opIntToReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opToVal, opFromVal,
+                    opMulHiU, opSelect, opUnproxy then
                 false
         end
     (* The bit an and of a constant with one bit set tests, and the value it

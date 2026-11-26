@@ -14,6 +14,7 @@ import
 
     util/strutil : util/Strutil
 
+    arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
     questlang/ssa/parser : questlang/ssa/Parser
     questlang/ssa/passes/unproxies : questlang/ssa/passes/Unproxies
     questlang/ssa/passes/valueNumbers : questlang/ssa/passes/ValueNumbers
@@ -27,7 +28,7 @@ let show(title: String lines: Array(String)): Ok =
         emit("== " <> title <> "\n")
         let u = parser.readUnit(strutil.joinArray("\n" lines) <> "\n")
         emit(printer.formatUnit(u))
-        valueNumbers.numberUnit(u)
+        valueNumbers.numberUnit(u arm64.ssaPolicy)
         emit("-- after valueNumbers\n")
         emit(printer.formatUnit(u))
         try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end

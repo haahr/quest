@@ -61,8 +61,12 @@ import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     (* Each function's, numbering the values again and deciding the
-     * conditions again of each that changed *)
-    loopUnit(u: ssa.Unit): Ok
+     * conditions again of each that changed. A loop is rotated when its first
+     * pass has no invariant check to move before it only if p.rotateAll: it
+     * saves the jump back to the test, on arm64; clang rotates loops itself,
+     * and a loop rotated before it reaches clang it can compile worse, so
+     * ssac's policy turns it off. *)
+    loopUnit(u: ssa.Unit p: ssa.Policy): Ok
     (* After ssa/passes/tailJumps: a function's one self tail call, as
      * ssa/passes/tailCalls marks it, a loop, as loopUnit makes one before
      * it, numbering the values of each that changed. tailJumps copies a
@@ -70,10 +74,5 @@ export
      * tail call (even-odd's even1, odd1 copied in, calls even1) that the
      * backends would make a branch to the function's start, passing its
      * arguments again. *)
-    loopTailCalls(u: ssa.Unit): Ok
-    (* Whether a loop is rotated when its first pass has no invariant check to
-     * move before it (on by default): it saves the jump back to the test, on
-     * arm64; clang rotates loops itself, and a loop rotated before it
-     * reaches clang it can compile worse, so ssac turns it off *)
-    setRotateAll(on: Bool): Ok
+    loopTailCalls(u: ssa.Unit p: ssa.Policy): Ok
 end

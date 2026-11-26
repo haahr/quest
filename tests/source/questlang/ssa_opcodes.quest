@@ -1,0 +1,47 @@
+(* Self-Hosted Quest Compiler: Test the SSA's Opcode Table
+ *
+ * Prints each opcode's facts from questlang/ssa/nodes' table (info), so that
+ * a change to one shows here, and checks that each opcode's name reads back
+ * as it (opcodeNamed, which the SSA's parser uses) and that no two share a
+ * name. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    conv : Conv
+    stringOp = string : StringOp
+    writer : Writer
+
+    util/maybe : util/Maybe
+
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+
+let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end
+
+let flag(on: Bool name: String): String = if on then " " <> name else "" end
+
+let effect(e: ssa.Effect): String =
+    case e when effectPure then "pure" when effectReads then "reads" when effectWrites then "writes"
+        when effectCalls then "calls"
+    end
+
+let compares(c: ssa.Compares): String =
+    case c when comparesNone then "" when comparesInts then " compares ints" when comparesReals then " compares reals"
+        when comparesNaN then " tests a NaN"
+    end
+
+let ops = ssa.opcodes
+for k = 0 upto {extent ops - 1} do
+    let i = ssa.info(ops[k])
+    let identity = if maybe.isSome(i.identity) then " identity " <> conv.int(maybe.unwrap(i.identity)) else "" end
+    emit(i.name <> ": " <> effect(i.effect) <> flag(i.traps "traps") <> flag(i.speculable "speculable")
+        <> flag(i.commutative "commutative") <> compares(i.compares) <> flag(i.rematerializable "rematerializable")
+        <> flag(i.propagatesNaN "propagatesNaN") <> identity)
+    let back = ssa.opcodeNamed(i.name)
+    if maybe.isNone(back) orif not(stringOp.equal(ssa.opcodeName(maybe.unwrap(back)) i.name)) then
+        emit("  " <> i.name <> " does not read back")
+    end
+    for j = 0 upto {k - 1} do
+        if stringOp.equal(ssa.opcodeName(ops[j]) i.name) then emit("  " <> i.name <> " is two opcodes' name") end
+    end
+end
+emit(conv.int(extent ops) <> " opcodes")

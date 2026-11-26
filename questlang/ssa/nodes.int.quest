@@ -341,6 +341,58 @@ export
     (* The opcode of a name, if one has it *)
     opcodeNamed(name: String): maybe.T(Opcode)
 
+    (* What an instruction does besides make its results: nothing (it is
+     * pure), read memory, write it, or call a function *)
+    Def Effect = Option effectPure effectReads effectWrites effectCalls end
+    (* What a comparison's operands are: none, when the opcode is not one;
+     * ints or pointers; two reals; or one real, tested for being a NaN *)
+    Def Compares = Option comparesNone comparesInts comparesReals comparesNaN end
+    (* An opcode's facts, which the passes and the backends read rather than
+     * list opcodes of their own (docs/ssa.md section 4.1). Each is one
+     * exhaustive case in nodes, so that an opcode added must say each.
+     * - name: as printed and parsed;
+     * - effect;
+     * - traps: whether it may fault (a division, by zero);
+     * - speculable: whether it may run where it would not have, giving the
+     *   same value: pure and never trapping, and not tied to its place (a
+     *   slot's address, or an unproxy, which lowering makes a branch and a
+     *   call);
+     * - commutative;
+     * - compares;
+     * - rematerializable: a value a backend can make again where it is used,
+     *   at an instruction's cost, rather than keep it live (a constant, a
+     *   symbol's address, a null); a backend may add opcodes it would rather
+     *   keep near their uses (Policy);
+     * - propagatesNaN: a real operation whose result is a NaN when an operand
+     *   is;
+     * - identity: an associative and commutative operation's identity on
+     *   wrapping ints, for accumulators. *)
+    Def OpInfo = Tuple
+        name: String
+        effect: Effect
+        traps: Bool
+        speculable: Bool
+        commutative: Bool
+        compares: Compares
+        rematerializable: Bool
+        propagatesNaN: Bool
+        identity: maybe.T(Int)
+    end
+    (* op's facts, from a table made once *)
+    info(op: Opcode): OpInfo
+    (* Every opcode, once *)
+    opcodes: Array(Opcode)
+
+    (* What a backend tells the passes (ssa/pipeline): whether loops rotates
+     * every loop it can (ssac's clang does its own), and which opcodes value
+     * numbering keeps an equal of within its block, rather than reuse one
+     * from a dominating block: rematerializable ones, and any a backend fuses
+     * into the instruction that uses them *)
+    Def Policy = Tuple rotateAll: Bool rematerializable: All(op: Opcode) Bool end
+    (* The policy of no backend in particular: every loop rotated, and the
+     * table's rematerializable opcodes *)
+    defaultPolicy: Policy
+
     (* The instruction defining each value of f, by value, if one does (none
      * for a block's parameter) *)
     definitions(f: Function): Array(maybe.T(Inst))

@@ -16,19 +16,17 @@ import
 export
     (* The passes' names, in order (ssa/passNames) *)
     passes: Array(String)
-    (* Builds the SSA for unit and runs each non-skipped pass in order, calling
-     * after(name, u) after the builder (with name "built") and after each
-     * pass *)
-    run(unit: ir.Unit after: All(name: String u: ssa.Unit) Ok): ssa.Unit
+    (* Builds the SSA for unit and runs each non-skipped pass in order, under
+     * the backend's policy p (ssa/nodes' Policy), calling after(name, u)
+     * after the builder (with name "built") and after each pass *)
+    run(unit: ir.Unit p: ssa.Policy after: All(name: String u: ssa.Unit) Ok): ssa.Unit
     (* Builds and optimizes unit without calling an observer *)
-    build(unit: ir.Unit): ssa.Unit
+    build(unit: ir.Unit p: ssa.Policy): ssa.Unit
     (* Controls whether run and build insert interrupt checks after the passes
      * (ssa/passes/interrupts) for JIT-compiled code in the Jupyter kernel
      * (--kernel); defaults to false, and is skipped if QUEST_SKIP_PASSES names
      * interrupts *)
     setInterruptChecks(on: Bool): Ok
-    (* ssa/passes/loops' setRotateAll *)
-    setRotateAll(on: Bool): Ok
     (* Expands the unit's allocations into the collector's inline sequence
      * (ssa/passes/allocations), for the SSA's backends; left out
      * when QUEST_SKIP_PASSES names inlineAllocation *)

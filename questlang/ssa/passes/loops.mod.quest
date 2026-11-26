@@ -22,9 +22,6 @@ import
 export
     Let Function = ssa.Function
 
-    let settings = tuple let var rotateAll = true end
-    let setRotateAll(on: Bool): Ok = settings.rotateAll := on
-
     (* Whether vs and ws are the same values, in order *)
     let same(vs: Array(Int) ws: Array(Int)): Bool =
         begin
@@ -407,25 +404,41 @@ export
      * Loop-invariant instructions and checks moved before their loops
      * ====================================================================== *)
 
+    (* Whether i compares two values, which arm64 fuses into the branch on it
+     * (a NaN test included in neither) *)
+    let comparison(i: ssa.Inst): Bool =
+        case ssa.info(i.op).compares
+            when comparesInts, comparesReals then true
+            when comparesNone, comparesNaN then false
+        end
+
     (* Whether i may run before its loop whatever the loop does, its arguments
      * being invariant: an operation that cannot trap and touches no memory.
      * Comparisons stay with the branches that arm64 fuses them into, and
      * constants, symbols, and nulls where they are used (rematerialized, as
-     * value numbering keeps them), copied before the loop for what moves *)
+     * value numbering keeps them), copied before the loop for what moves. A
+     * copy is movable too, though value numbering has replaced every one
+     * before this pass runs. *)
     let movable(i: ssa.Inst): Bool =
-        case i.op
-            when opAdd, opSub, opMul, opAnd, opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv,
-                    opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opIntToReal, opSext8, opZext8, opPtrAdd,
-                    opToVal, opFromVal, opMulHiU, opSelect then
-                true
-            else false
+        begin
+            let o = ssa.info(i.op)
+            o.speculable andif not(o.rematerializable) andif not(comparison(i))
         end
 
-    let remade(i: ssa.Inst): Bool = case i.op when opConst, opRealConst, opSymbol, opNull then true else false end
+    let remade(i: ssa.Inst): Bool = ssa.info(i.op).rematerializable
 
-    (* Whether i is a conversion that changes no bits *)
+    (* Whether i is a conversion that changes no bits and keeps its value in
+     * an integer register (a real's bits move to another) *)
     let reinterprets(i: ssa.Inst): Bool =
-        case i.op when opToVal, opFromVal, opPtrToInt, opIntToPtr then true else false end
+        case i.op
+            when opToVal, opFromVal, opPtrToInt, opIntToPtr then true
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor,
+                    opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub,
+                    opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opRealBits, opBitsReal, opIntToReal,
+                    opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opMulHiU, opSelect,
+                    opUnproxy then
+                false
+        end
 
     (* Whether i makes a value that is rematerialized where it is used: a
      * constant, a symbol, or a null, or a conversion of one that changes no
@@ -440,12 +453,6 @@ export
                 andif maybe.isSome(defs[i.args[0]]) then
             remade(maybe.unwrap(defs[i.args[0]]))
         else false
-        end
-
-    let comparison(i: ssa.Inst): Bool =
-        case i.op
-            when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge then true
-            else false
         end
 
     (* Whether block r only raises: no parameters, instructions that make the
@@ -655,7 +662,7 @@ export
      * for the loop and raise as the first pass would have, and the loads
      * they make safe. Value numbering and the conditions pass then decide the
      * loop's own copies of the checks. Whether it moved anything *)
-    let hoistLoop(f: Function g: cfg.Graph h: Int inside: Array(Bool)): Bool =
+    let hoistLoop(f: Function g: cfg.Graph h: Int inside: Array(Bool) rotateAll: Bool): Bool =
         begin
             let defs = ssa.definitions(f)
             let n = vector.length(f.types)
@@ -796,7 +803,7 @@ export
                          * that each pass ends in the test, which branches
                          * back, rather than in a jump to it *)
                         let walking0 = walking
-                        let rotatable = walking andif settings.rotateAll
+                        let rotatable = walking andif rotateAll
                         while walking do
                             let blk = ssa.block(f cur)
                             for k = 0 upto {vector.length(blk.insts) - 1} do
@@ -1029,7 +1036,7 @@ export
      * outer loop then sees what an inner one moved; whether it moved any. The
      * graph is made again after each loop, since hoistLoop gives every loop a
      * preheader even when it moves nothing, but not for each block *)
-    let hoistLoops(f: Function): Bool =
+    let hoistLoops(f: Function rotateAll: Bool): Bool =
         begin
             let g = cfg.graph(f)
             let headers = vector.new(:Int)
@@ -1042,7 +1049,7 @@ export
                 if isHeader(now h) then
                     let inside = body(now h)
                     if inside[h] then
-                        if hoistLoop(f now h inside) then any := true end
+                        if hoistLoop(f now h inside rotateAll) then any := true end
                         now := cfg.graph(f)
                     end
                 end
@@ -1405,36 +1412,36 @@ export
             decided
         end
 
-    let loopUnit(u: ssa.Unit): Ok =
+    let loopUnit(u: ssa.Unit p: ssa.Policy): Ok =
         begin
             for i = 0 upto {vector.length(u.functions) - 1} do
                 let f = vector.get(u.functions i)
                 let looped = loopFunction(f)
                 let kept = keepCells(f)
-                let hoisted = hoistLoops(f)
+                let hoisted = hoistLoops(f p.rotateAll)
                 if hoisted then
                     let ignored = promote.promoteFunction(f)
                     dropDeadParams(f)
                 end
                 if looped orif kept orif hoisted then
-                    valueNumbers.numberFunction(f)
+                    valueNumbers.numberFunction(f p)
                     (* The comparisons of the checks conditions decides are
                      * left without uses, which numbering again removes *)
-                    if conditions.decideFunction(f) then valueNumbers.numberFunction(f) end
+                    if conditions.decideFunction(f) then valueNumbers.numberFunction(f p) end
                 end
                 (* Bounds checks last, with equal values numbered alike *)
-                if decideBounds(f) then valueNumbers.numberFunction(f) end
+                if decideBounds(f) then valueNumbers.numberFunction(f p) end
             end
         end
 
-    let loopTailCalls(u: ssa.Unit): Ok =
+    let loopTailCalls(u: ssa.Unit p: ssa.Policy): Ok =
         for i = 0 upto {vector.length(u.functions) - 1} do
             let f = vector.get(u.functions i)
             if loopSites(f true) then
                 (* The header's parameters that nothing reads go, as the
                  * closure's, which the back edge passes as null *)
                 dropDeadParams(f)
-                valueNumbers.numberFunction(f)
+                valueNumbers.numberFunction(f p)
             end
         end
 end

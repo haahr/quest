@@ -37,10 +37,10 @@ export
 
     let settings = tuple let var interruptChecks = false end
     let setInterruptChecks(on: Bool): Ok = settings.interruptChecks := on
-    let setRotateAll(on: Bool): Ok = loops.setRotateAll(on)
 
-    (* A pass: its name, and what runs it on a unit *)
-    Let Pass = Tuple name: String run: All(u: ssa.Unit) Ok end
+    (* A pass: its name, and what runs it on a unit, under a backend's
+     * policy *)
+    Let Pass = Tuple name: String run: All(u: ssa.Unit p: ssa.Policy) Ok end
 
     let unknownPass: Exception(String) = exception unknownPass: String end
 
@@ -51,10 +51,10 @@ export
 
     (* Copying a mutually recursive function into its caller can leave a self
      * tail call, which loops makes a loop as it does before *)
-    let jumpUnit(u: ssa.Unit): Ok =
+    let jumpUnit(u: ssa.Unit p: ssa.Policy): Ok =
         begin
             tailJumps.jumpUnit(u)
-            loops.loopTailCalls(u)
+            loops.loopTailCalls(u p)
         end
 
     (* The pass passNames calls name; raises unknownPass if there is none, which
@@ -62,22 +62,24 @@ export
      * from every name when this module starts *)
     let passOf(name: String): Pass =
         begin
-            let pass = fun(run: All(u: ssa.Unit) Ok): Pass tuple name run end
-            if stringOp.equal(name "escape") then pass(escapeUnit)
-            elsif stringOp.equal(name "promote") then pass(promoteUnit)
-            elsif stringOp.equal(name "scalars") then pass(replaceUnit)
-            elsif stringOp.equal(name "constants") then pass(constants.constantUnit)
-            elsif stringOp.equal(name "concats") then pass(concats.concatUnit)
-            elsif stringOp.equal(name "nanChecks") then pass(nanChecks.checkUnit)
+            let pass = fun(run: All(u: ssa.Unit p: ssa.Policy) Ok): Pass tuple name run end
+            (* A pass that the policy does not change *)
+            let plain = fun(run: All(u: ssa.Unit) Ok): Pass pass(fun(u: ssa.Unit p: ssa.Policy): Ok run(u))
+            if stringOp.equal(name "escape") then plain(escapeUnit)
+            elsif stringOp.equal(name "promote") then plain(promoteUnit)
+            elsif stringOp.equal(name "scalars") then plain(replaceUnit)
+            elsif stringOp.equal(name "constants") then plain(constants.constantUnit)
+            elsif stringOp.equal(name "concats") then plain(concats.concatUnit)
+            elsif stringOp.equal(name "nanChecks") then plain(nanChecks.checkUnit)
             elsif stringOp.equal(name "valueNumbers") then pass(valueNumbers.numberUnit)
             elsif stringOp.equal(name "conditions") then pass(conditions.decideUnit)
-            elsif stringOp.equal(name "selects") then pass(selects.selectUnit)
-            elsif stringOp.equal(name "tables") then pass(tables.tableUnit)
-            elsif stringOp.equal(name "accumulate") then pass(accumulate.accumulateUnit)
+            elsif stringOp.equal(name "selects") then plain(selects.selectUnit)
+            elsif stringOp.equal(name "tables") then plain(tables.tableUnit)
+            elsif stringOp.equal(name "accumulate") then plain(accumulate.accumulateUnit)
             elsif stringOp.equal(name "loops") then pass(loops.loopUnit)
-            elsif stringOp.equal(name "tailCalls") then pass(tailCalls.markUnit)
+            elsif stringOp.equal(name "tailCalls") then plain(tailCalls.markUnit)
             elsif stringOp.equal(name "tailJumps") then pass(jumpUnit)
-            elsif stringOp.equal(name "trampolines") then pass(trampolines.trampolineUnit)
+            elsif stringOp.equal(name "trampolines") then plain(trampolines.trampolineUnit)
             else raise unknownPass with name end
             end
         end
@@ -100,7 +102,7 @@ export
             found
         end
 
-    let run(unit: ir.Unit after: All(name: String u: ssa.Unit) Ok): ssa.Unit =
+    let run(unit: ir.Unit p: ssa.Policy after: All(name: String u: ssa.Unit) Ok): ssa.Unit =
         begin
             let checks = stringOp.equal(system.getEnv("QUEST_CHECK_IR") "1")
             let u = ssaBuild.buildUnit(unit)
@@ -112,7 +114,7 @@ export
             for i = 0 upto {extent table - 1} do
                 let pass = table[i]
                 if not(skipped(pass.name)) then
-                    pass.run(u)
+                    pass.run(u p)
                     if checks then
                         verify.checkUnit(u)
                         barriers.checkUnit(u)
@@ -129,7 +131,7 @@ export
             u
         end
 
-    let build(unit: ir.Unit): ssa.Unit = run(unit fun(name: String u: ssa.Unit): Ok ok)
+    let build(unit: ir.Unit p: ssa.Policy): ssa.Unit = run(unit p fun(name: String u: ssa.Unit): Ok ok)
 
     let inlineAllocation(u: ssa.Unit): Ok =
         if not(skipped("inlineAllocation")) then

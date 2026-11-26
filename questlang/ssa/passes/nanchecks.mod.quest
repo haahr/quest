@@ -17,10 +17,14 @@ export
     Def Check = Tuple block: Int value: Int bad: Int good: Int end
 
     (* The four operations a NaN operand makes a NaN *)
-    let propagates(op: ssa.Opcode): Bool = case op when opFadd, opFsub, opFmul, opFdiv then true else false end
+    let propagates(op: ssa.Opcode): Bool = ssa.info(op).propagatesNaN
 
     (* What a region may hold: nothing that writes memory or calls *)
-    let allowed(i: ssa.Inst): Bool = case i.op when opStore, opCall, opCallIndirect then false else true end
+    let allowed(i: ssa.Inst): Bool =
+        case ssa.info(i.op).effect
+            when effectPure, effectReads then true
+            when effectWrites, effectCalls then false
+        end
 
     let intEqual(a: Int b: Int): Bool = a is b
 

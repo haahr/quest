@@ -19,9 +19,9 @@ export
     (* The comparisons a fact is kept for, and the one each equality's
      * negation is *)
     let compared(op: ssa.Opcode): Bool =
-        case op
-            when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne then true
-            else false
+        case ssa.info(op).compares
+            when comparesInts then true
+            when comparesNone, comparesReals, comparesNaN then false
         end
     let negation(op: ssa.Opcode): maybe.T(ssa.Opcode) =
         case op
@@ -163,9 +163,9 @@ export
             decided
         end
 
-    let decideUnit(u: ssa.Unit): Ok =
+    let decideUnit(u: ssa.Unit p: ssa.Policy): Ok =
         for i = 0 upto {vector.length(u.functions) - 1} do
             let f = vector.get(u.functions i)
-            if decideFunction(f) then valueNumbers.numberFunction(f) end
+            if decideFunction(f) then valueNumbers.numberFunction(f p) end
         end
 end
