@@ -34,8 +34,7 @@ deleted.
 
 | Group | Step | What | Size |
 |---|---|---|---|
-| 1. Drift already seen | 2 | `ssa.copyInst` | small |
-| | 3 | One dead-parameter removal and one entry split | small |
+| 1. Drift already seen | 3 | One dead-parameter removal and one entry split | small |
 | | 4 | One `onlyProxyTests` | small |
 | 2. SSA facts | 5 | The opcode table | medium |
 | | 6 | Definitions, constants, and terminator operands, once | small to medium |
@@ -52,18 +51,6 @@ different files. Steps are not renumbered as they are done. §4 lists the larger
 not taken.
 
 ## 3. Steps
-
-### Step 2: `ssa.copyInst`
-
-**Problem.** Five sites rebuild an `Inst` with `ssa.instruction(i.op … i.signature)` and then patch `loc` and
-`invariant` by hand: `tailjumps:173`, `nanchecks:220`, and `loops:529`, `:850`, and `:950`. Two of them, `loops.copyOf`
-(`:529`) and the branch condition's copy (`:950`), already drop `invariant`. This is harmless only while neither copies
-a load.
-
-**Change.** `ssa.copyInst(i args results)`: every field of `i`, with new arguments and results. The five sites call
-it, and a field added to `Inst` later is copied everywhere by adding it in one place.
-
-**Tests.** The SSA goldens, unchanged.
 
 ### Step 3: One dead-parameter removal and one entry split
 

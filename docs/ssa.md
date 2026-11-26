@@ -441,10 +441,11 @@ slots, and linear scan none.
 The passes share their analyses: `ssa/cfg` (predecessors, successors, reverse postorder, the dominator tree with
 preorder and postorder numbers, dominance frontiers, and loop depths); the register allocator computes liveness on the
 machine layer's instructions (`codegen/machine/machine`), not on the SSA. `nodes` has the mutators (`targets`,
-`mapTargets`, `mapBlocks`, `replaceUses`). The driver dumps the SSA after the builder (`--dump-after ssa_built`), after
-each pass (`ssa_NAME`, for each name in `ssa/passNames`, the one list of the passes, from which the pipeline and the
-driver's phases and usage text are derived), and at the end (`ssa`); `QUEST_SKIP_PASSES`, a comma-separated list of
-passes' names, leaves passes out, for a test or a bisection.
+`mapTargets`, `mapBlocks`, `replaceUses`) and `copyInst`, which every pass that copies an instruction calls, so that a
+field added to an instruction is copied everywhere. The driver dumps the SSA after the builder (`--dump-after
+ssa_built`), after each pass (`ssa_NAME`, for each name in `ssa/passNames`, the one list of the passes, from which the
+pipeline and the driver's phases and usage text are derived), and at the end (`ssa`); `QUEST_SKIP_PASSES`, a
+comma-separated list of passes' names, leaves passes out, for a test or a bisection.
 
 ### 4.2. Escape Analysis
 

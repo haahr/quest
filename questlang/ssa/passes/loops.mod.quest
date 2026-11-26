@@ -552,9 +552,7 @@ export
                     args[k] := if x.invariant[d.args[k]] then d.args[k] else copyOf(x defs b d.args[k]) end
                 end
                 let v = ssa.newValue(x.f ssa.typeOf(x.f a))
-                let c = ssa.instruction(d.op args array of v end d.imm d.symbol d.width d.signed d.signature)
-                c.loc := d.loc
-                ssa.append(x.f b c)
+                ssa.append(x.f b ssa.copyInst(d args array of v end))
                 grow(x)
                 x.copies[a] := v
             end
@@ -872,11 +870,7 @@ export
                                     for j = 0 upto {extent i.results - 1} do
                                         results[j] := ssa.newValue(f ssa.typeOf(f i.results[j]))
                                     end
-                                    let c =
-                                        ssa.instruction(i.op args results i.imm i.symbol i.width i.signed i.signature)
-                                    c.loc := i.loc
-                                    c.invariant := i.invariant
-                                    ssa.append(f pre c)
+                                    ssa.append(f pre ssa.copyInst(i args results))
                                     let wider = array of(vector.length(f.types) ~1)
                                     for j = 0 upto {extent rename - 1} do wider[j] := rename[j] end
                                     for j = 0 upto {extent i.results - 1} do wider[i.results[j]] := results[j] end
@@ -972,9 +966,7 @@ export
                                     when termBranch with tc then
                                         let d = maybe.unwrap(defs[tc.cond])
                                         let v = ssa.newValue(f ssa.typeInt)
-                                        let copy = ssa.instruction(d.op copied(d.args)
-                                                array of v end d.imm d.symbol d.width d.signed d.signature)
-                                        copy.loc := d.loc
+                                        let copy = ssa.copyInst(d copied(d.args) array of v end)
                                         grow(x)
                                         moveTo(x defs tail copy)
                                         let next = ssa.newBlock(f)
