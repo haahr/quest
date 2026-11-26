@@ -22,23 +22,6 @@ export
         ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol "quest_string_concat") andif {extent i.args is 2}
             andif {extent i.results is 1}
 
-    (* How many times each of f's values is used, by an instruction or a
-     * terminator *)
-    let useCounts(f: Function): Array(Int) =
-        begin
-            let counts = array of(vector.length(f.types) 0)
-            for b = 0 upto {vector.length(f.blocks) - 1} do
-                let blk = ssa.block(f b)
-                for k = 0 upto {vector.length(blk.insts) - 1} do
-                    let i = vector.get(blk.insts k)
-                    for j = 0 upto {extent i.args - 1} do counts[i.args[j]] := counts[i.args[j]] + 1 end
-                end
-                let uses = ssa.terminatorUses(blk.term)
-                for j = 0 upto {extent uses - 1} do counts[uses[j]] := counts[uses[j]] + 1 end
-            end
-            counts
-        end
-
     (* Builds a call to quest_string_concat_n for parts (at most seven) with
      * result and source location loc. Appends the count constant and the null
      * instructions for unused trailing argument slots to emitted. *)
@@ -142,7 +125,7 @@ export
 
     let concatFunction(f: Function): Ok =
         begin
-            let counts = useCounts(f)
+            let counts = ssa.useCounts(f)
             for b = 0 upto {vector.length(f.blocks) - 1} do concatBlock(f b counts) end
         end
 

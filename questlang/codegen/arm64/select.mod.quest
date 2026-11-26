@@ -243,20 +243,8 @@ export
 
     (* The constant a value is, if it is one: an Int's, or the null's 0 *)
     let constOf(s: S v: Int): maybe.T(Int) =
-        if maybe.isNone(s.defs[v]) then
-            maybe.none()
-        else
-            let i = maybe.unwrap(s.defs[v])
-            case i.op
-                when opConst then maybe.some(i.imm)
-                when opNull then maybe.some(0)
-                when opRealConst, opSymbol, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor,
-                        opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub,
-                        opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
-                        opBitsReal, opIntToReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy,
-                        opPtrAdd, opToVal, opFromVal, opSelect, opUnproxy then
-                    maybe.none()
-            end
+        if maybe.isSome(s.defs[v]) andif ssa.isOp(maybe.unwrap(s.defs[v]) ssa.opNull) then maybe.some(0)
+        else ssa.constantOf(s.defs v)
         end
     let isConst(s: S v: Int n: Int): Bool = maybe.isSome(constOf(s v)) andif {maybe.unwrap(constOf(s v)) is n}
     (* An add's or a sub's immediate: 12 bits, perhaps shifted 12 *)
@@ -378,12 +366,7 @@ export
             maybe.none()
         else
             let i = maybe.unwrap(defs[v])
-            let constant(a: Int): maybe.T(Int) =
-                if maybe.isSome(defs[a]) andif ssa.isOp(maybe.unwrap(defs[a]) ssa.opConst) then
-                    maybe.some(maybe.unwrap(defs[a]).imm)
-                else
-                    maybe.none()
-                end
+            let constant(a: Int): maybe.T(Int) = ssa.constantOf(defs a)
             let one(n: Int): Bool = word.popCount(word.fromInt(n)) is 1
             let at(n: Int): Int = word.countTrailingZeros(word.fromInt(n))
             (* A copy's source, through conversions between words *)
@@ -1137,12 +1120,7 @@ export
             let indexOf = array of(nValues ~1)
             let shiftOf = array of(nValues 0)
             let folded = array of(nValues false)
-            let constAt(v: Int): maybe.T(Int) =
-                if maybe.isSome(defs[v]) andif ssa.isOp(maybe.unwrap(defs[v]) ssa.opConst) then
-                    maybe.some(maybe.unwrap(defs[v]).imm)
-                else
-                    maybe.none()
-                end
+            let constAt(v: Int): maybe.T(Int) = ssa.constantOf(defs v)
             (* A ptrAdd's uses as the address of a load or a store at offset 0
              * in its own block, and whether they all access one width: a
              * ptrAdd used only so (a load of an array's element and the

@@ -503,6 +503,47 @@ export
             when termNone, termReturn, termTailCall, termUnreachable then array of :Target end
         end
 
+    let operands(t: Terminator): Array(Int) =
+        case t
+            when termBranch with x then array of x.cond end
+            when termSwitch with x then array of x.value end
+            when termReturn with x then x.values
+            when termTailCall with x then x.call.args
+            when termNone, termJump, termTry, termUnreachable then none
+        end
+
+    let mapOperands(t: Terminator map: All(v: Int) Int): Terminator =
+        begin
+            let all = fun(vs: Array(Int)): Array(Int)
+                begin
+                    let r = array of(extent vs 0)
+                    for j = 0 upto {extent vs - 1} do r[j] := map(vs[j]) end
+                    r
+                end
+            case t
+                when termBranch with x then
+                    option termBranch of Terminator with
+                        let cond = map(x.cond)
+                        let ifTrue = x.ifTrue
+                        let ifFalse = x.ifFalse
+                    end
+                when termSwitch with x then
+                    option termSwitch of Terminator with
+                        let value = map(x.value)
+                        let cases = x.cases
+                        let targets = x.targets
+                        let default = x.default
+                    end
+                when termReturn with x then option termReturn of Terminator with let values = all(x.values) end
+                when termTailCall with x then
+                    begin
+                        x.call.args := all(x.call.args)
+                        t
+                    end
+                when termNone, termJump, termTry, termUnreachable then t
+            end
+        end
+
     let mapTargets(t: Terminator map: All(target: Target) Target): Terminator =
         case t
             when termJump with x then option termJump of Terminator with let target = map(x.target) end
@@ -548,24 +589,7 @@ export
                 for k = 0 upto {vector.length(blk.insts) - 1} do all(vector.get(blk.insts k).args) end
                 let ts = targets(blk.term)
                 for k = 0 upto {extent ts - 1} do all(ts[k].args) end
-                case blk.term
-                    when termBranch with x then
-                        blk.term := option termBranch of Terminator with
-                            let cond = replace(x.cond)
-                            let ifTrue = x.ifTrue
-                            let ifFalse = x.ifFalse
-                        end
-                    when termSwitch with x then
-                        blk.term := option termSwitch of Terminator with
-                            let value = replace(x.value)
-                            let cases = x.cases
-                            let targets = x.targets
-                            let default = x.default
-                        end
-                    when termReturn with x then all(x.values)
-                    when termTailCall with x then all(x.call.args)
-                    when termNone, termJump, termTry, termUnreachable then ok
-                end
+                blk.term := mapOperands(blk.term replace)
             end
         end
 
@@ -835,5 +859,27 @@ export
                 end
             end
             defs
+        end
+
+    let constantOf(defs: Array(maybe.T(Inst)) v: Int): maybe.T(Int) =
+        if {v < extent defs} andif maybe.isSome(defs[v]) andif isOp(maybe.unwrap(defs[v]) opConst) then
+            maybe.some(maybe.unwrap(defs[v]).imm)
+        else
+            maybe.none()
+        end
+
+    let useCounts(f: Function): Array(Int) =
+        begin
+            let counts = array of(vector.length(f.types) 0)
+            for b = 0 upto {vector.length(f.blocks) - 1} do
+                let blk = block(f b)
+                for k = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts k)
+                    for j = 0 upto {extent i.args - 1} do counts[i.args[j]] := counts[i.args[j]] + 1 end
+                end
+                let uses = terminatorUses(blk.term)
+                for j = 0 upto {extent uses - 1} do counts[uses[j]] := counts[uses[j]] + 1 end
+            end
+            counts
         end
 end

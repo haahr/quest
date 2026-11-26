@@ -602,30 +602,7 @@ export
                 i.args := swapped(i.args)
             end
             let mapped = ssa.mapTargets(blk.term fun(t: ssa.Target): ssa.Target ssa.target(t.block swapped(t.args)))
-            blk.term :=
-                case mapped
-                    when termBranch with x then
-                        option termBranch of ssa.Terminator with
-                            let cond = one(x.cond)
-                            let ifTrue = x.ifTrue
-                            let ifFalse = x.ifFalse
-                        end
-                    when termSwitch with x then
-                        option termSwitch of ssa.Terminator with
-                            let value = one(x.value)
-                            let cases = x.cases
-                            let targets = x.targets
-                            let default = x.default
-                        end
-                    when termReturn with x then
-                        option termReturn of ssa.Terminator with let values = swapped(x.values) end
-                    when termTailCall with x then
-                        begin
-                            x.call.args := swapped(x.call.args)
-                            mapped
-                        end
-                    when termNone, termJump, termTry, termUnreachable then mapped
-                end
+            blk.term := ssa.mapOperands(mapped one)
         end
 
     (* Inserts instructions at the start of block b *)
@@ -1086,13 +1063,7 @@ export
 
     let defOf(r: Ranges v: Int): maybe.T(ssa.Inst) = if v < extent r.defs then r.defs[v] else maybe.none() end
 
-    let constantOf(r: Ranges v: Int): maybe.T(Int) =
-        begin
-            let d = defOf(r v)
-            if maybe.isSome(d) andif ssa.isOp(maybe.unwrap(d) ssa.opConst) then maybe.some(maybe.unwrap(d).imm)
-            else maybe.none()
-            end
-        end
+    let constantOf(r: Ranges v: Int): maybe.T(Int) = ssa.constantOf(r.defs v)
 
     let isOne(r: Ranges v: Int): Bool = maybe.isSome(constantOf(r v)) andif {maybe.unwrap(constantOf(r v)) is 1}
 

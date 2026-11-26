@@ -325,6 +325,13 @@ export
     terminatorUses(t: Terminator): Array(Int)
     successors(t: Terminator): Array(Int)
     targets(t: Terminator): Array(Target)
+    (* The values a terminator uses other than its targets' arguments: a
+     * branch's condition, a switch's value, a return's values, and a tail
+     * call's arguments; and t with each of those replaced by what map makes
+     * of it, in new arrays (a terminator's arrays may be shared with another
+     * block's, as two returns of one value can be) *)
+    operands(t: Terminator): Array(Int)
+    mapOperands(t: Terminator map: All(v: Int) Int): Terminator
     (* t with each of its targets replaced by what map makes of it *)
     mapTargets(t: Terminator map: All(target: Target) Target): Terminator
     (* t with each block it may go to (its targets', and a try's handler)
@@ -396,4 +403,9 @@ export
     (* The instruction defining each value of f, by value, if one does (none
      * for a block's parameter) *)
     definitions(f: Function): Array(maybe.T(Inst))
+    (* The integer v is, if defs (definitions') says a const defines it *)
+    constantOf(defs: Array(maybe.T(Inst)) v: Int): maybe.T(Int)
+    (* How many times each of f's values is used, as an instruction's argument
+     * or by a terminator, its targets' arguments included *)
+    useCounts(f: Function): Array(Int)
 end

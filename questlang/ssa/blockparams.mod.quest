@@ -52,15 +52,7 @@ export
                     let i = vector.get(blk.insts k)
                     for j = 0 upto {extent i.args - 1} do used[i.args[j]] := true end
                 end
-                (* The terminator's operands but its targets' arguments *)
-                let operands =
-                    case blk.term
-                        when termBranch with x then array of x.cond end
-                        when termSwitch with x then array of x.value end
-                        when termReturn with x then x.values
-                        when termTailCall with x then x.call.args
-                        when termNone, termJump, termTry, termUnreachable then array of :Int end
-                    end
+                let operands = ssa.operands(blk.term)
                 for j = 0 upto {extent operands - 1} do used[operands[j]] := true end
             end
             (* An argument for a parameter that is used, or that is the

@@ -34,7 +34,6 @@ deleted.
 
 | Group | Step | What | Size |
 |---|---|---|---|
-| 2. SSA facts | 6 | Definitions, constants, and terminator operands, once | small to medium |
 | 3. IR structure | 7 | One visitor for IR nodes, with positions in one place | medium |
 | 4. Small and mechanical | 8 | IR passes' state in their records; IR stages as an option | small |
 | | 9 | C representations as an option | small |
@@ -48,27 +47,6 @@ different files. Steps are not renumbered as they are done. §4 lists the larger
 not taken.
 
 ## 3. Steps
-
-### Step 6: Definitions, constants, and terminator operands, once
-
-**Problem.**
-- There is no use-list analysis. Use counting is written by hand in `valuenumbers:317`, `select:993`, `nanchecks:165`,
-  `loops.dropDeadParams:1050`, `concats`, and `scalars`.
-- A value's defining instruction is found six ways: `ssa.definitions`, `proxyFold.Defs`, and copies in `tables:228`,
-  `barriers:87-101`, `select:991`, and `loops:1135-1145`.
-- A value's constant is found seven ways: `valuenumbers.constantOf`, `loops.constantOf`, `select.constOf`, `constant`,
-  and `constAt`, `allocations.constants`, and `proxyfold.isConstant`.
-- A terminator's operands other than its targets are listed by hand seven times: `nodes.replaceUses`, `escape` twice,
-  `scalars` twice, and `loops` twice. `ssa.terminatorUses` exists and covers reading them, but not rewriting them.
-
-**Change.**
-- One `Defs` with `defOf` and `constantOf`.
-- `uses(f)`, built in one sweep when asked for.
-- `mapOperands(t f)` beside `terminatorUses`.
-
-The passes use them where the copies were.
-
-**Tests.** The SSA goldens, unchanged.
 
 ### Step 7: One visitor for IR nodes
 
@@ -169,6 +147,11 @@ Worth doing, but larger or less urgent; each becomes a step when there is time f
   to the table's is a change of output. Whether ssac does better with the table's alone, and whether arm64 still needs
   its constants kept block-local now that `select.rematerializable` makes them again, are measured changes:
   instructions retired on the benchmarks and the compiler, and hamlet's stack accesses (ssa.md §4.1).
+- **What step 6 left.** `ssa/nodes` has `constantOf`, `useCounts`, `operands`, and `mapOperands`, and the passes'
+  plain copies call them. Left as they were: `proxyFold.Defs` (a value's block and index, which escape and scalars
+  need to find an instruction's place), barriers' table of definitions (the same, for a checker), arm64 selection's
+  use counts and definitions (made in its one sweep over the function with what else it collects, on a hot path), and
+  the terminator cases of escape and scalars that give each kind of use its own reason.
 - **An analysis cache for the SSA passes.** `cfg.graph` is rebuilt once per pass and four times inside `loops`. A
   `changesCfg` flag in `ssa/pipeline`'s table of passes would make a cache per function possible; it was left out of
   that table (step 1) because nothing reads it, and a wrong flag nothing checks would be worse than none. The cache

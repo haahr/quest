@@ -49,12 +49,7 @@ export
                     r
                 end
             let defs = ssa.definitions(f)
-            let constantOf(v: Int): maybe.T(Int) =
-                if maybe.isSome(defs[v]) andif ssa.isOp(maybe.unwrap(defs[v]) ssa.opConst) then
-                    maybe.some(maybe.unwrap(defs[v]).imm)
-                else
-                    maybe.none()
-                end
+            let constantOf(v: Int): maybe.T(Int) = ssa.constantOf(defs v)
 
             (* Collect incoming jumps to each block and collapse trivial block
              * parameters (ones every jump binds to the same value or to the
@@ -282,16 +277,7 @@ export
 
             (* Remove dead removable instructions (those with no remaining
              * uses) to a fixed point *)
-            let uses = array of(n 0)
-            for b = 0 upto {nBlocks - 1} do
-                let blk = ssa.block(f b)
-                for k = 0 upto {vector.length(blk.insts) - 1} do
-                    let i = vector.get(blk.insts k)
-                    for a = 0 upto {extent i.args - 1} do uses[i.args[a]] := uses[i.args[a]] + 1 end
-                end
-                let us = ssa.terminatorUses(blk.term)
-                for a = 0 upto {extent us - 1} do uses[us[a]] := uses[us[a]] + 1 end
-            end
+            let uses = ssa.useCounts(f)
             let unused(i: ssa.Inst): Bool =
                 begin
                     let var none = removable(i)
