@@ -236,7 +236,58 @@ hand-edited assembly and samples: removing mandelbrot's two `fmov`s saved 0.24% 
 since its inner loop is entered very often and runs a few passes each time (its hottest instructions are the loop's
 setup, not its back edge); in mpuz, the moves before its 26 back edges take about 0.25% of the samples. **Why not:**
 under the bar on both programs the plan named. Removing them would take register assignment that keeps a value out of
-a register a later value on the same path is hinted to.
+a register a later value on the same path is hinted to. Coalescing a jump's arguments with its target's parameters
+(2026-11-25, arm64.md §3.8) now removes such moves where the registers are not short, with the rest of what it
+gained: mpuz 0.921 of its instructions, mandelbrot 0.958, and bignum's `mulLimbs`, whose carry had been moved on its
+back edge (`mov x4, x3`).
+
+### 5.9. The collector's growth target from live lines
+
+After a full collection the heap may grow to twice its blocks in use, and a recyclable block counts as wholly in use
+(collector.md §9.6). Measured 2026-11-25 (performance-tasks-plan.md step 10).
+
+- **The compiler.** Its blocks in use are 1.4–1.8 times its live lines, not §16.3's 3.2. The test was stage 2
+  compiling the driver at `-j 1` through arm64, three runs of each target:
+
+  | Target | Full collections | Peak resident | Instructions | Cycles | Full pauses |
+  |---|--:|--:|--:|--:|--:|
+  | 2 × blocks in use (now) | 10 | 6.89 GB | 651 G | 189–196 G | 2.7–3.0 s |
+  | blocks in use + live lines | 36 | 6.08–6.24 GB | +1.6–2.5% | +3–5% | 6.5–6.9 s |
+  | 2 × live lines, at least blocks in use + a quarter | 94 | 5.29–5.32 GB | +5.2% | +9–11% | 9.3 s |
+
+  The extra collections come in two places. Many are small ones early, at 50–150 MB, where the blocks in use are 2–5
+  times the live lines. The rest are the large ones late, where the full pauses add 4–6.5 s.
+- **barnes-hut.** §17.2's 451 MB for 3 MB live is gone: its heap now stays at the 64 MB floor (72 MB resident), so no
+  target changes it.
+
+**Why not:** the time bar. The gentler target saved 10% of peak memory for 3–5% more cycles.
+
+**What would change that:**
+- A heap whose blocks in use far exceed its live lines and that does not sit at the floor.
+- Or a target that counts holes only past some size, so the small early heaps keep their room.
+
+### 5.10. An unproxy first made inside a loop, hoisted
+
+The loops pass hoists invariant values but not an `unproxy` (`movable` does not list it, and rotation's walk stops at
+one; benchmarks.md §22.2 item 6). Counted 2026-11-25 at `bb49e0c0`, over the 46 programs' SSA after every pass (a
+census of natural loops in `--stop-after ssa` dumps): 797 `unproxy`s inside loops, 41 of them of an operand defined
+outside the loop, in vliw (21), mlyacc (10), model-elimination (5), hamlet (3), lexgen, and mpuz. Through arm64 an
+`unproxy` on the hot path is a test of the operand's low bit and a branch not taken. vliw's functions that hold its 21
+take 9.4% of its samples together (`read` 2.2%, `intersect1_spec` 1.6%, `f_49` 1.4%, the rest under 1% each), so the
+test, one instruction of each pass of loops of tens, is well under 1% of vliw; mlyacc's take 0.5%, and
+model-elimination's and hamlet's none of the samples shown. **Why not:** under the bar on every program that has
+one.
+
+### 5.10. Coalescing a move's two registers
+
+The performance-tasks plan's step 9 (2026-11-25) coalesced, before arm64's allocation, a jump's arguments with its
+target's parameters, and measured joining a move's two registers the same way, alone and with the jumps
+(`QUEST_COALESCE=moves|jumps|both`, since removed). Against `b14d643c`, unit by unit: the moves alone took every
+program to between 0.987 and 1.000 of its instructions, and with the jumps nothing beyond the jumps alone (within
+0.002); they only made the pass's candidates many times more. **Why not:** under the bar on every program; the
+jumps were kept (arm64.md §3.8). A load into a scratch register then moved (`ldr x12, ...; mov x21, x12`, step 9's
+first proposed change) is mostly gone with them: 12,580 such pairs over the 46 programs' code at `b14d643c`, 3,703
+after; they were 1.1% of the suite's samples before, so what is left is under the bar too.
 
 ## 6. Not started
 
@@ -249,7 +300,15 @@ a register a later value on the same path is hinted to.
 - **Cursor and limit loaded as a pair** (one `ldp` from one address), part of the same fast-path work, not done.
 - **The WebAssembly allocator's flags folded into its limit,** as the native one's are; not done.
 - **Values live only across a cold call saved only on its path:** `tfoCombine`'s reals are stored and reloaded around
-  `quest_gc_alloc_slow` on the fast path; the spill code could move to the cold block. Not measured.
+  `quest_gc_alloc_slow` on the fast path; the spill code could move to the cold block. Not measured. The same spill
+  placement would serve hashMap's `findIndex` (2026-11-25, the performance-tasks plan's step 9): more of its values
+  are live across its key's comparison than there are callee-saved registers, so coalescing leaves its probe loop
+  alone, and each round it moves its result between `x0` and `x25` and reloads `m` from its slot. A loop's reload of a
+  value not redefined in it, made once before the loop where a register is free for it, was step 9's third proposed
+  change; not made.
+- **A bounds check clang proves away:** bignum's `mulLimbs` checks `r[i + j]` each pass of its inner loop, which
+  clang removes from the two loops' bounds (the performance-tasks plan's step 6). The loops pass's, not the
+  allocator's; not started.
 
 ## 7. Observed, not acted on
 
@@ -265,9 +324,16 @@ a register a later value on the same path is hinted to.
   code, but the hazard itself is not fixed: any change that shifts a loop's registers, here or in another program, can
   set it off again, and nothing in the compiler models it. What would: a register allocator that prefers, for a value
   live across a call and loaded through after it, a register the callee restores; or a measure of how often it costs,
-  from counts of cycles against instructions over the suite, before any of that.
+  from counts of cycles against instructions over the suite, before any of that. It came back on 2026-11-25 with
+  coalescing (arm64.md §3.8): `find`'s cell moved from `x20` to `x21` again, and peek took 1.19 times the cycles with
+  0.974 of the instructions (three rounds on a quiet machine). Swapping `x20` and `x21` in `find` alone, by
+  hand-edited assembly, took it to 0.995 of the cycles, so the stall is all of it; coalescing was kept with it.
 - **A `while` on a `var` flag through arm64:** mandelbrot's inner loop written that way retired 1.25 times the
   recursive version's instructions through arm64, though 0.88 through ssac (benchmarks.md §42.3, before the loops pass
   rotated loops). Not a cost of the recursive form the suite uses, but of Quest's own loops; to be counted again.
 - **imp-for through arm64** retires 324 times ssac's instructions: clang computes the nest's result without looping,
   as it does fib's (benchmarks.md §2.3). Not a cost the compiler should chase.
+- **even-odd's last gap through arm64** (2026-11-25): with its self tail call a loop (the performance-tasks plan's
+  step 5), its loop is 5 instructions for two calls against ssac's 4, the difference clang's folding of the two
+  decrements, each `i - 1` tested against 0 in turn, into one `sub #2` tested against 1 and 0. A fold for this
+  program's shape, not a rule; not chased.

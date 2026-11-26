@@ -148,6 +148,18 @@ export
      * which blocks are cold. *)
     allocate(f: machine.Function t: targets.Target rematerializable: All(i: machine.Inst) Bool cold: All(b: Int) Bool):
             Allocation
+    (* allocate, after conservative coalescing: values of one class and one
+     * kind (by register, as kind says) that a jump passes to its target's
+     * parameters are joined into one virtual register where they do not
+     * interfere and none of them is ever live where its class is short of
+     * registers, and two groups are not joined whose moves to and from
+     * physical registers name different ones, so that the jump moves nothing.
+     * It leaves f out of SSA form, a joined register defined once for each
+     * value joined, which allocate allows. A function a raise enters is not
+     * coalesced: its handlers read values from their slots, which each value
+     * then needs of its own. *)
+    coalesceAndAllocate(f: machine.Function t: targets.Target kind: All(r: Int) Int
+            rematerializable: All(i: machine.Inst) Bool cold: All(b: Int) Bool): Allocation
     (* Where a virtual register (by its index) is at a position: its register,
      * or memory *)
     home(a: Allocation v: Int p: Int): Int

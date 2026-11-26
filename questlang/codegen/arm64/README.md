@@ -16,7 +16,7 @@ JIT ([`../../jit`](../../jit)) loads into memory directly. Both come from the sa
 | step | where | what it does |
 |---|---|---|
 | select | [`select`](select.int.quest) | SSA instructions become arm64 instructions over virtual registers |
-| allocate | [`../machine/regalloc`](../machine/regalloc.int.quest) | virtual registers get registers or frame slots |
+| allocate | [`../machine/regalloc`](../machine/regalloc.int.quest) | a jump's arguments joined with its parameters where they can be (`coalesceAndAllocate`), then virtual registers get registers or frame slots |
 | rewrite | `regalloc.rewrite` | spill loads and stores, and moves between registers, are added |
 | frame | `codegen` | prologue, epilogues, slot offsets, callee-saved registers, frame maps |
 | peephole | [`peephole`](peephole.int.quest) | far conditional branches relaxed; adjacent loads and stores paired |

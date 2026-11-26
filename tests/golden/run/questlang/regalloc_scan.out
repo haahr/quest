@@ -496,3 +496,198 @@ b1:
 b2:
 	mov =a0 s1
 	ret a0
+== a value passed to a parameter live across a call
+b0:
+	mov =%0 a0
+	add =%2 %0 %0
+	b %2 -> b1
+b1(%1):
+	call g
+	mov =a0 %1
+	ret a0
+%0: a0 at 3
+%1: s1 at 8
+%2: r1 at 5
+callee-saved used: s1
+rewritten:
+b0:
+	add =r1 a0 a0
+	mov =s1 r1
+	b -> b1
+b1(%1):
+	call g
+	mov =a0 s1
+	ret a0
+== the same, coalesced
+b0:
+	mov =%0 a0
+	add =%2 %0 %0
+	b %2 -> b1
+b1(%1):
+	call g
+	mov =a0 %1
+	ret a0
+coalesced:
+b0:
+	mov =%0 a0
+	add =%2 %0 %0
+	b %2 -> b1
+b1(%2):
+	call g
+	mov =a0 %2
+	ret a0
+%0: a0 at 3
+%1:
+%2: s1 at 5
+callee-saved used: s1
+rewritten:
+b0:
+	add =s1 a0 a0
+	b -> b1
+b1(%2):
+	call g
+	mov =a0 s1
+	ret a0
+== a loop, coalesced
+b0:
+	mov =%0 a0
+	const 0 =%2
+	b %2 -> b1
+b1(%1):
+	lt =%3 %1 %0
+	cbnz %3 -> b3
+	b -> b4
+b2:
+	const 1 =%4
+	add =%5 %1 %4
+	b %5 -> b1
+b3:
+	b -> b2
+b4:
+	mov =a0 %1
+	ret a0
+coalesced:
+b0:
+	mov =%0 a0
+	const 0 =%5
+	b %5 -> b1
+b1(%5):
+	lt =%3 %5 %0
+	cbnz %3 -> b3
+	b -> b4
+b2:
+	const 1 =%4
+	add =%5 %5 %4
+	b %5 -> b1
+b3:
+	b -> b2
+b4:
+	mov =a0 %5
+	ret a0
+%0: a0 at 3
+%1:
+%2:
+%3: r2 at 11
+%4: r2 at 29 (made again)
+%5: r1 at 5
+frequencies: b0 1000 b1 8000 b2 8000 b3 8000 b4 1000
+callee-saved used:
+rewritten:
+b0:
+	const 0 =r1
+	b -> b1
+b1(%5):
+	lt =r2 r1 a0
+	cbnz r2 -> b3
+	b -> b4
+b2:
+	const 1 =r2
+	add =r1 r1 r2
+	b -> b1
+b3:
+	b -> b2
+b4:
+	mov =a0 r1
+	ret a0
+== interference, coalesced
+b0:
+	mov =%0 a0
+	mov =%3 %0
+	add =%4 %3 %0
+	b %4 %4 -> b1
+b1(%1 %2):
+	add =%5 %1 %2
+	mov =a0 %5
+	ret a0
+coalesced:
+b0:
+	mov =%0 a0
+	mov =%3 %0
+	add =%4 %3 %0
+	b %4 %4 -> b1
+b1(%4 %2):
+	add =%5 %4 %2
+	mov =a0 %5
+	ret a0
+%0: a0 at 3
+%1:
+%2: r2 at 10
+%3: r1 at 5
+%4: r1 at 7
+%5: a0 at 13
+callee-saved used:
+rewritten:
+b0:
+	mov =r1 a0
+	add =r1 r1 a0
+	mov =r2 r1
+	b -> b1
+b1(%4 %2):
+	add =a0 r1 r2
+	ret a0
+== a class short of registers, coalesced
+b0:
+	mov =%0 a0
+	add =%2 %0 %0
+	add =%3 %0 %2
+	b %2 -> b1
+b1(%1):
+	call g
+	add =%4 %1 %3
+	add =%5 %4 %0
+	mov =a0 %5
+	ret a0
+coalesced:
+b0:
+	mov =%0 a0
+	add =%2 %0 %0
+	add =%3 %0 %2
+	b %2 -> b1
+b1(%1):
+	call g
+	add =%4 %1 %3
+	add =%5 %4 %0
+	mov =a0 %5
+	ret a0
+%0: s1 at 3
+%1: r1 at 10, memory at 13, r1 at 14 (stored)
+%2: r1 at 5
+%3: s2 at 7
+%4: r1 at 15
+%5: a0 at 17
+move at 14: %1 memory -> r1
+callee-saved used: s1 s2
+slots: %1 in 0
+rewritten:
+b0:
+	mov =s1 a0
+	add =r1 s1 s1
+	add =s2 s1 r1
+	store [%1] r1
+	b -> b1
+b1(%1):
+	call g
+	load [%1] =r1
+	add =r1 r1 s2
+	add =a0 r1 s1
+	ret a0

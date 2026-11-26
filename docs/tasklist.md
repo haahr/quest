@@ -123,22 +123,6 @@ measured by instructions retired (`tools/perf/counts.py`) on whole programs at a
 unit by unit through arm64 and ssac; a change under 1% on every program it aims at goes into
 optimization-experiments.md instead.
 
-## arm64's register allocator: copies at joins, spills reloaded each round, loads moved
-
-**Problem.** The arm64-built compiler takes 1.06 of the ssac-built one's time (benchmarks.md §45), and §21.5 found
-half of its gap then in the hot functions' length: hashMap `findIndex` 157 instructions against C's 117, `insert` 677
-against 542, sha256 `hexDigest` 1,215 against 552. What §22 left of it is the register allocator's (§22.3): copies at
-a loop's join, a spill reloaded each round in `findIndex`, and an `ldr` then a `mov` where one `ldr` would do (§24.1
-item 5, 136 to 3,588 per program; §38.3 item 7, four per element of tyan's compare). `883a870d` made a join take its
-hot predecessor's register; hint-following and full coalescing were tried and not kept (arm64.md §6.1).
-
-**Where to start.** `codegen/machine/regalloc`; arm64.md §6.2 proposes conservative (Briggs) coalescing.
-benchmarks.md §47 profiles the compiler against the ssac-built one: after `opcodeIndex` (a table since `bb49e0c0`), the hash
-map and vector functions, `hash.string`, and `equal` carry the gap, none by more than 570 samples of 98,571.
-
-**Done when.** `findIndex`'s probe loop has no copy at its join and no reload each round, and the compiler's gap and
-the suite's counts are measured; or it is judged not worth it.
-
 ## The arm64-built compiler's larger heap
 
 **Problem.** The arm64-built compiler's heap is 1.25 times the ssac-built one's at its largest compiling the driver
@@ -162,39 +146,6 @@ knuth-bendix, boyer, and model-elimination raise and catch constantly; arm64's `
 handler in the same function is a jump to it with the payload.
 
 **Done when.** Both are in, with tests, on every backend, WebAssembly included, and measured on those three programs.
-
-## The small recursions on arm64
-
-**Problem.** even-odd through arm64 takes about 1.8 times ssac's time (benchmarks.md §35.3, 0.53 against 0.29 of
-MLton's), since clang reduces its loop further after `tailJumps` (§14.2). fib, tak, and tailfib are clang's folding
-and not worth chasing (§27.3).
-
-**Where to start.** arm64.md §6.2, "The small recursions": compare even-odd's loop through both backends
-(`tools/perf/asmstats.py`).
-
-**Done when.** The difference in its loop is understood and fixed, or recorded in optimization-experiments.md.
-
-## Spills in very large inlined functions
-
-**Problem.** ratio-regions' `preflowPush` (12,682 instructions) had most of its hot samples on spills and reloads,
-and on loads of the queue array from a global on every bucket (benchmarks.md §9). It takes 2.99 times MLton's time
-through arm64 against 2.61 through ssac (§35.3, before §44).
-
-**Where to start.** Profile it again after §44 (`tools/perf/profile.py .build/perf/ratio-regions.arm64 -f ...`);
-arm64.md §6.2 has it.
-
-**Done when.** The spills are understood and the fix measured, or it is recorded as not worth it.
-
-## arm64 against ssac on the bignum programs
-
-**Problem.** smith-normal-form takes 23.7 times MLton's time through arm64 against 12.2 through ssac, and pidigits
-10.3 against 8.58 (benchmarks.md §35.3). §15.4–§15.5 fixed the carries and the constant loads, and §44 took 0.90 to
-0.95 of their instructions, but nothing takes apart what is left.
-
-**Where to start.** Time them again after §44, then compare `mulLimbs` and its neighbours through both backends with
-`asmstats.py` and `profile.py`.
-
-**Done when.** What is left is named, and fixed or recorded.
 
 ## The collector's growth target counts a recyclable block as in use
 

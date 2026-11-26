@@ -342,6 +342,25 @@ target (`codegen/machine/target`) gives it register numbers.
   `d31`.
 - **Hints.** A move's two registers, and a jump's argument and its target's parameter, are hints: an interval
   takes the register of what it is hinted to when that one is free for all of it, so the move costs nothing.
+- **Coalescing** (2026-11-25, `regalloc.coalesceAndAllocate`). A hint can do nothing for a value allocated before what
+  it is hinted to: mpuz's `revAppend` computed a value into `x12` and moved it into the parameter, in `x21`, that a jump
+  passed it to. So before the scan, a jump's arguments are joined with its target's parameters into one virtual
+  register, conservatively: two groups are joined only where no member of one interferes with one of the other (one
+  defined where the other is live, a block's parameters defined together at its start), where none of them is ever live
+  where its class is short of registers (as many values live as the class has registers, or across a call as it has
+  callee-saved ones), and where their moves to and from physical registers name no different ones (their own, or failing
+  those their partners'). A group live across a call is also not joined with one whose own moves name only caller-saved
+  registers: tak's arguments were moved into callee-saved registers before its base case's test. The candidates are
+  taken from the deepest loops out. The joined register is defined once for each value joined, which the scan allows (a
+  value defined more than once is not rematerialized); the liveness is the SSA's, each value renamed by its group, not
+  computed again. A function that enters a `try` is not coalesced. Joining a move's two registers too was measured and
+  not kept (optimization-experiments.md §5.10). Measured against `b14d643c`, unit by unit (the performance-tasks plan's
+  step 9): the 46 programs' instructions 0.976 by geometric mean and cycles 0.960, life 0.907, mpuz 0.921, wc-scanStream
+  0.928, zebra 0.931, tsp 0.943, smith-normal-form 0.951, fib 0.953, and none above 1.000 in instructions; the compiler
+  1.001 of its instructions and 1.002 of its cycles (the pass is about 0.6% of a compile, its code about as much
+  better). peek's cycles are 1.19 with 0.973 of its instructions: the reload stall of optimization-experiments.md §7,
+  set off again by `find`'s registers. hashMap's `findIndex` is short of registers across its key's comparison, so its
+  loop's join is not coalesced (§6.2).
 - **Rewriting.** `regalloc.rewrite` puts the registers allocated in the instructions: an operand in memory is
   loaded into a scratch register (`x9`, `x10`, `x11`, or `d30`, `d31`), a result in memory is written to one and
   stored, and the moves between pieces and on edges are made in parallel, as above. An edge's moves are made
@@ -746,6 +765,8 @@ the same SSA (2026-11-01), neither of which paid:
   machine (five rounds), against no coalescing: ray, hamlet, zebra, and nucleic within noise either way; coalescing
   only the jumps that go forward, mlyacc 1.50 to 1.40 but life 1.50 to 1.59; only moves, or only back edges, nothing.
   Longer intervals in a function short of registers (`qf_f_6` uses every callee-saved one) are the likely cost.
+  The conservative form, of jumps only, which joins nothing where a class is short of registers, was kept on
+  2026-11-25 (§3.8), judged by counts as well as cycles.
 
 Two more were counted rather than built (2026-11-01, at `e72fc0cb`), with the allocator told that some calls clobber
 no register, and not made:
@@ -758,9 +779,12 @@ no register, and not made:
 
 ### 6.2. Ideas
 
-- **Conservative coalescing** (Briggs's test: coalesce only where the merged interval stays allocatable), which would
-  keep §6.1's gains without its lengthened intervals; or better register allocation than linear scan, if spilling
-  costs show up again in profiles.
+- **Spill placement in loops short of registers.** hashMap's `findIndex` keeps more values live across its key's
+  comparison than there are callee-saved registers, so coalescing (§3.8) leaves it alone, and its probe loop still
+  moves its result between `x0` and `x25` each round and reloads `m` from its slot each round (2026-11-25). Moving
+  the result only where the loop is left, and the reload out of the loop where a register is free for it, is spill
+  placement, with optimization-experiments.md §6's values live only across a cold call; or better register allocation
+  than linear scan, if spilling costs show up again in profiles.
 - **Proxy checks on the hot path.** Nearly every load of a tuple's, list cell's, or option's field is preceded by a
   test of the proxy bit, with a cold call of `quest_proxy_element` or a relative: zebra's `isConsistent` had 168 such
   call sites (2026-11-03). They are not taken, but they lengthen the hot path, and each holds registers live across a

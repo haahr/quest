@@ -349,8 +349,24 @@ export
             let s = select.select(f "Lf" <> conv.int(index) defined)
             let m = s.f
             let cold = coldBlocks(s)
-            let a = regalloc.allocate(m target.description fun(i: machine.Inst): Bool select.rematerializable(s i)
-                    fun(b: Int): Bool cold[b])
+            let kind = fun(v: Int): Int
+                case vector.get(s.types machine.index(m v))
+                    when typeInt then 0
+                    when typePtr then 1
+                    when typeVal then 2
+                    when typeReal then 3
+                end
+            let rematerializable = fun(i: machine.Inst): Bool select.rematerializable(s i)
+            (* Coalesced first, unless it enters a try, whose handlers reload
+             * each value from a slot of its own (docs/arm64.md section 3.8) *)
+            let a =
+                if not(s.entersTry) then
+                    regalloc.coalesceAndAllocate(m target.description kind rematerializable
+                            fun(b: Int): Bool
+                                cold[b])
+                else
+                    regalloc.allocate(m target.description rematerializable fun(b: Int): Bool cold[b])
+                end
             (* The stack slots, then (below) the slots of registers stored in
              * memory *)
             let slots = vector.new(:FrameSlot)
@@ -383,13 +399,6 @@ export
              * spill slots after a raise from anywhere in the try body, where
              * normal liveness does not see the handler's uses, so each
              * spilled value keeps its own slot. *)
-            let kind = fun(v: Int): Int
-                case vector.get(s.types machine.index(m v))
-                    when typeInt then 0
-                    when typePtr then 1
-                    when typeVal then 2
-                    when typeReal then 3
-                end
             let slotOf =
                 if s.entersTry then
                     begin

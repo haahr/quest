@@ -60,6 +60,10 @@ backtracks. Its interface header explains the algorithm at length; the main idea
   register is dead, since the handler is reached by unwinding) make registers unavailable where they occur.
 - **Hints** let a move's two sides, and a jump's argument and its target's parameter, share a register, so that the
   move disappears; this is what coalescing does in a coloring allocator.
+- **Coalescing.** A hint does nothing for a value allocated before what it is hinted to, so `coalesceAndAllocate`
+  first joins a jump's arguments with its target's parameters into one virtual register, conservatively: only where
+  they do not interfere, where no register class is short, and where they would not follow different physical
+  registers. A joined register is defined more than once, which the scan allows.
 
 `allocate` returns an `Allocation`, where every piece of every virtual register lives; `shareSlots` lets values
 whose lifetimes do not overlap share a stack slot; and `rewrite` replaces the virtual registers by the allocated

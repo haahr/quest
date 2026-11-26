@@ -1,10 +1,11 @@
 (* Quest Self-Hosted Compiler: The Register Allocator's Implementation
  *
- * The interface's header describes the algorithm. This module has four
+ * The interface's header describes the algorithm. This module has five
  * parts: lifetime intervals and the operations on them; a heap of the
- * intervals not yet allocated, earliest start first; the scan, allocate,
- * which chooses each interval's register; and rewrite, which puts the
- * choices into the function's instructions. *)
+ * intervals not yet allocated, earliest start first; coalescing, which joins
+ * a jump's arguments with its target's parameters before the scan; the scan,
+ * allocate, which chooses each interval's register; and rewrite, which puts
+ * the choices into the function's instructions. *)
 
 module regalloc : Regalloc
 import
@@ -463,14 +464,472 @@ export
             end
         end
 
-    let allocate(f: Function t: targets.Target rematerializable: All(i: machine.Inst) Bool cold: All(b: Int) Bool):
-            Allocation =
+    (* =========================================================================
+     * Coalescing
+     *
+     * The interface's coalesceAndAllocate. The candidates are taken from the
+     * deepest loops out, so that where two of them conflict, the move left is
+     * the one run less often. Two values interfere where one is defined while the
+     * other is live, except a move's source at the move, which holds the same
+     * value as its destination; a block's parameters are defined at its
+     * start, together, so they interfere with each other and with what is
+     * live there. The interference is kept only between candidates, as lists
+     * of neighbours, and the same backward walk marks the candidates that are
+     * ever live where their class is short of registers: where as many values
+     * of the class are live as the class has registers, or, across a call, as
+     * it has callee-saved ones. Merging two groups that do not interfere puts
+     * no more values live anywhere (where both are live, as a move's two
+     * values can be, there is one fewer), so a group with no such member never
+     * gains one, and only those are merged.
+     * ====================================================================== *)
+
+    (* Coalesces f, given its blocks' order, their loop depths, and its
+     * liveness, which allocate needs too, and returns its liveness after: the
+     * same sets, each value named by its group. Where a group's value is live,
+     * one of its members is, and no member is live into a block whose
+     * parameter is another, since a parameter interferes with what is live
+     * into its block. *)
+    let coalesceWith(f: Function t: targets.Target kind: All(r: Int) Int order: Array(Int) depths: Array(Int)
+            live: machine.Live): machine.Live =
+        begin
+            let nValues = machine.virtuals(f)
+            let nBlocks = vector.length(f.blocks)
+            let virtual(r: Int): Bool = machine.isVirtual(f r)
+            let classOf(v: Int): Int = targets.index(machine.virtualClass(f f.firstVirtual + v))
+            (* The allocatable registers each value is moved to or from, which
+             * allocate's hints follow, and the values each is moved to or from
+             * or passed to or from on a jump, through which it follows theirs.
+             * Two groups that would follow different registers are not joined
+             * (below): their moves would remain, and the joined value, live
+             * where either is, could take neither register. *)
+            let allocatable = array of(extent t.registers false)
+            let callerSaved = array of(extent t.registers false)
+            for c = 0 upto {targets.classes - 1} do
+                for j = 0 upto {extent t.callerSaved[c] - 1} do
+                    allocatable[t.callerSaved[c][j]] := true
+                    callerSaved[t.callerSaved[c][j]] := true
+                end
+                for j = 0 upto {extent t.calleeSaved[c] - 1} do allocatable[t.calleeSaved[c][j]] := true end
+            end
+            let nothing = vector.new(:Int)
+            let prefers = array of(nValues nothing)
+            let partners = array of(nValues nothing)
+            let prefer(v: Int r: Int): Ok =
+                begin
+                    if vector.length(prefers[v]) is 0 then prefers[v] := vector.new() end
+                    vector.append(prefers[v] r)
+                end
+            let partner(x: Int y: Int): Ok =
+                if virtual(x) andif virtual(y) andif {x isnot y} then
+                    let p = machine.index(f x)
+                    let q = machine.index(f y)
+                    if vector.length(partners[p]) is 0 then partners[p] := vector.new() end
+                    if vector.length(partners[q]) is 0 then partners[q] := vector.new() end
+                    vector.append(partners[p] q)
+                    vector.append(partners[q] p)
+                end
+            (* One pass finds: each value's reads, since a value never read
+             * gains nothing from sharing a register; whether a raise enters
+             * any block; the registers and partners above; and the pairs that
+             * may be candidates, with the loop depth of each one's block *)
+            let reads = array of(nValues 0)
+            let var raised = false
+            let pairs = vector.new(:Int)
+            let pair(x: Int y: Int b: Int): Ok =
+                if virtual(x) andif virtual(y) andif {x isnot y} then
+                    vector.append(pairs machine.index(f x))
+                    vector.append(pairs machine.index(f y))
+                    vector.append(pairs depths[b])
+                end
+            for k = 0 upto {extent order - 1} do
+                let b = order[k]
+                let blk = machine.block(f b)
+                if blk.raised then raised := true end
+                for j = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts j)
+                    for a = 0 upto {extent i.operands - 1} do
+                        let o = i.operands[a]
+                        if virtual(o.reg) andif not(o.defines) then
+                            let v = machine.index(f o.reg)
+                            reads[v] := reads[v] + 1
+                        end
+                    end
+                    if machine.isKind(i machine.kindMove) then
+                        let d = i.operands[0].reg
+                        let r = i.operands[1].reg
+                        if virtual(d) andif not(virtual(r)) andif allocatable[r] then prefer(machine.index(f d) r)
+                        elsif virtual(r) andif not(virtual(d)) andif allocatable[d] then prefer(machine.index(f r) d)
+                        end
+                        partner(d r)
+                    elsif machine.isKind(i machine.kindJump) then
+                        let params = machine.block(f i.target).params
+                        for a = 0 upto {extent i.operands - 1} do
+                            partner(vector.get(params a) i.operands[a].reg)
+                            (* Not on an edge that leaves a loop: the move it
+                             * would save is made once each time the loop is
+                             * left, while the value joined to the parameter
+                             * might then need moving each time round *)
+                            pair(vector.get(params a) i.operands[a].reg b)
+                        end
+                    end
+                end
+            end
+            (* The candidates, as pairs of values (by index), and the loop
+             * depth of each one's block; and the values in any, listed *)
+            let firsts = vector.new(:Int)
+            let seconds = vector.new(:Int)
+            let depthOf = vector.new(:Int)
+            let inS = array of(nValues false)
+            let sList = vector.new(:Int)
+            if not(raised) then
+                for k = 0 upto {{vector.length(pairs) / 3} - 1} do
+                    let p = vector.get(pairs 3 * k)
+                    let q = vector.get(pairs {3 * k} + 1)
+                    if {reads[p] > 0} andif {reads[q] > 0} andif {classOf(p) is classOf(q)}
+                            andif {kind(f.firstVirtual + p) is kind(f.firstVirtual + q)} then
+                        vector.append(firsts p)
+                        vector.append(seconds q)
+                        vector.append(depthOf vector.get(pairs {3 * k} + 2))
+                        if not(inS[p]) then
+                            inS[p] := true
+                            vector.append(sList p)
+                        end
+                        if not(inS[q]) then
+                            inS[q] := true
+                            vector.append(sList q)
+                        end
+                    end
+                end
+            end
+            let nCandidates = vector.length(firsts)
+            (* Union-find over the values: first the components that chains
+             * of candidates join, outside which nothing can be joined, so
+             * that interference is recorded only within them; then the
+             * groups joined *)
+            let parent = array of(nValues 0)
+            for v = 0 upto {nValues - 1} do parent[v] := v end
+            let find(v: Int): Int =
+                begin
+                    let var x = v
+                    while parent[x] isnot x do
+                        parent[x] := parent[parent[x]]
+                        x := parent[x]
+                    end
+                    x
+                end
+            let component = array of(nValues ~1)
+            let var merged = false
+            if nCandidates > 0 then
+                for k = 0 upto {nCandidates - 1} do
+                    let rp = find(vector.get(firsts k))
+                    let rq = find(vector.get(seconds k))
+                    if rp isnot rq then parent[rp] := rq end
+                end
+                for e = 0 upto {vector.length(sList) - 1} do
+                    let v = vector.get(sList e)
+                    component[v] := find(v)
+                end
+                for e = 0 upto {vector.length(sList) - 1} do parent[vector.get(sList e)] := vector.get(sList e) end
+                let pools = array of(targets.classes 0)
+                let callee = array of(targets.classes 0)
+                for c = 0 upto {targets.classes - 1} do
+                    pools[c] := extent t.callerSaved[c] + extent t.calleeSaved[c]
+                    callee[c] := extent t.calleeSaved[c]
+                end
+                let neighbours = array of(nValues nothing)
+                for e = 0 upto {vector.length(sList) - 1} do neighbours[vector.get(sList e)] := vector.new() end
+                let crowded = array of(nValues false)
+                (* Whether each candidate is live across a call; at a group's
+                 * root, whether any member is *)
+                let across = array of(nValues false)
+                (* The walk. A value is live while its mark is the current
+                 * block's number (k + 1, below), so that nothing is cleared
+                 * between blocks; counts holds how many of each class are
+                 * live; and the candidates live are listed densely in liveS,
+                 * each at its place in at, so that the walk visits only them.
+                 * dirty says, for each class, whether a candidate of it has
+                 * become live since its candidates were last marked crowded,
+                 * so that a long stretch short of registers marks each once. *)
+                let mark = array of(nValues 0)
+                let var block = 0
+                let liveS = array of(nValues 0)
+                let at = array of(nValues ~1)
+                let var nLive = 0
+                let counts = array of(targets.classes 0)
+                let dirty = array of(targets.classes false)
+                let crowd(c: Int): Ok =
+                    if dirty[c] then
+                        for e = 0 upto {nLive - 1} do if classOf(liveS[e]) is c then crowded[liveS[e]] := true end end
+                        dirty[c] := false
+                    end
+                let check(limits: Array(Int)): Ok =
+                    for c = 0 upto {targets.classes - 1} do if counts[c] >= limits[c] then crowd(c) end end
+                let enter(v: Int): Ok =
+                    if mark[v] isnot block then
+                        mark[v] := block
+                        let c = classOf(v)
+                        counts[c] := counts[c] + 1
+                        if inS[v] then
+                            liveS[nLive] := v
+                            at[v] := nLive
+                            nLive := nLive + 1
+                            dirty[c] := true
+                        end
+                    end
+                let leave(v: Int): Ok =
+                    if mark[v] is block then
+                        mark[v] := 0
+                        counts[classOf(v)] := counts[classOf(v)] - 1
+                        if at[v] >= 0 then
+                            let last = liveS[nLive - 1]
+                            liveS[at[v]] := last
+                            at[last] := at[v]
+                            at[v] := ~1
+                            nLive := nLive - 1
+                        end
+                    end
+                (* d, a candidate defined now, interferes with every candidate
+                 * of its component live but itself and except *)
+                let interfere(d: Int except: Int): Ok =
+                    for e = 0 upto {nLive - 1} do
+                        let x = liveS[e]
+                        if {x isnot d} andif {x isnot except} andif {component[x] is component[d]} then
+                            vector.append(neighbours[d] x)
+                            vector.append(neighbours[x] d)
+                        end
+                    end
+                for k = 0 upto {extent order - 1} do
+                    let b = order[k]
+                    let blk = machine.block(f b)
+                    block := k + 1
+                    for e = 0 upto {nLive - 1} do at[liveS[e]] := ~1 end
+                    nLive := 0
+                    for c = 0 upto {targets.classes - 1} do
+                        counts[c] := 0
+                        dirty[c] := false
+                    end
+                    let var x = bitset.next(live.liveOut[b] 0)
+                    while x >= 0 do
+                        enter(x)
+                        x := bitset.next(live.liveOut[b] x + 1)
+                    end
+                    for j = {vector.length(blk.insts) - 1} downto 0 do
+                        let i = vector.get(blk.insts j)
+                        (* Its results are live where it writes them, even
+                         * those never read *)
+                        for a = 0 upto {extent i.operands - 1} do
+                            let o = i.operands[a]
+                            if virtual(o.reg) andif o.defines then enter(machine.index(f o.reg)) end
+                        end
+                        check(pools)
+                        let except =
+                            if machine.isKind(i machine.kindMove) andif virtual(i.operands[1].reg) then
+                                machine.index(f i.operands[1].reg)
+                            else
+                                ~1
+                            end
+                        for a = 0 upto {extent i.operands - 1} do
+                            let o = i.operands[a]
+                            if virtual(o.reg) andif o.defines andif inS[machine.index(f o.reg)] then
+                                interfere(machine.index(f o.reg) except)
+                            end
+                        end
+                        for a = 0 upto {extent i.operands - 1} do
+                            let o = i.operands[a]
+                            if virtual(o.reg) andif o.defines then leave(machine.index(f o.reg)) end
+                        end
+                        (* What is live now is what is live across it *)
+                        if machine.isKind(i machine.kindCall) then
+                            check(callee)
+                            for e = 0 upto {nLive - 1} do across[liveS[e]] := true end
+                        end
+                        for a = 0 upto {extent i.operands - 1} do
+                            let o = i.operands[a]
+                            if virtual(o.reg) andif not(o.defines) then enter(machine.index(f o.reg)) end
+                        end
+                        check(pools)
+                    end
+                    for p = 0 upto {vector.length(blk.params) - 1} do
+                        enter(machine.index(f vector.get(blk.params p)))
+                    end
+                    check(pools)
+                    for p = 0 upto {vector.length(blk.params) - 1} do
+                        let v = machine.index(f vector.get(blk.params p))
+                        if inS[v] then interfere(v ~1) end
+                    end
+                end
+                (* Each group's members, listed at its root *)
+                let members = array of(nValues nothing)
+                for e = 0 upto {vector.length(sList) - 1} do
+                    let v = vector.get(sList e)
+                    members[v] := vector.new()
+                    vector.append(members[v] v)
+                end
+                let byDepth = array of(nCandidates 0)
+                for k = 0 upto {nCandidates - 1} do byDepth[k] := k end
+                sort.sort(byDepth fun(x: Int y: Int): Int
+                    if vector.get(depthOf x) isnot vector.get(depthOf y) then
+                        sort.intCompare(vector.get(depthOf y) vector.get(depthOf x))
+                    else
+                        sort.intCompare(x y)
+                    end)
+                let followsP = vector.new(:Int)
+                let followsQ = vector.new(:Int)
+                for k = 0 upto {nCandidates - 1} do
+                    let p = vector.get(firsts byDepth[k])
+                    let q = vector.get(seconds byDepth[k])
+                    let rp = find(p)
+                    let rq = find(q)
+                    (* The registers a group follows: its members' own, or, if
+                     * they have none, those of the values they are moved to or
+                     * from outside both groups. Its own come first: a value's
+                     * partners may follow several registers, one of which
+                     * would seem to agree with anything. *)
+                    let follows(r: Int regs: vector.T(Int)): Ok =
+                        begin
+                            vector.clear(regs)
+                            let ms = members[r]
+                            for e = 0 upto {vector.length(ms) - 1} do
+                                let m = vector.get(ms e)
+                                for g = 0 upto {vector.length(prefers[m]) - 1} do
+                                    vector.append(regs vector.get(prefers[m] g))
+                                end
+                            end
+                            if vector.length(regs) is 0 then
+                                for e = 0 upto {vector.length(ms) - 1} do
+                                    let ps = partners[vector.get(ms e)]
+                                    for g = 0 upto {vector.length(ps) - 1} do
+                                        let x = vector.get(ps g)
+                                        let rx = find(x)
+                                        if {rx isnot rp} andif {rx isnot rq} then
+                                            for h = 0 upto {vector.length(prefers[x]) - 1} do
+                                                vector.append(regs vector.get(prefers[x] h))
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    (* Whether they follow no different registers: either none,
+                     * or one in common *)
+                    let compatible(): Bool =
+                        begin
+                            follows(rp followsP)
+                            follows(rq followsQ)
+                            let a = followsP
+                            let b = followsQ
+                            let var shared = {vector.length(a) is 0} orif {vector.length(b) is 0}
+                            for e = 0 upto {vector.length(a) - 1} do
+                                for g = 0 upto {vector.length(b) - 1} do
+                                    if vector.get(a e) is vector.get(b g) then shared := true end
+                                end
+                            end
+                            (* A group live across a call needs a callee-saved
+                             * register, so one that follows only caller-saved
+                             * ones would keep its moves, made where it is
+                             * rather than on the edge: a function's arguments,
+                             * say, moved before its base case's test rather
+                             * than only on the path that calls *)
+                            let onlyCaller(regs: vector.T(Int)): Bool =
+                                begin
+                                    let var only = vector.length(regs) > 0
+                                    for e = 0 upto {vector.length(regs) - 1} do
+                                        if not(callerSaved[vector.get(regs e)]) then only := false end
+                                    end
+                                    only
+                                end
+                            shared andif not({across[rp] andif onlyCaller(b)} orif {across[rq] andif onlyCaller(a)})
+                        end
+                    if {rp isnot rq} andif not(crowded[p]) andif not(crowded[q]) andif compatible() then
+                        let small = if vector.length(members[rp]) <= vector.length(members[rq]) then rp else rq end
+                        let big = if small is rp then rq else rp end
+                        let ms = members[small]
+                        let var clash = false
+                        let var m = 0
+                        while not(clash) andif {m < vector.length(ms)} do
+                            let ns = neighbours[vector.get(ms m)]
+                            for e = 0 upto {vector.length(ns) - 1} do
+                                if find(vector.get(ns e)) is big then clash := true end
+                            end
+                            m := m + 1
+                        end
+                        if not(clash) then
+                            parent[small] := big
+                            if across[small] then across[big] := true end
+                            for e = 0 upto {vector.length(ms) - 1} do vector.append(members[big] vector.get(ms e)) end
+                            merged := true
+                        end
+                    end
+                end
+                (* Each group renamed to its root, and the moves that leaves
+                 * from a register to itself dropped *)
+                if merged then
+                    let rename(r: Int): Int = if virtual(r) then f.firstVirtual + find(machine.index(f r)) else r end
+                    for b = 0 upto {nBlocks - 1} do
+                        let blk = machine.block(f b)
+                        for p = 0 upto {vector.length(blk.params) - 1} do
+                            vector.set(blk.params p rename(vector.get(blk.params p)))
+                        end
+                        let kept = vector.new(:machine.Inst)
+                        for j = 0 upto {vector.length(blk.insts) - 1} do
+                            let i = vector.get(blk.insts j)
+                            for a = 0 upto {extent i.operands - 1} do
+                                let o = i.operands[a]
+                                o.reg := rename(o.reg)
+                            end
+                            let self = machine.isKind(i machine.kindMove) andif {i.operands[0].reg is i.operands[1].reg}
+                            if not(self) then vector.append(kept i) end
+                        end
+                        if vector.length(kept) < vector.length(blk.insts) then
+                            vector.clear(blk.insts)
+                            for j = 0 upto {vector.length(kept) - 1} do vector.append(blk.insts vector.get(kept j)) end
+                        end
+                    end
+                end
+            end
+            (* The liveness renamed in place: each value joined into another
+             * group's root taken out of each set, and the root put in *)
+            if merged then
+                let joined = vector.new(:Int)
+                for e = 0 upto {vector.length(sList) - 1} do
+                    let v = vector.get(sList e)
+                    if find(v) isnot v then vector.append(joined v) end
+                end
+                (* Each set is either tested for each value joined, when they
+                 * are fewer than its words, or walked *)
+                let few = vector.length(joined) <= {nValues / 64} + 1
+                let rename(sets: Array(bitset.T)): Ok =
+                    for b = 0 upto {extent sets - 1} do
+                        if few then
+                            for e = 0 upto {vector.length(joined) - 1} do
+                                let v = vector.get(joined e)
+                                if bitset.remove(sets[b] v) then add(sets[b] find(v)) end
+                            end
+                        else
+                            let var x = bitset.next(sets[b] 0)
+                            while x >= 0 do
+                                let r = find(x)
+                                if r isnot x then
+                                    if bitset.remove(sets[b] x) then add(sets[b] r) end
+                                end
+                                x := bitset.next(sets[b] x + 1)
+                            end
+                        end
+                    end
+                rename(live.liveIn)
+                rename(live.liveOut)
+            end
+            live
+        end
+
+    (* allocate, given f's blocks' order, their loop depths, and its
+     * liveness *)
+    let allocateWith(f: Function t: targets.Target rematerializable: All(i: machine.Inst) Bool cold: All(b: Int) Bool
+            order: Array(Int) depths: Array(Int) live: machine.Live): Allocation =
         begin
             let nValues = machine.virtuals(f)
             let nBlocks = vector.length(f.blocks)
             let nRegisters = extent t.registers
-            let order = machine.order(f)
-            let live = machine.live(f)
             let liveIn = live.liveIn
             let liveOut = live.liveOut
             let virtual(r: Int): Bool = machine.isVirtual(f r)
@@ -490,7 +949,6 @@ export
             end
             let positions = pos
             (* Each block's estimated frequency, and each position's *)
-            let depths = machine.loopDepths(f)
             let frequency = array of(nBlocks 0)
             let freqAt = array of(positions + 1 0)
             for k = 0 upto {extent order - 1} do
@@ -608,11 +1066,13 @@ export
                     end
                 end
             (* A definition at p: the earliest range starts there, or, for a
-             * value never used, is just p *)
+             * value not live after it, is just p. A value coalesced from
+             * several (coalesce) is defined more than once, and its earliest
+             * range may be in a later block, which starts after p. *)
             let setFrom(v: Int p: Int): Ok =
                 begin
                     let n = vector.length(rangeFroms[v])
-                    if n > 0 then
+                    if {n > 0} andif {vector.get(rangeFroms[v] n - 1) <= p} then
                         vector.set(rangeFroms[v] n - 1 p)
                     else
                         vector.append(rangeFroms[v] p)
@@ -670,10 +1130,23 @@ export
              * to the cold path *)
             let coldHints = vector.new(:Int)
             let remat = array of(nValues false)
+            (* How many times each value is defined: once, unless coalesced *)
+            let defined = array of(nValues 0)
             for b = 0 upto {nBlocks - 1} do
+                let params = machine.block(f b).params
+                for p = 0 upto {vector.length(params) - 1} do
+                    let v = machine.index(f vector.get(params p))
+                    defined[v] := defined[v] + 1
+                end
                 let insts = machine.block(f b).insts
                 for j = 0 upto {vector.length(insts) - 1} do
                     let i = vector.get(insts j)
+                    for a = 0 upto {extent i.operands - 1} do
+                        if virtual(i.operands[a].reg) andif i.operands[a].defines then
+                            let v = machine.index(f i.operands[a].reg)
+                            defined[v] := defined[v] + 1
+                        end
+                    end
                     if machine.isKind(i machine.kindMove) then
                         hint(i.operands[0].reg i.operands[1].reg)
                         hint(i.operands[1].reg i.operands[0].reg)
@@ -692,7 +1165,7 @@ export
                     (* What is rematerialized: the result of an instruction with
                      * one result, computed from no virtual register, that the
                      * target says can be made again (so it gives the same
-                     * value anywhere) *)
+                     * value anywhere), and defined nowhere else (below) *)
                     let var results = 0
                     let var reads = 0
                     for a = 0 upto {extent i.operands - 1} do
@@ -707,6 +1180,7 @@ export
                     end
                 end
             end
+            for v = 0 upto {nValues - 1} do if defined[v] > 1 then remat[v] := false end end
             for k = 0 upto {{vector.length(coldHints) / 2} - 1} do
                 hint(vector.get(coldHints 2 * k) vector.get(coldHints {2 * k} + 1))
             end
@@ -848,6 +1322,18 @@ export
                 let first = first
                 let last = last
             end
+        end
+
+    let allocate(f: Function t: targets.Target rematerializable: All(i: machine.Inst) Bool cold: All(b: Int) Bool):
+            Allocation = allocateWith(f t rematerializable cold machine.order(f) machine.loopDepths(f) machine.live(f))
+
+    let coalesceAndAllocate(f: Function t: targets.Target kind: All(r: Int) Int
+            rematerializable: All(i: machine.Inst) Bool cold: All(b: Int) Bool): Allocation =
+        begin
+            let order = machine.order(f)
+            let depths = machine.loopDepths(f)
+            let live = coalesceWith(f t kind order depths machine.live(f))
+            allocateWith(f t rematerializable cold order depths live)
         end
 
     (* =========================================================================

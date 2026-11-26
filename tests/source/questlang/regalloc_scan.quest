@@ -12,8 +12,10 @@
  * values stay in their registers through it; reals take registers of their
  * own class; a constant is made again rather than stored; what a block a
  * raise enters uses is in memory at its start; values whose lifetimes do
- * not overlap share a slot; and a value read in a loop keeps a register over one read
- * only after it. Each virtual register's pieces
+ * not overlap share a slot; a value read in a loop keeps a register over one read
+ * only after it; and, coalesced first on a roomier target, a jump's argument and
+ * its parameter are one value where they do not interfere and the registers
+ * are not short. Each virtual register's pieces
  * are shown with the positions they start at, then the moves to pieces that
  * start inside blocks, the blocks' frequencies (where some are in loops), the
  * slots of those stored, then the function rewritten in the registers
@@ -55,6 +57,25 @@ let toy: targets.Target = tuple
     let stackAlign = 16
     let wordBytes = 8
 end
+(* A roomier target for coalescing, which is not done where a class is short
+ * of registers: the toy target's registers, numbered as there, and r2, which
+ * a call clobbers, and s2, which it preserves *)
+let roomy: targets.Target = tuple
+    let registers = array of
+        register("a0" intClass) register("r1" intClass) register("s1" intClass)
+        register("f1" realClass) register("g1" realClass)
+        register("t1" intClass) register("t2" intClass) register("t3" intClass)
+        register("u1" realClass) register("u2" realClass)
+        register("r2" intClass) register("s2" intClass)
+    end
+    let callerSaved = array of array of 1 10 0 end array of 3 end end
+    let calleeSaved = array of array of 2 11 end array of 4 end end
+    let arguments = toy.arguments
+    let results = toy.results
+    let scratch = toy.scratch
+    let stackAlign = 16
+    let wordBytes = 8
+end
 let a0 = 0
 let f1 = 3
 
@@ -63,7 +84,7 @@ let ops = vector.new(:String)
 let name(f: machine.Function r: Int): String =
     if r is regalloc.memory then "memory"
     elsif machine.isVirtual(f r) then "%" <> conv.int(machine.index(f r))
-    else targets.name(toy r)
+    else targets.name(roomy r)
     end
 let make(kind: machine.Kind text: String operands: Array(machine.Operand) target: Int): machine.Inst =
     begin
@@ -123,13 +144,23 @@ let line(f: machine.Function i: machine.Inst): String =
 
 let rematerializable(i: machine.Inst): Bool = strutil.startsWith(vector.get(:String ops i.op) "const")
 
-(* A function's allocation, with the blocks cold says are cold *)
-let showCold(title: String f: machine.Function cold: All(b: Int) Bool): Ok =
+(* A function's allocation on a target, with the blocks cold says are cold *)
+let showOn(title: String f: machine.Function target: targets.Target cold: All(b: Int) Bool coalescing: Bool): Ok =
     begin
         emit("== " <> title)
         writer.putString(writer.output machine.format(f fun(r: Int): String name(f r) fun(i: machine.Inst): String
             line(f i)))
-        let a = regalloc.allocate(f toy rematerializable cold)
+        let a =
+            if coalescing then
+                let kind = fun(r: Int): Int targets.index(machine.virtualClass(f r))
+                let a = regalloc.coalesceAndAllocate(f target kind rematerializable cold)
+                emit("coalesced:")
+                writer.putString(writer.output machine.format(f fun(r: Int): String name(f r) fun(i: machine.Inst):
+                        String line(f i)))
+                a
+            else
+                regalloc.allocate(f target rematerializable cold)
+            end
         for v = 0 upto {extent a.starts - 1} do
             let var text = "%" <> conv.int(v) <> ":"
             for k = 0 upto {extent a.starts[v] - 1} do
@@ -174,6 +205,7 @@ let showCold(title: String f: machine.Function cold: All(b: Int) Bool): Ok =
             line(f i)))
     end
 
+let showCold(title: String f: machine.Function cold: All(b: Int) Bool): Ok = showOn(title f toy cold false)
 let show(title: String f: machine.Function): Ok = showCold(title f fun(b: Int): Bool false)
 
 (* 1. A chain: each result can take its operand's register, and the first and
@@ -436,3 +468,93 @@ call(raisingCold cRaise)
 put(raisingCold cRaise machine.kindReturn "brk" none)
 ret(raisingCold cOn c0)
 showCold("the same block, cold" raisingCold fun(b: Int): Bool b is cRaise)
+
+(* 13. Coalescing (regalloc.coalesceAndAllocate) before the scan, on the
+ * roomier target: a value computed and passed by a jump to a parameter that
+ * lives across a call. Without it the computed value, allocated first, takes
+ * a caller-saved register, and the jump moves it; coalesced, the two are one
+ * value in the callee-saved register, and the jump moves nothing. *)
+let showCoalesced(title: String f: machine.Function): Ok = showOn(title f roomy fun(b: Int): Bool false true)
+let passed = machine.newFunction(extent roomy.registers)
+let m0 = entry(passed)
+let mBlock = machine.newBlock(passed)
+let m2 = machine.addParam(passed mBlock intClass)
+let m1 = fresh(passed)
+add(passed 0 m1 m0 m0)
+jump(passed 0 mBlock array of m1 end)
+call(passed mBlock)
+ret(passed mBlock m2)
+showOn("a value passed to a parameter live across a call" passed roomy fun(b: Int): Bool false false)
+let passedC = machine.newFunction(extent roomy.registers)
+let mc0 = entry(passedC)
+let mcBlock = machine.newBlock(passedC)
+let mc2 = machine.addParam(passedC mcBlock intClass)
+let mc1 = fresh(passedC)
+add(passedC 0 mc1 mc0 mc0)
+jump(passedC 0 mcBlock array of mc1 end)
+call(passedC mcBlock)
+ret(passedC mcBlock mc2)
+showCoalesced("the same, coalesced" passedC)
+
+(* 14. A loop's jumps coalesced: its entry's constant, its parameter, and the
+ * value its back edge passes are one value, defined three times, and the
+ * jumps move nothing *)
+let loopC = machine.newFunction(extent roomy.registers)
+let ln = entry(loopC)
+let lHead = machine.newBlock(loopC)
+let li = machine.addParam(loopC lHead intClass)
+let lBody = machine.newBlock(loopC)
+let lEdge = machine.newBlock(loopC)
+let lExit = machine.newBlock(loopC)
+let lZero = fresh(loopC)
+constant(loopC 0 lZero 0)
+jump(loopC 0 lHead array of lZero end)
+let lCond = fresh(loopC)
+op(loopC lHead "lt" lCond li ln)
+branch(loopC lHead lCond lEdge)
+jump(loopC lHead lExit noArgs)
+jump(loopC lEdge lBody noArgs)
+let lOne = fresh(loopC)
+let lNext = fresh(loopC)
+constant(loopC lBody lOne 1)
+add(loopC lBody lNext li lOne)
+jump(loopC lBody lHead array of lNext end)
+ret(loopC lExit li)
+showCoalesced("a loop, coalesced" loopC)
+
+(* 15. What interferes is not coalesced: a jump passes one value to two
+ * parameters both read, and it joins only the first *)
+let twice = machine.newFunction(extent roomy.registers)
+let d0 = entry(twice)
+let dJoin = machine.newBlock(twice)
+let dp = machine.addParam(twice dJoin intClass)
+let dq = machine.addParam(twice dJoin intClass)
+let d1 = fresh(twice)
+let d2 = fresh(twice)
+let d3 = fresh(twice)
+move(twice 0 d1 d0)
+add(twice 0 d2 d1 d0)
+jump(twice 0 dJoin array of d2 d2 end)
+add(twice dJoin d3 dp dq)
+ret(twice dJoin d3)
+showCoalesced("interference, coalesced" twice)
+
+(* 16. Where a class is short of registers nothing is coalesced: three
+ * values live across a call, with two callee-saved registers, one of them
+ * the parameter a jump passes a value to *)
+let short = machine.newFunction(extent roomy.registers)
+let e0 = entry(short)
+let eBlock = machine.newBlock(short)
+let e2 = machine.addParam(short eBlock intClass)
+let e1 = fresh(short)
+let e3 = fresh(short)
+let e4 = fresh(short)
+let e5 = fresh(short)
+add(short 0 e1 e0 e0)
+add(short 0 e3 e0 e1)
+jump(short 0 eBlock array of e1 end)
+call(short eBlock)
+add(short eBlock e4 e2 e3)
+add(short eBlock e5 e4 e0)
+ret(short eBlock e5)
+showCoalesced("a class short of registers, coalesced" short)
