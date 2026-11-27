@@ -10,33 +10,33 @@
 
 interface Inline
 import
-    collections/hashMap : collections/HashMap
     util/maybe : util/Maybe
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/clone : questlang/ir/Clone
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/types/model : questlang/types/Model
 export
     Def Analysis = Tuple
         (* The functions funs statements bind, by their variables' ids *)
-        functions: hashMap.T(Int nodes.Function)
+        functions: maps.IntMap(nodes.Function)
         (* Each function's strongly connected component, by its variable's id:
          * functions that name one another, directly or not, share one *)
-        components: hashMap.T(Int Int)
+        components: maps.IntMap(Int)
         (* Whether each function names itself, directly or not *)
-        recursive: hashMap.T(Int Bool)
+        recursive: maps.IntMap(Bool)
         (* Whether each function calls an external function with type arguments
          * (external calls pass polymorphic values as uniform QVal words, which
          * a call specialized to concrete types would not box) *)
-        callsExternalAtTypes: hashMap.T(Int Bool)
+        callsExternalAtTypes: maps.IntMap(Bool)
         (* For each self-recursive function (not mutually recursive) with at
          * least one static parameter, a boolean mask over its parameters by
          * variable id. A value parameter is static if every recursive call
          * passes it unchanged at the function's own type parameters, and the
          * function is never referenced except as the callee of such calls. *)
-        static: hashMap.T(Int Array(Bool))
+        static: maps.IntMap(Array(Bool))
         (* Each function's size *)
-        sizes: hashMap.T(Int Int)
+        sizes: maps.IntMap(Int)
         (* The size of the unit's bodies and functions *)
         size: Int
     end

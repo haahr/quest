@@ -12,6 +12,7 @@ import
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/interpreter/builtins : questlang/interpreter/Builtins
     questlang/interpreter/literals : questlang/interpreter/Literals
     questlang/interpreter/primitives : questlang/interpreter/Primitives
@@ -37,7 +38,6 @@ export
 
     let none = maybe.none(:Int)
     let at(offset: Int): maybe.T(Int) = maybe.some(offset)
-    let intEqual(a: Int b: Int): Bool = a is b
 
     (* The loop exit (the bootstrap's _LoopExit) *)
     let loopExit: Exception = exception loopExit end
@@ -65,7 +65,7 @@ export
         tuple
             let parent = parent
             let var bindings = model.newFields()
-            let typeBindings = hashMap.new(intEqual hash.int)
+            let typeBindings = maps.newIntMap()
             let var currentDir = currentDir
             let var sourceMap = sourceMap
             let root = root
@@ -75,7 +75,7 @@ export
 
     let define(f: Frame name: String v: Value): Ok = begin hashMap.insert(f.bindings name v) ok end
 
-    let bindTypes(f: Frame bindings: hashMap.T(Int tm.Type)): Ok =
+    let bindTypes(f: Frame bindings: maps.IntMap(tm.Type)): Ok =
         begin
             let ids = hashMap.keys(bindings)
             for i = 0 upto {vector.length(ids) - 1} do
@@ -301,7 +301,7 @@ export
                             let env = f
                             let name = name
                             let typeParamIds = x.typeParamIds
-                            let typeBindings = hashMap.new(intEqual hash.int)
+                            let typeBindings = maps.newIntMap()
                             let typeOnly = x.typeOnly
                             let traceName = diagnostics.frameName(enclosing binder)
                         end
@@ -310,7 +310,7 @@ export
             else model.internalError("A closure of a non-function" at(fun0.offset))
         end
 
-    let bindTypesInto(into: hashMap.T(Int tm.Type) from: hashMap.T(Int tm.Type)): Ok =
+    let bindTypesInto(into: maps.IntMap(tm.Type) from: maps.IntMap(tm.Type)): Ok =
         begin
             let ids = hashMap.keys(from)
             for i = 0 upto {vector.length(ids) - 1} do
@@ -323,7 +323,7 @@ export
      * type application) *)
     let instantiate(c: model.Closure typeArgs: Array(tm.Type)): model.Closure =
         begin
-            let bindings = hashMap.new(:Int :tm.Type intEqual hash.int)
+            let bindings = maps.newIntMap(:tm.Type)
             bindTypesInto(bindings c.typeBindings)
             let var next = 0
             for i = 0 upto {extent c.typeParamIds - 1} do
@@ -1427,10 +1427,10 @@ export
     let evalProgramPhrases(p: typedAst.Program f: Frame on: All(r: PhraseResult) Ok): Array(PhraseResult) =
         evalProgramPhrasesIn(p f on).results
 
-    Let Snapshot = Tuple bindings: hashMap.T(String Value) moduleValues: hashMap.T(String Value) end
+    Let Snapshot = Tuple bindings: maps.StringMap(Value) moduleValues: maps.StringMap(Value) end
 
     (* A copy of m, with its equality and hash *)
-    let copyValues(m: hashMap.T(String Value)): hashMap.T(String Value) =
+    let copyValues(m: maps.StringMap(Value)): maps.StringMap(Value) =
         hashMap.filter(m fun(k: String v: Value): Bool true)
 
     let snapshot(f: Frame): Snapshot =

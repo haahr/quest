@@ -7,7 +7,6 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/iter : util/Iter
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -15,6 +14,7 @@ import
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     ir = questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/walk : questlang/ir/Walk
     questlang/repr/objectLayout : questlang/repr/ObjectLayout
@@ -183,7 +183,7 @@ export
                 let d = vector.get(data.descriptors i)
                 vector.append(if d.echo then echoed else plain end d.type)
             end
-            let collected = staticdata.collectDescriptors(plain echoed ctx hashMap.new(vals.eq hash.string))
+            let collected = staticdata.collectDescriptors(plain echoed ctx maps.newStringMap())
             let formOf(t: Type): staticdata.DescriptorForm = staticdata.descriptorForm(t ctx)
             let text(s: String): String = vals.stringSymbol(u s)
             for k = 0 upto {extent staticdata.descriptorKinds - 1} do
@@ -198,7 +198,7 @@ export
                     end
                 end
             end
-            let seen = hashMap.new(:String :Bool vals.eq hash.string)
+            let seen = maps.newStringMap(:Bool)
             for i = 0 upto {vector.length(data.offsetTables) - 1} do
                 let t = vector.get(data.offsetTables i)
                 let table = staticdata.describeOffsetTable(u.naming t.view t.layout)
@@ -280,7 +280,7 @@ export
             end
             if maybe.isSome(unit.staticData) then
                 let tables = maybe.unwrap(unit.staticData).offsetTables
-                let registered = hashMap.new(:String :Bool vals.eq hash.string)
+                let registered = maps.newStringMap(:Bool)
                 for i = 0 upto {vector.length(tables) - 1} do
                     let table = vector.get(tables i)
                     let dict = staticdata.describeOffsetTable(u.naming table.view table.layout).symbol
@@ -313,15 +313,15 @@ export
                 let unit = unit
                 let built = ssa.newUnit()
                 let globals = walk.globalVariables(unit)
-                let globalSymbols = hashMap.new(:Int :String vals.intEqual hash.int)
-                let codeNames = hashMap.new(:Int :String vals.intEqual hash.int)
-                let usedNames = hashMap.new(:String :Bool vals.eq hash.string)
-                let closuresOf = hashMap.new(:Int :ir.OpMakeClosure vals.intEqual hash.int)
-                let closureVars = hashMap.new(:Int :ir.OpMakeClosure vals.intEqual hash.int)
-                let strings = hashMap.new(:String :String vals.eq hash.string)
+                let globalSymbols = maps.newIntMap(:String)
+                let codeNames = maps.newIntMap(:String)
+                let usedNames = maps.newStringMap(:Bool)
+                let closuresOf = maps.newIntMap(:ir.OpMakeClosure)
+                let closureVars = maps.newIntMap(:ir.OpMakeClosure)
+                let strings = maps.newStringMap(:String)
                 let var stringCount = 0
-                let stringObjects = hashMap.new(:String :String vals.eq hash.string)
-                let optionTables = hashMap.new(:String :String vals.eq hash.string)
+                let stringObjects = maps.newStringMap(:String)
+                let optionTables = maps.newStringMap(:String)
                 let naming = staticdata.newRecordNaming()
                 let layouts = objectLayout.newTable()
                 let roots = vector.new(:vals.RootEntry)

@@ -7,13 +7,13 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/json : util/JSON
     util/maybe : util/Maybe
     util/sort : util/Sort
     sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     tm = questlang/types/model : questlang/types/Model
     questlang/types/reduce : questlang/types/Reduce
@@ -31,7 +31,6 @@ export
 
     let none = maybe.none(:Int)
     let fail(A::TYPE): A = model.raiseException(model.dynamicError none)
-    let intEqual(a: Int b: Int): Bool = a is b
     let intKey(i: Int): String = conv.int(i)
 
     (* A type ref: a built-in type's name, or a node's index *)
@@ -281,7 +280,7 @@ export
      * them. *)
     Let Graph = Tuple
         nodes: vector.T(Node)
-        index: hashMap.T(String Int)
+        index: maps.StringMap(Int)
         (* The type parameters of the auto types around the type being added,
          * innermost last *)
         binders: vector.T(Int)
@@ -290,7 +289,7 @@ export
     let newGraph(): Graph =
         tuple
             let nodes = vector.new()
-            let index = hashMap.new(stringOp.equal hash.string)
+            let index = maps.newStringMap()
             let binders = vector.new()
         end
 
@@ -495,7 +494,7 @@ export
      * 3. The canonical table
      * ====================================================================== *)
 
-    Let Table = Tuple types: json.Value index: hashMap.T(Int Int) end
+    Let Table = Tuple types: json.Value index: maps.IntMap(Int) end
 
     let refJson(r: Ref t: Table): json.Value =
         if isBuiltin(r) then json.string(r.name) else json.int(hashMap.find(t.index r.index)) end
@@ -523,7 +522,7 @@ export
     let canonicalTable(nodes: vector.T(Node) roots: vector.T(Ref)): Table =
         begin
             let n = vector.length(nodes)
-            let shapeIds = hashMap.new(:String :Int stringOp.equal hash.string)
+            let shapeIds = maps.newStringMap(:Int)
             let var cls = array of(n 0)
             for i = 0 upto {n - 1} do
                 let key = shapeKey(vector.get(nodes i).shape)
@@ -535,7 +534,7 @@ export
             let var count = hashMap.size(shapeIds)
             let var stable = false
             while not(stable) do
-                let sigs = hashMap.new(:String :Int stringOp.equal hash.string)
+                let sigs = maps.newStringMap(:Int)
                 let refined = array of(n 0)
                 for i = 0 upto {n - 1} do
                     let key = sb.new()
@@ -560,7 +559,7 @@ export
             let classes = cls
             (* class -> table index, and a representative node of each class, in
              * table order *)
-            let number = hashMap.new(:Int :Int intEqual hash.int)
+            let number = maps.newIntMap(:Int)
             let order = vector.new(:Int)
             let rec visit(r: Ref): Ok =
                 if isBuiltin(r) orif hashMap.contains(number classes[r.index]) then
@@ -572,7 +571,7 @@ export
                     for j = 0 upto {extent children - 1} do visit(children[j]) end
                 end
             for i = 0 upto {vector.length(roots) - 1} do visit(vector.get(roots i)) end
-            let index = hashMap.new(:Int :Int intEqual hash.int)
+            let index = maps.newIntMap(:Int)
             for i = 0 upto {n - 1} do
                 if hashMap.contains(number classes[i]) then
                     hashMap.insert(index i hashMap.find(number classes[i]))

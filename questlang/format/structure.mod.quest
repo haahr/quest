@@ -16,13 +16,13 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/strutil : util/Strutil
 
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/modules/paths : questlang/modules/Paths
     questlang/syntax/ast : questlang/syntax/AST
     questlang/syntax/tokens : questlang/syntax/Tokens
@@ -42,18 +42,18 @@ export
     Let Join = Tuple equal: Int first: Int last: Int end
     Let ArmEnd = Tuple head: Int parts: Array(Int) closing: Int end
     Let T = Tuple
-        rules: hashMap.T(Int Rule)
-        continuations: hashMap.T(Int Int)
-        spacedColons: hashMap.T(Int Bool)
-        pathSlashes: hashMap.T(Int Bool)
+        rules: maps.IntMap(Rule)
+        continuations: maps.IntMap(Int)
+        spacedColons: maps.IntMap(Bool)
+        pathSlashes: maps.IntMap(Bool)
         imports: vector.T(ImportList)
-        ends: hashMap.T(Int Int)
+        ends: maps.IntMap(Int)
         runs: vector.T(Run)
         lifts: vector.T(Lift)
         joins: vector.T(Join)
         armEnds: vector.T(ArmEnd)
-        conditions: hashMap.T(Int Int)
-        armHeads: hashMap.T(Int Int)
+        conditions: maps.IntMap(Int)
+        armHeads: maps.IntMap(Int)
     end
 
     Let Range = Tuple start: Int stop: Int end
@@ -65,27 +65,25 @@ export
         kinds: Array(String)
         (* The source line of each token *)
         lineNumbers: Array(Int)
-        byStart: hashMap.T(Int Int)
-        byEnd: hashMap.T(Int Int)
-        rules: hashMap.T(Int Rule)
+        byStart: maps.IntMap(Int)
+        byEnd: maps.IntMap(Int)
+        rules: maps.IntMap(Rule)
         phrases: vector.T(Range)
-        spacedColons: hashMap.T(Int Bool)
-        pathSlashes: hashMap.T(Int Bool)
+        spacedColons: maps.IntMap(Bool)
+        pathSlashes: maps.IntMap(Bool)
         imports: vector.T(ImportList)
-        ends: hashMap.T(Int Int)
+        ends: maps.IntMap(Int)
         runs: vector.T(Run)
         lifts: vector.T(Lift)
         joins: vector.T(Join)
         armEnds: vector.T(ArmEnd)
-        conditions: hashMap.T(Int Int)
-        armHeads: hashMap.T(Int Int)
+        conditions: maps.IntMap(Int)
+        armHeads: maps.IntMap(Int)
         (* The directory of the file, from which its imports resolve *)
         dir: String
         (* The end of the construct whose parts are being walked, or ~1 *)
         var closing: Int
     end
-
-    let intEqual(a: Int b: Int): Bool = a is b
 
     (* ======================================================================
      * Tokens
@@ -1101,9 +1099,9 @@ export
 
     (* The innermost phrase holding each token that begins after the phrase
      * does *)
-    let continuations(st: St): hashMap.T(Int Int) =
+    let continuations(st: St): maps.IntMap(Int) =
         begin
-            let result = hashMap.new(:Int :Int intEqual hash.int)
+            let result = maps.newIntMap(:Int)
             let ps = vector.copy(st.phrases)
             sort.sortVector(ps fun(a: Range b: Range): Int
                 if a.start isnot b.start then sort.intCompare(a.start b.start) else sort.intCompare(b.stop a.stop) end)
@@ -1127,8 +1125,8 @@ export
             let n = vector.length(toks)
             let kinds = array of(n "")
             let lineNumbers = array of(n 0)
-            let byStart = hashMap.new(:Int :Int intEqual hash.int)
-            let byEnd = hashMap.new(:Int :Int intEqual hash.int)
+            let byStart = maps.newIntMap(:Int)
+            let byEnd = maps.newIntMap(:Int)
             for i = 0 upto {n - 1} do
                 let t = vector.get(toks i)
                 kinds[i] := tokens.tokenKindName(t.kind)
@@ -1144,18 +1142,18 @@ export
                 let lineNumbers = lineNumbers
                 let byStart = byStart
                 let byEnd = byEnd
-                let rules = hashMap.new(:Int :Rule intEqual hash.int)
+                let rules = maps.newIntMap(:Rule)
                 let phrases = vector.new(:Range)
-                let spacedColons = hashMap.new(:Int :Bool intEqual hash.int)
-                let pathSlashes = hashMap.new(:Int :Bool intEqual hash.int)
+                let spacedColons = maps.newIntMap(:Bool)
+                let pathSlashes = maps.newIntMap(:Bool)
                 let imports = vector.new(:ImportList)
-                let ends = hashMap.new(:Int :Int intEqual hash.int)
+                let ends = maps.newIntMap(:Int)
                 let runs = vector.new(:Run)
                 let lifts = vector.new(:Lift)
                 let joins = vector.new(:Join)
                 let armEnds = vector.new(:ArmEnd)
-                let conditions = hashMap.new(:Int :Int intEqual hash.int)
-                let armHeads = hashMap.new(:Int :Int intEqual hash.int)
+                let conditions = maps.newIntMap(:Int)
+                let armHeads = maps.newIntMap(:Int)
                 let dir = files.parent(files.absolute(location.file(sm)))
                 var closing = ~1
             end

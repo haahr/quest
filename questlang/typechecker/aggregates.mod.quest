@@ -6,10 +6,10 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
     questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/maps : questlang/common/Maps
     questlang/syntax/ast : questlang/syntax/AST
     questlang/typechecker/checker : questlang/typechecker/Checker
     questlang/typechecker/checks : questlang/typechecker/Checks
@@ -31,7 +31,7 @@ export
     let isTypeEqual(a: Type b: Type e: env.T): Bool = subtyping.isTypeEqual(a b env.lookupOf(e))
     let expr(offset: Int t: Type form: typedAst.ExprForm): typedAst.Expr = typedAst.expr(offset t form)
     let internal(A::TYPE what: String x: ast.Expr): A = diagnostics.fail("internal: not " <> what x.span.startOffset)
-    let newIntMap(V::TYPE): hashMap.T(Int V) = hashMap.new(fun(a: Int b: Int): Bool a is b hash.int)
+    let newIntMap(V::TYPE): maps.IntMap(V) = maps.newIntMap()
 
     (* ======================================================================
      * Variants and options
@@ -108,7 +108,7 @@ export
                     else
                         (* Map each field name to its binding; if a name
                          * appears more than once, the last binding wins *)
-                        let fieldMap = hashMap.new(:String :ast.RecordBinding stringOp.equal hash.string)
+                        let fieldMap = maps.newStringMap(:ast.RecordBinding)
                         for i = 0 upto {vector.length(x.fields) - 1} do
                             let b = vector.get(x.fields i)
                             hashMap.insert(fieldMap b.name b)

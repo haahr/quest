@@ -8,10 +8,10 @@ import
     collections/bitset : collections/Bitset
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
 
+    questlang/common/maps : questlang/common/Maps
     questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     questlang/repr/syntax : questlang/repr/Syntax
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
@@ -21,7 +21,6 @@ export
 
     let unsupported: Exception(String) = exception unsupported: String end
     let eq(a: String b: String): Bool = stringOp.equal(a b)
-    let intEqual(a: Int b: Int): Bool = a is b
     let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(m k v) ok end
 
     let cFlags = array of
@@ -590,14 +589,14 @@ export
     let printUnit(u: ssa.Unit): String =
         begin
             let buf = sb.new()
-            let defined = hashMap.new(:String :Bool eq hash.string)
+            let defined = maps.newStringMap(:Bool)
             for k = 0 upto {vector.length(u.functions) - 1} do
                 put(defined vector.get(u.functions k).symbol true)
             end
             for k = 0 upto {vector.length(u.data) - 1} do put(defined vector.get(u.data k).symbol true) end
             (* The symbols the unit refers to but does not define, in order *)
             let externs = vector.new(:String)
-            let seen = hashMap.new(:String :Bool eq hash.string)
+            let seen = maps.newStringMap(:Bool)
             let refer(symbol: String): Ok =
                 if {stringOp.length(symbol) > 0} andif not(hashMap.contains(defined symbol))
                         andif not(hashMap.contains(seen symbol)) then
@@ -605,7 +604,7 @@ export
                     vector.append(externs symbol)
                 end
             (* The sizes of the composites passed through memory *)
-            let memorySizes = hashMap.new(:Int :Bool intEqual hash.int)
+            let memorySizes = maps.newIntMap(:Bool)
             let referInst(f: Function i: ssa.Inst): Ok =
                 begin
                     if ssa.isOp(i ssa.opSymbol) orif ssa.isOp(i ssa.opCall) then refer(i.symbol) end

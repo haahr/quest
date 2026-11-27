@@ -8,10 +8,10 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/describe : questlang/ir/Describe
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/stages : questlang/ir/Stages
@@ -30,7 +30,6 @@ export
 
     let verifyError: Exception(String) = exception verifyError: String end
 
-    let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
     let irChecksEnabled(): Bool = eq(system.getEnv("QUEST_CHECK_IR") "1")
@@ -144,7 +143,7 @@ export
                 let function = vector.get(functions bi)
                 let where = if maybe.isSome(function) then "function '" <> maybe.unwrap(function).v.hint <> "'"
                     else "a top level" end
-                let joins = hashMap.new(:String :Array(Variable) stringOp.equal hash.string)
+                let joins = maps.newStringMap(:Array(Variable))
                 let stmts = walk.walkStatements(vector.get(bodies bi) false)
                 for si = 0 upto {vector.length(stmts) - 1} do
                     let s = vector.get(stmts si)
@@ -287,7 +286,7 @@ export
                 let data = maybe.unwrap(unit.staticData)
                 let staticKey = fun(echo: Bool t: model.Type): String
                     if echo then "e" <> conv.int(t.id) else "s" <> conv.int(shapes.shape(t).id) end
-                let staticKeys = hashMap.new(:String :Bool stringOp.equal hash.string)
+                let staticKeys = maps.newStringMap(:Bool)
                 for i = 0 upto {vector.length(data.descriptors) - 1} do
                     let d = vector.get(data.descriptors i)
                     hashMap.insert(staticKeys staticKey(d.echo d.type) true)

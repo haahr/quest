@@ -24,6 +24,7 @@ import
 
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/interpreter/builtins : questlang/interpreter/Builtins
     questlang/interpreter/formatting : questlang/interpreter/Formatting
     questlang/interpreter/literals : questlang/interpreter/Literals
@@ -47,7 +48,6 @@ export
     let fail(A::TYPE message: String): A = raise irInterpreterError with message end
     let rethrow(A::TYPE e: model.RunError): A = raise model.runError with e end
 
-    let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
     let none = maybe.none(:Int)
 
@@ -59,23 +59,23 @@ export
         parent: maybe.T(Frame)
         (* A variable's value by its id; none for a let rec's variable before
          * its value is computed *)
-        values: hashMap.T(Int maybe.T(Value))
+        values: maps.IntMap(maybe.T(Value))
         (* The type arguments of the type parameters (by symbol id) of the
          * functions being run *)
-        types: hashMap.T(Int Type)
+        types: maps.IntMap(Type)
         (* The errors raised that handlers' exception variables (by id) hold *)
-        raised: hashMap.T(Int model.RunError)
+        raised: maps.IntMap(model.RunError)
         (* The frame of the top level this frame runs in (none: this one), the
          * parent of lifted functions' frames *)
         top: maybe.T(Frame)
     end
 
-    let newFrame(parent: maybe.T(Frame) types: hashMap.T(Int Type)): Frame =
+    let newFrame(parent: maybe.T(Frame) types: maps.IntMap(Type)): Frame =
         tuple
             let parent = parent
-            let values = hashMap.new(intEqual hash.int)
+            let values = maps.newIntMap()
             let types = types
-            let raised = hashMap.new(intEqual hash.int)
+            let raised = maps.newIntMap()
             let top =
                 if maybe.isSome(parent) then
                     let p = maybe.unwrap(parent)
@@ -85,7 +85,7 @@ export
                 end
         end
 
-    let newTypes(): hashMap.T(Int Type) = hashMap.new(intEqual hash.int)
+    let newTypes(): maps.IntMap(Type) = maps.newIntMap()
     let childFrame(parent: Frame): Frame = newFrame(maybe.some(parent) newTypes())
     let topOf(f: Frame): Frame = maybe.unwrapOr(f.top f)
 
@@ -173,7 +173,7 @@ export
     Let IrClosure = Tuple
         function: nodes.Function
         frame: Frame
-        typeBindings: hashMap.T(Int Type)
+        typeBindings: maps.IntMap(Type)
         env: maybe.T(Array(Value))
     end
 
@@ -232,25 +232,25 @@ export
         root: model.Frame
         (* The unit's modules and those it imports (by id), as records of their
          * members *)
-        modules: hashMap.T(Int Value)
+        modules: maps.IntMap(Value)
         (* The variables (by id) a let rec has declared, each set when its
          * let rec starts and never removed. The let rec makes an empty slot
          * for each in its own frame; the let in its body that computes the
          * value may run in a nested frame (a loop body's), so statement binds
          * these variables with bindDeclared, which fills the slot where the
          * let rec and its fixups look, rather than in the current frame. *)
-        declared: hashMap.T(Int Bool)
+        declared: maps.IntMap(Bool)
         fixups: vector.T(vector.T(Fixup))
         var sourceMap: maybe.T(location.SourceMap)
         (* The symbols of the type parameters the unit's functions' descriptor
          * variables describe (by variable) *)
-        descriptorSymbols: hashMap.T(Int Int)
+        descriptorSymbols: maps.IntMap(Int)
         (* The IR closures, by their builtin values *)
         closures: hashMap.T(model.Builtin IrClosure)
         (* The calls in tail position (by their result variables' ids) of the
          * functions analyzed so far (by id), found by findTailCalls *)
-        tailCalls: hashMap.T(Int Bool)
-        analyzed: hashMap.T(Int Bool)
+        tailCalls: maps.IntMap(Bool)
+        analyzed: maps.IntMap(Bool)
     end
 
     let stack(it: Interpreter): vector.T(String) = it.renv.root.callStack
@@ -474,7 +474,7 @@ export
      * returns, directly or through Converts and jumps to joins (returning, by
      * label) that return their parameter. A call in a try's body or handler
      * is not one, nor one in another function's body. *)
-    let rec findTailCalls(b: Body returning: Array(String) found: hashMap.T(Int Bool)): Ok =
+    let rec findTailCalls(b: Body returning: Array(String) found: maps.IntMap(Bool)): Ok =
         for i = 0 upto {vector.length(b.statements) - 1} do
             case vector.get(b.statements i)
                 when sLet with x then
@@ -1305,7 +1305,7 @@ export
 
     let runUnit(unit: nodes.Unit renv: model.Frame): Ok =
         begin
-            let symbols = hashMap.new(:Int :Int intEqual hash.int)
+            let symbols = maps.newIntMap(:Int)
             for i = 0 upto {vector.length(unit.functions) - 1} do
                 let fn = vector.get(unit.functions i)
                 for j = 0 upto {extent fn.descriptorParams - 1} do
@@ -1316,14 +1316,14 @@ export
             let it: Interpreter = tuple
                 let renv = renv
                 let root = treewalk.newRoot(renv.root.units)
-                let modules = hashMap.new(intEqual hash.int)
-                let declared = hashMap.new(intEqual hash.int)
+                let modules = maps.newIntMap()
+                let declared = maps.newIntMap()
                 let fixups = vector.new()
                 let var sourceMap = unit.sourceMap
                 let descriptorSymbols = symbols
                 let closures = hashMap.new(builtinEqual builtinHash)
-                let tailCalls = hashMap.new(intEqual hash.int)
-                let analyzed = hashMap.new(intEqual hash.int)
+                let tailCalls = maps.newIntMap()
+                let analyzed = maps.newIntMap()
             end
             (* Everything runs in the program's frame, imported modules'
              * initializers included *)

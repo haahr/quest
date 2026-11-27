@@ -6,8 +6,8 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
 
+    questlang/common/maps : questlang/common/Maps
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
 export
@@ -15,8 +15,6 @@ export
 
     (* The most parts quest_string_concat_n joins *)
     let most = 7
-
-    let intEqual(a: Int b: Int): Bool = a is b
 
     let isConcat(i: ssa.Inst): Bool =
         ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol "quest_string_concat") andif {extent i.args is 2}
@@ -61,9 +59,9 @@ export
              * writes: a merged chain reads its parts at the final call site,
              * so a concatenation is not merged across a write (such as
              * setChar or a call that may write) that could mutate its parts. *)
-            let partsOf = hashMap.new(:Int :vector.T(Int) intEqual hash.int)
-            let memoryOf = hashMap.new(:Int :Int intEqual hash.int)
-            let absorbed = hashMap.new(:Int :Bool intEqual hash.int)
+            let partsOf = maps.newIntMap(:vector.T(Int))
+            let memoryOf = maps.newIntMap(:Int)
+            let absorbed = maps.newIntMap(:Bool)
             let var merged = false
             let var memory = 0
             for k = 0 upto {vector.length(blk.insts) - 1} do

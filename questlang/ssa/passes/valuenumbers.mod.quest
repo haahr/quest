@@ -7,10 +7,10 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ssa/blockParams : questlang/ssa/BlockParams
     questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
@@ -165,8 +165,8 @@ export
              * walked, unless it is a try handler (since the try body may have
              * written memory before raising), and otherwise starts a fresh
              * generation. *)
-            let table = hashMap.new(:String :Int stringOp.equal hash.string)
-            let madeIn = hashMap.new(:String :Int stringOp.equal hash.string)
+            let table = maps.newStringMap(:Int)
+            let madeIn = maps.newStringMap(:Int)
             let enter(text: String v: Int b: Int): Ok =
                 begin
                     let ignored = hashMap.insert(table text v)
@@ -192,7 +192,7 @@ export
                  * (codegen/arm64/peephole's pairs). Replacing one half of a
                  * pair breaks ldp formation (which slowed psdes-random's loop
                  * from 1.39x to 1.90x of C's time). *)
-                let words = hashMap.new(:String :Bool stringOp.equal hash.string)
+                let words = maps.newStringMap(:Bool)
                 for k = 0 upto {vector.length(blk.insts) - 1} do
                     let i = vector.get(blk.insts k)
                     if ssa.isOp(i ssa.opLoad) andif {i.width is 8} then

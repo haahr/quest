@@ -6,10 +6,10 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
 export
@@ -24,9 +24,9 @@ export
 
     (* The heap space for each layout defined in u, keyed by the layout's
      * symbol: 1 for a pointer-free (noscan) layout, 0 otherwise *)
-    let spaces(u: ssa.Unit): hashMap.T(String Int) =
+    let spaces(u: ssa.Unit): maps.StringMap(Int) =
         begin
-            let m = hashMap.new(:String :Int eq hash.string)
+            let m = maps.newStringMap(:Int)
             for i = 0 upto {vector.length(u.data) - 1} do
                 let d = vector.get(u.data i)
                 case d.contents
@@ -189,7 +189,7 @@ export
             moved.termLoc := termLoc
         end
 
-    let inlineFunction(f: Function spaces: hashMap.T(String Int)): Ok =
+    let inlineFunction(f: Function spaces: maps.StringMap(Int)): Ok =
         begin
             let cs = constants(f)
             (* Collect symbol definitions before expanding calls; values added

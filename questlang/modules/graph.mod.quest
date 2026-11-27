@@ -3,12 +3,10 @@
 module graph : Graph
 import
     conv : Conv
-    stringOp = string : StringOp
     system : System
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/iter : util/Iter
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -16,6 +14,7 @@ import
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/modules/paths : questlang/modules/Paths
     questlang/modules/units : questlang/modules/Units
     questlang/syntax/ast : questlang/syntax/AST
@@ -69,11 +68,11 @@ export
             name
         end
 
-    Let Resolver = Tuple memo: hashMap.T(String Resolved) var variantOf: All(unit: String) String end
+    Let Resolver = Tuple memo: maps.StringMap(Resolved) var variantOf: All(unit: String) String end
 
     let newResolver(): Resolver =
         tuple
-            let memo = hashMap.new(stringOp.equal hash.string)
+            let memo = maps.newStringMap()
             let var variantOf = fun(unit: String): String ""
         end
 
@@ -160,7 +159,7 @@ export
 
     (* The interface paths each interface source imports, by path and
      * modification time *)
-    let importPathsMemo = hashMap.new(:String :Array(String) stringOp.equal hash.string)
+    let importPathsMemo = maps.newStringMap(:Array(String))
 
     (* The import paths of the interface in source, which was modified at time
      * if it is a regular file *)
@@ -208,8 +207,8 @@ export
         begin
             let roots = rootsOf(searchPaths maybe.none())
             let deps = vector.new(:paths.InterfaceDependency)
-            let seen = hashMap.new(:String :Bool stringOp.equal hash.string)
-            let visited = hashMap.new(:String :Bool stringOp.equal hash.string)
+            let seen = maps.newStringMap(:Bool)
+            let visited = maps.newStringMap(:Bool)
             hashMap.insert(visited files.absolute(source) true)
             let rec visit(importer: String): Ok =
                 begin
@@ -270,10 +269,9 @@ export
         var precompiled: Bool
     end
 
-    Let UnitGraph = Tuple resolver: Resolver units: hashMap.T(String Unit) end
+    Let UnitGraph = Tuple resolver: Resolver units: maps.StringMap(Unit) end
 
-    let newGraphWith(res: Resolver): UnitGraph =
-        tuple let resolver = res let units = hashMap.new(stringOp.equal hash.string) end
+    let newGraphWith(res: Resolver): UnitGraph = tuple let resolver = res let units = maps.newStringMap() end
     let newGraph(): UnitGraph = newGraphWith(newResolver())
 
     let kindName(k: units.UnitKind): String =

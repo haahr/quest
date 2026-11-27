@@ -7,11 +7,11 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/captures : questlang/ir/Captures
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/modules/elaboration : questlang/modules/Elaboration
@@ -40,7 +40,6 @@ export
 
     let fail(A::TYPE message: String): A = raise loweringError with message end
 
-    let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
     let isOk(t: Type): Bool = model.same(t model.okType)
 
@@ -174,8 +173,8 @@ export
     Let Earlier = Tuple holder: String field: String recordType: Type isVar: Bool boxed: Bool end
 
     Let Lowerer = Tuple
-        vars: hashMap.T(Int Variable)
-        builtins: hashMap.T(Int String)
+        vars: maps.IntMap(Variable)
+        builtins: maps.IntMap(String)
         env: env.T
         echo: Bool
         printResult: Bool
@@ -193,20 +192,20 @@ export
          * the position of the statements it makes (nodes.stmtPos), or ~1 *)
         var pos: Int
         var loops: vector.T(String)
-        labelCounts: hashMap.T(String Int)
+        labelCounts: maps.StringMap(Int)
         imports: vector.T(nodes.Import)
         (* The modules the unit defines and imports, by the symbols their names
          * bind *)
-        moduleRefs: hashMap.T(Int nodes.ModuleRef)
+        moduleRefs: maps.IntMap(nodes.ModuleRef)
         (* The local var variables that closures capture (capturedMutables),
          * and the boxes that hold those bound so far: a tuple of one var
          * component, which the frame and the closures share *)
-        captured: hashMap.T(Int Bool)
-        boxes: hashMap.T(Int Variable)
+        captured: maps.IntMap(Bool)
+        boxes: maps.IntMap(Variable)
         (* In a phrase unit, the earlier inputs' bindings it may name, by
          * symbol, and the imports of those inputs' records, by number *)
-        earlier: hashMap.T(Int Earlier)
-        earlierImports: hashMap.T(String nodes.Import)
+        earlier: maps.IntMap(Earlier)
+        earlierImports: maps.StringMap(nodes.Import)
         (* What a phrase unit's declared modules' names begin with, so that
          * each input's are its own *)
         var modulePrefix: String
@@ -216,16 +215,16 @@ export
         (* Where each lowered module's initializer ends, by module id: its
          * init, or the continuation of a join it made (an if's value at its
          * top level), which the statements after its bindings go in *)
-        moduleEnds: hashMap.T(Int Body)
+        moduleEnds: maps.IntMap(Body)
     end
 
     let newLowerer(e: env.T sourceMap: maybe.T(location.SourceMap) file: Int echo: Bool printResult: Bool): Lowerer =
         begin
-            let builtins = hashMap.new(:Int :String intEqual hash.int)
+            let builtins = maps.newIntMap(:String)
             hashMap.forEach(e.baseScope.values fun(name: String sym: symbols.ValueSymbol): Ok
                 begin hashMap.insert(builtins sym.symbolId name) ok end)
             tuple
-                let vars = hashMap.new(intEqual hash.int)
+                let vars = maps.newIntMap()
                 let builtins = builtins
                 let env = e
                 let echo = echo
@@ -236,16 +235,16 @@ export
                 let var body = nodes.newBody()
                 let var pos = ~1
                 let var loops = vector.new()
-                let labelCounts = hashMap.new(stringOp.equal hash.string)
+                let labelCounts = maps.newStringMap()
                 let imports = vector.new()
-                let moduleRefs = hashMap.new(intEqual hash.int)
-                let captured = hashMap.new(intEqual hash.int)
-                let boxes = hashMap.new(intEqual hash.int)
-                let earlier = hashMap.new(intEqual hash.int)
-                let earlierImports = hashMap.new(stringOp.equal hash.string)
+                let moduleRefs = maps.newIntMap()
+                let captured = maps.newIntMap()
+                let boxes = maps.newIntMap()
+                let earlier = maps.newIntMap()
+                let earlierImports = maps.newStringMap()
                 let var modulePrefix = ""
                 let var boxSlots = false
-                let moduleEnds = hashMap.new(intEqual hash.int)
+                let moduleEnds = maps.newIntMap()
             end
         end
 
@@ -1041,7 +1040,7 @@ export
                 let n = extent x.elements
                 let labelOf = fun(i: Int): maybe.T(symbols.ValueSymbol)
                     if i < extent x.labels then x.labels[i] else maybe.none() end
-                let values = hashMap.new(:Int :Atom intEqual hash.int)
+                let values = maps.newIntMap(:Atom)
                 let setValue = fun(i: Int a: Atom): Ok begin hashMap.insert(values i a) ok end
                 let typeComponents = vector.new(:nodes.TypeComponent)
                 let isWitness = fun(el: Expr): Bool el.form?exprTypeWitness
@@ -2394,7 +2393,7 @@ export
      * made, as a module file's is, when they have run, with a var field for a
      * var (docs/jit.md section 3.2) *)
     let lowerPhrases(prog: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) number: Int
-            earlier: hashMap.T(Int Earlier) echo: Bool printResult: Bool capture: Bool): nodes.Unit =
+            earlier: maps.IntMap(Earlier) echo: Bool printResult: Bool capture: Bool): nodes.Unit =
         begin
             let l = newLowerer(e sourceMap 0 echo printResult)
             hashMap.forEach(earlier fun(k: Int b: Earlier): Ok

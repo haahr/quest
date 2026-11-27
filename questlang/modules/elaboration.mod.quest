@@ -9,7 +9,6 @@ import
     collections/hashMap : collections/HashMap
     collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/iter : util/Iter
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -18,6 +17,7 @@ import
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/inlined : questlang/modules/Inlined
@@ -68,7 +68,7 @@ export
 
     (* A map's entries, in insertion order *)
     Let Pair(V::TYPE) = Tuple key: String value: V end
-    let pairs(V::TYPE m: hashMap.T(String V)): Array(Pair(V)) =
+    let pairs(V::TYPE m: maps.StringMap(V)): Array(Pair(V)) =
         begin
             let entries = hashMap.entryIter(m)
             let result = vector.new(:Pair(V))
@@ -79,7 +79,7 @@ export
             vector.toArray(result)
         end
 
-    let lookupLocal(A::TYPE m: hashMap.T(String A) name: String): maybe.T(A) = hashMap.get(m name)
+    let lookupLocal(A::TYPE m: maps.StringMap(A) name: String): maybe.T(A) = hashMap.get(m name)
 
     let buildRecordTypeFromScope(scope: Scope provenance: maybe.T(String)): Type =
         begin
@@ -160,7 +160,7 @@ export
      * abstract types to the opaque ones. *)
     let createModuleExportScope(
             moduleName: String canon: String interfaceScope: Scope e: env.T
-            concreteDefs: maybe.T(hashMap.T(String Type))
+            concreteDefs: maybe.T(maps.StringMap(Type))
             ): Scope =
         begin
             let exportScope = symbols.newScope(maybe.none() "module_export_" <> moduleName)
@@ -208,13 +208,13 @@ export
 
     (* extractModuleExternalTypes's results by the text of the module it read,
      * so that a module that each of its importers asks about is parsed once *)
-    let externalsByText = hashMap.new(:String :hashMap.T(String Type) stringOp.equal hash.string)
+    let externalsByText = maps.newStringMap(:maps.StringMap(Type))
 
     (* The external types of the lib/ module at modulePath (os/process),
      * as the compiler has them built in (questlang/repr/externals) *)
-    let libraryExternalTypes(modulePath: String): hashMap.T(String Type) =
+    let libraryExternalTypes(modulePath: String): maps.StringMap(Type) =
         begin
-            let defs = hashMap.new(:String :Type stringOp.equal hash.string)
+            let defs = maps.newStringMap(:Type)
             for i = 0 upto {extent externals.types - 1} do
                 let entry = externals.types[i]
                 if stringOp.equal(entry[0] modulePath) then
@@ -230,18 +230,18 @@ export
      * Any other module is parsed if its text mentions external, without type
      * checking; an unreadable, unparseable, or absent src yields an empty
      * map. *)
-    let extractModuleExternalTypes(src: maybe.T(String)): hashMap.T(String Type) =
+    let extractModuleExternalTypes(src: maybe.T(String)): maps.StringMap(Type) =
         if maybe.isSome(src) andif maybe.isSome(paths.libModulePath(maybe.unwrap(src))) then
             libraryExternalTypes(maybe.unwrap(paths.libModulePath(maybe.unwrap(src))))
         else
             begin
-                let defs = hashMap.new(:String :Type stringOp.equal hash.string)
+                let defs = maps.newStringMap(:Type)
                 let text = if maybe.isSome(src) then files.readText(maybe.unwrap(src)) else maybe.none(:String) end
                 let known =
                     if maybe.isSome(text) then
                         hashMap.get(externalsByText maybe.unwrap(text))
                     else
-                        maybe.none(:hashMap.T(String Type))
+                        maybe.none(:maps.StringMap(Type))
                     end
                 if maybe.isSome(known) then
                     ok
@@ -435,10 +435,10 @@ export
              *    name may be declared at most once per namespace (values,
              *    types, kinds), because a module could not implement two
              *    members of the same name and C could not declare both. *)
-            let declaredValues = hashSet.new(:String stringOp.equal hash.string)
-            let declaredTypes = hashSet.new(:String stringOp.equal hash.string)
-            let declaredKinds = hashSet.new(:String stringOp.equal hash.string)
-            let declareOnce(declared: hashSet.T(String) what: String name: String at: Int): Ok =
+            let declaredValues = maps.newStringSet()
+            let declaredTypes = maps.newStringSet()
+            let declaredKinds = maps.newStringSet()
+            let declareOnce(declared: maps.StringSet what: String name: String at: Int): Ok =
                 if hashSet.contains(declared name) then
                     diagnostics.fail(:Ok
                             what <> "'" <> name <> "' is declared more than once in interface '" <> decl.name <> "'" at)
@@ -772,7 +772,7 @@ export
             let u = graph.unit(e.units option moduleUnit of units.UnitKind end canon)
             let exportScope =
                 if maybe.isNone(u.exportScope) then
-                    let concrete = hashMap.new(:String :Type stringOp.equal hash.string)
+                    let concrete = maps.newStringMap(:Type)
                     let types = pairs(internalScope.types)
                     for i = 0 upto {extent types - 1} do
                         let entry = types[i]

@@ -11,7 +11,6 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/iter : util/Iter
     util/maybe : util/Maybe
     util/sort : util/Sort
@@ -21,6 +20,7 @@ import
     questlang/codegen/c/types : questlang/codegen/c/Types
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/describe : questlang/ir/Describe
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/walk : questlang/ir/Walk
@@ -44,7 +44,6 @@ export
     let unsupported: Exception(String) = exception unsupported: String end
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
-    let intEqual(a: Int b: Int): Bool = a is b
     let cInt(n: Int): String = syntax.cInt(n)
     let lit(n: Int): String = syntax.cIntLiteral(n)
     let strings(xs: Array(String)): vector.T(String) = vector.fromArray(xs)
@@ -161,17 +160,17 @@ export
         locals: vector.T(Local)
         (* Labels used by jumps, breaks, and continues (only used labels are
          * printed) *)
-        usedLabels: hashMap.T(String Bool)
+        usedLabels: maps.StringMap(Bool)
         (* The try handlers entered, innermost last, and for each label the
          * number entered where it is defined *)
         handlers: vector.T(String)
-        labelDepth: hashMap.T(String Int)
-        joinParams: hashMap.T(String Array(Variable))
-        var volatile: hashMap.T(Int Bool)
+        labelDepth: maps.StringMap(Int)
+        joinParams: maps.StringMap(Array(Variable))
+        var volatile: maps.IntMap(Bool)
         (* Statements fused into the following statement, keyed by variable id
          * (fusedTuples): a tuple built only as an option's payload, or an
          * option payload extracted only to read one component *)
-        var fused: hashMap.T(Int nodes.Stmt)
+        var fused: maps.IntMap(nodes.Stmt)
         (* The objects being initialized, outermost first (beginInit) *)
         inits: vector.T(Init)
     end
@@ -179,12 +178,12 @@ export
         tuple
             let function = f
             let locals = vector.new()
-            let usedLabels = hashMap.new(eq hash.string)
+            let usedLabels = maps.newStringMap()
             let handlers = vector.new()
-            let labelDepth = hashMap.new(eq hash.string)
-            let joinParams = hashMap.new(eq hash.string)
-            let var volatile = hashMap.new(intEqual hash.int)
-            let var fused = hashMap.new(intEqual hash.int)
+            let labelDepth = maps.newStringMap()
+            let joinParams = maps.newStringMap()
+            let var volatile = maps.newIntMap()
+            let var fused = maps.newIntMap()
             let inits = vector.new()
         end
 
@@ -218,7 +217,7 @@ export
      * even's environment is made before odd's closure exists, and its
      * capture of odd is stored once both are made. *)
     Let DeferredCapture = Tuple env: String index: Int a: Atom end
-    Let Deferred = Tuple vars: hashMap.T(Int Bool) captures: vector.T(DeferredCapture) end
+    Let Deferred = Tuple vars: maps.IntMap(Bool) captures: vector.T(DeferredCapture) end
 
     (* The state of printing one unit (printC) *)
     Let P = Tuple
@@ -230,35 +229,35 @@ export
          * main body and the modules' initializers that a function or another
          * of those bodies names, or that are a module's members, exports, or
          * record (walk.globalVariables) *)
-        globals: hashMap.T(Int Bool)
+        globals: maps.IntMap(Bool)
         (* The C name of each variable, by id, and of each function's code
          * (codeNames, by function id); every name given (usedNames), and for
          * each base name the count its next fresh name starts at (freshName) *)
-        names: hashMap.T(Int String)
-        usedNames: hashMap.T(String Bool)
-        nameCounts: hashMap.T(String Int)
-        codeNames: hashMap.T(Int String)
+        names: maps.IntMap(String)
+        usedNames: maps.StringMap(Bool)
+        nameCounts: maps.StringMap(Int)
+        codeNames: maps.IntMap(String)
         (* The closure each variable is known to hold, by id, so that its
          * calls call the closure's code directly (callClosure): those
          * walk.knownClosures finds, and each let of a closure as statement
          * prints it *)
-        closures: hashMap.T(Int nodes.OpMakeClosure)
+        closures: maps.IntMap(nodes.OpMakeClosure)
         (* The variables that hold a caught exception (a try's exc), by id,
          * which C declares as the whole exception state, QExceptionState *)
-        handlerVars: hashMap.T(Int Bool)
+        handlerVars: maps.IntMap(Bool)
         (* The pairs of tuple types converted by casts (whose layouts agree,
          * which the C asserts), in the order first cast *)
         tupleCastKeys: vector.T(String)
-        tupleCasts: hashMap.T(String declarations.Pair)
+        tupleCasts: maps.StringMap(declarations.Pair)
         (* The tables of options of cases without components, by option
          * struct: their names, and their definitions in the order first used
          * (docs/c-representation.md section 5.3) *)
-        optionTables: hashMap.T(String String)
+        optionTables: maps.StringMap(String)
         optionTableDecls: vector.T(String)
         (* The unit's string literals, each one static object
          * (QStaticString): their names, by text, and their definitions in
          * the order first used *)
-        stringObjects: hashMap.T(String String)
+        stringObjects: maps.StringMap(String)
         stringDecls: vector.T(String)
         (* The layouts of the objects the unit allocates (docs/collector.md
          * section 3.2), each defined once *)
@@ -1268,10 +1267,10 @@ export
      * tuple built only as an option's payload, or an option payload extracted
      * only to read a single component. Excludes globals, volatile variables,
      * and unboxed tuples. *)
-    let fusedTuples(p: P b: nodes.Body): hashMap.T(Int nodes.Stmt) =
+    let fusedTuples(p: P b: nodes.Body): maps.IntMap(nodes.Stmt) =
         begin
-            let found = hashMap.new(:Int :nodes.Stmt intEqual hash.int)
-            let uses = hashMap.new(:Int :Int intEqual hash.int)
+            let found = maps.newIntMap(:nodes.Stmt)
+            let uses = maps.newIntMap(:Int)
             let all = walk.walkStatements(b false)
             for i = 0 upto {vector.length(all) - 1} do
                 let us = walk.statementUses(vector.get(all i))
@@ -2419,7 +2418,7 @@ export
             when sInspect with x then inspectAuto(p x)
             when sLetRec with x then
                 let saved = p.deferred
-                let vars = hashMap.new(:Int :Bool intEqual hash.int)
+                let vars = maps.newIntMap(:Bool)
                 for i = 0 upto {extent x.vars - 1} do put(vars x.vars[i].id true) end
                 let d = tuple let vars = vars let captures = vector.new(:DeferredCapture) end
                 p.deferred := maybe.some(d)
@@ -2773,10 +2772,10 @@ export
 
     (* The C declarations of the variables a function (or a top level) binds,
      * but for exclude's *)
-    let declareLocals(p: P b: nodes.Body exclude: hashMap.T(Int Bool)): vector.T(Local) =
+    let declareLocals(p: P b: nodes.Body exclude: maps.IntMap(Bool)): vector.T(Local) =
         begin
             let decls = vector.new(:Local)
-            let seen = hashMap.new(:Int :Bool intEqual hash.int)
+            let seen = maps.newIntMap(:Bool)
             let statements = walk.walkStatements(b false)
             for i = 0 upto {vector.length(statements) - 1} do
                 let s = vector.get(statements i)
@@ -2802,9 +2801,9 @@ export
      * handler to read them after longjmp; and those it stores through, since
      * clang may keep the fields of an object allocated in the function, whose
      * address does not escape, in registers that longjmp restores *)
-    let volatileVars(b: nodes.Body): hashMap.T(Int Bool) =
+    let volatileVars(b: nodes.Body): maps.IntMap(Bool) =
         begin
-            let found = hashMap.new(:Int :Bool intEqual hash.int)
+            let found = maps.newIntMap(:Bool)
             let through = fun(a: nodes.Atom): Ok
                 case a
                     when atomVar with v then put(found v.v.id true)
@@ -2911,7 +2910,7 @@ export
                 add(prologue "const QViewMap *" <> name(p m.v) <> " = quest_view_map(" <> name(p m.descriptor) <> ", "
                     <> descriptor(p m.bound) <> ");")
             end
-            let exclude = hashMap.new(:Int :Bool intEqual hash.int)
+            let exclude = maps.newIntMap(:Bool)
             for i = 0 upto {extent f.params - 1} do put(exclude f.params[i].v.id true) end
             let decls = declareLocals(p f.body exclude)
             p.lines := vector.new()
@@ -2991,7 +2990,7 @@ export
              * names *)
             let ctx = maybe.some(p.ctx)
             let tableKeys = vector.new(:String)
-            let tables = hashMap.new(:String :declarations.Pair eq hash.string)
+            let tables = maps.newStringMap(:declarations.Pair)
             for i = 0 upto {vector.length(data.offsetTables) - 1} do
                 let t = vector.get(data.offsetTables i)
                 let key = staticdata.recordStructName(t.view ctx) <> "\n" <> staticdata.recordStructName(t.layout ctx)
@@ -2999,14 +2998,14 @@ export
                 put(tables key tuple let target = t.view let source = t.layout end)
             end
             let mapKeys = vector.new(:String)
-            let maps = hashMap.new(:String :declarations.Pair eq hash.string)
+            let maps = maps.newStringMap(:declarations.Pair)
             for i = 0 upto {vector.length(data.tagMaps) - 1} do
                 let t = vector.get(data.tagMaps i)
                 let key = layout.typeTag(t.target) <> "\n" <> layout.typeTag(t.source)
                 if not(hashMap.contains(maps key)) then add(mapKeys key) end
                 put(maps key tuple let target = t.target let source = t.source end)
             end
-            let valuesOf(keys: vector.T(String) m: hashMap.T(String declarations.Pair)): vector.T(declarations.Pair) =
+            let valuesOf(keys: vector.T(String) m: maps.StringMap(declarations.Pair)): vector.T(declarations.Pair) =
                 begin
                     let res = vector.new(:declarations.Pair)
                     for i = 0 upto {vector.length(keys) - 1} do
@@ -3043,7 +3042,7 @@ export
     let importDeclarations(p: P): Lines =
         begin
             let imports = vector.new(:nodes.Import)
-            let seen = hashMap.new(:String :Bool eq hash.string)
+            let seen = maps.newStringMap(:Bool)
             for i = 0 upto {extent p.unit.imports - 1} do
                 let imp = p.unit.imports[i]
                 if not(hashMap.contains(seen imp.canonicalPath)) then
@@ -3074,7 +3073,7 @@ export
     let globalDeclarations(p: P): vector.T(GlobalDecl) =
         begin
             let found = vector.new(:GlobalDecl)
-            let seen = hashMap.new(:Int :Bool intEqual hash.int)
+            let seen = maps.newIntMap(:Bool)
             let bodies = vector.new(:nodes.Body)
             vector.append(bodies p.unit.main)
             for i = 0 upto {vector.length(p.unit.modules) - 1} do
@@ -3287,7 +3286,7 @@ export
             let unit = p.unit
             (* The closure that makes each function, by the function's id
              * (the first found), for its environment's struct *)
-            let closuresOf = hashMap.new(:Int :nodes.OpMakeClosure intEqual hash.int)
+            let closuresOf = maps.newIntMap(:nodes.OpMakeClosure)
             let bodies = vector.new(:nodes.Body)
             vector.append(bodies unit.main)
             for i = 0 upto {vector.length(unit.modules) - 1} do
@@ -3421,7 +3420,7 @@ export
             if not(vector.empty(funcs)) then
                 add(res "    quest_register_funcs(qr_funcs, sizeof qr_funcs / sizeof qr_funcs[0]);")
             end
-            let registered = hashMap.new(:String :Bool eq hash.string)
+            let registered = maps.newStringMap(:Bool)
             let tables = staticData(p).offsetTables
             for i = 0 upto {vector.length(tables) - 1} do
                 let table = vector.get(tables i)
@@ -3471,17 +3470,17 @@ export
             let interfaceHeader = interfaceHeader
             let ctx = staticdata.newRecordNaming()
             let globals = walk.globalVariables(unit)
-            let names = hashMap.new(intEqual hash.int)
-            let usedNames = hashMap.new(eq hash.string)
-            let nameCounts = hashMap.new(eq hash.string)
-            let codeNames = hashMap.new(intEqual hash.int)
-            let closures = hashMap.new(intEqual hash.int)
-            let handlerVars = hashMap.new(intEqual hash.int)
+            let names = maps.newIntMap()
+            let usedNames = maps.newStringMap()
+            let nameCounts = maps.newStringMap()
+            let codeNames = maps.newIntMap()
+            let closures = maps.newIntMap()
+            let handlerVars = maps.newIntMap()
             let tupleCastKeys = vector.new()
-            let tupleCasts = hashMap.new(eq hash.string)
-            let optionTables = hashMap.new(eq hash.string)
+            let tupleCasts = maps.newStringMap()
+            let optionTables = maps.newStringMap()
             let optionTableDecls = vector.new()
-            let stringObjects = hashMap.new(eq hash.string)
+            let stringObjects = maps.newStringMap()
             let stringDecls = vector.new()
             let layouts = objectLayout.newTable()
             let var fs = newFnState(maybe.none())

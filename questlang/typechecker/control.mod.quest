@@ -7,12 +7,12 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/iter : util/Iter
     util/maybe : util/Maybe
     util/sort : util/Sort
 
     questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/maps : questlang/common/Maps
     questlang/syntax/ast : questlang/syntax/AST
     questlang/typechecker/bindings : questlang/typechecker/Bindings
     questlang/typechecker/checker : questlang/typechecker/Checker
@@ -37,7 +37,7 @@ export
     let okExpr(offset: Int): typedAst.Expr = expr(offset model.okType option exprOk of typedAst.ExprForm end)
     let notDesugared(A::TYPE className: String x: ast.Expr): A =
         diagnostics.raiseError(checks.notDesugared(className x.span.startOffset))
-    let newIds(): hashMap.T(Int Bool) = hashMap.new(fun(a: Int b: Int): Bool a is b hash.int)
+    let newIds(): maps.IntMap(Bool) = maps.newIntMap()
 
     (* ======================================================================
      * Case
@@ -126,9 +126,9 @@ export
                             end
                         end
                 end
-            let available = hashMap.new(:String :Tag stringOp.equal hash.string)
+            let available = maps.newStringMap(:Tag)
             for i = 0 upto {extent tags - 1} do hashMap.insert(available tags[i].name tags[i]) end
-            let covered = hashMap.new(:String :Bool stringOp.equal hash.string)
+            let covered = maps.newStringMap(:Bool)
             let typed = vector.new(:typedAst.CaseBranch)
             for i = 0 upto {vector.length(branches) - 1} do
                 let branch = vector.get(branches i)

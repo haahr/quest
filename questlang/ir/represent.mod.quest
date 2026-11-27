@@ -12,6 +12,7 @@ import
     util/maybe : util/Maybe
 
     questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/slots : questlang/ir/Slots
     questlang/ir/stages : questlang/ir/Stages
@@ -38,7 +39,6 @@ export
 
     let unsupported(A::TYPE message: String): A = raise unsupportedConversion with message end
 
-    let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
     let none: maybe.T(Plan) = maybe.none()
     let noLayout: Layout = maybe.none()
@@ -98,14 +98,14 @@ export
      * represented: representUnit clears it, so that a process that compiles
      * many units (the REPL, the JIT, a driver build) does not keep every
      * type's *)
-    let typeVarsMemo = hashMap.new(:Int :Array(Type) intEqual hash.int)
+    let typeVarsMemo = maps.newIntMap(:Array(Type))
 
     (* The type variables t0 mentions, each once, in the order first met; a
      * subterm's are taken from typeVarsMemo when an earlier call found them *)
     let typeVars(t0: Type): Array(Type) =
         begin
             let found = vector.new(:Type)
-            let foundIds = hashMap.new(:Int :Bool intEqual hash.int)
+            let foundIds = maps.newIntMap(:Bool)
             let rec visit(p: model.Part): Ok =
                 case p
                     when partType with x then
@@ -142,7 +142,7 @@ export
         if {extent a.fv is 0} orif {extent b.fv is 0} then
             true
         else
-            let bounds = hashMap.new(:Int :maybe.T(model.Kind) intEqual hash.int)
+            let bounds = maps.newIntMap(:maybe.T(model.Kind))
             let var same = true
             let vars = vector.fromArray(typeVars(a))
             let more = typeVars(b)
@@ -300,8 +300,8 @@ export
     (* The pairs of shapes being planned (with their layouts), and of function
      * types being adapted, for recursive types, which are compared
      * coinductively *)
-    let planning = hashMap.new(:String :Bool stringOp.equal hash.string)
-    let adapting = hashMap.new(:String :Bool stringOp.equal hash.string)
+    let planning = maps.newStringMap(:Bool)
+    let adapting = maps.newStringMap(:Bool)
 
     (* Returns lay's contribution to a planning key: "-" for none, or its
      * substitution's object identity and direction. Identity suffices because
@@ -921,7 +921,7 @@ export
      * GenericResult of the polymorphic call it converted, for statement *)
     Let Representer = Tuple
         unit: nodes.Unit
-        joins: hashMap.T(String Array(Variable))
+        joins: maps.StringMap(Array(Variable))
         var genericResults: vector.T(GenericResult)
         (* The position of the statement being represented, or of the nearest
          * before it that has one, in its function or initializer *)
@@ -1483,7 +1483,7 @@ export
         begin
             let r = tuple
                 let unit = unit
-                let joins = hashMap.new(:String :Array(Variable) stringOp.equal hash.string)
+                let joins = maps.newStringMap(:Array(Variable))
                 let var genericResults = vector.new(:GenericResult)
                 let var pos = ~1
             end

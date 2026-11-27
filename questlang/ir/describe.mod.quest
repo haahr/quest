@@ -7,10 +7,10 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/stages : questlang/ir/Stages
     questlang/ir/walk : questlang/ir/Walk
@@ -35,7 +35,6 @@ export
 
     let unsupportedDescriptor: Exception(String) = exception unsupportedDescriptor: String end
 
-    let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
     let typeOf(a: Atom): Type = nodes.atomType(a)
@@ -91,11 +90,11 @@ export
             if not(any) then
                 array of :Type end
             else
-                let isFree = hashMap.new(:Int :Bool intEqual hash.int)
+                let isFree = maps.newIntMap(:Bool)
                 for i = 0 upto {extent free - 1} do hashMap.insert(isFree free[i] true) end
                 let found = vector.new(:Type)
-                let foundIds = hashMap.new(:Int :Bool intEqual hash.int)
-                let seen = hashMap.new(:Int :Bool intEqual hash.int)
+                let foundIds = maps.newIntMap(:Bool)
+                let seen = maps.newIntMap(:Bool)
                 let note = fun(node: Type symbolId: Int): Ok
                     if hashMap.contains(isFree symbolId) andif wanted(symbolId)
                             andif not(hashMap.contains(foundIds symbolId)) then
@@ -164,7 +163,7 @@ export
         end
 
     (* Counts one more (by 1) or one fewer (by ~1) of v's uses in uses *)
-    let use(uses: hashMap.T(Int Int) v: Variable by: Int): Ok =
+    let use(uses: maps.IntMap(Int) v: Variable by: Int): Ok =
         begin hashMap.insert(uses v.id maybe.unwrapOr(hashMap.get(uses v.id) 0) + by) ok end
     let descStatic(d: nodes.StaticDescriptor): Descriptor = option descStatic of Descriptor with let d = d end
 
@@ -175,24 +174,24 @@ export
     Let Describer = Tuple
         unit: nodes.Unit
         data: nodes.StaticData
-        staticKeys: hashMap.T(String nodes.StaticDescriptor)
-        offsetKeys: hashMap.T(String nodes.OffsetTable)
-        tagKeys: hashMap.T(String nodes.TagMap)
+        staticKeys: maps.StringMap(nodes.StaticDescriptor)
+        offsetKeys: maps.StringMap(nodes.OffsetTable)
+        tagKeys: maps.StringMap(nodes.TagMap)
         (* The descriptor variables in scope, by the symbols of the type
          * parameters they describe, and the symbols of type parameters whose
          * descriptors are not available here (an enclosing function's, in a
          * thunk) *)
-        var scope: hashMap.T(Int Variable)
-        var unavailable: hashMap.T(Int Bool)
+        var scope: maps.IntMap(Variable)
+        var unavailable: maps.IntMap(Bool)
         (* The view maps of the function being described, by the symbols of
          * their type parameters, in order *)
-        var viewMaps: hashMap.T(Int nodes.ViewMapParam)
+        var viewMaps: maps.IntMap(nodes.ViewMapParam)
         var viewMapOrder: vector.T(nodes.ViewMapParam)
         (* Handlers' exception variables, which is compares as exceptions *)
-        handlerVars: hashMap.T(Int Bool)
+        handlerVars: maps.IntMap(Bool)
         (* How many descriptor operands (and view maps) name each descriptor
          * variable, by its id (unusedEnclosing) *)
-        uses: hashMap.T(Int Int)
+        uses: maps.IntMap(Int)
     end
 
     let descVar(d: Describer v: Variable): Descriptor =
@@ -201,7 +200,7 @@ export
             option descVar of Descriptor with let v = v end
         end
 
-    let newScope(): hashMap.T(Int Variable) = hashMap.new(intEqual hash.int)
+    let newScope(): maps.IntMap(Variable) = maps.newIntMap()
 
     (* Returns a static descriptor operand for t (a closed type or a template)
      * and records its descriptor once in the unit's static data. Types with the
@@ -328,7 +327,7 @@ export
             let params = vector.toArray(made)
             let savedScope = d.scope
             let savedUnavailable = d.unavailable
-            let unavailable = hashMap.new(:Int :Bool intEqual hash.int)
+            let unavailable = maps.newIntMap(:Bool)
             hashMap.forEach(d.unavailable fun(k: Int b: Bool): Ok begin hashMap.insert(unavailable k b) ok end)
             hashMap.forEach(d.scope fun(k: Int v: Variable): Ok begin hashMap.insert(unavailable k true) ok end)
             let scope = newScope()
@@ -774,11 +773,11 @@ export
             let scope = newScope()
             for i = 0 upto {extent params - 1} do hashMap.insert(scope params[i].symbols[0] params[i].v) end
             d.scope := scope
-            d.viewMaps := hashMap.new(intEqual hash.int)
+            d.viewMaps := maps.newIntMap()
             d.viewMapOrder := vector.new()
             body(d f.body)
             f.viewMaps := vector.toArray(d.viewMapOrder)
-            d.viewMaps := hashMap.new(intEqual hash.int)
+            d.viewMaps := maps.newIntMap()
             d.viewMapOrder := vector.new()
             d.scope := newScope()
         end
@@ -854,9 +853,9 @@ export
      * share the same numeric id *)
     Let Collector = Tuple
         found: vector.T(Type)
-        seenTypes: hashMap.T(Int Bool)
-        seenNodes: hashMap.T(Int Bool)
-        seenKinds: hashMap.T(Int Bool)
+        seenTypes: maps.IntMap(Bool)
+        seenNodes: maps.IntMap(Bool)
+        seenKinds: maps.IntMap(Bool)
     end
 
     let add(c: Collector t: Type): Ok =
@@ -1032,9 +1031,9 @@ export
         begin
             let c = tuple
                 let found = vector.new(:Type)
-                let seenTypes = hashMap.new(:Int :Bool intEqual hash.int)
-                let seenNodes = hashMap.new(:Int :Bool intEqual hash.int)
-                let seenKinds = hashMap.new(:Int :Bool intEqual hash.int)
+                let seenTypes = maps.newIntMap(:Bool)
+                let seenNodes = maps.newIntMap(:Bool)
+                let seenKinds = maps.newIntMap(:Bool)
             end
             for i = 0 upto {vector.length(unit.modules) - 1} do moduleTypes(c vector.get(unit.modules i)) end
             bodyTypes(c unit.main)
@@ -1071,9 +1070,9 @@ export
      * type-parameter values around as uniform words). Removing one function's
      * descriptors may make its enclosing function's descriptors unused as well,
      * so this repeats to a fixed point. *)
-    let unusedEnclosing(unit: nodes.Unit uses: hashMap.T(Int Int)): Ok =
+    let unusedEnclosing(unit: nodes.Unit uses: maps.IntMap(Int)): Ok =
         begin
-            let closures = hashMap.new(:Int :vector.T(nodes.OpMakeClosure) intEqual hash.int)
+            let closures = maps.newIntMap(:vector.T(nodes.OpMakeClosure))
             let collect = fun(b: Body): Ok
                 begin
                     let stmts = walk.walkStatements(b false)
@@ -1149,15 +1148,15 @@ export
                     let tagMaps = vector.new(:nodes.TagMap)
                     let types = vector.new(:Type)
                 end
-                let staticKeys = hashMap.new(:String :nodes.StaticDescriptor stringOp.equal hash.string)
-                let offsetKeys = hashMap.new(:String :nodes.OffsetTable stringOp.equal hash.string)
-                let tagKeys = hashMap.new(:String :nodes.TagMap stringOp.equal hash.string)
+                let staticKeys = maps.newStringMap(:nodes.StaticDescriptor)
+                let offsetKeys = maps.newStringMap(:nodes.OffsetTable)
+                let tagKeys = maps.newStringMap(:nodes.TagMap)
                 let var scope = newScope()
-                let var unavailable = hashMap.new(:Int :Bool intEqual hash.int)
-                let var viewMaps = hashMap.new(:Int :nodes.ViewMapParam intEqual hash.int)
+                let var unavailable = maps.newIntMap(:Bool)
+                let var viewMaps = maps.newIntMap(:nodes.ViewMapParam)
                 let var viewMapOrder = vector.new(:nodes.ViewMapParam)
-                let handlerVars = hashMap.new(:Int :Bool intEqual hash.int)
-                let uses = hashMap.new(:Int :Int intEqual hash.int)
+                let handlerVars = maps.newIntMap(:Bool)
+                let uses = maps.newIntMap(:Int)
             end
             for i = 0 upto {vector.length(unit.modules) - 1} do
                 let m = vector.get(unit.modules i)

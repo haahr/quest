@@ -6,9 +6,9 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/walk : questlang/ir/Walk
     questlang/repr/genericLayout : questlang/repr/GenericLayout
@@ -25,7 +25,6 @@ export
     Let Stmt = nodes.Stmt
     Let Op = nodes.Op
 
-    let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
     let mayBeStoredAsSubtype(s: Shape): Bool =
@@ -127,10 +126,10 @@ export
     Let SlotState = Tuple
         (* The boxes of the records and variants read from slots (by the
          * variable bound to the value) *)
-        var boxes: hashMap.T(Int Variable)
+        var boxes: maps.IntMap(Variable)
         (* The tuples and options the function made (by variable), which are not
          * proxies *)
-        var fresh: hashMap.T(Int Bool)
+        var fresh: maps.IntMap(Bool)
     end
 
     let isFresh(st: SlotState a: Atom): Bool =
@@ -653,8 +652,8 @@ export
             end
             for i = 0 upto {extent bodies - 1} do
                 let st = tuple
-                    let var boxes = hashMap.new(:Int :Variable intEqual hash.int)
-                    let var fresh = hashMap.new(:Int :Bool intEqual hash.int)
+                    let var boxes = maps.newIntMap(:Variable)
+                    let var fresh = maps.newIntMap(:Bool)
                 end
                 body(st bodies[i])
             end

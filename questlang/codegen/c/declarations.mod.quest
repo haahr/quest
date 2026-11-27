@@ -6,12 +6,12 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/strutil : util/Strutil
 
     questlang/codegen/c/types : questlang/codegen/c/Types
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/slots : questlang/ir/Slots
     questlang/repr/layout : questlang/repr/Layout
     questlang/repr/shapes : questlang/repr/Shapes
@@ -26,8 +26,6 @@ export
     Let Lines = vector.T(String)
     Let DescriptorForm = staticdata.DescriptorForm
 
-    let eq(a: String b: String): Bool = stringOp.equal(a b)
-    let intEqual(a: Int b: Int): Bool = a is b
     let cInt(n: Int): String = syntax.cInt(n)
     let items(xs: Array(String)): vector.T(String) = vector.fromArray(xs)
     let add(lines: Lines line: String): Ok = vector.append(lines line)
@@ -133,12 +131,12 @@ export
             let result = vector.new(:Aggregate)
             let variantTypes = vector.new(:Type)
             let allTypes = vector.new(:Type)
-            let names = hashMap.new(:String :Bool eq hash.string)
-            let visitedTypes = hashMap.new(:Int :Bool intEqual hash.int)
-            let visitedNodes = hashMap.new(:Int :Bool intEqual hash.int)
-            let visitedKinds = hashMap.new(:Int :Bool intEqual hash.int)
-            let visitedShapes = hashMap.new(:Int :Bool intEqual hash.int)
-            let variantShapes = hashMap.new(:Int :Bool intEqual hash.int)
+            let names = maps.newStringMap(:Bool)
+            let visitedTypes = maps.newIntMap(:Bool)
+            let visitedNodes = maps.newIntMap(:Bool)
+            let visitedKinds = maps.newIntMap(:Bool)
+            let visitedShapes = maps.newIntMap(:Bool)
+            let variantShapes = maps.newIntMap(:Bool)
             let addAggregate(name: String t: Type): Ok =
                 if not(hashMap.contains(names name)) then
                     hashMap.insert(names name true)
@@ -269,8 +267,8 @@ export
         ctx: staticdata.RecordNaming
         var emittedDescriptorTags: vector.T(String)
         var emittedFunTypes: vector.T(Aggregate)
-        emittedBefore: hashMap.T(String Bool)
-        definedStructs: hashMap.T(String Bool)
+        emittedBefore: maps.StringMap(Bool)
+        definedStructs: maps.StringMap(Bool)
     end
 
     let newEmitter(ctx: staticdata.RecordNaming): Emitter =
@@ -278,8 +276,8 @@ export
             let ctx = ctx
             let var emittedDescriptorTags = vector.new()
             let var emittedFunTypes = vector.new()
-            let emittedBefore = hashMap.new(eq hash.string)
-            let definedStructs = hashMap.new(eq hash.string)
+            let emittedBefore = maps.newStringMap()
+            let definedStructs = maps.newStringMap()
         end
 
     let emitForwardTypedefs(e: Emitter aggregates: vector.T(Aggregate)): Lines =
@@ -287,7 +285,7 @@ export
             let lines = vector.new(:String)
             if not(vector.empty(aggregates)) then
                 add(lines "/* Forward declarations for aggregate types */")
-                let seen = hashMap.new(:String :Bool eq hash.string)
+                let seen = maps.newStringMap(:Bool)
                 for i = 0 upto {vector.length(aggregates) - 1} do
                     let name = vector.get(aggregates i).name
                     if not(hashMap.contains(seen name)) then
@@ -369,7 +367,7 @@ export
             let lines = vector.new(:String)
             if not(vector.empty(aggregates)) then
                 add(lines "/* Aggregate struct definitions */")
-                let seen = hashMap.new(:String :Bool eq hash.string)
+                let seen = maps.newStringMap(:Bool)
                 for i = 0 upto {vector.length(aggregates) - 1} do
                     let a = vector.get(aggregates i)
                     let name = a.name

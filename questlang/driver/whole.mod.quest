@@ -6,11 +6,11 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/lower : questlang/ir/Lower
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/opened : questlang/ir/Opened
@@ -56,7 +56,7 @@ export
     (* Rewrites references to imported modules in body (and any nested bodies
      * or functions) to point to the corresponding merged module in merged,
      * or to the one import kept for a module compiled apart (kept) *)
-    let rewriteRefs(body: nodes.Body merged: hashMap.T(String Module) kept: hashMap.T(String nodes.Import)): Ok =
+    let rewriteRefs(body: nodes.Body merged: maps.StringMap(Module) kept: maps.StringMap(nodes.Import)): Ok =
         begin
             let ref(r: nodes.ModuleRef): nodes.ModuleRef =
                 case r
@@ -97,15 +97,15 @@ export
 
     let mergeImports(unit: nodes.Unit e: env.T apart: Array(String)): nodes.Unit =
         begin
-            let merged = hashMap.new(:String :Module eq hash.string)
+            let merged = maps.newStringMap(:Module)
             (* The modules merged, each after those it imports *)
             let order = vector.new(:Module)
             let functions = vector.new(:nodes.Function)
             (* The modules known only through their interfaces and objects (the
              * library's), which stay imported *)
             let kept = vector.new(:nodes.Import)
-            let keptNames = hashMap.new(:String :Bool eq hash.string)
-            let keptByKey = hashMap.new(:String :nodes.Import eq hash.string)
+            let keptNames = maps.newStringMap(:Bool)
+            let keptByKey = maps.newStringMap(:nodes.Import)
             let rec visit(i: nodes.Import): Ok =
                 if hashMap.contains(merged key(i.canonicalPath)) then ok
                 elsif hashMap.contains(keptNames key(i.canonicalPath)) then

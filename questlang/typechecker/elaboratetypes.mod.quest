@@ -7,10 +7,10 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
     questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/maps : questlang/common/Maps
     questlang/syntax/ast : questlang/syntax/AST
     questlang/typechecker/checks : questlang/typechecker/Checks
     questlang/typechecker/nearMiss : questlang/typechecker/NearMiss
@@ -30,7 +30,7 @@ export
     let declare(e: env.T sym: symbols.TypeSymbol): symbols.TypeSymbol = symbols.declareType(e.currentScope sym)
     let declareVariable(e: env.T name: String symbolId: Int kind: Kind): Ok =
         begin declare(e symbols.newTypeSymbol(name symbolId kind maybe.none())) ok end
-    let newIds(): hashMap.T(Int Bool) = hashMap.new(fun(a: Int b: Int): Bool a is b hash.int)
+    let newIds(): maps.IntMap(Bool) = maps.newIntMap()
     let joinPath(path: vector.T(String)): String =
         begin
             let var s = ""
@@ -51,7 +51,7 @@ export
      * ====================================================================== *)
 
     Let RecOperator = Tuple name: String formals: Array(model.TypeFormal) recVar: Type end
-    let recOperators: hashMap.T(Int RecOperator) = hashMap.new(fun(a: Int b: Int): Bool a is b hash.int)
+    let recOperators: maps.IntMap(RecOperator) = maps.newIntMap()
 
     let recOperatorOf(sym: symbols.TypeSymbol): maybe.T(RecOperator) = hashMap.get(recOperators sym.symbolId)
 
@@ -251,7 +251,7 @@ export
                 when typeVariant with x then
                     begin
                         let variants = vector.new(:model.VariantField)
-                        let seen = hashMap.new(:String :Bool stringOp.equal hash.string)
+                        let seen = maps.newStringMap(:Bool)
                         for i = 0 upto {vector.length(x.fields) - 1} do
                             let v = vector.get(x.fields i)
                             if hashMap.contains(seen v.tag) then
@@ -688,7 +688,7 @@ export
     (* Rejects a simultaneous declaration that declares one name twice *)
     and checkDistinctMemberNames(members: vector.T(ast.TypeBinding)): Ok =
         begin
-            let seen = hashMap.new(:String :Bool stringOp.equal hash.string)
+            let seen = maps.newStringMap(:Bool)
             for i = 0 upto {vector.length(members) - 1} do
                 let m = vector.get(members i)
                 if hashMap.contains(seen m.name) then

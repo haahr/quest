@@ -27,6 +27,7 @@ import
     util/stringBuilder : util/StringBuilder
 
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/modules/graph : questlang/modules/Graph
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
     tm = questlang/types/model : questlang/types/Model
@@ -57,12 +58,12 @@ export
         vTypeValue with t: TypeValue end
     end
     (* Fields by name; printed in sorted order *)
-    and RecordValue = Tuple fields: hashMap.T(String Value) end
+    and RecordValue = Tuple fields: maps.StringMap(Value) end
     (* Components, and their labels if the tuple's type gives them *)
     and TupleValue = Tuple
         elements: Array(Value)
         labels: maybe.T(Array(maybe.T(String)))
-        nameToIndex: hashMap.T(String Int)
+        nameToIndex: maps.StringMap(Int)
     end
     and Tagged = Tuple tag: String payload: maybe.T(Value) end
     and Closure = Tuple
@@ -73,7 +74,7 @@ export
         (* A polymorphic function's type parameters (symbol ids), and the types
          * bound to them by type applications *)
         typeParamIds: Array(Int)
-        typeBindings: hashMap.T(Int tm.Type)
+        typeBindings: maps.IntMap(tm.Type)
         (* Whether the type parameters are its only parameters, so that
          * applying it to types runs it (typedAst's exprFun) *)
         typeOnly: Bool
@@ -100,10 +101,10 @@ export
      * bootstrap's RuntimeEnvironment) *)
     and Frame = Tuple
         parent: maybe.T(Frame)
-        var bindings: hashMap.T(String Value)
+        var bindings: maps.StringMap(Value)
         (* The types bound to the type parameters (by symbol id) of the
          * polymorphic functions being run *)
-        typeBindings: hashMap.T(Int tm.Type)
+        typeBindings: maps.IntMap(tm.Type)
         var currentDir: maybe.T(String)
         (* The source map of the file whose code runs in this frame, where its
          * errors are located *)
@@ -116,7 +117,7 @@ export
         var programDir: maybe.T(String)
         var units: graph.UnitGraph
         (* The values of the modules run so far, by canonical name *)
-        moduleValues: hashMap.T(String Value)
+        moduleValues: maps.StringMap(Value)
         (* The frames running, outermost first (docs/exceptions.md section 4) *)
         callStack: vector.T(String)
         (* The call in tail position that the call running makes next, in its
@@ -158,7 +159,7 @@ export
     realValue(r: Real): Value
     charValue(c: Char): Value
     stringValue(s: String): Value
-    recordValue(fields: hashMap.T(String Value)): Value
+    recordValue(fields: maps.StringMap(Value)): Value
     tupleValue(elements: Array(Value) labels: maybe.T(Array(maybe.T(String)))): Value
     tupleOf(elements: Array(Value) labels: maybe.T(Array(maybe.T(String)))): TupleValue
     variantValue(tag: String payload: maybe.T(Value)): Value
@@ -167,7 +168,7 @@ export
     exceptionValue(name: String): ExceptionValue
     builtinValue(name: String fn: All(args: Array(Value)) Value): Value
     (* A new map of record fields *)
-    newFields(): hashMap.T(String Value)
+    newFields(): maps.StringMap(Value)
 
     (* ======================================================================
      * Operations

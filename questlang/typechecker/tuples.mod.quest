@@ -7,10 +7,10 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
     questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/maps : questlang/common/Maps
     questlang/syntax/ast : questlang/syntax/AST
     questlang/typechecker/bindings : questlang/typechecker/Bindings
     questlang/typechecker/checker : questlang/typechecker/Checker
@@ -32,7 +32,7 @@ export
     let isTypeEqual(a: Type b: Type e: env.T): Bool = subtyping.isTypeEqual(a b env.lookupOf(e))
     let expr(offset: Int t: Type form: typedAst.ExprForm): typedAst.Expr = typedAst.expr(offset t form)
     let internal(A::TYPE what: String x: ast.Expr): A = diagnostics.fail("internal: not " <> what x.span.startOffset)
-    let newIntMap(V::TYPE): hashMap.T(Int V) = hashMap.new(fun(a: Int b: Int): Bool a is b hash.int)
+    let newIntMap(V::TYPE): maps.IntMap(V) = maps.newIntMap()
 
     (* A component of a tuple after flattening declarations' members: a type
      * binding of a type declaration (its index in typeGroups), a member of a
@@ -83,7 +83,7 @@ export
     let tupleScope(
             c: checker.T x0: ast.Expr items: vector.T(Item) typeGroups: vector.T(TypeGroup)
             recGroupsAst: vector.T(RecGroup)
-            simGroups: vector.T(vector.T(ast.TupleFieldBinding)) kindsBefore: hashMap.T(Int vector.T(KindDecl))
+            simGroups: vector.T(vector.T(ast.TupleFieldBinding)) kindsBefore: maps.IntMap(vector.T(KindDecl))
             expectedTuple: maybe.T(Array(model.TupleComponent)) expectedTupleType: maybe.T(Type) e: env.T loopDepth: Int
             ): typedAst.Expr =
         begin

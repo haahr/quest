@@ -9,11 +9,11 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/json : util/JSON
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     tm = questlang/types/model : questlang/types/Model
     questlang/types/subtyping : questlang/types/Subtyping
@@ -24,7 +24,6 @@ export
     Let Type = tm.Type
     Let Value = model.Value
     let none = maybe.none(:Int)
-    let intEqual(a: Int b: Int): Bool = a is b
     let intKey(i: Int): String = conv.int(i)
     Let Ref = dynamicJson.Ref
     let formatVersion = dynamicJson.formatVersion
@@ -99,17 +98,17 @@ export
         (* The type of each node made so far, by index, kept only when it
          * mentions no recursive type's binder and no enclosing auto type's
          * parameter (a type that does is made again wherever it is reached) *)
-        types: hashMap.T(Int Type)
+        types: maps.IntMap(Type)
         (* The nodes whose types are being made, and those of them reached
          * again while being made, which become recursive types *)
-        active: hashMap.T(Int Bool)
-        recursive: hashMap.T(Int Bool)
+        active: maps.IntMap(Bool)
+        recursive: maps.IntMap(Bool)
         (* A fresh symbol id for each node, the binder of its recursive type
          * if it becomes one, and the same ids as a set *)
         binderIds: Array(Int)
-        binderIdSet: hashMap.T(Int Bool)
+        binderIdSet: maps.IntMap(Bool)
         (* The objects read so far, by their @id *)
-        objects: hashMap.T(Int Seen)
+        objects: maps.IntMap(Seen)
         (* The type parameters of the auto types being built, innermost last,
          * which param nodes refer to; and the witnesses of the auto values
          * being read, which values of those parameters are read at *)
@@ -269,15 +268,15 @@ export
         begin
             let entries = vector.toArray(items(table))
             let binderIds = array of(extent entries 0)
-            let binderIdSet = hashMap.new(:Int :Bool intEqual hash.int)
+            let binderIdSet = maps.newIntMap(:Bool)
             let rd: Reader = tuple
                 let table = entries
-                let types = hashMap.new(intEqual hash.int)
-                let active = hashMap.new(intEqual hash.int)
-                let recursive = hashMap.new(intEqual hash.int)
+                let types = maps.newIntMap()
+                let active = maps.newIntMap()
+                let recursive = maps.newIntMap()
                 let binderIds = binderIds
                 let binderIdSet = binderIdSet
-                let objects = hashMap.new(intEqual hash.int)
+                let objects = maps.newIntMap()
                 let autoParams = vector.new()
                 let witnesses = vector.new()
             end
@@ -333,7 +332,7 @@ export
             end
             r
         end
-    let mentionsAny(t: Type ids: hashMap.T(Int Bool)): Bool =
+    let mentionsAny(t: Type ids: maps.IntMap(Bool)): Bool =
         begin
             let var found = false
             for i = 0 upto {extent t.fv - 1} do if hashMap.contains(ids t.fv[i]) then found := true end end

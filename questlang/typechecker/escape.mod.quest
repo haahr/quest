@@ -3,14 +3,12 @@
 
 module escape : Escape
 import
-    stringOp = string : StringOp
-
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/sort : util/Sort
 
     questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/maps : questlang/common/Maps
     questlang/types/model : questlang/types/Model
 export
     let pathName(p: model.Type): String =
@@ -20,7 +18,7 @@ export
         begin
             let paths = model.findPathTypes(model.stripAliases(t))
             if extent paths > 0 then
-                let seen = hashMap.new(:String :Bool stringOp.equal hash.string)
+                let seen = maps.newStringMap(:Bool)
                 let names = vector.new(:String)
                 for i = 0 upto {extent paths - 1} do
                     let name = pathName(paths[i])
@@ -36,7 +34,7 @@ export
             end
         end
 
-    let checkNoEscapingPathTypes(t: model.Type localSymbolIds: hashMap.T(Int Bool) contextDesc: String
+    let checkNoEscapingPathTypes(t: model.Type localSymbolIds: maps.IntMap(Bool) contextDesc: String
             offset: Int): Ok =
         begin
             let paths = model.findPathTypes(t)

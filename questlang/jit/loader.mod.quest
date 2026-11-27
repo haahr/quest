@@ -3,17 +3,16 @@
 unsound module loader : Loader
 import
     conv : Conv
-    stringOp = string : StringOp
     words = word : Word
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     os/code : os/Code
     os/value : os/Value
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
     questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
+    questlang/common/maps : questlang/common/Maps
 export
     Let T = Tuple
         code: code.Region
@@ -22,14 +21,12 @@ export
         var dataUsed: Int
         (* The addresses of the exported symbols of the units loaded, and of
          * the GOT slots and stubs made *)
-        exported: hashMap.T(String Int)
-        slots: hashMap.T(String Int)
-        stubs: hashMap.T(String Int)
+        exported: maps.StringMap(Int)
+        slots: maps.StringMap(Int)
+        stubs: maps.StringMap(Int)
     end
 
     let loadError: Exception(String) = exception loadError: String end
-
-    let eq(a: String b: String): Bool = stringOp.equal(a b)
 
     let new(codeBytes: Int dataBytes: Int): T =
         begin
@@ -40,9 +37,9 @@ export
                 let var codeUsed = 0
                 let data = region
                 let var dataUsed = 0
-                let exported = hashMap.new(eq hash.string)
-                let slots = hashMap.new(eq hash.string)
-                let stubs = hashMap.new(eq hash.string)
+                let exported = maps.newStringMap()
+                let slots = maps.newStringMap()
+                let stubs = maps.newStringMap()
             end
         end
 
@@ -151,7 +148,7 @@ export
      * Loading
      * ====================================================================== *)
 
-    let load(l: T e: encode.Encoded): hashMap.T(String value.T) =
+    let load(l: T e: encode.Encoded): maps.StringMap(value.T) =
         begin
             let codeOffset = allocateCode(l 4 * extent e.code)
             let codeAt = codeBase(l) + codeOffset
@@ -164,7 +161,7 @@ export
             let framesAt = if extent e.frames > 0 then codeBase(l) + allocateCode(l 4 * extent e.frames) else 0 end
             (* The unit's own symbols, then the exported ones of the units
              * before it, then the driver's *)
-            let own = hashMap.new(:String :Int eq hash.string)
+            let own = maps.newStringMap(:Int)
             for k = 0 upto {extent e.functions - 1} do
                 hashMap.insert(own e.functions[k].name codeAt + e.functions[k].offset)
             end
@@ -244,7 +241,7 @@ export
                     hashMap.insert(l.exported e.dataSymbols[k].name dataAt + e.dataSymbols[k].offset)
                 end
             end
-            let result = hashMap.new(:String :value.T eq hash.string)
+            let result = maps.newStringMap(:value.T)
             hashMap.forEach(own fun(name: String a: Int): Ok
                 begin hashMap.insert(result name pointer(a)) ok end)
             result

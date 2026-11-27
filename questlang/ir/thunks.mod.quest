@@ -7,11 +7,11 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/clone : questlang/ir/Clone
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/walk : questlang/ir/Walk
@@ -30,11 +30,10 @@ export
     Let Descriptor = nodes.Descriptor
     Let Function = nodes.Function
 
-    let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
     let isOk(t: Type): Bool = shapes.kindIs(shapes.shape(t) shapes.shapeOk)
-    let countOf(m: hashMap.T(Int Int) id: Int): Int = if hashMap.contains(m id) then hashMap.find(m id) else 0 end
+    let countOf(m: maps.IntMap(Int) id: Int): Int = if hashMap.contains(m id) then hashMap.find(m id) else 0 end
     let isFunctionType(t: Type): Bool =
         shapes.kindIs(shapes.shape(t) shapes.shapeFun) orif shapes.kindIs(shapes.shape(t) shapes.shapeAll)
     let okAtom(): Atom =
@@ -89,32 +88,32 @@ export
         unit: nodes.Unit
         (* The thunks made so far, by key (typeKey, layoutKey), so that
          * thunks alike are one function *)
-        thunks: hashMap.T(String Function)
+        thunks: maps.StringMap(Function)
         (* The variables bound to external C functions used as functions, by
          * id, and their symbols *)
-        externals: hashMap.T(Int String)
+        externals: maps.IntMap(String)
         (* The variables bound to closures without captures or type
          * arguments, or to imported modules' members, by id *)
-        known: hashMap.T(Int Known)
+        known: maps.IntMap(Known)
         (* Each adapt plan's fields and thunk parameters, by plan id, once its
          * adapter is made *)
-        adapted: hashMap.T(Int Adapted)
+        adapted: maps.IntMap(Adapted)
         (* For closures made only to be converted (lambdaOf): the closures
          * with captures the variables are bound to, by id; how many times
          * each variable is used; how many closures each function is made
          * into, by id; and the variables and functions such a conversion
          * leaves unused, dropped once the unit is done *)
-        closures: hashMap.T(Int nodes.OpMakeClosure)
-        uses: hashMap.T(Int Int)
-        madeInto: hashMap.T(Int Int)
-        dropped: hashMap.T(Int Bool)
-        droppedFunctions: hashMap.T(Int Bool)
+        closures: maps.IntMap(nodes.OpMakeClosure)
+        uses: maps.IntMap(Int)
+        madeInto: maps.IntMap(Int)
+        dropped: maps.IntMap(Bool)
+        droppedFunctions: maps.IntMap(Bool)
         (* For conversions of immutable globals, made once: where each such
          * global is bound, by id; the global holding each conversion, by the
          * global's id and the plan's types; and the lets of those, each to go
          * where its global is bound *)
-        topLets: hashMap.T(Int Site)
-        globalConversions: hashMap.T(String Variable)
+        topLets: maps.IntMap(Site)
+        globalConversions: maps.StringMap(Variable)
         pending: vector.T(Tuple after: Int stmt: Stmt end)
     end
 
@@ -373,7 +372,7 @@ export
             let copied = clone.copyBody(cl f.body)
             (* Count uses of the copy's fresh variables so conversions inside
              * the copy can detect single-use closures *)
-            walk.countBodyUses(copied t.uses hashMap.new(:Int :Bool intEqual hash.int))
+            walk.countBodyUses(copied t.uses maps.newIntMap(:Bool))
             let last = if extent a.fields > 0 then a.fields[extent a.fields - 1] else maybe.none(:Plan) end
             if maybe.isSome(last) then convertReturns(copied maybe.unwrap(last)) end
             for i = 0 upto {vector.length(copied.statements) - 1} do
@@ -612,7 +611,7 @@ export
         end
 
     (* Whether a descriptor mentions only the descriptor variables own holds *)
-    let rec ownDescriptor(d: Descriptor own: hashMap.T(Int Bool)): Bool =
+    let rec ownDescriptor(d: Descriptor own: maps.IntMap(Bool)): Bool =
         case d
             when descVar with x then hashMap.contains(own x.v.id)
             when descStatic then true
@@ -629,7 +628,7 @@ export
     (* Whether a plan (with descriptors descs and fields/thunk parameters a)
      * uses only static descriptors and its own thunk parameters, so the
      * conversion can be hoisted out of the local scope where it appears *)
-    let rec planOwnDescriptors(descs: Array(Descriptor) a: Adapted own: hashMap.T(Int Bool)): Bool =
+    let rec planOwnDescriptors(descs: Array(Descriptor) a: Adapted own: maps.IntMap(Bool)): Bool =
         begin
             for i = 0 upto {extent a.thunkParams - 1} do
                 begin hashMap.insert(own a.thunkParams[i].v.id true) ok end
@@ -657,7 +656,7 @@ export
                 let isAdapt = case x.plan.kind when planAdapt then true else false end
                 if isAdapt andif not(v.v.isMutable) andif hashMap.contains(t.topLets v.v.id)
                         andif planOwnDescriptors(x.plan.descriptors adaptedOf(t x.plan)
-                                hashMap.new(:Int :Bool intEqual hash.int)) then
+                                maps.newIntMap(:Bool)) then
                     let key = conv.int(v.v.id) <> "\n" <> typeKey(x.plan.target) <> "\n" <> layoutKey(x.plan.layout)
                     let found = hashMap.get(t.globalConversions key)
                     if maybe.isSome(found) then
@@ -831,17 +830,17 @@ export
         begin
             let t = tuple
                 let unit = unit
-                let thunks = hashMap.new(:String :Function stringOp.equal hash.string)
-                let externals = hashMap.new(:Int :String intEqual hash.int)
-                let known = hashMap.new(:Int :Known intEqual hash.int)
-                let adapted = hashMap.new(:Int :Adapted intEqual hash.int)
-                let closures = hashMap.new(:Int :nodes.OpMakeClosure intEqual hash.int)
-                let uses = hashMap.new(:Int :Int intEqual hash.int)
-                let madeInto = hashMap.new(:Int :Int intEqual hash.int)
-                let dropped = hashMap.new(:Int :Bool intEqual hash.int)
-                let droppedFunctions = hashMap.new(:Int :Bool intEqual hash.int)
-                let topLets = hashMap.new(:Int :Site intEqual hash.int)
-                let globalConversions = hashMap.new(:String :Variable stringOp.equal hash.string)
+                let thunks = maps.newStringMap(:Function)
+                let externals = maps.newIntMap(:String)
+                let known = maps.newIntMap(:Known)
+                let adapted = maps.newIntMap(:Adapted)
+                let closures = maps.newIntMap(:nodes.OpMakeClosure)
+                let uses = maps.newIntMap(:Int)
+                let madeInto = maps.newIntMap(:Int)
+                let dropped = maps.newIntMap(:Bool)
+                let droppedFunctions = maps.newIntMap(:Bool)
+                let topLets = maps.newIntMap(:Site)
+                let globalConversions = maps.newStringMap(:Variable)
                 let pending = vector.new(:Tuple after: Int stmt: Stmt end)
             end
             (* Where the globals are bound: the main body's and the modules'
@@ -876,7 +875,7 @@ export
                 end
             sites(unit.main)
             for i = 0 upto {vector.length(unit.modules) - 1} do sites(vector.get(unit.modules i).init) end
-            walk.countUses(unit t.uses hashMap.new(:Int :Bool intEqual hash.int))
+            walk.countUses(unit t.uses maps.newIntMap(:Bool))
             let bodies = vector.new(:Body)
             vector.append(bodies unit.main)
             for i = 0 upto {vector.length(unit.modules) - 1} do

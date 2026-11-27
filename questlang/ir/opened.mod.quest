@@ -6,12 +6,12 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/inline : questlang/ir/Inline
     questlang/ir/lower : questlang/ir/Lower
     questlang/ir/nodes : questlang/ir/Nodes
@@ -30,7 +30,6 @@ export
     Let Module = nodes.Module
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
-    let same(a: Int b: Int): Bool = a is b
 
     (* The key of a module's canonical name, which imports may spell in any
      * case (driver/whole's) *)
@@ -79,7 +78,7 @@ export
      * copy *)
     let holdsFunction(t0: model.Type): Bool =
         begin
-            let seen = hashMap.new(:Int :Bool same hash.int)
+            let seen = maps.newIntMap(:Bool)
             let var found = false
             let rec visit(t0: model.Type): Ok =
                 begin
@@ -184,7 +183,7 @@ export
     (* Whether a top-level let's value may be made again in a copy: a scalar
      * constant, whose identity nothing can see, or a copy of a variable that
      * is one (by id, in kept) *)
-    let remade(o: nodes.Op kept: hashMap.T(Int Bool)): Bool =
+    let remade(o: nodes.Op kept: maps.IntMap(Bool)): Bool =
         case o
             when opAtom with x then
                 case x.atom
@@ -200,9 +199,9 @@ export
 
     (* The ids of the variables a function's body uses, its callees', the
      * variables it assigns, and those whose addresses it takes included *)
-    let usedIds(f: nodes.Function): hashMap.T(Int Bool) =
+    let usedIds(f: nodes.Function): maps.IntMap(Bool) =
         begin
-            let ids = hashMap.new(:Int :Bool same hash.int)
+            let ids = maps.newIntMap(:Bool)
             let note = fun(v: nodes.Variable): Ok begin hashMap.insert(ids v.id true) ok end
             let all = walk.walkStatements(f.body true)
             for i = 0 upto {vector.length(all) - 1} do
@@ -240,15 +239,15 @@ export
         begin
             let exports = maybe.unwrapOr(m.exports m.members)
             (* The name each exported variable is exported by, by id *)
-            let exportedAs = hashMap.new(:Int :String same hash.int)
+            let exportedAs = maps.newIntMap(:String)
             for k = 0 upto {vector.length(exports.names) - 1} do
                 let name = vector.get(exports.names k)
                 begin hashMap.insert(exportedAs hashMap.find(exports.vars name).id name) ok end
             end
             (* The variables the copy binds (kept), and those it does not,
              * which a function using them cannot be copied for (lost) *)
-            let kept = hashMap.new(:Int :Bool same hash.int)
-            let lost = hashMap.new(:Int :Bool same hash.int)
+            let kept = maps.newIntMap(:Bool)
+            let lost = maps.newIntMap(:Bool)
             let lets = vector.new(:nodes.Stmt)
             let groups = vector.new(:nodes.Stmt)
             let ref = option refImport of nodes.ModuleRef with let i = i end
@@ -281,15 +280,15 @@ export
             (* A group is copied unless one of its functions uses a variable
              * the copy does not bind, or a function not copied *)
             let live = vector.new(:Bool)
-            let uses = vector.new(:Array(hashMap.T(Int Bool)))
+            let uses = vector.new(:Array(maps.IntMap(Bool)))
             for k = 0 upto {vector.length(groups) - 1} do
                 vector.append(live true)
                 case vector.get(groups k)
                     when sFuns with x then
-                        let u = vector.new(:hashMap.T(Int Bool))
+                        let u = vector.new(:maps.IntMap(Bool))
                         for j = 0 upto {extent x.functions - 1} do vector.append(u usedIds(x.functions[j])) end
                         vector.append(uses vector.toArray(u))
-                    else vector.append(uses array of :hashMap.T(Int Bool) end)
+                    else vector.append(uses array of :maps.IntMap(Bool) end)
                 end
             end
             (* A function larger than its bound is left out, with the functions
@@ -386,7 +385,7 @@ export
     (* Each call of a copied module's member in body made a call of the copy,
      * by canonical name (copies); every other reference to an imported
      * module made one to the import the unit keeps for it (imports) *)
-    let rewriteRefs(body: nodes.Body copies: hashMap.T(String Module) imports: hashMap.T(String nodes.Import)): Ok =
+    let rewriteRefs(body: nodes.Body copies: maps.StringMap(Module) imports: maps.StringMap(nodes.Import)): Ok =
         begin
             let toImport(r: nodes.ModuleRef): nodes.ModuleRef =
                 case r
@@ -443,11 +442,10 @@ export
 
     let dropUnreachable(unit: nodes.Unit prunable: All(m: Module) Bool): nodes.Unit =
         begin
-            let same = fun(a: Int b: Int): Bool a is b
             (* The statement of an initializer's top level that binds each
              * variable a module may drop, by the variable's id: a let of a
              * pure operation, or a function of a funs statement *)
-            let binding = hashMap.new(:Int :nodes.Stmt same hash.int)
+            let binding = maps.newIntMap(:nodes.Stmt)
             let roots = vector.new(:nodes.Stmt)
             for k = 0 upto {vector.length(unit.modules) - 1} do
                 let init = vector.get(unit.modules k).init
@@ -482,8 +480,8 @@ export
             end
             (* The variables reached, by id, and the modules whose records are
              * read, by their ids *)
-            let reached = hashMap.new(:Int :Bool same hash.int)
-            let records = hashMap.new(:Int :Bool same hash.int)
+            let reached = maps.newIntMap(:Bool)
+            let records = maps.newIntMap(:Bool)
             let pending = vector.new(:nodes.Stmt)
             let reach = fun(v: nodes.Variable): Ok
                 if not(hashMap.contains(reached v.id)) then
@@ -540,7 +538,7 @@ export
             for k = 0 upto {vector.length(roots) - 1} do visit(vector.get(roots k)) end
             (* A funs statement is visited once, whichever function reaches
              * it, and reaches all its functions *)
-            let visited = hashMap.new(:Int :Bool same hash.int)
+            let visited = maps.newIntMap(:Bool)
             while not(vector.empty(pending)) do
                 let st = vector.pop(pending)
                 let key =
@@ -599,14 +597,14 @@ export
     let openImports(unit: nodes.Unit e: env.T): nodes.Unit =
         begin
             vector.clear(lastSources)
-            let copies = hashMap.new(:String :Module eq hash.string)
-            let visiting = hashMap.new(:String :Bool eq hash.string)
+            let copies = maps.newStringMap(:Module)
+            let visiting = maps.newStringMap(:Bool)
             (* The copies, each after those it calls into *)
             let order = vector.new(:Module)
             let functions = vector.new(:nodes.Function)
             (* The unit's imports, one for each module, and the copies' too *)
             let imports = vector.new(:nodes.Import)
-            let importByKey = hashMap.new(:String :nodes.Import eq hash.string)
+            let importByKey = maps.newStringMap(:nodes.Import)
             let rec visit(i0: nodes.Import): Ok =
                 begin
                     let k = key(i0.canonicalPath)

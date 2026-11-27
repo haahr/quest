@@ -11,6 +11,7 @@ import
     util/maybe : util/Maybe
 
     questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/maps : questlang/common/Maps
     questlang/types/env : questlang/types/Env
     questlang/types/model : questlang/types/Model
     questlang/types/subtyping : questlang/types/Subtyping
@@ -49,11 +50,11 @@ export
      * 1. The kind memo
      * ====================================================================== *)
 
-    Let Memo = Tuple kinds: hashMap.T(Int Kind) e: Env end
+    Let Memo = Tuple kinds: maps.IntMap(Kind) e: Env end
     Let MemoState = Tuple var active: maybe.T(Memo) end
     let memo: MemoState = tuple let var active = maybe.none() end
 
-    let newKinds(): hashMap.T(Int Kind) = hashMap.new(fun(a: Int b: Int): Bool a is b hash.int)
+    let newKinds(): maps.IntMap(Kind) = maps.newIntMap()
 
     let sameEnv(a: Env b: Env): Bool =
         if maybe.isSome(a) andif maybe.isSome(b) then
@@ -420,8 +421,8 @@ export
      * revisits a head it already unfolded or a variable it already followed. *)
     let resolveBound(t: Type e: Env wanted: All(u: Type) Bool): maybe.T(Type) =
         begin
-            let visited = hashMap.new(:Int :Bool fun(a: Int b: Int): Bool a is b hash.int)
-            let unfolded = hashMap.new(:Int :Bool fun(a: Int b: Int): Bool a is b hash.int)
+            let visited = maps.newIntMap(:Bool)
+            let unfolded = maps.newIntMap(:Bool)
             let var current = t
             let var result = maybe.none(:Type)
             let var searching = true
@@ -511,7 +512,7 @@ export
      * and in not unfolding mutually recursive groups. *)
     let resolveOptionBound(t: Type e: Env): maybe.T(Type) =
         begin
-            let visited = hashMap.new(:Int :Bool fun(a: Int b: Int): Bool a is b hash.int)
+            let visited = maps.newIntMap(:Bool)
             let var current = t
             let var result = maybe.none(:Type)
             let var searching = true

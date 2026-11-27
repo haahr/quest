@@ -6,10 +6,10 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
 
+    questlang/common/maps : questlang/common/Maps
     questlang/common/strings : questlang/common/Strings
     questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     questlang/types/canonical : questlang/types/Canonical
@@ -98,7 +98,6 @@ export
     and Param = Tuple name: String shape: Shape mode: String end
     and TypeParam = Tuple name: String symbolId: Int kind: model.Kind bound: maybe.T(Shape) end
 
-    let intEqual(a: Int b: Int): Bool = a is b
     let counter = tuple let var id = 0 end
 
     let newShape(kind: ShapeKind t: Type): Shape =
@@ -191,7 +190,7 @@ export
 
     let shapesReachable(s: Shape): Array(Shape) =
         begin
-            let seen = hashMap.new(:Int :Bool intEqual hash.int)
+            let seen = maps.newIntMap(:Bool)
             let found = vector.new(:Shape)
             let stack = vector.new(:Shape)
             vector.append(stack s)
@@ -222,9 +221,9 @@ export
 
     (* Shapes by the id of the type node they were built from (canonical forms,
      * their unfoldings and parts) *)
-    let built = hashMap.new(:Int :Shape intEqual hash.int)
+    let built = maps.newIntMap(:Shape)
     (* The shapes of the types asked for (shape), by the id of the type node *)
-    let asked = hashMap.new(:Int :Shape intEqual hash.int)
+    let asked = maps.newIntMap(:Shape)
 
     (* Whether a recursive type refers to itself: its body mentions its
      * variable, or for a group's member, its own variable is reachable from its
@@ -251,7 +250,7 @@ export
                         end
                         found
                     end
-                let seen = hashMap.new(:Int :Bool intEqual hash.int)
+                let seen = maps.newIntMap(:Bool)
                 let pending = mentioned(x.activeIndex)
                 let var result = false
                 while not(result) andif not(vector.empty(pending)) do
@@ -625,9 +624,9 @@ export
     (* Cache of shapes built without expanding abstract types, kept separate
      * from asked so a module compiled on its own within a whole-program
      * process never observes transparent shapes from the program *)
-    let opaquelyAsked = hashMap.new(:Int :Shape intEqual hash.int)
+    let opaquelyAsked = maps.newIntMap(:Shape)
 
-    let rec shapeIn(cache: hashMap.T(Int Shape) open: Bool t0: Type): Shape =
+    let rec shapeIn(cache: maps.IntMap(Shape) open: Bool t0: Type): Shape =
         begin
             let t = model.prune(t0)
             let cached = hashMap.get(cache t.id)

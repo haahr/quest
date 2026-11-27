@@ -9,10 +9,10 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/clone : questlang/ir/Clone
     questlang/ir/contify : questlang/ir/Contify
     questlang/ir/inline : questlang/ir/Inline
@@ -29,7 +29,6 @@ export
     Let Stmt = nodes.Stmt
     Let Op = nodes.Op
 
-    let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
     (* Returns default, or the integer override for name in QUEST_INLINE (a
@@ -72,27 +71,27 @@ export
     Let Simplifier = Tuple
         (* How many times each variable is used, by id, counted at the start of
          * the round *)
-        uses: hashMap.T(Int Int)
+        uses: maps.IntMap(Int)
         (* The variables kept whatever their use counts say, since uses the
          * counts do not see may name them: modules' members, exports, and
          * record variables, which are named from outside the unit's bodies,
          * and let rec's variables, whose values its body makes *)
-        pinned: hashMap.T(Int Bool)
+        pinned: maps.IntMap(Bool)
         (* The operation each immutable variable is bound to by a let, by id,
          * for those met so far *)
-        defs: hashMap.T(Int Op)
+        defs: maps.IntMap(Op)
         (* Maps eliminated copy-binding variable ids to their source variables,
          * and eliminated constant-binding variable ids to their constant
          * atoms *)
-        renames: hashMap.T(Int Variable)
-        consts: hashMap.T(Int Atom)
+        renames: maps.IntMap(Variable)
+        consts: maps.IntMap(Atom)
         (* The tag each immutable variable is known to have, by id, in the
          * then-branch of an if on its is_tag being simplified *)
-        tags: hashMap.T(Int String)
+        tags: maps.IntMap(String)
         (* The variable each tuple_field read so far was bound to, by its
          * tuple's variable's id and its index, while nothing since can have
          * changed the component (a var one): a later read of it is a copy *)
-        var loads: hashMap.T(String Variable)
+        var loads: maps.StringMap(Variable)
         var changed: Bool
         (* The unit's functions, as the round began *)
         var analysis: inline.Analysis
@@ -1286,13 +1285,13 @@ export
     let simplifyUnit(unit: nodes.Unit): nodes.Unit =
         begin
             let s = tuple
-                let uses = hashMap.new(:Int :Int intEqual hash.int)
-                let pinned = hashMap.new(:Int :Bool intEqual hash.int)
-                let defs = hashMap.new(:Int :Op intEqual hash.int)
-                let renames = hashMap.new(:Int :Variable intEqual hash.int)
-                let consts = hashMap.new(:Int :Atom intEqual hash.int)
-                let tags = hashMap.new(:Int :String intEqual hash.int)
-                let var loads = hashMap.new(:String :Variable stringOp.equal hash.string)
+                let uses = maps.newIntMap(:Int)
+                let pinned = maps.newIntMap(:Bool)
+                let defs = maps.newIntMap(:Op)
+                let renames = maps.newIntMap(:Variable)
+                let consts = maps.newIntMap(:Atom)
+                let tags = maps.newIntMap(:String)
+                let var loads = maps.newStringMap(:Variable)
                 let var changed = true
                 let var analysis = inline.analyze(walk.unitBodies(unit))
                 let labels = clone.newLabels()

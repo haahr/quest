@@ -7,9 +7,9 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
+    questlang/common/maps : questlang/common/Maps
     questlang/common/scc : questlang/common/SCC
     questlang/ir/clone : questlang/ir/Clone
     questlang/ir/nodes : questlang/ir/Nodes
@@ -22,7 +22,6 @@ export
     Let Body = nodes.Body
     Let Stmt = nodes.Stmt
 
-    let intEqual(a: Int b: Int): Bool = a is b
     let okAtom(): Atom =
         nodes.atomOfConst(tuple
             let value = option constOk of nodes.ConstValue end
@@ -30,12 +29,12 @@ export
         end)
 
     Def Analysis = Tuple
-        functions: hashMap.T(Int nodes.Function)
-        components: hashMap.T(Int Int)
-        recursive: hashMap.T(Int Bool)
-        callsExternalAtTypes: hashMap.T(Int Bool)
-        static: hashMap.T(Int Array(Bool))
-        sizes: hashMap.T(Int Int)
+        functions: maps.IntMap(nodes.Function)
+        components: maps.IntMap(Int)
+        recursive: maps.IntMap(Bool)
+        callsExternalAtTypes: maps.IntMap(Bool)
+        static: maps.IntMap(Array(Bool))
+        sizes: maps.IntMap(Int)
         size: Int
     end
 
@@ -78,7 +77,7 @@ export
 
     (* The functions a function's body names (not those its own functions'
      * bodies do), by their variables' ids *)
-    let named(f: nodes.Function functions: hashMap.T(Int nodes.Function)): Array(Int) =
+    let named(f: nodes.Function functions: maps.IntMap(nodes.Function)): Array(Int) =
         begin
             let found = vector.new(:Int)
             let stmts = walk.walkStatements(f.body false)
@@ -100,10 +99,10 @@ export
     (* The strongly connected components of the graph of which functions
      * name which, by function id, numbered in the order they are completed,
      * with the walk's roots taken in order's order *)
-    let components(order: vector.T(nodes.Function) functions: hashMap.T(Int nodes.Function)): hashMap.T(Int Int) =
+    let components(order: vector.T(nodes.Function) functions: maps.IntMap(nodes.Function)): maps.IntMap(Int) =
         begin
             let n = vector.length(order)
-            let index = hashMap.new(:Int :Int intEqual hash.int)
+            let index = maps.newIntMap(:Int)
             for i = 0 upto {n - 1} do hashMap.insert(index vector.get(order i).v.id i) end
             let successors(i: Int): Array(Int) =
                 begin
@@ -113,7 +112,7 @@ export
                     found
                 end
             let numbers = scc.components(n successors)
-            let result = hashMap.new(:Int :Int intEqual hash.int)
+            let result = maps.newIntMap(:Int)
             for i = 0 upto {n - 1} do hashMap.insert(result vector.get(order i).v.id numbers[i]) end
             result
         end
@@ -123,7 +122,7 @@ export
      * first named *)
     let freeVariables(f: nodes.Function): Array(Variable) =
         begin
-            let bound = hashMap.new(:Int :Bool intEqual hash.int)
+            let bound = maps.newIntMap(:Bool)
             for i = 0 upto {extent f.params - 1} do hashMap.insert(bound f.params[i].v.id true) end
             hashMap.insert(bound f.v.id true)
             let stmts = walk.walkStatements(f.body true)
@@ -143,7 +142,7 @@ export
                 end
             end
             let found = vector.new(:Variable)
-            let seen = hashMap.new(:Int :Bool intEqual hash.int)
+            let seen = maps.newIntMap(:Bool)
             for i = 0 upto {vector.length(stmts) - 1} do
                 let used = walk.statementUses(vector.get(stmts i))
                 for k = 0 upto {extent used - 1} do
@@ -263,8 +262,8 @@ export
     let analyze(all: Array(Body)): Analysis =
         begin
             let order = collect(all)
-            let functions = hashMap.new(:Int :nodes.Function intEqual hash.int)
-            let sizes = hashMap.new(:Int :Int intEqual hash.int)
+            let functions = maps.newIntMap(:nodes.Function)
+            let sizes = maps.newIntMap(:Int)
             for i = 0 upto {vector.length(order) - 1} do
                 let f = vector.get(order i)
                 hashMap.insert(functions f.v.id f)
@@ -275,12 +274,12 @@ export
             let numbers = components(order functions)
             (* A function is recursive if it names itself, or another of its
              * component *)
-            let members = hashMap.new(:Int :Int intEqual hash.int)
+            let members = maps.newIntMap(:Int)
             for i = 0 upto {vector.length(order) - 1} do
                 let c = hashMap.find(numbers vector.get(order i).v.id)
                 hashMap.insert(members c 1 + maybe.unwrapOr(hashMap.get(members c) 0))
             end
-            let recursive = hashMap.new(:Int :Bool intEqual hash.int)
+            let recursive = maps.newIntMap(:Bool)
             for i = 0 upto {vector.length(order) - 1} do
                 let f = vector.get(order i)
                 let targets = named(f functions)
@@ -290,7 +289,7 @@ export
             end
             (* A function recursive through itself alone may have static
              * parameters *)
-            let static = hashMap.new(:Int :Array(Bool) intEqual hash.int)
+            let static = maps.newIntMap(:Array(Bool))
             for i = 0 upto {vector.length(order) - 1} do
                 let f = vector.get(order i)
                 let alone = hashMap.find(members hashMap.find(numbers f.v.id)) is 1
@@ -301,7 +300,7 @@ export
                     if some then hashMap.insert(static f.v.id params) end
                 end
             end
-            let externals = hashMap.new(:Int :Bool intEqual hash.int)
+            let externals = maps.newIntMap(:Bool)
             for i = 0 upto {vector.length(order) - 1} do
                 let f = vector.get(order i)
                 hashMap.insert(externals f.v.id callsExternalAtTypes(f))

@@ -12,13 +12,13 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
     questlang/common/diagbag : questlang/common/DiagBag
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/interpreter/formatting : questlang/interpreter/Formatting
     questlang/lsp/analysis : questlang/lsp/Analysis
     questlang/syntax/ast : questlang/syntax/AST
@@ -69,8 +69,8 @@ export
         occurrences: vector.T(Occurrence)
         (* The interface path each imported module's local name was imported
          * through, and each declared module's interface name *)
-        imports: hashMap.T(String String)
-        units: hashMap.T(String maybe.T(Unit))
+        imports: maps.StringMap(String)
+        units: maps.StringMap(maybe.T(Unit))
     end
 
     (* ======================================================================
@@ -328,7 +328,7 @@ export
      * where the typed bindings put nothing *)
     let addLoose(ix: T made: Array(typedAst.Expr)): Ok =
         if extent made > 0 then
-            let taken = hashMap.new(:String :Bool stringOp.equal hash.string)
+            let taken = maps.newStringMap(:Bool)
             for i = 0 upto {vector.length(ix.occurrences) - 1} do
                 hashMap.insert(taken conv.int(vector.get(ix.occurrences i).start) true)
             end
@@ -368,8 +368,8 @@ export
                 let a = a
                 let toks = maybe.unwrapOr(a.tokens noTokens)
                 let occurrences = vector.new(:Occurrence)
-                let imports = hashMap.new(:String :String stringOp.equal hash.string)
-                let units = hashMap.new(:String :maybe.T(Unit) stringOp.equal hash.string)
+                let imports = maps.newStringMap(:String)
+                let units = maps.newStringMap(:maybe.T(Unit))
             end
             for i = 0 upto {extent a.typed - 1} do gatherImports(ix a.typed[i]) end
             for i = 0 upto {extent a.typed - 1} do walkBinding(ix a.typed[i]) end
@@ -959,7 +959,7 @@ export
                 end
             end
             (* Those that start with the prefix, once each, the first kept *)
-            let seen = hashMap.new(:String :Bool stringOp.equal hash.string)
+            let seen = maps.newStringMap(:Bool)
             let items = vector.new(:Completion)
             for i = 0 upto {vector.length(all) - 1} do
                 let c = vector.get(all i)

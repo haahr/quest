@@ -14,11 +14,11 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/describe : questlang/ir/Describe
     ir = questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/walk : questlang/ir/Walk
@@ -40,7 +40,6 @@ export
     let unsupported: Exception(String) = exception unsupported: String end
     let fail(what: String): Ok = raise unsupported with what end
 
-    let intEqual(a: Int b: Int): Bool = a is b
     let noArgs = array of :Int end
     let noTypes = array of :ValType end
     let i(o: model.Op): Inst = model.op(o noArgs)
@@ -62,18 +61,18 @@ export
     Def G = Tuple
         unit: ir.Unit
         m: model.Module
-        globalIds: hashMap.T(Int Bool)
-        globals: hashMap.T(Int Int)
-        functions: hashMap.T(Int Int)
-        known: hashMap.T(Int ir.OpMakeClosure)
-        runtimeFunctions: hashMap.T(String Int)
-        funcTypes: hashMap.T(String Int)
+        globalIds: maps.IntMap(Bool)
+        globals: maps.IntMap(Int)
+        functions: maps.IntMap(Int)
+        known: maps.IntMap(ir.OpMakeClosure)
+        runtimeFunctions: maps.StringMap(Int)
+        funcTypes: maps.StringMap(Int)
         strings: sb.T
         (* The globals holding the unit's string literals, by text: each the
          * one string its literal denotes, made when first evaluated *)
-        literalGlobals: hashMap.T(String Int)
-        names: hashMap.T(String Int)
-        dicts: hashMap.T(String Int)
+        literalGlobals: maps.StringMap(Int)
+        names: maps.StringMap(Int)
+        dicts: maps.StringMap(Int)
         (* Closures (section 3.1): the closure types by signature, each
          * function's own closure type, static closure, and uniform entry,
          * by its id; the types each function captures; the functions by
@@ -81,29 +80,29 @@ export
          * passed to a direct call of a function that captures nothing; and
          * the static closures of built-in operators used as values
          * (builtinClosure), by operator *)
-        closTypes: hashMap.T(String Int)
-        ownTypes: hashMap.T(Int Int)
-        staticClosures: hashMap.T(Int Int)
-        uniforms: hashMap.T(Int Int)
+        closTypes: maps.StringMap(Int)
+        ownTypes: maps.IntMap(Int)
+        staticClosures: maps.IntMap(Int)
+        uniforms: maps.IntMap(Int)
         (* The native entries that trap, for the closures of functions whose
          * results ir/unbox unboxed, by function id (trapNative) *)
-        trapNatives: hashMap.T(Int Int)
-        captureTypes: hashMap.T(Int Array(ir.Type))
-        byId: hashMap.T(Int ir.Function)
-        declaredFns: hashMap.T(Int Bool)
+        trapNatives: maps.IntMap(Int)
+        captureTypes: maps.IntMap(Array(ir.Type))
+        byId: maps.IntMap(ir.Function)
+        declaredFns: maps.IntMap(Bool)
         noClosure: Int
-        builtins: hashMap.T(String Int)
+        builtins: maps.StringMap(Int)
         (* Other units (section 5.1): the functions imported from each, by
          * "unit.member", each one's init, and the first of its record's two
          * globals, by its canonical name *)
-        importFunctions: hashMap.T(String Int)
-        importInits: hashMap.T(String Int)
-        importRecords: hashMap.T(String Int)
+        importFunctions: maps.StringMap(Int)
+        importInits: maps.StringMap(Int)
+        importRecords: maps.StringMap(Int)
         (* The runtime's units (section 4.5): the functions imported from
          * wasm/core and wasm/print, by "unit.member"; and the globals that
          * hold the unit's descriptors, by their symbol (staticdata) *)
-        runtimeUnits: hashMap.T(String Int)
-        descGlobals: hashMap.T(String Int)
+        runtimeUnits: maps.StringMap(Int)
+        descGlobals: maps.StringMap(Int)
         (* Whether the unit is one of the runtime's (section 4.5), and whether
          * it is the core, which uses the library only through the members
          * the backend compiles itself *)
@@ -117,7 +116,7 @@ export
          * parameters, given their location, and the variables whose address
          * is taken, each held in a slot array of its own from its
          * declaration; by id (locatedVariables) *)
-        located: hashMap.T(Int Bool)
+        located: maps.IntMap(Bool)
         (* The names of record types' descriptors, as the C backend gives
          * them: each ends with a digest of the record's shape, so that two
          * records whose fields lay out alike are not one descriptor *)
@@ -125,12 +124,12 @@ export
         (* How many times each variable is used, by id, and the variables
          * named from outside the bodies (walk.countUses), for joining chains
          * of <> (concatSite) *)
-        uses: hashMap.T(Int Int)
-        pinned: hashMap.T(Int Bool)
+        uses: maps.IntMap(Int)
+        pinned: maps.IntMap(Bool)
     end
 
     (* A name not given before among names: base, or base.k *)
-    let fresh(names: hashMap.T(String Int) base: String): String =
+    let fresh(names: maps.StringMap(Int) base: String): String =
         begin
             let root = if stringOp.isEmpty(base) then "v" else base end
             let n = maybe.unwrapOr(hashMap.get(names root) 0)
@@ -247,19 +246,19 @@ export
     Def F = Tuple
         g: G
         code: vector.T(Inst)
-        locals: hashMap.T(Int Int)
+        locals: maps.IntMap(Int)
         declared: vector.T(model.Local)
         nparams: Int
-        names: hashMap.T(String Int)
+        names: maps.StringMap(Int)
         labels: vector.T(Label)
         results: Array(ValType)
-        returning: hashMap.T(String Bool)
-        joins: hashMap.T(String Array(ir.Variable))
+        returning: maps.StringMap(Bool)
+        joins: maps.StringMap(Array(ir.Variable))
         (* The function compiled (~1 for the top level), the variables a
          * recursive value's body is binding, and the captures of theirs to
          * fill in once it has (sLetRec) *)
         fnId: Int
-        deferred: hashMap.T(Int Bool)
+        deferred: maps.IntMap(Bool)
         patches: vector.T(Patch)
         (* Whether a call of the function itself in tail position branched
          * to the loop around its code (selfLabel) *)
@@ -282,20 +281,20 @@ export
 
     let newF(g: G params: Array(String) results: Array(ValType) fnId: Int): F =
         begin
-            let names = hashMap.new(:String :Int stringOp.equal hash.string)
+            let names = maps.newStringMap(:Int)
             tuple
                 let g = g
                 let code = vector.new()
-                let locals = hashMap.new(intEqual hash.int)
+                let locals = maps.newIntMap()
                 let declared = vector.new()
                 let nparams = extent params
                 let names = names
                 let labels = vector.new()
                 let results = results
-                let returning = hashMap.new(stringOp.equal hash.string)
-                let joins = hashMap.new(stringOp.equal hash.string)
+                let returning = maps.newStringMap()
+                let joins = maps.newStringMap()
                 let fnId = fnId
-                let deferred = hashMap.new(intEqual hash.int)
+                let deferred = maps.newIntMap()
                 let patches = vector.new()
                 let var selfTail = false
                 let var after = maybe.none()
@@ -1008,11 +1007,11 @@ export
             let collected =
                 try
                     staticdata.collectDescriptors(plain echoed maybe.some(g.naming)
-                            hashMap.new(stringOp.equal hash.string))
+                            maps.newStringMap())
                 when staticdata.missingDescriptor with msg then
                     fail("a descriptor: " <> msg)
                     staticdata.collectDescriptors(vector.new() vector.new()
-                            maybe.some(g.naming) hashMap.new(stringOp.equal hash.string))
+                            maybe.some(g.naming) maps.newStringMap())
                 end
             let forms = vector.new(:staticdata.DescriptorForm)
             for k = 0 upto extent staticdata.descriptorKinds - 1 do
@@ -5652,9 +5651,9 @@ export
 
     (* The unit's variables held in a location (section 2.6): each var and
      * out parameter, and each variable whose address is taken (@x) *)
-    let locatedVariables(unit: ir.Unit): hashMap.T(Int Bool) =
+    let locatedVariables(unit: ir.Unit): maps.IntMap(Bool) =
         begin
-            let found = hashMap.new(:Int :Bool intEqual hash.int)
+            let found = maps.newIntMap(:Bool)
             for k = 0 upto vector.length(unit.functions) - 1 do
                 let fn = vector.get(unit.functions k)
                 for j = 0 upto extent fn.params - 1 do
@@ -5731,7 +5730,7 @@ export
             end
             (* Each unit imported, its record's two globals, which its init
              * sets *)
-            let records = hashMap.new(:String :Int stringOp.equal hash.string)
+            let records = maps.newStringMap(:Int)
             for k = 0 upto extent unit.imports - 1 do
                 let i = unit.imports[k]
                 if isUnitImport(moduleName i) andif not(hashMap.contains(records i.canonicalPath)) then
@@ -5762,37 +5761,37 @@ export
                 let unit = unit
                 let m = m
                 let globalIds = walk.globalVariables(unit)
-                let globals = hashMap.new(:Int :Int intEqual hash.int)
-                let functions = hashMap.new(:Int :Int intEqual hash.int)
+                let globals = maps.newIntMap(:Int)
+                let functions = maps.newIntMap(:Int)
                 let known = walk.knownClosures(unit)
-                let runtimeFunctions = hashMap.new(:String :Int stringOp.equal hash.string)
-                let funcTypes = hashMap.new(:String :Int stringOp.equal hash.string)
+                let runtimeFunctions = maps.newStringMap(:Int)
+                let funcTypes = maps.newStringMap(:Int)
                 let strings = sb.new()
-                let literalGlobals = hashMap.new(:String :Int stringOp.equal hash.string)
-                let names = hashMap.new(:String :Int stringOp.equal hash.string)
-                let dicts = hashMap.new(:String :Int stringOp.equal hash.string)
-                let closTypes = hashMap.new(:String :Int stringOp.equal hash.string)
-                let ownTypes = hashMap.new(:Int :Int intEqual hash.int)
-                let staticClosures = hashMap.new(:Int :Int intEqual hash.int)
-                let uniforms = hashMap.new(:Int :Int intEqual hash.int)
-                let trapNatives = hashMap.new(:Int :Int intEqual hash.int)
-                let captureTypes = hashMap.new(:Int :Array(ir.Type) intEqual hash.int)
-                let byId = hashMap.new(:Int :ir.Function intEqual hash.int)
-                let declaredFns = hashMap.new(:Int :Bool intEqual hash.int)
+                let literalGlobals = maps.newStringMap(:Int)
+                let names = maps.newStringMap(:Int)
+                let dicts = maps.newStringMap(:Int)
+                let closTypes = maps.newStringMap(:Int)
+                let ownTypes = maps.newIntMap(:Int)
+                let staticClosures = maps.newIntMap(:Int)
+                let uniforms = maps.newIntMap(:Int)
+                let trapNatives = maps.newIntMap(:Int)
+                let captureTypes = maps.newIntMap(:Array(ir.Type))
+                let byId = maps.newIntMap(:ir.Function)
+                let declaredFns = maps.newIntMap(:Bool)
                 let noClosure = noClosure
-                let builtins = hashMap.new(:String :Int stringOp.equal hash.string)
-                let importFunctions = hashMap.new(:String :Int stringOp.equal hash.string)
-                let importInits = hashMap.new(:String :Int stringOp.equal hash.string)
+                let builtins = maps.newStringMap(:Int)
+                let importFunctions = maps.newStringMap(:Int)
+                let importInits = maps.newStringMap(:Int)
                 let importRecords = records
-                let runtimeUnits = hashMap.new(:String :Int stringOp.equal hash.string)
-                let descGlobals = hashMap.new(:String :Int stringOp.equal hash.string)
+                let runtimeUnits = maps.newStringMap(:Int)
+                let descGlobals = maps.newStringMap(:Int)
                 let isRuntime = isRuntimeUnit(moduleName)
                 let isCore = stringOp.equal(moduleName "wasm/core")
                 let isPhrase = maybe.isSome(unit.phrase)
                 let located = locatedVariables(unit)
                 let naming = staticdata.newRecordNaming()
-                let uses = hashMap.new(:Int :Int intEqual hash.int)
-                let pinned = hashMap.new(:Int :Bool intEqual hash.int)
+                let uses = maps.newIntMap(:Int)
+                let pinned = maps.newIntMap(:Bool)
             end
             walk.countUses(unit g.uses g.pinned)
             (* Each function, and the types of what its closures capture: an

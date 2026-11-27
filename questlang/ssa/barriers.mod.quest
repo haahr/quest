@@ -3,15 +3,14 @@
 module barriers : Barriers
 import
     conv : Conv
-    stringOp = string : StringOp
 
     collections/bitset : collections/Bitset
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
@@ -27,7 +26,7 @@ export
     let callBarrier = 3
     let callSlotBarrier = 4
     let kinds = begin
-        let m = hashMap.new(:String :Int stringOp.equal hash.string)
+        let m = maps.newStringMap(:Int)
         for k = 0 upto {extent runtimeFunctions.functions - 1} do
             let r = runtimeFunctions.functions[k]
             let kind = if r.effects.allocates then callCollects else callOther end
@@ -145,7 +144,7 @@ export
              * instruction position in f (starts[b] is the position of block
              * b's first instruction) *)
             let stores = vector.new(:Store)
-            let storeOf = hashMap.new(:Int :Int fun(a: Int b: Int): Bool a is b hash.int)
+            let storeOf = maps.newIntMap(:Int)
             let starts = array of(nBlocks 0)
             for b = 1 upto {nBlocks - 1} do
                 starts[b] := starts[b - 1] + vector.length(ssa.block(f b - 1).insts)

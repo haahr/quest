@@ -21,10 +21,10 @@
 
 interface Structure
 import
-    collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
 
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/syntax/ast : questlang/syntax/AST
     questlang/syntax/tokens : questlang/syntax/Tokens
 export
@@ -86,34 +86,34 @@ export
 
     Def T = Tuple
         (* By the offset of a token that may start a line *)
-        rules: hashMap.T(Int Rule)
+        rules: maps.IntMap(Rule)
         (* By a token's offset: the start of the innermost phrase that holds
          * it and begins before it, for a token with no rule *)
-        continuations: hashMap.T(Int Int)
+        continuations: maps.IntMap(Int)
         (* The offsets of the colons that keep a space before them: those of
          * a module's or an interface's header and of import items
          * (module m : M, sb = util/stringBuilder : util/StringBuilder) *)
-        spacedColons: hashMap.T(Int Bool)
+        spacedColons: maps.IntMap(Bool)
         (* The offsets of the slashes of import paths, which have no spaces
          * around them (util/stringBuilder) *)
-        pathSlashes: hashMap.T(Int Bool)
+        pathSlashes: maps.IntMap(Bool)
         imports: vector.T(ImportList)
         (* By the offset of a construct's part (a phrase of one of its bodies,
          * or a field): the offset of the end that closes
          * the construct. A part that starts a line puts that end on a line of
          * its own *)
-        ends: hashMap.T(Int Int)
+        ends: maps.IntMap(Int)
         runs: vector.T(Run)
         lifts: vector.T(Lift)
         joins: vector.T(Join)
         armEnds: vector.T(ArmEnd)
         (* By the offset of each token of an if, elsif, or while condition:
          * the offset of that keyword *)
-        conditions: hashMap.T(Int Int)
+        conditions: maps.IntMap(Int)
         (* By the offset of the first token of an elsif's or else's body: the
          * offset of that elsif or else, which starts a line when its body
          * does *)
-        armHeads: hashMap.T(Int Int)
+        armHeads: maps.IntMap(Int)
     end
 
     (* The structure of program, parsed from toks (which end with EOF) of the

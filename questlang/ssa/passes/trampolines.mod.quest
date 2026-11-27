@@ -6,9 +6,9 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
+    questlang/common/maps : questlang/common/Maps
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/passes/tailJumps : questlang/ssa/passes/TailJumps
 export
@@ -67,7 +67,7 @@ export
 
     (* Copies into f the function its first block tail-calls, while it
      * can, appending the symbols of those copied to copied *)
-    let copyCallees(f: Function functions: vector.T(Function) numbers: hashMap.T(String Int) copied: vector.T(String))
+    let copyCallees(f: Function functions: vector.T(Function) numbers: maps.StringMap(Int) copied: vector.T(String))
             : Ok =
         begin
             let var left = rounds
@@ -99,7 +99,7 @@ export
     (* If f is an exported single-block function, splices the chain of
      * eligible functions its entry block tail-calls into f and returns their
      * symbols *)
-    let trampolineFunction(f: Function functions: vector.T(Function) numbers: hashMap.T(String Int))
+    let trampolineFunction(f: Function functions: vector.T(Function) numbers: maps.StringMap(Int))
             : vector.T(String) =
         begin
             let copied = vector.new(:String)
@@ -158,7 +158,7 @@ export
                 let d = vector.get(u.data table)
                 case d.contents
                     when contentsWords with x then
-                        let names = hashMap.new(:String :ssa.Word stringOp.equal hash.string)
+                        let names = maps.newStringMap(:ssa.Word)
                         for k = 0 upto {{extent x.words / 2} - 1} do
                             case x.words[2 * k]
                                 when wordSymbol with w then
@@ -198,7 +198,7 @@ export
 
     let trampolineUnit(u: ssa.Unit): Ok =
         begin
-            let numbers = hashMap.new(:String :Int stringOp.equal hash.string)
+            let numbers = maps.newStringMap(:Int)
             for k = 0 upto {vector.length(u.functions) - 1} do
                 let ignored = hashMap.insert(numbers vector.get(u.functions k).symbol k)
             end

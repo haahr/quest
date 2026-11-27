@@ -7,10 +7,10 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     cloning = questlang/ir/clone : questlang/ir/Clone
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/stages : questlang/ir/Stages
@@ -29,15 +29,14 @@ export
     Let Stmt = nodes.Stmt
     Let Op = nodes.Op
 
-    let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
     (* The depth of clones made for calls in clones, beyond which calls stay
      * generic: polymorphic recursion would otherwise specialize without end *)
     let maxDepth = 16
 
-    Let Ids = hashMap.T(Int Bool)
-    let newIds(): Ids = hashMap.new(intEqual hash.int)
+    Let Ids = maps.IntMap(Bool)
+    let newIds(): Ids = maps.newIntMap()
     let withIds(ids: Ids more: Array(nodes.TypeParam)): Ids =
         begin
             let result = newIds()
@@ -248,9 +247,9 @@ export
      *   function of A calling itself at List(A)) does not clone without
      *   end. *)
     Let Specializer = Tuple
-        definitions: hashMap.T(Int Definition)
-        clones: hashMap.T(String nodes.Function)
-        counts: hashMap.T(Int Int)
+        definitions: maps.IntMap(Definition)
+        clones: maps.StringMap(nodes.Function)
+        counts: maps.IntMap(Int)
         pending: vector.T(Pending)
         var depth: Int
     end
@@ -491,9 +490,9 @@ export
     let specializeUnit(unit: nodes.Unit): nodes.Unit =
         begin
             let sp = tuple
-                let definitions = hashMap.new(:Int :Definition intEqual hash.int)
-                let clones = hashMap.new(:String :nodes.Function stringOp.equal hash.string)
-                let counts = hashMap.new(:Int :Int intEqual hash.int)
+                let definitions = maps.newIntMap(:Definition)
+                let clones = maps.newStringMap(:nodes.Function)
+                let counts = maps.newIntMap(:Int)
                 let pending = vector.new(:Pending)
                 let var depth = 0
             end

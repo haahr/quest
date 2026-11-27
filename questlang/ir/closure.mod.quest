@@ -4,9 +4,9 @@ module closure : Closure
 import
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/stages : questlang/ir/Stages
     questlang/ir/walk : questlang/ir/Walk
@@ -18,12 +18,10 @@ export
 
     let capturesMutable: Exception(String) = exception capturesMutable: String end
 
-    let intEqual(a: Int b: Int): Bool = a is b
-
     (* The unit, to whose functions lifted ones are added, and its globals
      * (walk.globalVariables), which lifted functions read directly rather
      * than capture *)
-    Let Converter = Tuple unit: nodes.Unit globals: hashMap.T(Int Bool) end
+    Let Converter = Tuple unit: nodes.Unit globals: maps.IntMap(Bool) end
 
     let concat(a: Array(nodes.TypeParam) b: Array(nodes.TypeParam)): Array(nodes.TypeParam) =
         begin
@@ -34,7 +32,7 @@ export
 
     (* Replaces uses in b, in place, of variables mapped by renamed (none of
      * which b binds) *)
-    let rename(b: Body renamed: hashMap.T(Int Variable)): Ok =
+    let rename(b: Body renamed: maps.IntMap(Variable)): Ok =
         begin
             let stmts = walk.walkStatements(b false)
             let f = fun(v: Variable): Variable maybe.unwrapOr(hashMap.get(renamed v.id) v)
@@ -85,7 +83,7 @@ export
             end
             let lets = vector.new(:Stmt)
             let var capturesGroup = false
-            let group = hashMap.new(:Int :Bool intEqual hash.int)
+            let group = maps.newIntMap(:Bool)
             for i = 0 upto {extent functions - 1} do hashMap.insert(group functions[i].v.id true) end
             let all = array of(extent functions tuple
                 let code = functions[0]
@@ -108,7 +106,7 @@ export
                  * function calling itself, docs/ir.md section 8.6), so we
                  * replace the prologue's environment reads with capture-free
                  * closures and drop the environment parameter *)
-                let codes = hashMap.new(:Int :nodes.Function intEqual hash.int)
+                let codes = maps.newIntMap(:nodes.Function)
                 for i = 0 upto {extent functions - 1} do
                     hashMap.insert(codes functions[i].v.id all[i].code)
                 end
@@ -163,10 +161,10 @@ export
     and lift(c: Converter f: nodes.Function typeParams: Array(nodes.TypeParam)): Lifted =
         begin
             convertBody(c f.body concat(typeParams f.typeParams))
-            let bound = hashMap.new(:Int :Bool intEqual hash.int)
+            let bound = maps.newIntMap(:Bool)
             for i = 0 upto {extent f.params - 1} do hashMap.insert(bound f.params[i].v.id true) end
             let used = vector.new(:Variable)
-            let usedIds = hashMap.new(:Int :Bool intEqual hash.int)
+            let usedIds = maps.newIntMap(:Bool)
             let stmts = walk.walkStatements(f.body false)
             for i = 0 upto {vector.length(stmts) - 1} do
                 let s = vector.get(stmts i)
@@ -198,7 +196,7 @@ export
                  * Quest type, so okType serves as a placeholder *)
                 let e = nodes.newVar("env" model.okType false)
                 env := maybe.some(e)
-                let renamed = hashMap.new(:Int :Variable intEqual hash.int)
+                let renamed = maps.newIntMap(:Variable)
                 let prologue = vector.new(:Stmt)
                 for i = 0 upto {vector.length(captures) - 1} do
                     let captured = vector.get(captures i)

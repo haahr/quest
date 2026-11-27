@@ -3,13 +3,12 @@
 module clone : Clone
 import
     conv : Conv
-    stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/walk : questlang/ir/Walk
     questlang/types/model : questlang/types/Model
@@ -21,15 +20,13 @@ export
     Let Stmt = nodes.Stmt
     Let Op = nodes.Op
 
-    let intEqual(a: Int b: Int): Bool = a is b
-
     Def Labels = Tuple var count: Int end
 
     Def Cloner = Tuple
         subst: model.Subst
-        vars: hashMap.T(Int Variable)
+        vars: maps.IntMap(Variable)
         (* The fresh label of each label the copy binds, when it has them *)
-        labels: hashMap.T(String String)
+        labels: maps.StringMap(String)
         relabeling: maybe.T(Labels)
         (* Whether a copied closure shares the original function, as in a closed
          * unit whose functions live at the top level rather than nested in
@@ -40,8 +37,8 @@ export
     let newCloner(subst: model.Subst): Cloner =
         tuple
             let subst = subst
-            let vars = hashMap.new(intEqual hash.int)
-            let labels = hashMap.new(stringOp.equal hash.string)
+            let vars = maps.newIntMap()
+            let labels = maps.newStringMap()
             let relabeling = maybe.none()
             let sharesCode = false
         end

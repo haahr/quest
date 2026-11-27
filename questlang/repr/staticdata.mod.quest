@@ -8,11 +8,11 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/stringBuilder : util/StringBuilder
 
+    questlang/common/maps : questlang/common/Maps
     questlang/common/pyRepr : questlang/common/PyRepr
     questlang/common/strings : questlang/common/Strings
     questlang/repr/descriptors : questlang/repr/Descriptors
@@ -81,14 +81,14 @@ export
      * ====================================================================== *)
 
     Def RecordNaming = Tuple
-        aliasByShape: hashMap.T(String String)
-        canonicalNames: hashMap.T(String String)
+        aliasByShape: maps.StringMap(String)
+        canonicalNames: maps.StringMap(String)
     end
 
     let newRecordNaming(): RecordNaming =
         tuple
-            let aliasByShape = hashMap.new(eq hash.string)
-            let canonicalNames = hashMap.new(eq hash.string)
+            let aliasByShape = maps.newStringMap()
+            let canonicalNames = maps.newStringMap()
         end
 
     let recordFields(t: Type): Array(model.RecordField) =
@@ -507,22 +507,22 @@ export
 
     Def Collected = Tuple
         tags: vector.T(String)
-        byKind: hashMap.T(String vector.T(DescriptorForm))
+        byKind: maps.StringMap(vector.T(DescriptorForm))
     end
 
     let formsOf(c: Collected kind: String): vector.T(DescriptorForm) = hashMap.find(c.byKind kind)
 
     let collectDescriptors(ts: vector.T(Type) echoTypes: vector.T(Type) ctx: maybe.T(RecordNaming)
-            emittedBefore: hashMap.T(String Bool)): Collected =
+            emittedBefore: maps.StringMap(Bool)): Collected =
         begin
             let c = tuple
                 let tags = vector.new(:String)
-                let byKind = hashMap.new(:String :vector.T(DescriptorForm) eq hash.string)
+                let byKind = maps.newStringMap(:vector.T(DescriptorForm))
             end
             for i = 0 upto {extent descriptorKinds - 1} do
                 hashMap.insert(c.byKind descriptorKinds[i] vector.new(:DescriptorForm))
             end
-            let seen = hashMap.new(:String :Bool eq hash.string)
+            let seen = maps.newStringMap(:Bool)
             let isNew(tag: String): Bool =
                 not(hashMap.contains(seen tag)) andif not(hashMap.contains(emittedBefore tag))
             let remember(f: DescriptorForm): Ok =

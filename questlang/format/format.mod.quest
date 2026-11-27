@@ -18,7 +18,6 @@ import
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     osFiles = os/files : os/Files
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     sb = util/stringBuilder : util/StringBuilder
@@ -27,6 +26,7 @@ import
     questlang/common/diagbag : questlang/common/DiagBag
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/format/structure : questlang/format/Structure
     questlang/syntax/ast : questlang/syntax/AST
     questlang/syntax/astprint : questlang/syntax/ASTPrint
@@ -39,8 +39,6 @@ export
         invalid with bag: diagbag.T sm: location.SourceMap end
         failed with message: String end
     end
-
-    let intEqual(a: Int b: Int): Bool = a is b
 
     (* ======================================================================
      * 1. Reading the source
@@ -203,8 +201,8 @@ export
             end
             for l = 0 upto {vector.length(ordered) - 1} do
                 let importList = vector.get(ordered l)
-                let byStart = hashMap.new(:Int :Int intEqual hash.int)
-                let byStop = hashMap.new(:Int :Int intEqual hash.int)
+                let byStart = maps.newIntMap(:Int)
+                let byStop = maps.newIntMap(:Int)
                 for i = 0 upto {vector.length(current) - 1} do
                     let e = vector.get(current i)
                     if not(e.comment) then
@@ -323,7 +321,7 @@ export
      * splitParts *)
     let splitPartsOnce(elems: vector.T(Elem) st: structure.T): Ok =
         begin
-            let at = hashMap.new(:Int :Int intEqual hash.int)
+            let at = maps.newIntMap(:Int)
             for i = 0 upto {vector.length(elems) - 1} do
                 let e = vector.get(elems i)
                 if not(e.comment) then hashMap.insert(at e.start i) end
@@ -467,8 +465,8 @@ export
      * end's *)
     let indent(ls: vector.T(Line) st: structure.T): Ok =
         begin
-            let lineOf = hashMap.new(:Int :Int intEqual hash.int)
-            let startsLine = hashMap.new(:Int :Bool intEqual hash.int)
+            let lineOf = maps.newIntMap(:Int)
+            let startsLine = maps.newIntMap(:Bool)
             for i = 0 upto {vector.length(ls) - 1} do
                 let l = vector.get(ls i)
                 let var firstToken = true
@@ -483,7 +481,7 @@ export
             end
             (* The innermost bracket open where each line starts, by the
              * offset of the line's first token *)
-            let openAt = hashMap.new(:Int :Int intEqual hash.int)
+            let openAt = maps.newIntMap(:Int)
             let stack = vector.new(:Int)
             for i = 0 upto {vector.length(ls) - 1} do
                 let l = vector.get(ls i)
@@ -638,7 +636,7 @@ export
                 orif {{x is '.'} andif isA(b "INT_LIT")}
         end
 
-    let marked(m: hashMap.T(Int Bool) e: Elem): Bool = not(e.comment) andif hashMap.contains(m e.start)
+    let marked(m: maps.IntMap(Bool) e: Elem): Bool = not(e.comment) andif hashMap.contains(m e.start)
 
     (* Whether the colon b after a is a type annotation's (x: T), which is
      * written against what it follows: one after a name or a bracket, unless
@@ -1008,7 +1006,7 @@ export
         begin
             let ls = lines(elems)
             indent(ls st)
-            let lineOf = hashMap.new(:Int :Int intEqual hash.int)
+            let lineOf = maps.newIntMap(:Int)
             for i = 0 upto {vector.length(ls) - 1} do
                 let l = vector.get(ls i)
                 for j = 0 upto {vector.length(l.elems) - 1} do

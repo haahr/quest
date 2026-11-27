@@ -9,10 +9,10 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     ir = questlang/ir/nodes : questlang/ir/Nodes
     questlang/repr/layout : questlang/repr/Layout
     questlang/repr/objectLayout : questlang/repr/ObjectLayout
@@ -33,7 +33,6 @@ export
 
     let unsupported: Exception(String) = exception unsupported: String end
 
-    let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
     let fail(A::TYPE what: String): A = raise unsupported with what end
     let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(m k v) ok end
@@ -143,23 +142,23 @@ export
         (* The unit's global variables, by id (walk.globalVariables): those its
          * top-level bodies bind that functions or other bodies name, which
          * live in static data rather than in values or slots *)
-        globals: hashMap.T(Int Bool)
+        globals: maps.IntMap(Bool)
         (* The symbols of the unit's global variables and functions, by id,
          * each made the first time it is asked for (globalSymbol, codeName),
          * and every symbol so far made, so that a fresh one is unique *)
-        globalSymbols: hashMap.T(Int String)
-        codeNames: hashMap.T(Int String)
-        usedNames: hashMap.T(String Bool)
+        globalSymbols: maps.IntMap(String)
+        codeNames: maps.IntMap(String)
+        usedNames: maps.StringMap(Bool)
         (* The closure each lifted function is made by, by function id, and
          * the closures variables are bound to, by variable id *)
-        closuresOf: hashMap.T(Int ir.OpMakeClosure)
-        closureVars: hashMap.T(Int ir.OpMakeClosure)
+        closuresOf: maps.IntMap(ir.OpMakeClosure)
+        closureVars: maps.IntMap(ir.OpMakeClosure)
         (* String literals' symbols, by text, and how many there are, which
          * numbers the next *)
-        strings: hashMap.T(String String)
+        strings: maps.StringMap(String)
         var stringCount: Int
-        stringObjects: hashMap.T(String String)
-        optionTables: hashMap.T(String String)
+        stringObjects: maps.StringMap(String)
+        optionTables: maps.StringMap(String)
         (* Names records and their offset tables as the unit's static data
          * does *)
         naming: staticdata.RecordNaming
@@ -177,7 +176,7 @@ export
      * captures of them made so far. A closure of a let rec captures
      * variables that the let rec has not bound yet (its own, or a sibling's),
      * so the closure's words for them are stored after the body. *)
-    Def Deferred = Tuple vars: hashMap.T(Int Bool) captures: vector.T(DeferredCapture) end
+    Def Deferred = Tuple vars: maps.IntMap(Bool) captures: vector.T(DeferredCapture) end
 
     (* How a variable of the function being built is held: as SSA values (an
      * immutable variable), in a stack slot (a mutable one), at the location a
@@ -203,16 +202,16 @@ export
         initObjects: vector.T(Int)
         initMarks: vector.T(Int)
         (* How each variable is held, by variable id *)
-        bindings: hashMap.T(Int Binding)
+        bindings: maps.IntMap(Binding)
         (* Each join point's block, by its label, and how many parts (block
          * parameters) each of the join's parameters takes. A join point is
          * the IR's sJoin: a labelled continuation that a jump in its body
          * enters with arguments, like a local function called only in tail
          * position. *)
-        joins: hashMap.T(String Int)
-        joinParts: hashMap.T(String Array(Int))
+        joins: maps.StringMap(Int)
+        joinParts: maps.StringMap(Array(Int))
         (* The blocks of each loop, by its label *)
-        loops: hashMap.T(String LoopTargets)
+        loops: maps.StringMap(LoopTargets)
         (* The function's IR closure (its environment's layout), if it is a
          * lifted function's *)
         closure: maybe.T(ir.OpMakeClosure)
@@ -221,7 +220,7 @@ export
         (* The handler records of the trys entered, innermost last, and for
          * each loop and join point the number entered where it is defined *)
         handlers: vector.T(Int)
-        labelDepth: hashMap.T(String Int)
+        labelDepth: maps.StringMap(Int)
     end
 
     let freshName(u: UnitBuilder base: String): String =
@@ -869,14 +868,14 @@ export
             let var calls = 0
             let initObjects = vector.new()
             let initMarks = vector.new()
-            let bindings = hashMap.new(intEqual hash.int)
-            let joins = hashMap.new(eq hash.string)
-            let joinParts = hashMap.new(eq hash.string)
-            let loops = hashMap.new(eq hash.string)
+            let bindings = maps.newIntMap()
+            let joins = maps.newStringMap()
+            let joinParts = maps.newStringMap()
+            let loops = maps.newStringMap()
             let closure = closure
             let var deferred = maybe.none()
             let handlers = vector.new()
-            let labelDepth = hashMap.new(eq hash.string)
+            let labelDepth = maps.newStringMap()
         end
 
     (* Finishes a function: blocks nothing reaches the end of end in

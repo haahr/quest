@@ -13,7 +13,6 @@ import
     collections/vector : collections/Vector
     os/fileStats : os/FileStats
     pathLib = os/path : os/Path
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
@@ -25,6 +24,7 @@ import
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/config/abi : questlang/config/ABI
     questlang/ir/opened : questlang/ir/Opened
     passes = questlang/ir/pipeline : questlang/ir/Pipeline
@@ -493,10 +493,10 @@ export
      * that module. A node listed twice has its last list of neighbors. *)
     let detectModuleCycle(g: vector.T(Edges)): maybe.T(Array(String)) =
         begin
-            let visited = hashSet.new(:String stringOp.equal hash.string)
+            let visited = maps.newStringSet()
             let stack = vector.new(:String)
-            let onStack = hashSet.new(:String stringOp.equal hash.string)
-            let edges = hashMap.new(:String :Array(String) stringOp.equal hash.string)
+            let onStack = maps.newStringSet()
+            let edges = maps.newStringMap(:Array(String))
             for i = 0 upto {vector.length(g) - 1} do
                 hashMap.insert(edges vector.get(g i).node vector.get(g i).neighbors)
             end
@@ -620,17 +620,17 @@ export
             let search = searchPaths(eng)
             let queue = vector.new(:String)
             let var head = 0
-            let discovered = hashMap.new(:String :Bool stringOp.equal hash.string)
+            let discovered = maps.newStringMap(:Bool)
             let isDiscovered(name: String): Bool = hashMap.contains(discovered name)
             let discover(name: String): Ok = begin hashMap.insert(discovered name true) ok end
             (* The first source an importer recorded for each module *)
-            let sources = hashMap.new(:String :String stringOp.equal hash.string)
+            let sources = maps.newStringMap(:String)
             let recordSource(name: String file: String): Ok =
                 if not(hashMap.contains(sources name)) then
                     begin hashMap.insert(sources name file) ok end
                 end
             let linked = vector.fromArray(strs(eng.extraObjects))
-            let isLinked = hashSet.new(:String stringOp.equal hash.string)
+            let isLinked = maps.newStringSet()
             for i = 0 upto {vector.length(linked) - 1} do hashSet.insert(isLinked vector.get(linked i)) end
             for i = 0 upto {extent eng.extraObjects - 1} do
                 discover(files.stem(str(eng.extraObjects[i])))
@@ -639,9 +639,9 @@ export
             let moduleGraph = vector.new(:Edges)
             (* The interfaces expected of each module, and the modules in the
              * order first expected, which they are checked again in *)
-            let expected = hashMap.new(:String :vector.T(Expected) stringOp.equal hash.string)
+            let expected = maps.newStringMap(:vector.T(Expected))
             let expectedNames = vector.new(:String)
-            let manifests = hashMap.new(:String :manifest.ModuleManifest stringOp.equal hash.string)
+            let manifests = maps.newStringMap(:manifest.ModuleManifest)
 
             let manifestOf = fun(name: String): maybe.T(manifest.ModuleManifest)
                 hashMap.get(manifests name)
@@ -852,7 +852,7 @@ export
             let prepared = vector.new(:Popped)
             let outcomes = vector.new(:maybe.T(workers.Outcome))
             (* Each module's index in prepared, where it is popped once *)
-            let preparedAt = hashMap.new(:String :Int stringOp.equal hash.string)
+            let preparedAt = maps.newStringMap(:Int)
             let preparedIndex = fun(item: String): Int maybe.unwrapOr(hashMap.get(preparedAt item) ~1)
             let preparedOf = fun(item: String): maybe.T(Popped)
                 begin

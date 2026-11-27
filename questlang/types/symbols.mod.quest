@@ -2,13 +2,11 @@
 
 module symbols : Symbols
 import
-    stringOp = string : StringOp
-
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
+    questlang/common/maps : questlang/common/Maps
     questlang/types/model : questlang/types/Model
 export
     let redefined: Exception(String) = exception redefined: String end
@@ -45,23 +43,21 @@ export
     Let Counters = Tuple var values: Int var symbols: Int var generation: Int end
     let counters: Counters = tuple let var values = 0 let var symbols = 0 let var generation = 0 end
 
-    let intEqual(a: Int b: Int): Bool = a is b
-
     (* Global tables of every declared type and kind symbol by id, together with
      * the ids that a lookup saw undeclared (or, for types, without a
      * definition). Because meanings only become more defined, cached type
      * judgments go stale only when one of these ids gains a meaning. *)
-    let typesById = hashMap.new(:Int :TypeSymbol intEqual hash.int)
-    let kindsById = hashMap.new(:Int :KindSymbol intEqual hash.int)
-    let typeIdsSeenUndefined = hashMap.new(:Int :Bool intEqual hash.int)
-    let kindIdsSeenUndefined = hashMap.new(:Int :Bool intEqual hash.int)
+    let typesById = maps.newIntMap(:TypeSymbol)
+    let kindsById = maps.newIntMap(:KindSymbol)
+    let typeIdsSeenUndefined = maps.newIntMap(:Bool)
+    let kindIdsSeenUndefined = maps.newIntMap(:Bool)
 
     let meaningsChanged(): Ok = counters.generation := counters.generation + 1
 
     (* The symbols failed declarations bound, by id: value ids have a counter of
      * their own *)
-    let poisonedValues = hashMap.new(:Int :Bool intEqual hash.int)
-    let poisonedTypes = hashMap.new(:Int :Bool intEqual hash.int)
+    let poisonedValues = maps.newIntMap(:Bool)
+    let poisonedTypes = maps.newIntMap(:Bool)
     let poisonValue(symbolId: Int): Ok = begin hashMap.insert(poisonedValues symbolId true) ok end
     let isPoisonedValue(symbolId: Int): Bool = hashMap.contains(poisonedValues symbolId)
     let poison(symbolId: Int): Ok = begin hashMap.insert(poisonedTypes symbolId true) ok end
@@ -128,11 +124,11 @@ export
         var isUnsound: Bool
         var isLocal: Bool
         var declarations: vector.T(Symbol)
-        var values: hashMap.T(String ValueSymbol)
-        var types: hashMap.T(String TypeSymbol)
-        var typesById: hashMap.T(Int TypeSymbol)
-        var kinds: hashMap.T(String KindSymbol)
-        var kindsById: hashMap.T(Int KindSymbol)
+        var values: maps.StringMap(ValueSymbol)
+        var types: maps.StringMap(TypeSymbol)
+        var typesById: maps.IntMap(TypeSymbol)
+        var kinds: maps.StringMap(KindSymbol)
+        var kindsById: maps.IntMap(KindSymbol)
     end
 
     let newScope(parent: maybe.T(Scope) name: String): Scope =
@@ -143,11 +139,11 @@ export
             let var isUnsound = false
             let var isLocal = false
             let var declarations = vector.new()
-            let var values = hashMap.new(stringOp.equal hash.string)
-            let var types = hashMap.new(stringOp.equal hash.string)
-            let var typesById = hashMap.new(intEqual hash.int)
-            let var kinds = hashMap.new(stringOp.equal hash.string)
-            let var kindsById = hashMap.new(intEqual hash.int)
+            let var values = maps.newStringMap()
+            let var types = maps.newStringMap()
+            let var typesById = maps.newIntMap()
+            let var kinds = maps.newStringMap()
+            let var kindsById = maps.newIntMap()
         end
 
     let declareValue(s: Scope sym: ValueSymbol): ValueSymbol =

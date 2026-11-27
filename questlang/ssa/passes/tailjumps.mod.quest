@@ -2,13 +2,11 @@
 
 module tailJumps : TailJumps
 import
-    stringOp = string : StringOp
-
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
+    questlang/common/maps : questlang/common/Maps
     questlang/common/scc : questlang/common/SCC
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
@@ -18,7 +16,7 @@ export
     let budget = 100
 
     (* The unit's functions that a function's tail calls call, by number *)
-    let tailCallees(f: Function numbers: hashMap.T(String Int)): vector.T(Int) =
+    let tailCallees(f: Function numbers: maps.StringMap(Int)): vector.T(Int) =
         begin
             let callees = vector.new(:Int)
             for b = 0 upto {vector.length(f.blocks) - 1} do
@@ -189,7 +187,7 @@ export
         begin
             let n = vector.length(u.functions)
             let function(k: Int): Function = vector.get(u.functions k)
-            let numbers = hashMap.new(:String :Int stringOp.equal hash.string)
+            let numbers = maps.newStringMap(:Int)
             for k = 0 upto {n - 1} do let ignored = hashMap.insert(numbers function(k).symbol k) end
             let edges = array of(n vector.new(:Int))
             for k = 0 upto {n - 1} do edges[k] := tailCallees(function(k) numbers) end
@@ -205,9 +203,9 @@ export
             end
             (* The copies made into each function: the first block of each,
              * by the copied function's symbol *)
-            let entries = array of(n hashMap.new(:String :Int stringOp.equal hash.string))
+            let entries = array of(n maps.newStringMap(:Int))
             for k = 0 upto {n - 1} do
-                entries[k] := hashMap.new(stringOp.equal hash.string)
+                entries[k] := maps.newStringMap()
                 let f = function(k)
                 if members[component[k]] > 1 then
                     (* Copy each reachable group member into f at most once

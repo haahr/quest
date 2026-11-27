@@ -6,9 +6,9 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ssa/blockParams : questlang/ssa/BlockParams
     questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
@@ -16,8 +16,6 @@ import
 export
     Let Function = ssa.Function
     Def Verdict = Tuple value: Int constant: Bool left: Bool reason: String end
-
-    let intEqual(a: Int b: Int): Bool = a is b
 
     (* A word of a group's layout: nothing known of it (no member stores it
      * and nothing loads it), a value of one type, or a pointer to an object
@@ -108,9 +106,9 @@ export
      * ====================================================================== *)
 
     (* The static data's words of a symbol that is never written *)
-    let constantWords(u: ssa.Unit): hashMap.T(String Array(ssa.Word)) =
+    let constantWords(u: ssa.Unit): maps.StringMap(Array(ssa.Word)) =
         begin
-            let found = hashMap.new(:String :Array(ssa.Word) stringOp.equal hash.string)
+            let found = maps.newStringMap(:Array(ssa.Word))
             for i = 0 upto {vector.length(u.data) - 1} do
                 let d = vector.get(u.data i)
                 if not(d.writable) then
@@ -559,11 +557,11 @@ export
         end
 
     (* The layouts of the live groups, by their roots *)
-    let layouts(s: State): hashMap.T(Int Layout) =
+    let layouts(s: State): maps.IntMap(Layout) =
         begin
             let f = s.f
             let n = extent s.parent
-            let size = hashMap.new(:Int :Int intEqual hash.int)
+            let size = maps.newIntMap(:Int)
             let grow(g: Int words: Int): Ok =
                 if words > maybe.unwrapOr(hashMap.get(size g) 0) then hashMap.insert(size g words) end
             for a = 0 upto {n - 1} do
@@ -584,7 +582,7 @@ export
                     end
                 end
             end
-            let result = hashMap.new(:Int :Layout intEqual hash.int)
+            let result = maps.newIntMap(:Layout)
             for a = 0 upto {n - 1} do
                 let g = find(s a)
                 if not(s.dead[a]) andif not(hashMap.contains(result g)) then
@@ -631,7 +629,7 @@ export
 
     (* Returns the number of scalar values that replace an object in group g
      * (recursing into nested groups), or ~1 if a group nests inside itself *)
-    let rec leafCount(ls: hashMap.T(Int Layout) g: Int visiting: hashMap.T(Int Bool)): Int =
+    let rec leafCount(ls: maps.IntMap(Layout) g: Int visiting: maps.IntMap(Bool)): Int =
         if hashMap.contains(visiting g) then ~1
         else begin
             let ignored = hashMap.insert(visiting g true)
@@ -676,7 +674,7 @@ export
                         if not(s.dead[a]) then
                             let l = hashMap.find(ls g)
                             if not(l.valid) then kill(s a "its objects' words differ")
-                            elsif leafCount(ls g hashMap.new(intEqual hash.int)) < 0 then
+                            elsif leafCount(ls g maps.newIntMap()) < 0 then
                                 kill(s a "it holds a pointer of its own group")
                             end
                         end
@@ -723,7 +721,7 @@ export
      * ====================================================================== *)
 
     (* The types of a group's values, in order *)
-    let rec leafTypes(ls: hashMap.T(Int Layout) g: Int into: vector.T(ssa.Type)): Ok =
+    let rec leafTypes(ls: maps.IntMap(Layout) g: Int into: vector.T(ssa.Type)): Ok =
         begin
             let l = hashMap.find(ls g)
             for w = 0 upto {extent l.kind - 1} do
@@ -734,14 +732,14 @@ export
         end
 
     (* The index of word w's first value among its group's *)
-    let leafStart(ls: hashMap.T(Int Layout) g: Int w: Int): Int =
+    let leafStart(ls: maps.IntMap(Layout) g: Int w: Int): Int =
         begin
             let l = hashMap.find(ls g)
             let var n = 0
             for k = 0 upto {w - 1} do
                 if l.kind[k] is wordScalar then n := n + 1
                 elsif l.kind[k] is wordNested then
-                    n := n + leafCount(ls l.group[k] hashMap.new(intEqual hash.int))
+                    n := n + leafCount(ls l.group[k] maps.newIntMap())
                 end
             end
             n
@@ -767,11 +765,11 @@ export
                 let nBlocks = vector.length(f.blocks)
                 let isPointer(v: Int): Bool = {v < nValues} andif live(s v)
                 let groupOf(v: Int): Int = find(s s.ptr[v])
-                let countOf(g: Int): Int = leafCount(ls g hashMap.new(intEqual hash.int))
+                let countOf(g: Int): Int = leafCount(ls g maps.newIntMap())
                 (* Maps each replaced object's base pointer (base[v]) to its
                  * flattened scalar values, and maps each replaced load result
                  * (renamed[v]) to its replacement value *)
-                let values = hashMap.new(:Int :Array(Int) intEqual hash.int)
+                let values = maps.newIntMap(:Array(Int))
                 let base = array of(nValues ~1)
                 let renamed = array of(nValues ~1)
                 let rec resolve(v: Int): Int =

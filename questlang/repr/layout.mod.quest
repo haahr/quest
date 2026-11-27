@@ -6,11 +6,11 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     questlang/common/sha256 : questlang/common/SHA256
     questlang/common/strings : questlang/common/Strings
     questlang/modules/abstractTypes : questlang/modules/AbstractTypes
@@ -23,7 +23,6 @@ export
     Let Type = model.Type
     Let Shape = shapes.Shape
 
-    let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
     let startsWith(s: String prefix: String): Bool = strutil.startsWith(s prefix)
@@ -48,7 +47,7 @@ export
         var proxied: maybe.T(Bool)
     end
 
-    let layouts = hashMap.new(:Int :Layout intEqual hash.int)
+    let layouts = maps.newIntMap(:Layout)
 
     let layoutOf(s: Shape): Layout =
         begin
@@ -72,7 +71,7 @@ export
      * variable nor a bounded abstract type; seen breaks cycles of bounds *)
     let resolvedShape(s0: Shape): Shape =
         begin
-            let seen = hashMap.new(:Int :Bool intEqual hash.int)
+            let seen = maps.newIntMap(:Bool)
             let var s = s0
             while {shapes.kindIs(s shapes.shapeTypevar) orif shapes.kindIs(s shapes.shapeAbstract)}
                     andif maybe.isSome(s.bound)
@@ -537,8 +536,8 @@ export
      * type ends; a shape met again adds nothing, and counts as false.
      * ====================================================================== *)
 
-    Let Seen = hashMap.T(Int Bool)
-    let newSeen(): Seen = hashMap.new(intEqual hash.int)
+    Let Seen = maps.IntMap(Bool)
+    let newSeen(): Seen = maps.newIntMap()
 
     (* Whether a component of shape s may hold a proxy as a subtype's value,
      * though a value of s itself may not be a proxy: a tuple, or an option with

@@ -7,12 +7,12 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/strutil : util/Strutil
 
     questlang/common/keys : questlang/common/Keys
+    questlang/common/maps : questlang/common/Maps
 export
     (* Raised on an internal error: a limit of the model reached *)
     let internalError: Exception(String) = exception internalError: String end
@@ -736,12 +736,11 @@ export
      * 6. Substitution
      * ====================================================================== *)
 
-    Let Subst = hashMap.T(Int Type)
-    Let KindSubst = hashMap.T(Int Kind)
+    Let Subst = maps.IntMap(Type)
+    Let KindSubst = maps.IntMap(Kind)
 
-    let intEqual(a: Int b: Int): Bool = a is b
-    let newSubst(): Subst = hashMap.new(intEqual hash.int)
-    let newKindSubst(): KindSubst = hashMap.new(intEqual hash.int)
+    let newSubst(): Subst = maps.newIntMap()
+    let newKindSubst(): KindSubst = maps.newIntMap()
     let singleSubst(symbolId: Int t: Type): Subst =
         begin
             let s = newSubst()
@@ -1699,7 +1698,7 @@ export
             else k
         end
 
-    let newMemo(A::TYPE): hashMap.T(Int A) = hashMap.new(intEqual hash.int)
+    let newMemo(A::TYPE): maps.IntMap(A) = maps.newIntMap()
 
     let mapAliases(t: Type replace: All(alias: Type) maybe.T(Type)): Type =
         begin
@@ -1856,7 +1855,7 @@ export
         end
 
     (* Whether t mentions any of the ids (a set: the map's keys) *)
-    let typeMentionsSymbolIds(t: Type ids: hashMap.T(Int Bool)): Bool =
+    let typeMentionsSymbolIds(t: Type ids: maps.IntMap(Bool)): Bool =
         if hashMap.empty(ids) then
             false
         else

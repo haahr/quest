@@ -4,9 +4,9 @@ module walk : Walk
 import
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/nodes : questlang/ir/Nodes
 export
     Let Variable = nodes.Variable
@@ -14,8 +14,6 @@ export
     Let Body = nodes.Body
     Let Stmt = nodes.Stmt
     Let Op = nodes.Op
-
-    let intEqual(a: Int b: Int): Bool = a is b
 
     Def Visitor = Tuple
         atom: All(a: Atom) Ok
@@ -662,12 +660,12 @@ export
     let replaceVarsInOp(o: Op f: Rename): Ok = mapInOp(o f fun(a: Atom): Atom atom(a f))
     let replaceVarsInStmt(s: Stmt f: Rename): Ok = mapInStmt(s f fun(a: Atom): Atom atom(a f))
 
-    let globalVariables(unit: nodes.Unit): hashMap.T(Int Bool) =
+    let globalVariables(unit: nodes.Unit): maps.IntMap(Bool) =
         begin
             (* The variables each top level binds outside loops and functions,
              * by the index of the top level (a module's initializer, or the
              * main body after them) *)
-            let bound = hashMap.new(:Int :Int intEqual hash.int)
+            let bound = maps.newIntMap(:Int)
             let rec visit(b: Body where: Int): Ok =
                 for i = 0 upto {vector.length(b.statements) - 1} do
                     let s = vector.get(b.statements i)
@@ -683,7 +681,7 @@ export
             visit(unit.main n)
             (* Of those, the ones named where they are not bound: by a function
              * (where is ~1), or by another top level *)
-            let found = hashMap.new(:Int :Bool intEqual hash.int)
+            let found = maps.newIntMap(:Bool)
             let note(v: Variable where: Int): Ok =
                 begin
                     let b = hashMap.get(bound v.id)
@@ -747,10 +745,10 @@ export
             else maybe.none()
         end
 
-    let knownClosures(unit: nodes.Unit): hashMap.T(Int nodes.OpMakeClosure) =
+    let knownClosures(unit: nodes.Unit): maps.IntMap(nodes.OpMakeClosure) =
         begin
             let same = fun(a: Int b: Int): Bool a is b
-            let known = hashMap.new(:Int :nodes.OpMakeClosure same hash.int)
+            let known = maps.newIntMap(:nodes.OpMakeClosure)
             let bodies = vector.new(:nodes.Body)
             vector.append(bodies unit.main)
             for i = 0 upto {vector.length(unit.modules) - 1} do
@@ -767,7 +765,7 @@ export
                 end
             end
             (* Each function's closures, by its id *)
-            let closuresOf = hashMap.new(:Int :vector.T(nodes.OpMakeClosure) same hash.int)
+            let closuresOf = maps.newIntMap(:vector.T(nodes.OpMakeClosure))
             for k = 0 upto {vector.length(stmts) - 1} do
                 case vector.get(stmts k)
                     when sLet with x then
@@ -904,7 +902,7 @@ export
             end
         end
 
-    let countBodyUses(b: Body uses: hashMap.T(Int Int) pinned: hashMap.T(Int Bool)): Ok =
+    let countBodyUses(b: Body uses: maps.IntMap(Int) pinned: maps.IntMap(Bool)): Ok =
         begin
             let stmts = walkStatements(b true)
             for i = 0 upto {vector.length(stmts) - 1} do
@@ -930,7 +928,7 @@ export
             end
         end
 
-    let countUses(unit: nodes.Unit uses: hashMap.T(Int Int) pinned: hashMap.T(Int Bool)): Ok =
+    let countUses(unit: nodes.Unit uses: maps.IntMap(Int) pinned: maps.IntMap(Bool)): Ok =
         begin
             hashMap.clear(uses)
             hashMap.clear(pinned)

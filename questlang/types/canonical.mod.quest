@@ -17,11 +17,11 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
 
     questlang/common/keys : questlang/common/Keys
+    questlang/common/maps : questlang/common/Maps
     questlang/types/dump : questlang/types/Dump
     questlang/types/model : questlang/types/Model
     questlang/types/reduce : questlang/types/Reduce
@@ -33,8 +33,6 @@ export
     (* A canonical form not equal to its type, or not a fixed point, when
      * QUEST_CHECK_CANONICAL=1 (the bootstrap's AssertionError) *)
     let canonicalError: Exception(String) = exception canonicalError: String end
-
-    let intEqual(a: Int b: Int): Bool = a is b
 
     (* ======================================================================
      * Reserved symbols of canonical forms and tags
@@ -285,7 +283,7 @@ export
     (* Where an enclosing binder's parameter is bound: the binder's node and the
      * parameter's position *)
     Let Place = Tuple binder: Int pos: Int end
-    Let Places = hashMap.T(Int Place)
+    Let Places = maps.IntMap(Place)
 
     (* A node of a canonical graph before its parts are resolved *)
     Let NodeInfo = Tuple shape: Shape parts: Array(Node) binds: Array(Int) occurrenceOf: maybe.T(Int) end
@@ -606,8 +604,8 @@ export
     Let Context = Tuple
         recRoot: Int
         recComp: Int
-        recVars: hashMap.T(Int Type)
-        scope: hashMap.T(Int vector.T(Param))
+        recVars: maps.IntMap(Type)
+        scope: maps.IntMap(vector.T(Param))
         depth: Int
     end
 
@@ -615,8 +613,8 @@ export
         tuple
             let recRoot = ~1
             let recComp = ~1
-            let recVars = hashMap.new(intEqual hash.int)
-            let scope = hashMap.new(intEqual hash.int)
+            let recVars = maps.newIntMap()
+            let scope = maps.newIntMap()
             let depth = 0
         end
 
@@ -704,14 +702,14 @@ export
         component: Array(Int)
         cyclic: Array(Bool)
         reachesCycle: Array(Bool)
-        refers: Array(hashMap.T(Int Bool))
+        refers: Array(maps.IntMap(Bool))
         (* Step 3's memos: by class, its canonical form (term); by the number
          * of its key (a class and the context it is built in), a node built
          * (build); by component, aggregateCycles's answer *)
-        terms: hashMap.T(Int maybe.T(Node))
+        terms: maps.IntMap(maybe.T(Node))
         built: keys.T
         builtNodes: vector.T(maybe.T(Node))
-        aggregateMemo: hashMap.T(Int Bool)
+        aggregateMemo: maps.IntMap(Bool)
     end
 
     (* A node whose edges newGraph has yet to make: its parts, and the places
@@ -724,7 +722,7 @@ export
     Let Work = Tuple k: Int var pos: Int end
     Let Step = Tuple k: Int succ: Array(Int) var pos: Int end
 
-    let newPlaces(): Places = hashMap.new(intEqual hash.int)
+    let newPlaces(): Places = maps.newIntMap()
 
     let newGraph(root: Type): Graph =
         begin
@@ -915,7 +913,7 @@ export
             let component = array of(classCount ~1)
             let cyclic = vector.new(:Bool)
             let reachesCycle = vector.new(:Bool)
-            let refers = vector.new(:hashMap.T(Int Bool))
+            let refers = vector.new(:maps.IntMap(Bool))
             let order = array of(classCount ~1)
             let low = array of(classCount 0)
             let stack = vector.new(:Int)
@@ -970,7 +968,7 @@ export
                                 for j = 0 upto {extent kids - 1} do if kids[j] is k then selfLoop := true end end
                                 let isCyclic = {vector.length(members) > 1} orif selfLoop
                                 let var reaches = isCyclic
-                                let referred = hashMap.new(:Int :Bool intEqual hash.int)
+                                let referred = maps.newIntMap(:Bool)
                                 for mi = 0 upto {vector.length(members) - 1} do
                                     let m = vector.get(members mi)
                                     if qScope[m] >= 0 then hashMap.insert(referred qScope[m] true) end
@@ -1010,10 +1008,10 @@ export
                 let cyclic = vector.toArray(cyclic)
                 let reachesCycle = vector.toArray(reachesCycle)
                 let refers = vector.toArray(refers)
-                let terms = hashMap.new(intEqual hash.int)
+                let terms = maps.newIntMap()
                 let built = keys.new()
                 let builtNodes = vector.new()
-                let aggregateMemo = hashMap.new(intEqual hash.int)
+                let aggregateMemo = maps.newIntMap()
             end
         end
 
@@ -1081,7 +1079,7 @@ export
                         vector.toArray(found)
                     end
                 (* 1 while on the walk's path, 2 when done *)
-                let state = hashMap.new(:Int :Int intEqual hash.int)
+                let state = maps.newIntMap(:Int)
                 let var acyclic = true
                 for start = 0 upto {extent g.shapes - 1} do
                     if acyclic andif other(start) andif not(hashMap.contains(state start)) then
@@ -1118,7 +1116,7 @@ export
     let isRecShape(g: Graph k: Int comp: Int): Bool =
         if aggregateCycles(g comp) then isAggregateShape(g.shapes[k]) else isUnfoldableShape(g.shapes[k]) end
 
-    let contextWith(ctx: Context scope: hashMap.T(Int vector.T(Param)) depth: Int): Context =
+    let contextWith(ctx: Context scope: maps.IntMap(vector.T(Param)) depth: Int): Context =
         tuple
             let recRoot = ctx.recRoot
             let recComp = ctx.recComp
@@ -1159,7 +1157,7 @@ export
                         if inRec then
                             ctx0
                         else
-                            let scope = hashMap.new(:Int :vector.T(Param) intEqual hash.int)
+                            let scope = maps.newIntMap(:vector.T(Param))
                             hashMap.forEach(ctx0.scope fun(b: Int p: vector.T(Param)): Ok
                                 if hashMap.contains(refers b) then
                                     begin hashMap.insert(scope b p) ok end
@@ -1292,7 +1290,7 @@ export
             let s = g.shapes[k]
             let kids = g.children[k]
             let params = vector.new(:Param)
-            let scope = hashMap.new(:Int :vector.T(Param) intEqual hash.int)
+            let scope = maps.newIntMap(:vector.T(Param))
             hashMap.forEach(ctx.scope fun(b: Int p: vector.T(Param)): Ok
                 begin hashMap.insert(scope b p) ok end)
             hashMap.insert(scope k params)
@@ -1407,7 +1405,7 @@ export
                     vector.toArray(targets)
                 end
             (* 1 while on the walk's path, 2 when done *)
-            let state = hashMap.new(:Int :Int intEqual hash.int)
+            let state = maps.newIntMap(:Int)
             let work = vector.new(:Step)
             vector.append(work tuple let k = root let succ = successors(root) let var pos = 0 end)
             hashMap.insert(state root 1)
@@ -1441,7 +1439,7 @@ export
             for i = 0 upto {vector.length(found) - 1} do
                 if vector.get(found i) isnot root then vector.append(binders vector.get(found i)) end
             end
-            let variables = hashMap.new(:Int :Type intEqual hash.int)
+            let variables = maps.newIntMap(:Type)
             let vars = array of(vector.length(binders) model.okType)
             for i = 0 upto {vector.length(binders) - 1} do
                 vars[i] := model.typeVariable("Rec." <> conv.int(i) model.reservedSymbolId(canonicalRecUse i)
@@ -1496,7 +1494,7 @@ export
     (* The graph and class of each node of a canonical graph whose free
      * variables are all free in the graph's root *)
     Let GraphClass = Tuple graph: Graph k: Int end
-    let canonicalNodes = hashMap.new(:Int :GraphClass intEqual hash.int)
+    let canonicalNodes = maps.newIntMap(:GraphClass)
 
     (* Builds the canonical graph of s and records the graph and class of each
      * node whose free variables are all free in s. Returns none if s has no
@@ -1520,7 +1518,7 @@ export
 
     (* Whether each type may contain recursion (a recursive type, or an
      * application that may reduce to one) *)
-    let mayRecurMemo = hashMap.new(:Int :Bool intEqual hash.int)
+    let mayRecurMemo = maps.newIntMap(:Bool)
 
     let rec mayRecur(t: Type): Bool =
         case t.form
@@ -1604,7 +1602,7 @@ export
         end
 
     (* The canonical form found for each type (none if it has none) *)
-    let canonicalCache = hashMap.new(:Int :maybe.T(Type) intEqual hash.int)
+    let canonicalCache = maps.newIntMap(:maybe.T(Type))
 
     (* canonicalType's work, done once per type: t's canonical form, or none
      * when t should be used as it is.

@@ -3,20 +3,18 @@
 module peephole : Peephole
 import
     conv : Conv
-    stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
     questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
     questlang/codegen/arm64/printer : questlang/codegen/arm64/Printer
     questlang/codegen/arm64/target : questlang/codegen/arm64/Target
+    questlang/common/maps : questlang/common/Maps
 export
     Let Code = vector.T(minst.Inst)
-    let eq(a: String b: String): Bool = stringOp.equal(a b)
     let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(m k v) ok end
 
     (* Maximum branch reach in instructions, leaving a safety margin: 1 MB
@@ -78,7 +76,7 @@ export
             let var count = 0
             while changed do
                 changed := false
-                let at = hashMap.new(:String :Int eq hash.string)
+                let at = maps.newStringMap(:Int)
                 let var n = 0
                 for k = 0 upto {vector.length(current) - 1} do
                     let i = vector.get(current k)
@@ -218,7 +216,7 @@ export
             let written = array of(65 false)
             let read = array of(65 false)
             (* Each label's place in the code *)
-            let labelAt = hashMap.new(:String :Int eq hash.string)
+            let labelAt = maps.newStringMap(:Int)
             for k = 0 upto {n - 1} do
                 case vector.get(code k).op
                     when opLabel with x then put(labelAt x.label k)

@@ -20,7 +20,6 @@ import
     collections/vector : collections/Vector
     os/code : os/Code
     os/value : os/Value
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/stringBuilder : util/StringBuilder
@@ -30,6 +29,7 @@ import
     questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/closure : questlang/ir/Closure
     irDescribe = questlang/ir/describe : questlang/ir/Describe
     questlang/ir/nodes : questlang/ir/Nodes
@@ -51,9 +51,9 @@ export
         e: env.T
         loader: loader.T
         (* The session's sources, by name, for a debugger *)
-        sources: hashMap.T(String location.SourceMap)
+        sources: maps.StringMap(location.SourceMap)
         (* The symbols of the unit loaded last, its own and those it exports *)
-        var symbols: hashMap.T(String value.T)
+        var symbols: maps.StringMap(value.T)
         (* Whether the session describes its code to a debugger
          * (QUEST_JIT_DEBUG=1, docs/jit.md section 3.12), and what it
          * described: the objects and their list entries, kept for as long as
@@ -120,14 +120,14 @@ export
             <> "build drops them)")
         end
 
-    let new(e: env.T args: Array(String) sources: hashMap.T(String location.SourceMap)): T =
+    let new(e: env.T args: Array(String) sources: maps.StringMap(location.SourceMap)): T =
         begin
             setArgs(e args)
             tuple
                 let e = e
                 let loader = loader.new(codeBytes dataBytes)
                 let sources = sources
-                let var symbols = hashMap.new(stringOp.equal hash.string)
+                let var symbols = maps.newStringMap()
                 let debugging = stringOp.equal(system.getEnv("QUEST_JIT_DEBUG") "1")
                 let described = vector.new()
                 let var sourceDir = ""
@@ -194,7 +194,7 @@ export
     let has(t: T canonical: String): Bool =
         maybe.isSome(code.symbol(mangling.moduleRecordIdent(mangling.mangleModuleName(canonical))))
 
-    let symbolAt(symbols: hashMap.T(String value.T) name: String): value.T =
+    let symbolAt(symbols: maps.StringMap(value.T) name: String): value.T =
         begin
             let found = hashMap.get(symbols name)
             if maybe.isNone(found) then raise unsupported with "the unit defines no " <> name end end
@@ -302,7 +302,7 @@ export
 
     (* A unit loaded, described to a debugger, if the session describes its
      * code (docs/jit.md section 3.12) *)
-    let describe(t: T e: encode.Encoded symbols: hashMap.T(String value.T)): Ok =
+    let describe(t: T e: encode.Encoded symbols: maps.StringMap(value.T)): Ok =
         if t.debugging andif {extent e.functions > 0} then
             let start = value.be(symbolAt(symbols e.functions[0].name)) - e.functions[0].offset
             let files = array of(extent e.files "")
@@ -339,7 +339,7 @@ export
                 end
             let symbols =
                 try loader.load(t.loader encoded)
-                when loader.loadError with x then fail(:hashMap.T(String value.T) x)
+                when loader.loadError with x then fail(:maps.StringMap(value.T) x)
                 end
             describe(t encoded symbols)
             t.symbols := symbols

@@ -6,9 +6,9 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
@@ -25,8 +25,6 @@ export
             when effectPure, effectReads then true
             when effectWrites, effectCalls then false
         end
-
-    let intEqual(a: Int b: Int): Bool = a is b
 
     let checkFunction(f: ssa.Function): Int =
         begin
@@ -91,7 +89,7 @@ export
             (* Each value's uses: whether every one is an operand of a
              * propagating operation, by the block it is in; uses in a test
              * of the value itself are not counted *)
-            let usedBy = hashMap.new(:Int :vector.T(Int) intEqual hash.int)
+            let usedBy = maps.newIntMap(:vector.T(Int))
             let bad = array of(vector.length(f.types) false)
             let note(v: Int b: Int): Ok =
                 begin
@@ -148,7 +146,7 @@ export
                         if allowed(vector.get(first.insts start - 1)) then start := start - 1 else scanning := false end
                     end
                     (* Whether a value is made in the region *)
-                    let madeIn = hashMap.new(:Int :Bool intEqual hash.int)
+                    let madeIn = maps.newIntMap(:Bool)
                     for r = 0 upto {vector.length(blocks) - 1} do
                         let blk = ssa.block(f vector.get(blocks r))
                         let from = if r is 0 then start else 0 end
@@ -201,7 +199,7 @@ export
                          * which would otherwise stay live past the next sum
                          * and cost a move on the loop's chain *)
                         let replay = ssa.newBlock(f)
-                        let copies = hashMap.new(:Int :Int intEqual hash.int)
+                        let copies = maps.newIntMap(:Int)
                         let mapped(v: Int): Int = maybe.unwrapOr(hashMap.get(copies v) v)
                         let var at = replay
                         let var checkIndex = 0

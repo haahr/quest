@@ -8,7 +8,6 @@ import
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     os/fileStats : os/FileStats
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
@@ -16,6 +15,7 @@ import
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
     questlang/common/memoryFiles : questlang/common/MemoryFiles
     questlang/config/abi : questlang/config/ABI
     questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
@@ -43,7 +43,6 @@ export
     Let Value = values.Value
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
-    let intEqual(a: Int b: Int): Bool = a is b
     let joinedBy(sep: String xs: vector.T(String)): String = strutil.join(sep xs)
 
     (* A .qi's type; a marked one's (an inlined module's interface's) has an
@@ -76,7 +75,7 @@ export
         end
 
     (* visited holds the recursive types being written, by id *)
-    and formatType(t0: Type visited: hashMap.T(Int Bool)): String =
+    and formatType(t0: Type visited: maps.IntMap(Bool)): String =
         begin
             let t = model.prune(t0)
             let fmt(u: Type): String = formatType(u visited)
@@ -238,7 +237,7 @@ export
             end
         end
 
-    and formatTypeForQi(t: Type): String = formatType(t hashMap.new(intEqual hash.int))
+    and formatTypeForQi(t: Type): String = formatType(t maps.newIntMap())
 
     (* Formats one member of a mutually recursive group of type operators as
      * Fun(A::K) Body, replacing the group's internal recursion variables with
@@ -356,7 +355,7 @@ export
     let str(s: String): Value = values.stringValue(s)
     let recordOf(fields: Array(Tuple name: String value: Value end)): Value =
         begin
-            let m = hashMap.new(:String :Value eq hash.string)
+            let m = maps.newStringMap(:Value)
             for i = 0 upto {extent fields - 1} do hashMap.insert(m fields[i].name fields[i].value) end
             values.recordValue(m)
         end
@@ -548,7 +547,7 @@ export
 
     (* The interfaces compiled to .qi files, by .qi file, so that writing a
      * header does not elaborate one again *)
-    let compiledByQi = hashMap.new(:String :CompiledInterface eq hash.string)
+    let compiledByQi = maps.newStringMap(:CompiledInterface)
 
     let compiledInterface(qiFile: String): maybe.T(CompiledInterface) = hashMap.get(compiledByQi files.absolute(qiFile))
 
@@ -765,7 +764,7 @@ export
         begin
             let roots = graph.rootsOf(includePaths programDir)
             let refs = vector.new(:manifest.ImportedInterfaceRef)
-            let seen = hashMap.new(:String :Bool eq hash.string)
+            let seen = maps.newStringMap(:Bool)
             for i = 0 upto {extent direct - 1} do
                 if stringOp.length(direct[i].source) > 0 then
                     hashMap.insert(seen direct[i].source true)

@@ -4,9 +4,9 @@ module unbox : Unbox
 import
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/walk : questlang/ir/Walk
     questlang/repr/shapes : questlang/repr/Shapes
@@ -17,8 +17,6 @@ export
     Let Stmt = nodes.Stmt
     Let Op = nodes.Op
 
-    let intEqual(a: Int b: Int): Bool = a is b
-
     (* The most components an unboxed tuple has: two words of results *)
     let maxComponents = 2
 
@@ -28,18 +26,18 @@ export
      * their use counts say (modules' members and exports, which are named
      * from outside the bodies, and let rec's variables) *)
     Let Facts = Tuple
-        uses: hashMap.T(Int Int)
-        callees: hashMap.T(Int Int)
-        reads: hashMap.T(Int Int)
-        defs: hashMap.T(Int Op)
-        closures: hashMap.T(Int vector.T(Variable))
+        uses: maps.IntMap(Int)
+        callees: maps.IntMap(Int)
+        reads: maps.IntMap(Int)
+        defs: maps.IntMap(Op)
+        closures: maps.IntMap(vector.T(Variable))
         calls: vector.T(Stmt)
-        pinned: hashMap.T(Int Bool)
+        pinned: maps.IntMap(Bool)
     end
 
-    let bump(m: hashMap.T(Int Int) id: Int): Ok =
+    let bump(m: maps.IntMap(Int) id: Int): Ok =
         begin hashMap.insert(m id 1 + maybe.unwrapOr(hashMap.get(m id) 0)) ok end
-    let countOf(m: hashMap.T(Int Int) v: Variable): Int = maybe.unwrapOr(hashMap.get(m v.id) 0)
+    let countOf(m: maps.IntMap(Int) v: Variable): Int = maybe.unwrapOr(hashMap.get(m v.id) 0)
 
     let gather(f: Facts b: Body): Ok =
         begin
@@ -135,13 +133,13 @@ export
     let unboxUnit(unit: nodes.Unit): nodes.Unit =
         begin
             let f = tuple
-                let uses = hashMap.new(:Int :Int intEqual hash.int)
-                let callees = hashMap.new(:Int :Int intEqual hash.int)
-                let reads = hashMap.new(:Int :Int intEqual hash.int)
-                let defs = hashMap.new(:Int :Op intEqual hash.int)
-                let closures = hashMap.new(:Int :vector.T(Variable) intEqual hash.int)
+                let uses = maps.newIntMap(:Int)
+                let callees = maps.newIntMap(:Int)
+                let reads = maps.newIntMap(:Int)
+                let defs = maps.newIntMap(:Op)
+                let closures = maps.newIntMap(:vector.T(Variable))
                 let calls = vector.new(:Stmt)
-                let pinned = hashMap.new(:Int :Bool intEqual hash.int)
+                let pinned = maps.newIntMap(:Bool)
             end
             walk.countUses(unit f.uses f.pinned)
             let all = walk.unitBodies(unit)

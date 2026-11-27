@@ -7,9 +7,9 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ir/clone : questlang/ir/Clone
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/walk : questlang/ir/Walk
@@ -20,8 +20,6 @@ export
     Let Atom = nodes.Atom
     Let Body = nodes.Body
     Let Stmt = nodes.Stmt
-
-    let intEqual(a: Int b: Int): Bool = a is b
 
     (* The most functions contified in one call, a bound on its rounds *)
     let maxContified = 1000
@@ -59,9 +57,9 @@ export
      * variable's uses; and the places of the calls of each function *)
     Let Unit = Tuple
         functions: vector.T(nodes.Function)
-        funs: hashMap.T(Int nodes.StmtFuns)
-        uses: hashMap.T(Int Int)
-        sites: hashMap.T(Int vector.T(Site))
+        funs: maps.IntMap(nodes.StmtFuns)
+        uses: maps.IntMap(Int)
+        sites: maps.IntMap(vector.T(Site))
     end
 
     let rec gather(u: Unit b: Body): Ok =
@@ -99,7 +97,7 @@ export
 
     (* Records the ids of b and all nested bodies (including inside nested
      * functions) in ids *)
-    let rec bodyIds(b: Body ids: hashMap.T(Int Bool)): Ok =
+    let rec bodyIds(b: Body ids: maps.IntMap(Bool)): Ok =
         begin
             hashMap.insert(ids b.id true)
             for i = 0 upto {vector.length(b.statements) - 1} do
@@ -365,14 +363,14 @@ export
      * functions, uses, and call sites afresh each round because each
      * transformation moves bodies and statements, invalidating earlier
      * sites. *)
-    let contifyOne(all: Array(Body) recursive: hashMap.T(Int Bool) pinned: hashMap.T(Int Bool) labels: clone.Labels)
+    let contifyOne(all: Array(Body) recursive: maps.IntMap(Bool) pinned: maps.IntMap(Bool) labels: clone.Labels)
             : Bool =
         begin
             let u = tuple
                 let functions = vector.new(:nodes.Function)
-                let funs = hashMap.new(:Int :nodes.StmtFuns intEqual hash.int)
-                let uses = hashMap.new(:Int :Int intEqual hash.int)
-                let sites = hashMap.new(:Int :vector.T(Site) intEqual hash.int)
+                let funs = maps.newIntMap(:nodes.StmtFuns)
+                let uses = maps.newIntMap(:Int)
+                let sites = maps.newIntMap(:vector.T(Site))
             end
             for b = 0 upto {extent all - 1} do gather(u all[b]) end
             let var done = false
@@ -388,7 +386,7 @@ export
                         andif {uses is vector.length(sites)} andif {uses > 0} andif endsControl(f.body) then
                     let sc = tuple let tails = vector.new(:Tail) let var calls = 0 end
                     scan(f sc f.body true false)
-                    let inside = hashMap.new(:Int :Bool intEqual hash.int)
+                    let inside = maps.newIntMap(:Bool)
                     bodyIds(f.body inside)
                     let outside = vector.new(:Site)
                     for k = 0 upto {vector.length(sites) - 1} do
@@ -412,7 +410,7 @@ export
             done
         end
 
-    let contify(all: Array(Body) recursive: hashMap.T(Int Bool) pinned: hashMap.T(Int Bool) labels: clone.Labels)
+    let contify(all: Array(Body) recursive: maps.IntMap(Bool) pinned: maps.IntMap(Bool) labels: clone.Labels)
             : Bool =
         begin
             let var any = false

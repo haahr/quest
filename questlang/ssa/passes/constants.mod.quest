@@ -7,10 +7,10 @@ import
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
-    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
@@ -64,7 +64,7 @@ export
     Let Query = Tuple
         u: ssa.Unit
         allDefs: Array(Defs)
-        byName: hashMap.T(String Int)
+        byName: maps.StringMap(Int)
         symbol: String
         storing: Int
         seen: Array(Bool)
@@ -206,7 +206,7 @@ export
      * out, stored once, loaded only with a type matching its stored word, and
      * preceded by nothing that could read it (checked by first). Control-flow
      * graphs in graphs are built lazily on first use. *)
-    let constant(u: ssa.Unit allDefs: Array(Defs) byName: hashMap.T(String Int) graphs: Array(maybe.T(cfg.Graph))
+    let constant(u: ssa.Unit allDefs: Array(Defs) byName: maps.StringMap(Int) graphs: Array(maybe.T(cfg.Graph))
             symbol: String c: Candidate): Bool =
         begin
             let var fits = not(c.ruledOut) andif {c.stores is 1}
@@ -236,7 +236,7 @@ export
 
     let constantUnit(u: ssa.Unit): Ok =
         begin
-            let candidates = hashMap.new(:String :Candidate stringOp.equal hash.string)
+            let candidates = maps.newStringMap(:Candidate)
             for k = 0 upto {vector.length(u.data) - 1} do
                 let d = vector.get(u.data k)
                 let zeroWord = case d.contents when contentsZero with x then x.bytes is 8 else false end
@@ -307,11 +307,11 @@ export
             (* Promote each constant global by replacing its loads, marking its
              * store for removal, and making its static datum read-only *)
             let graphs = array of(nFunctions maybe.none(:cfg.Graph))
-            let byName = hashMap.new(:String :Int stringOp.equal hash.string)
+            let byName = maps.newStringMap(:Int)
             for fi = 0 upto {nFunctions - 1} do
                 let ignored = hashMap.insert(byName vector.get(u.functions fi).symbol fi)
             end
-            let dropped = hashMap.new(:String :Bool stringOp.equal hash.string)
+            let dropped = maps.newStringMap(:Bool)
             for e = 0 upto {vector.length(u.data) - 1} do
                 let symbol = vector.get(u.data e).symbol
                 let found = hashMap.get(candidates symbol)
