@@ -38,6 +38,32 @@ values.append((1 << 128) - (1 << 64) + 3)
 values.append(((1 << 192) - 1) // 3)
 # The values the two-operand table pairs: the limits of one and two limbs, a few
 # random values, and the divisor that needs the add-back
+REALS = [1 << 1024, -(1 << 1024), (1 << 1024) - (1 << 970), (1 << 1024) - (1 << 970) - 1, (1 << 53) + 1,
+         (1 << 53) + 3, (1 << 64) + (1 << 11), (1 << 64) + (1 << 11) + 1, (1 << 64) + 3 * (1 << 11),
+         -((1 << 64) + 3 * (1 << 11)), (1 << 63) - 1]
+RADIXES = [2, 7, 16, 36]
+
+
+def radix_string(v, r):
+    """Quest's toRadixString: lowercase digits, ~ for negatives."""
+    if v == 0:
+        return "0"
+    digits = []
+    m = abs(v)
+    while m:
+        digits.append("0123456789abcdefghijklmnopqrstuvwxyz"[m % r])
+        m //= r
+    return ("~" if v < 0 else "") + "".join(reversed(digits))
+
+
+def real_of(v):
+    """The integer value of float(v), as the program writes it."""
+    try:
+        return q(int(float(v)))
+    except OverflowError:
+        return "inf" if v > 0 else "~inf"
+
+
 PAIRED = [0, 1, 2, 6, 7, 8, 9, 10, 11, 12, 15, 21, 24, 26, 27]
 
 
@@ -85,10 +111,18 @@ def binary_ops():
         ("mod", lambda a, b: DIVIDE if b == 0 else a % b),
         ("compare", lambda a, b: (a > b) - (a < b)),
         ("equal", lambda a, b: int(a == b)),
+        ("less", lambda a, b: int(a < b)),
+        ("lessEq", lambda a, b: int(a <= b)),
+        ("greater", lambda a, b: int(a > b)),
+        ("greaterEq", lambda a, b: int(a >= b)),
         ("gcd", lambda a, b: math.gcd(a, b)),
         ("andBits", lambda a, b: a & b),
         ("orBits", lambda a, b: a | b),
         ("xorBits", lambda a, b: a ^ b),
+        ("min", lambda a, b: min(a, b)),
+        ("max", lambda a, b: max(a, b)),
+        ("quotRem", lambda a, b: DIVIDE if b == 0 else mix([tquot(a, b), a - b * tquot(a, b)])),
+        ("divMod", lambda a, b: DIVIDE if b == 0 else mix([a // b, a % b])),
     ]
 
 
@@ -102,6 +136,10 @@ def unary(v):
     for n in [0, 1, 2, 3]:
         out.append(q(v ** n))
     out.append(pow_neg(v))
+    out.append(str(abs(v).bit_length()))
+    for x in [v, v * v, v * v - 1]:
+        out.append(q(math.isqrt(x)) if x >= 0 else "domain")
+    out.append("true")
     return out
 
 
@@ -127,6 +165,7 @@ def expected():
                  ("-", "none"), ("00000000000000000000000000042", "42"),
                  ("-340282366920938463463374607431768211456", q(-(1 << 128)))]:
         lines.append(v)
+    lines.append("0 1")
     # Large values: products, and their quotients by the factors, as hashes
     big = [rng.getrandbits(64 * n) * (-1 if n % 2 else 1) for n in (40, 25, 17)]
     for a in big:
@@ -134,12 +173,18 @@ def expected():
             p = a * b
             lines.append(q(h([q(p)])) + " " + q(mix([tquot(p, b), p - b * tquot(p, b), (p + 12345) // b,
                                                       (p + 12345) % b])))
+    for v in values + REALS:
+        lines.append(real_of(v))
+        for r in RADIXES:
+            lines.append(radix_string(v, r))
+    lines.extend(["domain", "domain"])
     return lines, big
 
 
 def program(big):
     vs = "\n".join(f'    "{q(v)}"' for v in values)
     bs = "\n".join(f'    "{q(v)}"' for v in big)
+    rs = "\n".join(f'    "{q(v)}"' for v in REALS)
     names = [n for n, _ in binary_ops()]
     calls = {
         "add": "bignum.add(a b)",
@@ -151,10 +196,18 @@ def program(big):
         "mod": "dividing(fun(): bignum.T bignum.mod(a b))",
         "compare": "bignum.fromInt(bignum.compare(a b))",
         "equal": "bignum.fromInt(if bignum.equal(a b) then 1 else 0 end)",
+        "less": "bignum.fromInt(if bignum.less(a b) then 1 else 0 end)",
+        "lessEq": "bignum.fromInt(if bignum.lessEq(a b) then 1 else 0 end)",
+        "greater": "bignum.fromInt(if bignum.greater(a b) then 1 else 0 end)",
+        "greaterEq": "bignum.fromInt(if bignum.greaterEq(a b) then 1 else 0 end)",
         "gcd": "bignum.gcd(a b)",
         "andBits": "bignum.andBits(a b)",
         "orBits": "bignum.orBits(a b)",
         "xorBits": "bignum.xorBits(a b)",
+        "min": "bignum.min(a b)",
+        "max": "bignum.max(a b)",
+        "quotRem": "dividing(fun(): bignum.T pair(bignum.quotRem(a b)))",
+        "divMod": "dividing(fun(): bignum.T pair(bignum.divMod(a b)))",
     }
     ops = "\n".join(f'    {"if" if i == 0 else "elsif"} stringOp.equal(name "{n}") then {calls[n]}'
                     for i, n in enumerate(names)) + '\n    else bignum.fromInt(0) end'
@@ -169,6 +222,9 @@ def program(big):
 
 import util/bignum : util/Bignum;
 import util/maybe : util/Maybe;
+import util/rational : util/Rational;
+import real : RealOp;
+import hashLib = util/hash : util/Hash;
 import stringOp = string : StringOp;
 import ascii : Ascii;
 import conv : Conv;
@@ -195,10 +251,17 @@ let guarded(f: All() String): String = try f() when bignum.divide then "divide" 
 (* f's result, or ~999 for divide *)
 let dividing(f: All() bignum.T): bignum.T = try f() when bignum.divide then bignum.fromInt(~999) end;
 
+(* Whether t hashes as a copy of it does, and as util/hash's int of it when
+ * it fits an Int *)
+let hashed(t: bignum.T): Bool =
+    {{bignum.hash(t) is bignum.hash(parse(bignum.toString(t)))}}
+        andif try hashLib.int(bignum.toInt(t)) is bignum.hash(t) when bignum.overflow then true end;
+
 (* h * 31 + r, modulo 2^64 *)
 let mask = maybe.unwrap(:bignum.T bignum.fromString("18446744073709551615"));
 let thirtyOne = bignum.fromInt(31);
 let mix(h: bignum.T r: bignum.T): bignum.T = bignum.andBits(bignum.add(bignum.mul(h thirtyOne) r) mask);
+let pair(qr: Tuple q: bignum.T r: bignum.T end): bignum.T = mix(mix(bignum.zero qr.q) qr.r);
 
 let values = array of
 {vs}
@@ -223,6 +286,13 @@ for i = 0 upto extent ts - 1 do
     end
     for n = 0 upto 3 do show(bignum.toString(bignum.pow(t n))) end
     show(guarded(fun(): String bignum.toString(bignum.pow(t ~1))))
+    show(conv.int(bignum.bitLength(t)))
+    let squared = bignum.mul(t t)
+    let roots = array of t squared bignum.sub(squared bignum.one) end
+    for k = 0 upto extent roots - 1 do
+        show(try bignum.toString(bignum.sqrt(roots[k])) when bignum.domain then "domain" end)
+    end
+    show(conv.bool(hashed(t)))
 end;
 
 let names = array of {" ".join(f'"{n}"' for n in names)} end;
@@ -242,6 +312,7 @@ for i = 0 upto extent strings - 1 do
     let m = bignum.fromString(strings[i])
     show(if maybe.isSome(:bignum.T m) then bignum.toString(maybe.unwrap(:bignum.T m)) else "none" end)
 end;
+show(bignum.toString(bignum.zero) <> " " <> bignum.toString(bignum.one));
 
 let big = array of
 {bs}
@@ -259,6 +330,27 @@ for i = 0 upto extent big - 1 do
         show(conv.int(hashOf(0 bignum.toString(p))) <> " " <> bignum.toString(h))
     end
 end;
+
+(* Reals, as the integers they are, and radixes *)
+let realOf(x: Real): String =
+    if x >> real.maxReal then "inf"
+    elsif x << real.minReal then "~inf"
+    else bignum.toString(rational.floor(rational.fromReal(x)))
+    end;
+let reals = array of
+{rs}
+end;
+let radixes = array of {" ".join(str(r) for r in RADIXES)} end;
+let radixValues = array of(extent ts + extent reals bignum.zero);
+for i = 0 upto extent ts - 1 do radixValues[i] := ts[i] end;
+for i = 0 upto extent reals - 1 do radixValues[extent ts + i] := parse(reals[i]) end;
+for i = 0 upto extent radixValues - 1 do
+    let t = radixValues[i]
+    show(realOf(bignum.toReal(t)))
+    for k = 0 upto extent radixes - 1 do show(bignum.toRadixString(t radixes[k])) end
+end;
+show(try bignum.toRadixString(bignum.one 1) when bignum.domain then "domain" end);
+show(try bignum.toRadixString(bignum.one 37) when bignum.domain then "domain" end);
 '''
 
 

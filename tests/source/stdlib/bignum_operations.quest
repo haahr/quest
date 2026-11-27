@@ -9,6 +9,9 @@
 
 import util/bignum : util/Bignum;
 import util/maybe : util/Maybe;
+import util/rational : util/Rational;
+import real : RealOp;
+import hashLib = util/hash : util/Hash;
 import stringOp = string : StringOp;
 import ascii : Ascii;
 import conv : Conv;
@@ -35,10 +38,17 @@ let guarded(f: All() String): String = try f() when bignum.divide then "divide" 
 (* f's result, or ~999 for divide *)
 let dividing(f: All() bignum.T): bignum.T = try f() when bignum.divide then bignum.fromInt(~999) end;
 
+(* Whether t hashes as a copy of it does, and as util/hash's int of it when
+ * it fits an Int *)
+let hashed(t: bignum.T): Bool =
+    {bignum.hash(t) is bignum.hash(parse(bignum.toString(t)))}
+        andif try hashLib.int(bignum.toInt(t)) is bignum.hash(t) when bignum.overflow then true end;
+
 (* h * 31 + r, modulo 2^64 *)
 let mask = maybe.unwrap(:bignum.T bignum.fromString("18446744073709551615"));
 let thirtyOne = bignum.fromInt(31);
 let mix(h: bignum.T r: bignum.T): bignum.T = bignum.andBits(bignum.add(bignum.mul(h thirtyOne) r) mask);
+let pair(qr: Tuple q: bignum.T r: bignum.T end): bignum.T = mix(mix(bignum.zero qr.q) qr.r);
 
 let values = array of
     "0"
@@ -91,9 +101,16 @@ for i = 0 upto extent ts - 1 do
     end
     for n = 0 upto 3 do show(bignum.toString(bignum.pow(t n))) end
     show(guarded(fun(): String bignum.toString(bignum.pow(t ~1))))
+    show(conv.int(bignum.bitLength(t)))
+    let squared = bignum.mul(t t)
+    let roots = array of t squared bignum.sub(squared bignum.one) end
+    for k = 0 upto extent roots - 1 do
+        show(try bignum.toString(bignum.sqrt(roots[k])) when bignum.domain then "domain" end)
+    end
+    show(conv.bool(hashed(t)))
 end;
 
-let names = array of "add" "sub" "mul" "quot" "rem" "div" "mod" "compare" "equal" "gcd" "andBits" "orBits" "xorBits" end;
+let names = array of "add" "sub" "mul" "quot" "rem" "div" "mod" "compare" "equal" "less" "lessEq" "greater" "greaterEq" "gcd" "andBits" "orBits" "xorBits" "min" "max" "quotRem" "divMod" end;
 let result(name: String a: bignum.T b: bignum.T): bignum.T =
     if stringOp.equal(name "add") then bignum.add(a b)
     elsif stringOp.equal(name "sub") then bignum.sub(a b)
@@ -104,10 +121,18 @@ let result(name: String a: bignum.T b: bignum.T): bignum.T =
     elsif stringOp.equal(name "mod") then dividing(fun(): bignum.T bignum.mod(a b))
     elsif stringOp.equal(name "compare") then bignum.fromInt(bignum.compare(a b))
     elsif stringOp.equal(name "equal") then bignum.fromInt(if bignum.equal(a b) then 1 else 0 end)
+    elsif stringOp.equal(name "less") then bignum.fromInt(if bignum.less(a b) then 1 else 0 end)
+    elsif stringOp.equal(name "lessEq") then bignum.fromInt(if bignum.lessEq(a b) then 1 else 0 end)
+    elsif stringOp.equal(name "greater") then bignum.fromInt(if bignum.greater(a b) then 1 else 0 end)
+    elsif stringOp.equal(name "greaterEq") then bignum.fromInt(if bignum.greaterEq(a b) then 1 else 0 end)
     elsif stringOp.equal(name "gcd") then bignum.gcd(a b)
     elsif stringOp.equal(name "andBits") then bignum.andBits(a b)
     elsif stringOp.equal(name "orBits") then bignum.orBits(a b)
     elsif stringOp.equal(name "xorBits") then bignum.xorBits(a b)
+    elsif stringOp.equal(name "min") then bignum.min(a b)
+    elsif stringOp.equal(name "max") then bignum.max(a b)
+    elsif stringOp.equal(name "quotRem") then dividing(fun(): bignum.T pair(bignum.quotRem(a b)))
+    elsif stringOp.equal(name "divMod") then dividing(fun(): bignum.T pair(bignum.divMod(a b)))
     else bignum.fromInt(0) end;
 for k = 0 upto extent names - 1 do
     for i = 0 upto extent paired - 1 do
@@ -123,6 +148,7 @@ for i = 0 upto extent strings - 1 do
     let m = bignum.fromString(strings[i])
     show(if maybe.isSome(:bignum.T m) then bignum.toString(maybe.unwrap(:bignum.T m)) else "none" end)
 end;
+show(bignum.toString(bignum.zero) <> " " <> bignum.toString(bignum.one));
 
 let big = array of
     "232560519974682207819562176353417696644171383001242505700147076291288849233555324340034918283220824616831505393039448453892002790111701763527165070578735293835454556000461993621536556039203343669480065188559431186477674926913391940282690221150158630778581568453606334457138041660672661567944596122130310940376928158471788914703399820041067822367263272661985402482252937315471597783861134511017693546496813150371628901889769150606859498003603301223702600619510601102837900596033991833970758906198376470830642738394322217946068954887611705631101830065768397136311615582524379253573959976261007862569429163438529799214570406319917249951752550295714113115458232422657015221382481714245988140473119296098294720559467848140539702716957969908602310118292689289954278417271805056"
@@ -142,3 +168,34 @@ for i = 0 upto extent big - 1 do
         show(conv.int(hashOf(0 bignum.toString(p))) <> " " <> bignum.toString(h))
     end
 end;
+
+(* Reals, as the integers they are, and radixes *)
+let realOf(x: Real): String =
+    if x >> real.maxReal then "inf"
+    elsif x << real.minReal then "~inf"
+    else bignum.toString(rational.floor(rational.fromReal(x)))
+    end;
+let reals = array of
+    "179769313486231590772930519078902473361797697894230657273430081157732675805500963132708477322407536021120113879871393357658789768814416622492847430639474124377767893424865485276302219601246094119453082952085005768838150682342462881473913110540827237163350510684586298239947245938479716304835356329624224137216"
+    "~179769313486231590772930519078902473361797697894230657273430081157732675805500963132708477322407536021120113879871393357658789768814416622492847430639474124377767893424865485276302219601246094119453082952085005768838150682342462881473913110540827237163350510684586298239947245938479716304835356329624224137216"
+    "179769313486231580793728971405303415079934132710037826936173778980444968292764750946649017977587207096330286416692887910946555547851940402630657488671505820681908902000708383676273854845817711531764475730270069855571366959622842914819860834936475292719074168444365510704342711559699508093042880177904174497792"
+    "179769313486231580793728971405303415079934132710037826936173778980444968292764750946649017977587207096330286416692887910946555547851940402630657488671505820681908902000708383676273854845817711531764475730270069855571366959622842914819860834936475292719074168444365510704342711559699508093042880177904174497791"
+    "9007199254740993"
+    "9007199254740995"
+    "18446744073709553664"
+    "18446744073709553665"
+    "18446744073709557760"
+    "~18446744073709557760"
+    "9223372036854775807"
+end;
+let radixes = array of 2 7 16 36 end;
+let radixValues = array of(extent ts + extent reals bignum.zero);
+for i = 0 upto extent ts - 1 do radixValues[i] := ts[i] end;
+for i = 0 upto extent reals - 1 do radixValues[extent ts + i] := parse(reals[i]) end;
+for i = 0 upto extent radixValues - 1 do
+    let t = radixValues[i]
+    show(realOf(bignum.toReal(t)))
+    for k = 0 upto extent radixes - 1 do show(bignum.toRadixString(t radixes[k])) end
+end;
+show(try bignum.toRadixString(bignum.one 1) when bignum.domain then "domain" end);
+show(try bignum.toRadixString(bignum.one 37) when bignum.domain then "domain" end);

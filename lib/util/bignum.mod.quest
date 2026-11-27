@@ -45,9 +45,11 @@ module bignum : Bignum
 import
     ascii : Ascii
     conv : Conv
+    real : RealOp
     stringOp = string : StringOp
     word : Word
 
+    hashLib = util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 export
@@ -66,6 +68,7 @@ export
 
     let overflow: Exception = exception overflow: Ok end
     let divide: Exception = exception divide: Ok end
+    let domain: Exception = exception domain: Ok end
 
     let zeroW: L = word.fromInt(0)
     let oneW: L = word.fromInt(1)
@@ -153,6 +156,9 @@ export
 
     let fromInt(n: Int): T = single(n)
 
+    let zero: T = single(0)
+    let one: T = single(1)
+
     let toInt(t: T): Int = if extent t is 1 then word.toInt(t[0]) else raise overflow end end
 
     let fromWord(w: word.T): T = if highBit(w) then array of w zeroW end else array of w end end
@@ -198,6 +204,20 @@ export
         end
 
     let less(a: T b: T): Bool = compare(a b) < 0
+    let lessEq(a: T b: T): Bool = compare(a b) <= 0
+    let greater(a: T b: T): Bool = compare(a b) > 0
+    let greaterEq(a: T b: T): Bool = compare(a b) >= 0
+    let min(a: T b: T): T = if less(b a) then b else a end
+    let max(a: T b: T): T = if less(a b) then b else a end
+
+    (* The limbs combined in order; the representation being canonical, equal
+     * values have the same limbs *)
+    let hash(t: T): word.T =
+        begin
+            let var h = hashLib.word(t[0])
+            for i = 1 upto extent t - 1 do h := hashLib.combine(h hashLib.word(t[i])) end
+            h
+        end
 
     (* ======================================================================
      * 3. Addition and subtraction
@@ -283,9 +303,6 @@ export
         if {extent a is 1} andif {extent b is 1} then subInts(word.toInt(a[0]) word.toInt(b[0]))
         else subLimbs(a b)
         end
-
-    let zero: T = single(0)
-    let one: T = single(1)
 
     let neg(a: T): T = sub(zero a)
 
@@ -606,6 +623,18 @@ export
             if floors(a b r) then add(r b) else r end
         end
 
+    let quotRem(a: T b: T): QR =
+        if isZero(b) then raise divide end
+        elsif {extent a is 1} andif {extent b is 1} then tuple let q = quot(a b) let r = rem(a b) end
+        else divideLimbs(a b)
+        end
+
+    let divMod(a: T b: T): QR =
+        begin
+            let qr = quotRem(a b)
+            if floors(a b qr.r) then tuple let q = sub(qr.q one) let r = add(qr.r b) end else qr end
+        end
+
     let pow(a: T n: Int): T =
         if n < 0 then
             if isZero(a) then raise divide end
@@ -805,4 +834,123 @@ export
 
     let shiftLeft(t: T count: Int): T = if count < 0 then shiftDown(t 0 - count) else shiftUp(t count) end
     let shiftRight(t: T count: Int): T = if count < 0 then shiftUp(t 0 - count) else shiftDown(t count) end
+
+    (* From the top limb of the magnitude *)
+    let bitLength(t: T): Int =
+        begin
+            let m = magnitude(t)
+            let k = magnitudeLength(m)
+            {64 * k} - word.countLeadingZeros(m[k - 1])
+        end
+
+    (* Newton's iteration from above: x = 2^ceil(bits / 2) is at least the
+     * root, and each step (x + t / x) / 2 decreases until it is not less than
+     * x, at the root *)
+    let sqrt(t: T): T =
+        if negative(t) then
+            raise domain end
+        elsif less(t single(2)) then
+            t
+        else
+            let c = tuple
+                let var x = shiftUp(one {bitLength(t) + 1} / 2)
+                let var going = true
+            end
+            while c.going do
+                let y = shiftDown(add(c.x quot(t c.x)) 1)
+                if less(y c.x) then c.x := y else c.going := false end
+            end
+            c.x
+        end
+
+    (* ======================================================================
+     * 8. Reals and radixes
+     * ====================================================================== *)
+
+    (* 2 to the power e >= 0, by squaring; infinity when it is too large *)
+    let power2(e: Int): Real =
+        begin
+            let var r = 1.0
+            let var b = 2.0
+            let var k = e
+            while k > 0 do
+                if {k % 2} is 1 then r := r ** b end
+                k := k / 2
+                if k > 0 then b := b ** b end
+            end
+            r
+        end
+
+    (* The magnitude's top 53 bits, rounded by hand on the bits below them (to
+     * even on a tie), which is a real exactly, then scaled back in two
+     * halves, so that neither factor overflows where the product would not;
+     * one limb is an Int, which real.int rounds alike *)
+    let toReal(t: T): Real =
+        if extent t is 1 then
+            real.int(word.toInt(t[0]))
+        else
+            let m = abs(t)
+            let extra = bitLength(t) - 53
+            let var top = shiftDown(m extra)
+            let low = sub(m shiftUp(top extra))
+            let c = compare(low shiftUp(one extra - 1))
+            if {c > 0} orif {{c is 0} andif {word.andBits(top[0] oneW) is oneW}} then top := add(top one) end
+            let x = {real.int(toInt(top)) ** power2(extra / 2)} ** power2(extra - extra / 2)
+            if negative(t) then 0.0 -- x else x end
+        end
+
+    let digitChar(d: Int): Char =
+        if d < 10 then ascii.char(ascii.val('0') + d) else ascii.char({ascii.val('a') + d} - 10) end
+
+    (* As toString, a chunk at a time: the largest power of the radix below
+     * 2^62, divided out of |t| in place until it is zero *)
+    let toRadixString(t: T radix: Int): String =
+        if {radix < 2} orif {radix > 36} then raise domain end
+        elsif radix is 10 then toString(t)
+        elsif isZero(t) then "0"
+        else
+            let var width = 1
+            let var big = radix
+            while big <= {4611686018427387904 / radix} do
+                big := big * radix
+                width := width + 1
+            end
+            let m = if negative(t) then magnitude(t) else copy(t extent t) end
+            let var n = magnitudeLength(m)
+            let chunks = array of({2 * n} + 1 0)
+            let var count = 0
+            while {n > 1} orif {m[0] isnot zeroW} do
+                chunks[count] := word.toInt(divideByWord(m n word.fromInt(big) m))
+                count := count + 1
+                while {n > 1} andif {m[n - 1] is zeroW} do n := n - 1 end
+            end
+            let s = stringOp.new({count * width} + 1 '0')
+            let var pos = 0
+            if negative(t) then
+                stringOp.setChar(s 0 '~')
+                pos := 1
+            end
+            let first = chunks[count - 1]
+            let var firstWidth = 0
+            let var p = first
+            while p > 0 do
+                p := p / radix
+                firstWidth := firstWidth + 1
+            end
+            let var c = first
+            for i = firstWidth - 1 downto 0 do
+                stringOp.setChar(s pos + i digitChar(c % radix))
+                c := c / radix
+            end
+            pos := pos + firstWidth
+            for k = count - 2 downto 0 do
+                c := chunks[k]
+                for i = width - 1 downto 0 do
+                    stringOp.setChar(s pos + i digitChar(c % radix))
+                    c := c / radix
+                end
+                pos := pos + width
+            end
+            stringOp.getSub(s 0 pos)
+        end
 end

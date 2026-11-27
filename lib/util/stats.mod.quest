@@ -257,41 +257,12 @@ export
             rational.toReal(rational.div(e.ss rational.fromInt(e.count)))
         end
 
-    let one = bignum.fromInt(1)
-
-    let bitLength(b: bignum.T): Int =
-        begin
-            let var v = b
-            let var bits = 0
-            while bignum.sign(v) > 0 do
-                v := bignum.shiftRight(v 1)
-                bits := bits + 1
-            end
-            bits
-        end
-
-    (* The integer square root of n >= 0, by Newton's iteration from above *)
-    let isqrt(n: bignum.T): bignum.T =
-        if bignum.less(n bignum.fromInt(2)) then
-            n
-        else
-            let c = tuple
-                let var x = bignum.shiftLeft(one {bitLength(n) + 1} / 2)
-                let var going = true
-            end
-            while c.going do
-                let y = bignum.shiftRight(bignum.add(c.x bignum.quot(n c.x)) 1)
-                if bignum.less(y c.x) then c.x := y else c.going := false end
-            end
-            c.x
-        end
-
     (* The square root of n / m, rounded to odd (truncated, with its last bit
      * set if anything was lost) *)
     let isqrtRoundOdd(n: bignum.T m: bignum.T): bignum.T =
         begin
-            let a = isqrt(bignum.quot(n m))
-            if bignum.equal(bignum.mul(bignum.mul(a a) m) n) then a else bignum.orBits(a one) end
+            let a = bignum.sqrt(bignum.quot(n m))
+            if bignum.equal(bignum.mul(bignum.mul(a a) m) n) then a else bignum.orBits(a bignum.one) end
         end
 
     (* The square root of a rational >= 0, correctly rounded, as Python's
@@ -303,13 +274,13 @@ export
         else
             let n = rational.numerator(t)
             let m = rational.denominator(t)
-            let diff = {bitLength(n) - bitLength(m)} - 109
+            let diff = {bignum.bitLength(n) - bignum.bitLength(m)} - 109
             let q = if diff >= 0 then diff / 2 else 0 - {{1 - diff} / 2} end
             if q >= 0 then
                 rational.toReal(rational.fromBignum(bignum.shiftLeft(isqrtRoundOdd(n bignum.shiftLeft(m 2 * q)) q)))
             else
                 let root = isqrtRoundOdd(bignum.shiftLeft(n {0 - 2 * q}) m)
-                rational.toReal(rational.fromBignums(root bignum.shiftLeft(one {0 - q})))
+                rational.toReal(rational.fromBignums(root bignum.shiftLeft(bignum.one {0 - q})))
             end
         end
 

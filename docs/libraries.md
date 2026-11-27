@@ -402,13 +402,19 @@ export
     T::TYPE
     overflow: Exception                 (* toInt and toWord of a value out of their range *)
     divide: Exception                   (* division by zero, and pow of zero to a negative power *)
+    domain: Exception                   (* sqrt of a negative value, toRadixString outside 2 to 36 *)
+
+    zero: T
+    one: T
 
     fromInt(n: Int): T
     toInt(t: T): Int
     fromWord(w: word.T): T
     toWord(t: T): word.T
+    toReal(t: T): Real                  (* nearest, ties to even; infinity beyond the largest *)
     toString(t: T): String              (* decimal, ~ for negatives, as IntInf.toString *)
     fromString(s: String): maybe.T(T)   (* as IntInf.fromString *)
+    toRadixString(t: T radix: Int): String  (* radix 2 to 36, lowercase digits *)
 
     add(a: T b: T): T
     sub(a: T b: T): T
@@ -419,18 +425,28 @@ export
     rem(a: T b: T): T
     div(a: T b: T): T                   (* flooring, with mod *)
     mod(a: T b: T): T
+    quotRem(a: T b: T): Tuple q: T r: T end  (* from one division *)
+    divMod(a: T b: T): Tuple q: T r: T end
     pow(a: T n: Int): T
     gcd(a: T b: T): T
+    sqrt(t: T): T                       (* the floor of the square root, as Python's math.isqrt *)
 
     equal(a: T b: T): Bool
     less(a: T b: T): Bool
+    lessEq(a: T b: T): Bool
+    greater(a: T b: T): Bool
+    greaterEq(a: T b: T): Bool
     compare(a: T b: T): Int
     sign(t: T): Int
+    min(a: T b: T): T
+    max(a: T b: T): T
+    hash(t: T): word.T                  (* consistent with equal; util/hash's int for an Int *)
 
     andBits(a: T b: T): T               (* on the infinitely sign-extended two's complement *)
     orBits(a: T b: T): T
     xorBits(a: T b: T): T
     notBits(t: T): T
+    bitLength(t: T): Int                (* the bits in |t|, as Python's int.bit_length *)
     shiftLeft(t: T count: Int): T
     shiftRight(t: T count: Int): T      (* the floor of t / 2^count *)
 end

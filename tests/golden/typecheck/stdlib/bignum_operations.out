@@ -10,6 +10,18 @@
       ))
     (TypedImport
       :items (
+        (TypedImportItem ('rational') : 'Rational')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('real') : 'RealOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('hashLib') : 'Hash')
+      ))
+    (TypedImport
+      :items (
         (TypedImportItem ('stringOp') : 'StringOp')
       ))
     (TypedImport
@@ -132,6 +144,57 @@
                   (TypedInt -999 :type Int)
                 )))
           ))))
+    (TypedLetValue 'hashed' :type Fun(t: bignum.T): Bool
+      :value (TypedFun :params (('t' : bignum.T)) :type Fun(t: bignum.T): Bool
+        :body (TypedIf :type Bool
+          :cond (TypedInfix 'is' :type Bool
+            :left (TypedApp :type word.T
+              :func (TypedSelect 'hash' :type Fun(t: bignum.T): word.T
+                :target (TypedVar 'bignum' :type Module 'bignum'))
+              :args (
+                (TypedVar 't' :type bignum.T)
+              ))
+            :right (TypedApp :type word.T
+              :func (TypedSelect 'hash' :type Fun(t: bignum.T): word.T
+                :target (TypedVar 'bignum' :type Module 'bignum'))
+              :args (
+                (TypedApp :type bignum.T
+                  :func (TypedVar 'parse' :type Fun(s: String): bignum.T)
+                  :args (
+                    (TypedApp :type String
+                      :func (TypedSelect 'toString' :type Fun(t: bignum.T): String
+                        :target (TypedVar 'bignum' :type Module 'bignum'))
+                      :args (
+                        (TypedVar 't' :type bignum.T)
+                      ))
+                  ))
+              )))
+          :then (TypedTry :type Bool
+            :body (TypedInfix 'is' :type Bool
+              :left (TypedApp :type word.T
+                :func (TypedSelect 'int' :type Fun(n: Int): word.T
+                  :target (TypedVar 'hashLib' :type Module 'hashLib'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedSelect 'toInt' :type Fun(t: bignum.T): Int
+                      :target (TypedVar 'bignum' :type Module 'bignum'))
+                    :args (
+                      (TypedVar 't' :type bignum.T)
+                    ))
+                ))
+              :right (TypedApp :type word.T
+                :func (TypedSelect 'hash' :type Fun(t: bignum.T): word.T
+                  :target (TypedVar 'bignum' :type Module 'bignum'))
+                :args (
+                  (TypedVar 't' :type bignum.T)
+                )))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'overflow' :type Exception
+                  :target (TypedVar 'bignum' :type Module 'bignum'))
+                :body (TypedBool true))
+            ))
+          :else (TypedBool false))))
     (TypedLetValue 'mask' :type bignum.T
       :value (TypedApp :type bignum.T
         :func (TypedTypeApp [bignum.T] :type Fun(o: maybe.T(bignum.T)): bignum.T
@@ -172,6 +235,22 @@
                 (TypedVar 'r' :type bignum.T)
               ))
             (TypedVar 'mask' :type bignum.T)
+          ))))
+    (TypedLetValue 'pair' :type Fun(qr: Tuple q: bignum.T r: bignum.T end): bignum.T
+      :value (TypedFun :params (('qr' : Tuple q: bignum.T r: bignum.T end)) :type Fun(qr: Tuple q: bignum.T r: bignum.T end): bignum.T
+        :body (TypedApp :type bignum.T
+          :func (TypedVar 'mix' :type Fun(h: bignum.T r: bignum.T): bignum.T)
+          :args (
+            (TypedApp :type bignum.T
+              :func (TypedVar 'mix' :type Fun(h: bignum.T r: bignum.T): bignum.T)
+              :args (
+                (TypedSelect 'zero' :type bignum.T
+                  :target (TypedVar 'bignum' :type Module 'bignum'))
+                (TypedSelect 'q' :type bignum.T
+                  :target (TypedVar 'qr' :type Tuple q: bignum.T r: bignum.T end))
+              ))
+            (TypedSelect 'r' :type bignum.T
+              :target (TypedVar 'qr' :type Tuple q: bignum.T r: bignum.T end))
           ))))
     (TypedLetValue 'values' :type Array(String)
       :value (TypedArray :type Array(String)
@@ -483,26 +562,114 @@
                           ))
                       ))
                   ))))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'show' :type Fun(s: String): Ok)
+                :args (
+                  (TypedApp :type String
+                    :func (TypedVar 'guarded' :type Fun(f: Fun(): String): String)
+                    :args (
+                      (TypedFun :params () :type Fun(): String
+                        :body (TypedApp :type String
+                          :func (TypedSelect 'toString' :type Fun(t: bignum.T): String
+                            :target (TypedVar 'bignum' :type Module 'bignum'))
+                          :args (
+                            (TypedApp :type bignum.T
+                              :func (TypedSelect 'pow' :type Fun(a: bignum.T n: Int): bignum.T
+                                :target (TypedVar 'bignum' :type Module 'bignum'))
+                              :args (
+                                (TypedVar 't' :type bignum.T)
+                                (TypedInt -1 :type Int)
+                              ))
+                          )))
+                    ))
+                )))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'show' :type Fun(s: String): Ok)
+                :args (
+                  (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedApp :type Int
+                        :func (TypedSelect 'bitLength' :type Fun(t: bignum.T): Int
+                          :target (TypedVar 'bignum' :type Module 'bignum'))
+                        :args (
+                          (TypedVar 't' :type bignum.T)
+                        ))
+                    ))
+                )))
+            (TypedLetValue 'squared' :type bignum.T
+              :value (TypedApp :type bignum.T
+                :func (TypedSelect 'mul' :type Fun(a: bignum.T b: bignum.T): bignum.T
+                  :target (TypedVar 'bignum' :type Module 'bignum'))
+                :args (
+                  (TypedVar 't' :type bignum.T)
+                  (TypedVar 't' :type bignum.T)
+                )))
+            (TypedLetValue 'roots' :type Array(bignum.T)
+              :value (TypedArray :type Array(bignum.T)
+                :elements (
+                  (TypedVar 't' :type bignum.T)
+                  (TypedVar 'squared' :type bignum.T)
+                  (TypedApp :type bignum.T
+                    :func (TypedSelect 'sub' :type Fun(a: bignum.T b: bignum.T): bignum.T
+                      :target (TypedVar 'bignum' :type Module 'bignum'))
+                    :args (
+                      (TypedVar 'squared' :type bignum.T)
+                      (TypedSelect 'one' :type bignum.T
+                        :target (TypedVar 'bignum' :type Module 'bignum'))
+                    ))
+                )))
+            (TypedExprStmt
+              :expr (TypedFor 'k' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedTypeApp [bignum.T] :type Fun(a: Array(bignum.T)): Int
+                      :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                    :args (
+                      (TypedVar 'roots' :type Array(bignum.T))
+                    ))
+                  :right (TypedInt 1 :type Int))
+                :body (TypedApp :type Ok
+                  :func (TypedVar 'show' :type Fun(s: String): Ok)
+                  :args (
+                    (TypedTry :type String
+                      :body (TypedApp :type String
+                        :func (TypedSelect 'toString' :type Fun(t: bignum.T): String
+                          :target (TypedVar 'bignum' :type Module 'bignum'))
+                        :args (
+                          (TypedApp :type bignum.T
+                            :func (TypedSelect 'sqrt' :type Fun(t: bignum.T): bignum.T
+                              :target (TypedVar 'bignum' :type Module 'bignum'))
+                            :args (
+                              (TypedIndex :type bignum.T
+                                :target (TypedVar 'roots' :type Array(bignum.T))
+                                :index (TypedVar 'k' :type Int))
+                            ))
+                        ))
+                      :branches (
+                        (TypedTryBranch
+                          :exc_pattern (TypedSelect 'domain' :type Exception
+                            :target (TypedVar 'bignum' :type Module 'bignum'))
+                          :body (TypedString 'domain' :type String))
+                      ))
+                  ))))
           )
           :result (TypedApp :type Ok
             :func (TypedVar 'show' :type Fun(s: String): Ok)
             :args (
               (TypedApp :type String
-                :func (TypedVar 'guarded' :type Fun(f: Fun(): String): String)
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
                 :args (
-                  (TypedFun :params () :type Fun(): String
-                    :body (TypedApp :type String
-                      :func (TypedSelect 'toString' :type Fun(t: bignum.T): String
-                        :target (TypedVar 'bignum' :type Module 'bignum'))
-                      :args (
-                        (TypedApp :type bignum.T
-                          :func (TypedSelect 'pow' :type Fun(a: bignum.T n: Int): bignum.T
-                            :target (TypedVar 'bignum' :type Module 'bignum'))
-                          :args (
-                            (TypedVar 't' :type bignum.T)
-                            (TypedInt -1 :type Int)
-                          ))
-                      )))
+                  (TypedApp :type Bool
+                    :func (TypedVar 'hashed' :type Fun(t: bignum.T): Bool)
+                    :args (
+                      (TypedVar 't' :type bignum.T)
+                    ))
                 ))
             )))))
     (TypedLetValue 'names' :type Array(String)
@@ -517,10 +684,18 @@
           (TypedString 'mod' :type String)
           (TypedString 'compare' :type String)
           (TypedString 'equal' :type String)
+          (TypedString 'less' :type String)
+          (TypedString 'lessEq' :type String)
+          (TypedString 'greater' :type String)
+          (TypedString 'greaterEq' :type String)
           (TypedString 'gcd' :type String)
           (TypedString 'andBits' :type String)
           (TypedString 'orBits' :type String)
           (TypedString 'xorBits' :type String)
+          (TypedString 'min' :type String)
+          (TypedString 'max' :type String)
+          (TypedString 'quotRem' :type String)
+          (TypedString 'divMod' :type String)
         )))
     (TypedLetValue 'result' :type Fun(name: String a: bignum.T b: bignum.T): bignum.T
       :value (TypedFun :params (('name' : String) ('a' : bignum.T) ('b' : bignum.T)) :type Fun(name: String a: bignum.T b: bignum.T): bignum.T
@@ -698,14 +873,22 @@
                                 :target (TypedVar 'stringOp' :type Module 'stringOp'))
                               :args (
                                 (TypedVar 'name' :type String)
-                                (TypedString 'gcd' :type String)
+                                (TypedString 'less' :type String)
                               ))
                             :then (TypedApp :type bignum.T
-                              :func (TypedSelect 'gcd' :type Fun(a: bignum.T b: bignum.T): bignum.T
+                              :func (TypedSelect 'fromInt' :type Fun(n: Int): bignum.T
                                 :target (TypedVar 'bignum' :type Module 'bignum'))
                               :args (
-                                (TypedVar 'a' :type bignum.T)
-                                (TypedVar 'b' :type bignum.T)
+                                (TypedIf :type Int
+                                  :cond (TypedApp :type Bool
+                                    :func (TypedSelect 'less' :type Fun(a: bignum.T b: bignum.T): Bool
+                                      :target (TypedVar 'bignum' :type Module 'bignum'))
+                                    :args (
+                                      (TypedVar 'a' :type bignum.T)
+                                      (TypedVar 'b' :type bignum.T)
+                                    ))
+                                  :then (TypedInt 1 :type Int)
+                                  :else (TypedInt 0 :type Int))
                               ))
                             :else (TypedIf :type bignum.T
                               :cond (TypedApp :type Bool
@@ -713,14 +896,22 @@
                                   :target (TypedVar 'stringOp' :type Module 'stringOp'))
                                 :args (
                                   (TypedVar 'name' :type String)
-                                  (TypedString 'andBits' :type String)
+                                  (TypedString 'lessEq' :type String)
                                 ))
                               :then (TypedApp :type bignum.T
-                                :func (TypedSelect 'andBits' :type Fun(a: bignum.T b: bignum.T): bignum.T
+                                :func (TypedSelect 'fromInt' :type Fun(n: Int): bignum.T
                                   :target (TypedVar 'bignum' :type Module 'bignum'))
                                 :args (
-                                  (TypedVar 'a' :type bignum.T)
-                                  (TypedVar 'b' :type bignum.T)
+                                  (TypedIf :type Int
+                                    :cond (TypedApp :type Bool
+                                      :func (TypedSelect 'lessEq' :type Fun(a: bignum.T b: bignum.T): Bool
+                                        :target (TypedVar 'bignum' :type Module 'bignum'))
+                                      :args (
+                                        (TypedVar 'a' :type bignum.T)
+                                        (TypedVar 'b' :type bignum.T)
+                                      ))
+                                    :then (TypedInt 1 :type Int)
+                                    :else (TypedInt 0 :type Int))
                                 ))
                               :else (TypedIf :type bignum.T
                                 :cond (TypedApp :type Bool
@@ -728,14 +919,22 @@
                                     :target (TypedVar 'stringOp' :type Module 'stringOp'))
                                   :args (
                                     (TypedVar 'name' :type String)
-                                    (TypedString 'orBits' :type String)
+                                    (TypedString 'greater' :type String)
                                   ))
                                 :then (TypedApp :type bignum.T
-                                  :func (TypedSelect 'orBits' :type Fun(a: bignum.T b: bignum.T): bignum.T
+                                  :func (TypedSelect 'fromInt' :type Fun(n: Int): bignum.T
                                     :target (TypedVar 'bignum' :type Module 'bignum'))
                                   :args (
-                                    (TypedVar 'a' :type bignum.T)
-                                    (TypedVar 'b' :type bignum.T)
+                                    (TypedIf :type Int
+                                      :cond (TypedApp :type Bool
+                                        :func (TypedSelect 'greater' :type Fun(a: bignum.T b: bignum.T): Bool
+                                          :target (TypedVar 'bignum' :type Module 'bignum'))
+                                        :args (
+                                          (TypedVar 'a' :type bignum.T)
+                                          (TypedVar 'b' :type bignum.T)
+                                        ))
+                                      :then (TypedInt 1 :type Int)
+                                      :else (TypedInt 0 :type Int))
                                   ))
                                 :else (TypedIf :type bignum.T
                                   :cond (TypedApp :type Bool
@@ -743,21 +942,167 @@
                                       :target (TypedVar 'stringOp' :type Module 'stringOp'))
                                     :args (
                                       (TypedVar 'name' :type String)
-                                      (TypedString 'xorBits' :type String)
+                                      (TypedString 'greaterEq' :type String)
                                     ))
                                   :then (TypedApp :type bignum.T
-                                    :func (TypedSelect 'xorBits' :type Fun(a: bignum.T b: bignum.T): bignum.T
-                                      :target (TypedVar 'bignum' :type Module 'bignum'))
-                                    :args (
-                                      (TypedVar 'a' :type bignum.T)
-                                      (TypedVar 'b' :type bignum.T)
-                                    ))
-                                  :else (TypedApp :type bignum.T
                                     :func (TypedSelect 'fromInt' :type Fun(n: Int): bignum.T
                                       :target (TypedVar 'bignum' :type Module 'bignum'))
                                     :args (
-                                      (TypedInt 0 :type Int)
-                                    )))))))))))))))))
+                                      (TypedIf :type Int
+                                        :cond (TypedApp :type Bool
+                                          :func (TypedSelect 'greaterEq' :type Fun(a: bignum.T b: bignum.T): Bool
+                                            :target (TypedVar 'bignum' :type Module 'bignum'))
+                                          :args (
+                                            (TypedVar 'a' :type bignum.T)
+                                            (TypedVar 'b' :type bignum.T)
+                                          ))
+                                        :then (TypedInt 1 :type Int)
+                                        :else (TypedInt 0 :type Int))
+                                    ))
+                                  :else (TypedIf :type bignum.T
+                                    :cond (TypedApp :type Bool
+                                      :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                                        :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                                      :args (
+                                        (TypedVar 'name' :type String)
+                                        (TypedString 'gcd' :type String)
+                                      ))
+                                    :then (TypedApp :type bignum.T
+                                      :func (TypedSelect 'gcd' :type Fun(a: bignum.T b: bignum.T): bignum.T
+                                        :target (TypedVar 'bignum' :type Module 'bignum'))
+                                      :args (
+                                        (TypedVar 'a' :type bignum.T)
+                                        (TypedVar 'b' :type bignum.T)
+                                      ))
+                                    :else (TypedIf :type bignum.T
+                                      :cond (TypedApp :type Bool
+                                        :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                                          :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                                        :args (
+                                          (TypedVar 'name' :type String)
+                                          (TypedString 'andBits' :type String)
+                                        ))
+                                      :then (TypedApp :type bignum.T
+                                        :func (TypedSelect 'andBits' :type Fun(a: bignum.T b: bignum.T): bignum.T
+                                          :target (TypedVar 'bignum' :type Module 'bignum'))
+                                        :args (
+                                          (TypedVar 'a' :type bignum.T)
+                                          (TypedVar 'b' :type bignum.T)
+                                        ))
+                                      :else (TypedIf :type bignum.T
+                                        :cond (TypedApp :type Bool
+                                          :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                                            :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                                          :args (
+                                            (TypedVar 'name' :type String)
+                                            (TypedString 'orBits' :type String)
+                                          ))
+                                        :then (TypedApp :type bignum.T
+                                          :func (TypedSelect 'orBits' :type Fun(a: bignum.T b: bignum.T): bignum.T
+                                            :target (TypedVar 'bignum' :type Module 'bignum'))
+                                          :args (
+                                            (TypedVar 'a' :type bignum.T)
+                                            (TypedVar 'b' :type bignum.T)
+                                          ))
+                                        :else (TypedIf :type bignum.T
+                                          :cond (TypedApp :type Bool
+                                            :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                                              :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                                            :args (
+                                              (TypedVar 'name' :type String)
+                                              (TypedString 'xorBits' :type String)
+                                            ))
+                                          :then (TypedApp :type bignum.T
+                                            :func (TypedSelect 'xorBits' :type Fun(a: bignum.T b: bignum.T): bignum.T
+                                              :target (TypedVar 'bignum' :type Module 'bignum'))
+                                            :args (
+                                              (TypedVar 'a' :type bignum.T)
+                                              (TypedVar 'b' :type bignum.T)
+                                            ))
+                                          :else (TypedIf :type bignum.T
+                                            :cond (TypedApp :type Bool
+                                              :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                                                :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                                              :args (
+                                                (TypedVar 'name' :type String)
+                                                (TypedString 'min' :type String)
+                                              ))
+                                            :then (TypedApp :type bignum.T
+                                              :func (TypedSelect 'min' :type Fun(a: bignum.T b: bignum.T): bignum.T
+                                                :target (TypedVar 'bignum' :type Module 'bignum'))
+                                              :args (
+                                                (TypedVar 'a' :type bignum.T)
+                                                (TypedVar 'b' :type bignum.T)
+                                              ))
+                                            :else (TypedIf :type bignum.T
+                                              :cond (TypedApp :type Bool
+                                                :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                                                  :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                                                :args (
+                                                  (TypedVar 'name' :type String)
+                                                  (TypedString 'max' :type String)
+                                                ))
+                                              :then (TypedApp :type bignum.T
+                                                :func (TypedSelect 'max' :type Fun(a: bignum.T b: bignum.T): bignum.T
+                                                  :target (TypedVar 'bignum' :type Module 'bignum'))
+                                                :args (
+                                                  (TypedVar 'a' :type bignum.T)
+                                                  (TypedVar 'b' :type bignum.T)
+                                                ))
+                                              :else (TypedIf :type bignum.T
+                                                :cond (TypedApp :type Bool
+                                                  :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                                                    :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                                                  :args (
+                                                    (TypedVar 'name' :type String)
+                                                    (TypedString 'quotRem' :type String)
+                                                  ))
+                                                :then (TypedApp :type bignum.T
+                                                  :func (TypedVar 'dividing' :type Fun(f: Fun(): bignum.T): bignum.T)
+                                                  :args (
+                                                    (TypedFun :params () :type Fun(): bignum.T
+                                                      :body (TypedApp :type bignum.T
+                                                        :func (TypedVar 'pair' :type Fun(qr: Tuple q: bignum.T r: bignum.T end): bignum.T)
+                                                        :args (
+                                                          (TypedApp :type Tuple q: bignum.T r: bignum.T end
+                                                            :func (TypedSelect 'quotRem' :type Fun(a: bignum.T b: bignum.T): Tuple q: bignum.T r: bignum.T end
+                                                              :target (TypedVar 'bignum' :type Module 'bignum'))
+                                                            :args (
+                                                              (TypedVar 'a' :type bignum.T)
+                                                              (TypedVar 'b' :type bignum.T)
+                                                            ))
+                                                        )))
+                                                  ))
+                                                :else (TypedIf :type bignum.T
+                                                  :cond (TypedApp :type Bool
+                                                    :func (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                                                      :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                                                    :args (
+                                                      (TypedVar 'name' :type String)
+                                                      (TypedString 'divMod' :type String)
+                                                    ))
+                                                  :then (TypedApp :type bignum.T
+                                                    :func (TypedVar 'dividing' :type Fun(f: Fun(): bignum.T): bignum.T)
+                                                    :args (
+                                                      (TypedFun :params () :type Fun(): bignum.T
+                                                        :body (TypedApp :type bignum.T
+                                                          :func (TypedVar 'pair' :type Fun(qr: Tuple q: bignum.T r: bignum.T end): bignum.T)
+                                                          :args (
+                                                            (TypedApp :type Tuple q: bignum.T r: bignum.T end
+                                                              :func (TypedSelect 'divMod' :type Fun(a: bignum.T b: bignum.T): Tuple q: bignum.T r: bignum.T end
+                                                                :target (TypedVar 'bignum' :type Module 'bignum'))
+                                                              :args (
+                                                                (TypedVar 'a' :type bignum.T)
+                                                                (TypedVar 'b' :type bignum.T)
+                                                              ))
+                                                          )))
+                                                    ))
+                                                  :else (TypedApp :type bignum.T
+                                                    :func (TypedSelect 'fromInt' :type Fun(n: Int): bignum.T
+                                                      :target (TypedVar 'bignum' :type Module 'bignum'))
+                                                    :args (
+                                                      (TypedInt 0 :type Int)
+                                                    )))))))))))))))))))))))))
     (TypedExprStmt
       :expr (TypedFor 'k' :upto
         :start (TypedInt 0 :type Int)
@@ -903,6 +1248,28 @@
                   ))
                 :else (TypedString 'none' :type String))
             )))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedSelect 'toString' :type Fun(t: bignum.T): String
+                :target (TypedVar 'bignum' :type Module 'bignum'))
+              :args (
+                (TypedSelect 'zero' :type bignum.T
+                  :target (TypedVar 'bignum' :type Module 'bignum'))
+              ))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ' :type String)
+              :right (TypedApp :type String
+                :func (TypedSelect 'toString' :type Fun(t: bignum.T): String
+                  :target (TypedVar 'bignum' :type Module 'bignum'))
+                :args (
+                  (TypedSelect 'one' :type bignum.T
+                    :target (TypedVar 'bignum' :type Module 'bignum'))
+                ))))
+        )))
     (TypedLetValue 'big' :type Array(String)
       :value (TypedArray :type Array(String)
         :elements (
@@ -1073,4 +1440,215 @@
                           :target (TypedVar 'h' :type Var(bignum.T)))
                       ))))
               ))))))
+    (TypedLetValue 'realOf' :type Fun(x: Real): String
+      :value (TypedFun :params (('x' : Real)) :type Fun(x: Real): String
+        :body (TypedIf :type String
+          :cond (TypedInfix '>>' :type Bool
+            :left (TypedVar 'x' :type Real)
+            :right (TypedSelect 'maxReal' :type Real
+              :target (TypedVar 'real' :type Module 'real')))
+          :then (TypedString 'inf' :type String)
+          :else (TypedIf :type String
+            :cond (TypedInfix '<<' :type Bool
+              :left (TypedVar 'x' :type Real)
+              :right (TypedSelect 'minReal' :type Real
+                :target (TypedVar 'real' :type Module 'real')))
+            :then (TypedString '~inf' :type String)
+            :else (TypedApp :type String
+              :func (TypedSelect 'toString' :type Fun(t: bignum.T): String
+                :target (TypedVar 'bignum' :type Module 'bignum'))
+              :args (
+                (TypedApp :type bignum.T
+                  :func (TypedSelect 'floor' :type Fun(t: rational.T): bignum.T
+                    :target (TypedVar 'rational' :type Module 'rational'))
+                  :args (
+                    (TypedApp :type rational.T
+                      :func (TypedSelect 'fromReal' :type Fun(r: Real): rational.T
+                        :target (TypedVar 'rational' :type Module 'rational'))
+                      :args (
+                        (TypedVar 'x' :type Real)
+                      ))
+                  ))
+              ))))))
+    (TypedLetValue 'reals' :type Array(String)
+      :value (TypedArray :type Array(String)
+        :elements (
+          (TypedString '179769313486231590772930519078902473361797697894230657273430081157732675805500963132708477322407536021120113879871393357658789768814416622492847430639474124377767893424865485276302219601246094119453082952085005768838150682342462881473913110540827237163350510684586298239947245938479716304835356329624224137216' :type String)
+          (TypedString '~179769313486231590772930519078902473361797697894230657273430081157732675805500963132708477322407536021120113879871393357658789768814416622492847430639474124377767893424865485276302219601246094119453082952085005768838150682342462881473913110540827237163350510684586298239947245938479716304835356329624224137216' :type String)
+          (TypedString '179769313486231580793728971405303415079934132710037826936173778980444968292764750946649017977587207096330286416692887910946555547851940402630657488671505820681908902000708383676273854845817711531764475730270069855571366959622842914819860834936475292719074168444365510704342711559699508093042880177904174497792' :type String)
+          (TypedString '179769313486231580793728971405303415079934132710037826936173778980444968292764750946649017977587207096330286416692887910946555547851940402630657488671505820681908902000708383676273854845817711531764475730270069855571366959622842914819860834936475292719074168444365510704342711559699508093042880177904174497791' :type String)
+          (TypedString '9007199254740993' :type String)
+          (TypedString '9007199254740995' :type String)
+          (TypedString '18446744073709553664' :type String)
+          (TypedString '18446744073709553665' :type String)
+          (TypedString '18446744073709557760' :type String)
+          (TypedString '~18446744073709557760' :type String)
+          (TypedString '9223372036854775807' :type String)
+        )))
+    (TypedLetValue 'radixes' :type Array(Int)
+      :value (TypedArray :type Array(Int)
+        :elements (
+          (TypedInt 2 :type Int)
+          (TypedInt 7 :type Int)
+          (TypedInt 16 :type Int)
+          (TypedInt 36 :type Int)
+        )))
+    (TypedLetValue 'radixValues' :type Array(bignum.T)
+      :value (TypedArrayRep :type Array(bignum.T)
+        :count (TypedInfix '+' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [bignum.T] :type Fun(a: Array(bignum.T)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'ts' :type Array(bignum.T))
+            ))
+          :right (TypedApp :type Int
+            :func (TypedTypeApp [String] :type Fun(a: Array(String)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'reals' :type Array(String))
+            )))
+        :init (TypedSelect 'zero' :type bignum.T
+          :target (TypedVar 'bignum' :type Module 'bignum'))))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [bignum.T] :type Fun(a: Array(bignum.T)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'ts' :type Array(bignum.T))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedIndexAssign
+          :target (TypedVar 'radixValues' :type Array(bignum.T))
+          :index (TypedVar 'i' :type Int)
+          :value (TypedIndex :type bignum.T
+            :target (TypedVar 'ts' :type Array(bignum.T))
+            :index (TypedVar 'i' :type Int)))))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [String] :type Fun(a: Array(String)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'reals' :type Array(String))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedIndexAssign
+          :target (TypedVar 'radixValues' :type Array(bignum.T))
+          :index (TypedInfix '+' :type Int
+            :left (TypedApp :type Int
+              :func (TypedTypeApp [bignum.T] :type Fun(a: Array(bignum.T)): Int
+                :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+              :args (
+                (TypedVar 'ts' :type Array(bignum.T))
+              ))
+            :right (TypedVar 'i' :type Int))
+          :value (TypedApp :type bignum.T
+            :func (TypedVar 'parse' :type Fun(s: String): bignum.T)
+            :args (
+              (TypedIndex :type String
+                :target (TypedVar 'reals' :type Array(String))
+                :index (TypedVar 'i' :type Int))
+            )))))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [bignum.T] :type Fun(a: Array(bignum.T)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'radixValues' :type Array(bignum.T))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 't' :type bignum.T
+              :value (TypedIndex :type bignum.T
+                :target (TypedVar 'radixValues' :type Array(bignum.T))
+                :index (TypedVar 'i' :type Int)))
+            (TypedExprStmt
+              :expr (TypedApp :type Ok
+                :func (TypedVar 'show' :type Fun(s: String): Ok)
+                :args (
+                  (TypedApp :type String
+                    :func (TypedVar 'realOf' :type Fun(x: Real): String)
+                    :args (
+                      (TypedApp :type Real
+                        :func (TypedSelect 'toReal' :type Fun(t: bignum.T): Real
+                          :target (TypedVar 'bignum' :type Module 'bignum'))
+                        :args (
+                          (TypedVar 't' :type bignum.T)
+                        ))
+                    ))
+                )))
+          )
+          :result (TypedFor 'k' :upto
+            :start (TypedInt 0 :type Int)
+            :stop (TypedInfix '-' :type Int
+              :left (TypedApp :type Int
+                :func (TypedTypeApp [Int] :type Fun(a: Array(Int)): Int
+                  :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                :args (
+                  (TypedVar 'radixes' :type Array(Int))
+                ))
+              :right (TypedInt 1 :type Int))
+            :body (TypedApp :type Ok
+              :func (TypedVar 'show' :type Fun(s: String): Ok)
+              :args (
+                (TypedApp :type String
+                  :func (TypedSelect 'toRadixString' :type Fun(t: bignum.T radix: Int): String
+                    :target (TypedVar 'bignum' :type Module 'bignum'))
+                  :args (
+                    (TypedVar 't' :type bignum.T)
+                    (TypedIndex :type Int
+                      :target (TypedVar 'radixes' :type Array(Int))
+                      :index (TypedVar 'k' :type Int))
+                  ))
+              ))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'toRadixString' :type Fun(t: bignum.T radix: Int): String
+                :target (TypedVar 'bignum' :type Module 'bignum'))
+              :args (
+                (TypedSelect 'one' :type bignum.T
+                  :target (TypedVar 'bignum' :type Module 'bignum'))
+                (TypedInt 1 :type Int)
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'domain' :type Exception
+                  :target (TypedVar 'bignum' :type Module 'bignum'))
+                :body (TypedString 'domain' :type String))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'toRadixString' :type Fun(t: bignum.T radix: Int): String
+                :target (TypedVar 'bignum' :type Module 'bignum'))
+              :args (
+                (TypedSelect 'one' :type bignum.T
+                  :target (TypedVar 'bignum' :type Module 'bignum'))
+                (TypedInt 37 :type Int)
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'domain' :type Exception
+                  :target (TypedVar 'bignum' :type Module 'bignum'))
+                :body (TypedString 'domain' :type String))
+            ))
+        )))
   ))

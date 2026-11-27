@@ -17,6 +17,12 @@ export
     overflow: Exception
     (* Raised by division by zero, and by pow of zero to a negative power *)
     divide: Exception
+    (* Raised by sqrt of a negative value, and by toRadixString for a radix
+     * outside 2 to 36 *)
+    domain: Exception
+
+    zero: T
+    one: T
 
     fromInt(n: Int): T
     (* n, or raises overflow if t is outside Int's range *)
@@ -26,12 +32,18 @@ export
     (* The word whose value is t's, or raises overflow if t is negative or at
      * least 2^64 *)
     toWord(t: T): word.T
+    (* The nearest real, ties to the even one, as Python's float of an int;
+     * infinity, of t's sign, beyond the largest *)
+    toReal(t: T): Real
 
     (* Decimal, with ~ for negatives, as SML's IntInf.toString *)
     toString(t: T): String
     (* An optional sign (~, -, or +) and decimal digits, after any whitespace,
      * as SML's IntInf.fromString; none if s does not start with them *)
     fromString(s: String): maybe.T(T)
+    (* In radix 2 to 36, digits past 9 lowercase letters, with ~ for
+     * negatives; raises domain for any other radix *)
+    toRadixString(t: T radix: Int): String
 
     add(a: T b: T): T
     sub(a: T b: T): T
@@ -44,19 +56,33 @@ export
     rem(a: T b: T): T
     div(a: T b: T): T
     mod(a: T b: T): T
+    (* quot and rem, and div and mod, from one division *)
+    quotRem(a: T b: T): Tuple q: T r: T end
+    divMod(a: T b: T): Tuple q: T r: T end
     (* a to the power n; for a negative n, as SML's IntInf.pow: 1 or ~1 when
      * a is, divide when a is 0, and otherwise 0 *)
     pow(a: T n: Int): T
     (* The greatest common divisor of |a| and |b|, by Euclid's algorithm; 0
      * when both are 0 *)
     gcd(a: T b: T): T
+    (* The integer square root, the floor of t's square root, as Python's
+     * math.isqrt; raises domain if t is negative *)
+    sqrt(t: T): T
 
     equal(a: T b: T): Bool
     less(a: T b: T): Bool
+    lessEq(a: T b: T): Bool
+    greater(a: T b: T): Bool
+    greaterEq(a: T b: T): Bool
     (* ~1, 0, or 1, as a is less than, equal to, or greater than b *)
     compare(a: T b: T): Int
     (* ~1, 0, or 1, as t is negative, zero, or positive *)
     sign(t: T): Int
+    min(a: T b: T): T
+    max(a: T b: T): T
+    (* A hash consistent with equal, for hash maps; for a value in Int's
+     * range, util/hash's int of it *)
+    hash(t: T): word.T
 
     (* Bitwise operations on the two's complement representations, infinitely
      * sign-extended: notBits(t) is ~t - 1 *)
@@ -64,6 +90,9 @@ export
     orBits(a: T b: T): T
     xorBits(a: T b: T): T
     notBits(t: T): T
+    (* The number of bits in |t|, without a sign or leading zeros: 0 for 0,
+     * as Python's int.bit_length *)
+    bitLength(t: T): Int
     (* t times 2^count; a negative count shifts right *)
     shiftLeft(t: T count: Int): T
     (* The floor of t divided by 2^count, an arithmetic shift; a negative count

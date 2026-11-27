@@ -12,6 +12,21 @@
     )
     (ImportPhrase
       :items (
+        (ImportItem ('rational') 'Rational' ('util/rational') 'util/Rational')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('real') 'RealOp')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('hashLib') 'Hash' ('util/hash') 'util/Hash')
+      )
+    )
+    (ImportPhrase
+      :items (
         (ImportItem ('stringOp') 'StringOp' ('string'))
       )
     )
@@ -254,6 +269,94 @@
       :type_annot (TypePath ('bignum' 'T'))
     )
     (LetValueBinding
+      :name 'hashed'
+      :value (ExprInfix
+        :left (ExprInfix
+          :left (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'bignum')
+              :field 'hash'
+            )
+            :args (
+              (ExprId 't')
+            )
+          )
+          :op 'is'
+          :right (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'bignum')
+              :field 'hash'
+            )
+            :args (
+              (ExprApp
+                :func (ExprId 'parse')
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'bignum')
+                      :field 'toString'
+                    )
+                    :args (
+                      (ExprId 't')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+        :op 'andif'
+        :right (ExprTry
+          :body (ExprInfix
+            :left (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'hashLib')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'bignum')
+                    :field 'toInt'
+                  )
+                  :args (
+                    (ExprId 't')
+                  )
+                )
+              )
+            )
+            :op 'is'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'bignum')
+                :field 'hash'
+              )
+              :args (
+                (ExprId 't')
+              )
+            )
+          )
+          :branches (
+            (TryBranch
+              :exc_pattern (ExprSelect
+                :target (ExprId 'bignum')
+                :field 'overflow'
+              )
+              :body (ExprBool True)
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 't'
+          :type_annot (TypePath ('bignum' 'T'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Bool'))
+    )
+    (LetValueBinding
       :name 'mask'
       :value (ExprApp
         :func (ExprSelect
@@ -327,6 +430,52 @@
         (FormalParam
           :name 'r'
           :type_annot (TypePath ('bignum' 'T'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('bignum' 'T'))
+    )
+    (LetValueBinding
+      :name 'pair'
+      :value (ExprApp
+        :func (ExprId 'mix')
+        :args (
+          (ExprApp
+            :func (ExprId 'mix')
+            :args (
+              (ExprSelect
+                :target (ExprId 'bignum')
+                :field 'zero'
+              )
+              (ExprSelect
+                :target (ExprId 'qr')
+                :field 'q'
+              )
+            )
+          )
+          (ExprSelect
+            :target (ExprId 'qr')
+            :field 'r'
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'qr'
+          :type_annot (TypeTuple
+            :fields (
+              (FieldSig
+                :name 'q'
+                :type_sig (TypePath ('bignum' 'T'))
+                :mode VALUE
+              )
+              (FieldSig
+                :name 'r'
+                :type_sig (TypePath ('bignum' 'T'))
+                :mode VALUE
+              )
+            )
+          )
           :mode VALUE
         )
       )
@@ -804,6 +953,138 @@
                 )
               )
             )
+            (ExprStmt
+              :expr (ExprApp
+                :func (ExprId 'show')
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'conv')
+                      :field 'int'
+                    )
+                    :args (
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'bignum')
+                          :field 'bitLength'
+                        )
+                        :args (
+                          (ExprId 't')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            (LetValueBinding
+              :name 'squared'
+              :value (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'bignum')
+                  :field 'mul'
+                )
+                :args (
+                  (ExprId 't')
+                  (ExprId 't')
+                )
+              )
+            )
+            (LetValueBinding
+              :name 'roots'
+              :value (ExprArray
+                :elements (
+                  (ExprId 't')
+                  (ExprId 'squared')
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'bignum')
+                      :field 'sub'
+                    )
+                    :args (
+                      (ExprId 'squared')
+                      (ExprSelect
+                        :target (ExprId 'bignum')
+                        :field 'one'
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprFor
+                :var_name 'k'
+                :start (ExprInt 0 '0')
+                :stop (ExprInfix
+                  :left (ExprApp
+                    :func (ExprId 'extent')
+                    :args (
+                      (ExprId 'roots')
+                    )
+                  )
+                  :op '-'
+                  :right (ExprInt 1 '1')
+                )
+                :body (ExprApp
+                  :func (ExprId 'show')
+                  :args (
+                    (ExprTry
+                      :body (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'bignum')
+                          :field 'toString'
+                        )
+                        :args (
+                          (ExprApp
+                            :func (ExprSelect
+                              :target (ExprId 'bignum')
+                              :field 'sqrt'
+                            )
+                            :args (
+                              (ExprIndex
+                                :target (ExprId 'roots')
+                                :index (ExprId 'k')
+                              )
+                            )
+                          )
+                        )
+                      )
+                      :branches (
+                        (TryBranch
+                          :exc_pattern (ExprSelect
+                            :target (ExprId 'bignum')
+                            :field 'domain'
+                          )
+                          :body (ExprString 'domain' '"domain"')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprApp
+                :func (ExprId 'show')
+                :args (
+                  (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'conv')
+                      :field 'bool'
+                    )
+                    :args (
+                      (ExprApp
+                        :func (ExprId 'hashed')
+                        :args (
+                          (ExprId 't')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
           )
         )
       )
@@ -821,10 +1102,18 @@
           (ExprString 'mod' '"mod"')
           (ExprString 'compare' '"compare"')
           (ExprString 'equal' '"equal"')
+          (ExprString 'less' '"less"')
+          (ExprString 'lessEq' '"lessEq"')
+          (ExprString 'greater' '"greater"')
+          (ExprString 'greaterEq' '"greaterEq"')
           (ExprString 'gcd' '"gcd"')
           (ExprString 'andBits' '"andBits"')
           (ExprString 'orBits' '"orBits"')
           (ExprString 'xorBits' '"xorBits"')
+          (ExprString 'min' '"min"')
+          (ExprString 'max' '"max"')
+          (ExprString 'quotRem' '"quotRem"')
+          (ExprString 'divMod' '"divMod"')
         )
       )
     )
@@ -1088,6 +1377,142 @@
               )
               :args (
                 (ExprId 'name')
+                (ExprString 'less' '"less"')
+              )
+            )
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'bignum')
+                :field 'fromInt'
+              )
+              :args (
+                (ExprIf
+                  :cond (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'bignum')
+                      :field 'less'
+                    )
+                    :args (
+                      (ExprId 'a')
+                      (ExprId 'b')
+                    )
+                  )
+                  :then_branch (ExprInt 1 '1')
+                  :else_branch (ExprInt 0 '0')
+                )
+              )
+            )
+          )
+          (
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'stringOp')
+                :field 'equal'
+              )
+              :args (
+                (ExprId 'name')
+                (ExprString 'lessEq' '"lessEq"')
+              )
+            )
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'bignum')
+                :field 'fromInt'
+              )
+              :args (
+                (ExprIf
+                  :cond (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'bignum')
+                      :field 'lessEq'
+                    )
+                    :args (
+                      (ExprId 'a')
+                      (ExprId 'b')
+                    )
+                  )
+                  :then_branch (ExprInt 1 '1')
+                  :else_branch (ExprInt 0 '0')
+                )
+              )
+            )
+          )
+          (
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'stringOp')
+                :field 'equal'
+              )
+              :args (
+                (ExprId 'name')
+                (ExprString 'greater' '"greater"')
+              )
+            )
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'bignum')
+                :field 'fromInt'
+              )
+              :args (
+                (ExprIf
+                  :cond (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'bignum')
+                      :field 'greater'
+                    )
+                    :args (
+                      (ExprId 'a')
+                      (ExprId 'b')
+                    )
+                  )
+                  :then_branch (ExprInt 1 '1')
+                  :else_branch (ExprInt 0 '0')
+                )
+              )
+            )
+          )
+          (
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'stringOp')
+                :field 'equal'
+              )
+              :args (
+                (ExprId 'name')
+                (ExprString 'greaterEq' '"greaterEq"')
+              )
+            )
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'bignum')
+                :field 'fromInt'
+              )
+              :args (
+                (ExprIf
+                  :cond (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'bignum')
+                      :field 'greaterEq'
+                    )
+                    :args (
+                      (ExprId 'a')
+                      (ExprId 'b')
+                    )
+                  )
+                  :then_branch (ExprInt 1 '1')
+                  :else_branch (ExprInt 0 '0')
+                )
+              )
+            )
+          )
+          (
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'stringOp')
+                :field 'equal'
+              )
+              :args (
+                (ExprId 'name')
                 (ExprString 'gcd' '"gcd"')
               )
             )
@@ -1165,6 +1590,120 @@
               :args (
                 (ExprId 'a')
                 (ExprId 'b')
+              )
+            )
+          )
+          (
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'stringOp')
+                :field 'equal'
+              )
+              :args (
+                (ExprId 'name')
+                (ExprString 'min' '"min"')
+              )
+            )
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'bignum')
+                :field 'min'
+              )
+              :args (
+                (ExprId 'a')
+                (ExprId 'b')
+              )
+            )
+          )
+          (
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'stringOp')
+                :field 'equal'
+              )
+              :args (
+                (ExprId 'name')
+                (ExprString 'max' '"max"')
+              )
+            )
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'bignum')
+                :field 'max'
+              )
+              :args (
+                (ExprId 'a')
+                (ExprId 'b')
+              )
+            )
+          )
+          (
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'stringOp')
+                :field 'equal'
+              )
+              :args (
+                (ExprId 'name')
+                (ExprString 'quotRem' '"quotRem"')
+              )
+            )
+            (ExprApp
+              :func (ExprId 'dividing')
+              :args (
+                (ExprFun
+                  :return_type (TypePath ('bignum' 'T'))
+                  :body (ExprApp
+                    :func (ExprId 'pair')
+                    :args (
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'bignum')
+                          :field 'quotRem'
+                        )
+                        :args (
+                          (ExprId 'a')
+                          (ExprId 'b')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+          (
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'stringOp')
+                :field 'equal'
+              )
+              :args (
+                (ExprId 'name')
+                (ExprString 'divMod' '"divMod"')
+              )
+            )
+            (ExprApp
+              :func (ExprId 'dividing')
+              :args (
+                (ExprFun
+                  :return_type (TypePath ('bignum' 'T'))
+                  :body (ExprApp
+                    :func (ExprId 'pair')
+                    :args (
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'bignum')
+                          :field 'divMod'
+                        )
+                        :args (
+                          (ExprId 'a')
+                          (ExprId 'b')
+                        )
+                      )
+                    )
+                  )
+                )
               )
             )
           )
@@ -1406,6 +1945,44 @@
                       )
                     )
                     :else_branch (ExprString 'none' '"none"')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprInfix
+            :left (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'bignum')
+                :field 'toString'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprId 'bignum')
+                  :field 'zero'
+                )
+              )
+            )
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprString ' ' '" "')
+              :op '<>'
+              :right (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'bignum')
+                  :field 'toString'
+                )
+                :args (
+                  (ExprSelect
+                    :target (ExprId 'bignum')
+                    :field 'one'
                   )
                 )
               )
@@ -1659,6 +2236,331 @@
                     )
                   )
                 )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'realOf'
+      :value (ExprIf
+        :cond (ExprInfix
+          :left (ExprId 'x')
+          :op '>>'
+          :right (ExprSelect
+            :target (ExprId 'real')
+            :field 'maxReal'
+          )
+        )
+        :then_branch (ExprString 'inf' '"inf"')
+        :elsifs (
+          (
+            (ExprInfix
+              :left (ExprId 'x')
+              :op '<<'
+              :right (ExprSelect
+                :target (ExprId 'real')
+                :field 'minReal'
+              )
+            )
+            (ExprString '~inf' '"~inf"')
+          )
+        )
+        :else_branch (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'bignum')
+            :field 'toString'
+          )
+          :args (
+            (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'rational')
+                :field 'floor'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'rational')
+                    :field 'fromReal'
+                  )
+                  :args (
+                    (ExprId 'x')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'x'
+          :type_annot (TypePath ('Real'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('String'))
+    )
+    (LetValueBinding
+      :name 'reals'
+      :value (ExprArray
+        :elements (
+          (ExprString '179769313486231590772930519078902473361797697894230657273430081157732675805500963132708477322407536021120113879871393357658789768814416622492847430639474124377767893424865485276302219601246094119453082952085005768838150682342462881473913110540827237163350510684586298239947245938479716304835356329624224137216' '"179769313486231590772930519078902473361797697894230657273430081157732675805500963132708477322407536021120113879871393357658789768814416622492847430639474124377767893424865485276302219601246094119453082952085005768838150682342462881473913110540827237163350510684586298239947245938479716304835356329624224137216"')
+          (ExprString '~179769313486231590772930519078902473361797697894230657273430081157732675805500963132708477322407536021120113879871393357658789768814416622492847430639474124377767893424865485276302219601246094119453082952085005768838150682342462881473913110540827237163350510684586298239947245938479716304835356329624224137216' '"~179769313486231590772930519078902473361797697894230657273430081157732675805500963132708477322407536021120113879871393357658789768814416622492847430639474124377767893424865485276302219601246094119453082952085005768838150682342462881473913110540827237163350510684586298239947245938479716304835356329624224137216"')
+          (ExprString '179769313486231580793728971405303415079934132710037826936173778980444968292764750946649017977587207096330286416692887910946555547851940402630657488671505820681908902000708383676273854845817711531764475730270069855571366959622842914819860834936475292719074168444365510704342711559699508093042880177904174497792' '"179769313486231580793728971405303415079934132710037826936173778980444968292764750946649017977587207096330286416692887910946555547851940402630657488671505820681908902000708383676273854845817711531764475730270069855571366959622842914819860834936475292719074168444365510704342711559699508093042880177904174497792"')
+          (ExprString '179769313486231580793728971405303415079934132710037826936173778980444968292764750946649017977587207096330286416692887910946555547851940402630657488671505820681908902000708383676273854845817711531764475730270069855571366959622842914819860834936475292719074168444365510704342711559699508093042880177904174497791' '"179769313486231580793728971405303415079934132710037826936173778980444968292764750946649017977587207096330286416692887910946555547851940402630657488671505820681908902000708383676273854845817711531764475730270069855571366959622842914819860834936475292719074168444365510704342711559699508093042880177904174497791"')
+          (ExprString '9007199254740993' '"9007199254740993"')
+          (ExprString '9007199254740995' '"9007199254740995"')
+          (ExprString '18446744073709553664' '"18446744073709553664"')
+          (ExprString '18446744073709553665' '"18446744073709553665"')
+          (ExprString '18446744073709557760' '"18446744073709557760"')
+          (ExprString '~18446744073709557760' '"~18446744073709557760"')
+          (ExprString '9223372036854775807' '"9223372036854775807"')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'radixes'
+      :value (ExprArray
+        :elements (
+          (ExprInt 2 '2')
+          (ExprInt 7 '7')
+          (ExprInt 16 '16')
+          (ExprInt 36 '36')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'radixValues'
+      :value (ExprArrayRep
+        :count (ExprInfix
+          :left (ExprApp
+            :func (ExprId 'extent')
+            :args (
+              (ExprId 'ts')
+            )
+          )
+          :op '+'
+          :right (ExprApp
+            :func (ExprId 'extent')
+            :args (
+              (ExprId 'reals')
+            )
+          )
+        )
+        :init_val (ExprSelect
+          :target (ExprId 'bignum')
+          :field 'zero'
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprFor
+        :var_name 'i'
+        :start (ExprInt 0 '0')
+        :stop (ExprInfix
+          :left (ExprApp
+            :func (ExprId 'extent')
+            :args (
+              (ExprId 'ts')
+            )
+          )
+          :op '-'
+          :right (ExprInt 1 '1')
+        )
+        :body (ExprInfix
+          :left (ExprIndex
+            :target (ExprId 'radixValues')
+            :index (ExprId 'i')
+          )
+          :op ':='
+          :right (ExprIndex
+            :target (ExprId 'ts')
+            :index (ExprId 'i')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprFor
+        :var_name 'i'
+        :start (ExprInt 0 '0')
+        :stop (ExprInfix
+          :left (ExprApp
+            :func (ExprId 'extent')
+            :args (
+              (ExprId 'reals')
+            )
+          )
+          :op '-'
+          :right (ExprInt 1 '1')
+        )
+        :body (ExprInfix
+          :left (ExprIndex
+            :target (ExprId 'radixValues')
+            :index (ExprInfix
+              :left (ExprApp
+                :func (ExprId 'extent')
+                :args (
+                  (ExprId 'ts')
+                )
+              )
+              :op '+'
+              :right (ExprId 'i')
+            )
+          )
+          :op ':='
+          :right (ExprApp
+            :func (ExprId 'parse')
+            :args (
+              (ExprIndex
+                :target (ExprId 'reals')
+                :index (ExprId 'i')
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprFor
+        :var_name 'i'
+        :start (ExprInt 0 '0')
+        :stop (ExprInfix
+          :left (ExprApp
+            :func (ExprId 'extent')
+            :args (
+              (ExprId 'radixValues')
+            )
+          )
+          :op '-'
+          :right (ExprInt 1 '1')
+        )
+        :body (ExprBlock
+          :bindings (
+            (LetValueBinding
+              :name 't'
+              :value (ExprIndex
+                :target (ExprId 'radixValues')
+                :index (ExprId 'i')
+              )
+            )
+            (ExprStmt
+              :expr (ExprApp
+                :func (ExprId 'show')
+                :args (
+                  (ExprApp
+                    :func (ExprId 'realOf')
+                    :args (
+                      (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'bignum')
+                          :field 'toReal'
+                        )
+                        :args (
+                          (ExprId 't')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprFor
+                :var_name 'k'
+                :start (ExprInt 0 '0')
+                :stop (ExprInfix
+                  :left (ExprApp
+                    :func (ExprId 'extent')
+                    :args (
+                      (ExprId 'radixes')
+                    )
+                  )
+                  :op '-'
+                  :right (ExprInt 1 '1')
+                )
+                :body (ExprApp
+                  :func (ExprId 'show')
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'bignum')
+                        :field 'toRadixString'
+                      )
+                      :args (
+                        (ExprId 't')
+                        (ExprIndex
+                          :target (ExprId 'radixes')
+                          :index (ExprId 'k')
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprTry
+            :body (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'bignum')
+                :field 'toRadixString'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprId 'bignum')
+                  :field 'one'
+                )
+                (ExprInt 1 '1')
+              )
+            )
+            :branches (
+              (TryBranch
+                :exc_pattern (ExprSelect
+                  :target (ExprId 'bignum')
+                  :field 'domain'
+                )
+                :body (ExprString 'domain' '"domain"')
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprTry
+            :body (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'bignum')
+                :field 'toRadixString'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprId 'bignum')
+                  :field 'one'
+                )
+                (ExprInt 37 '37')
+              )
+            )
+            :branches (
+              (TryBranch
+                :exc_pattern (ExprSelect
+                  :target (ExprId 'bignum')
+                  :field 'domain'
+                )
+                :body (ExprString 'domain' '"domain"')
               )
             )
           )
