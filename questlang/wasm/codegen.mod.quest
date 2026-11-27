@@ -40,7 +40,7 @@ export
     Let ValType = model.ValType
 
     let unsupported: Exception(String) = exception unsupported: String end
-    let fail(what: String): Ok = raise unsupported with what end
+    let fail(A::TYPE what: String): A = raise unsupported with what end
 
     let noArgs = array of :Int end
     let noTypes = array of :ValType end
@@ -187,9 +187,7 @@ export
             when repVoid, repPointer, repQVal then model.eqref
             when repReal then model.f64
             when repRecord then model.eqref
-            when repVariant then
-                fail("a variant as one value")
-                model.eqref
+            when repVariant then fail("a variant as one value")
         end
 
     let isRecord(t: ir.Type): Bool = layout.representationKind(t)?repRecord
@@ -339,7 +337,7 @@ export
                 let l = vector.get(f.labels k)
                 if stringOp.equal(l.name name) andif sameKind(l.kind kind) then found := {n - 1} - k end
             end
-            if found < 0 then fail("a branch to " <> name <> ", which is not open") end
+            if found < 0 then fail(:Ok "a branch to " <> name <> ", which is not open") end
             found
         end
 
@@ -479,7 +477,7 @@ export
             if {q.count > 0} andif not(shapes.kindIs(s shapes.shapeFun)) then
                 typeOnlySig(q)
             else
-                if not(shapes.kindIs(s shapes.shapeFun)) then fail("a call of a value of no function type") end
+                if not(shapes.kindIs(s shapes.shapeFun)) then fail(:Ok "a call of a value of no function type") end
                 (* each quantifier's descriptors first (section 3.2) *)
                 let ps = vector.new(:ValType)
                 for k = 0 upto q.count - 1 do vector.append(ps model.eqref) end
@@ -657,7 +655,7 @@ export
                 let first = global(f v)
                 for k = 0 upto n - 1 do emit(f i1(ops.globalGet first + k)) end
             elsif not(hashMap.contains(f.locals v.id)) then
-                fail("the variable " <> v.hint <> ", which has no value here")
+                fail(:Ok "the variable " <> v.hint <> ", which has no value here")
             else
                 let first = hashMap.find(f.locals v.id)
                 for k = 0 upto n - 1 do emit(f i1(ops.localGet first + k)) end
@@ -834,7 +832,7 @@ export
         elsif hashMap.contains(f.g.runtimeFunctions field) then
             emit(f i1(ops.call hashMap.find(f.g.runtimeFunctions field)))
         else
-            fail("the runtime's " <> field)
+            fail(:Ok "the runtime's " <> field)
         end
 
     (* A built-in exception's global, imported from the runtime first *)
@@ -844,7 +842,7 @@ export
             for k = 0 upto extent runtime.builtinExceptions - 1 do
                 if stringOp.equal(runtime.builtinExceptions[k] name) then found := k end
             end
-            if found < 0 then fail("the built-in exception " <> name) end
+            if found < 0 then fail(:Ok "the built-in exception " <> name) end
             found
         end
 
@@ -958,7 +956,7 @@ export
         if hashMap.contains(f.g.runtimeUnits key) then
             emit(f i1(ops.call hashMap.find(f.g.runtimeUnits key)))
         else
-            fail("the runtime's " <> key)
+            fail(:Ok "the runtime's " <> key)
         end
 
     (* A descriptor's kind, as wasm/core numbers them, from its form's
@@ -973,7 +971,7 @@ export
             for k = 1 upto extent names - 1 do
                 if stringOp.equal(constant "QTYPE_KIND_" <> names[k]) then found := k end
             end
-            if found < 0 then fail("the descriptor kind " <> constant) end
+            if found < 0 then fail(:Ok "the descriptor kind " <> constant) end
             found
         end
     (* The C runtime's descriptors, which staticdata names by symbol, and
@@ -1010,10 +1008,7 @@ export
                 try
                     staticdata.collectDescriptors(plain echoed maybe.some(g.naming)
                             maps.newStringSet())
-                when staticdata.missingDescriptor with msg then
-                    fail("a descriptor: " <> msg)
-                    staticdata.collectDescriptors(vector.new() vector.new()
-                            maybe.some(g.naming) maps.newStringSet())
+                when staticdata.missingDescriptor with msg then fail(:staticdata.Collected "a descriptor: " <> msg)
                 end
             let forms = vector.new(:staticdata.DescriptorForm)
             for k = 0 upto extent staticdata.descriptorKinds - 1 do
@@ -1070,8 +1065,7 @@ export
                 let form =
                     try staticdata.descriptorForm(x.template maybe.some(f.g.naming))
                     when staticdata.missingDescriptor with msg then
-                        fail("a descriptor: " <> msg)
-                        staticdata.descriptorForm(x.template maybe.some(f.g.naming))
+                        fail(:staticdata.DescriptorForm "a descriptor: " <> msg)
                     end
                 if stringOp.equal(form.kind "base") then
                     emit(f i1(ops.globalGet descGlobal(f form.symbol)))
@@ -1476,7 +1470,7 @@ export
      * 10,000, array.new_fixed's limit of operands (section 2.11) *)
     let newTuple(f: F args: Array(ir.Atom)): Ok =
         begin
-            if extent args > 10000 then fail("a tuple of more than 10,000 components") end
+            if extent args > 10000 then fail(:Ok "a tuple of more than 10,000 components") end
             emit(f model.i32Const(0))
             for k = 0 upto extent args - 1 do boxedAtom(f args[k]) end
             emit(f i2(ops.arrayNewFixed tSlots extent args))
@@ -1559,8 +1553,8 @@ export
     let optionShape(t: ir.Type): shapes.Shape =
         begin
             let s = shapeOf(t)
-            if shapes.kindIs(s shapes.shapeVariant) then fail("an option's operation on a variant") end
-            if not(shapes.kindIs(s shapes.shapeOption)) then fail("a tag of a value of no option type") end
+            if shapes.kindIs(s shapes.shapeVariant) then fail(:Ok "an option's operation on a variant") end
+            if not(shapes.kindIs(s shapes.shapeOption)) then fail(:Ok "a tag of a value of no option type") end
             s
         end
     let isVariantShape(t: ir.Type): Bool = shapes.kindIs(shapeOf(t) shapes.shapeVariant)
@@ -1573,7 +1567,7 @@ export
             for k = 0 upto extent s.cases - 1 do
                 if stringOp.equal(maybe.unwrapOr(s.cases[k].name "") tag) then index := k end
             end
-            if index < 0 then fail("an option or variant of no case " <> tag) end
+            if index < 0 then fail(:Ok "an option or variant of no case " <> tag) end
             index
         end
 
@@ -1913,7 +1907,7 @@ export
      * tuple *)
     let makeArray(f: F args: Array(ir.Atom) t: ir.Type): Ok =
         begin
-            if extent args > 10000 then fail("an array of more than 10,000 elements written out") end
+            if extent args > 10000 then fail(:Ok "an array of more than 10,000 elements written out") end
             let e = elementType(t)
             emit(f model.i32Const(0))
             for k = 0 upto extent args - 1 do boxedAtom(f args[k]) end
@@ -1994,7 +1988,7 @@ export
             case atomType(x.args[0])
                 when valI64 then emit(f i(int))
                 when valI32 then emit(f i(small))
-                else fail("an ordering of references")
+                else fail(:Ok "an ordering of references")
             end
         end
 
@@ -2055,7 +2049,7 @@ export
                      * Variants as Values) *)
                     if maybe.isNone(x.descriptor)
                             orif not(hashMap.contains(f.g.runtimeUnits "wasm/core.valIs")) then
-                        fail("is on variants without their descriptor")
+                        fail(:Ok "is on variants without their descriptor")
                     end
                     emit(f i1(ops.globalGet f.g.noClosure))
                     descriptor(f maybe.unwrap(x.descriptor))
@@ -2138,7 +2132,7 @@ export
                             when valI32 then emit(f i(ops.i32Eq))
                             when valRef then emit(f i(ops.refEq))
                             when valF64 then emit(f i(ops.f64Eq))
-                            else fail("is on a value of no kind")
+                            else fail(:Ok "is on a value of no kind")
                         end
                     end
                     if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
@@ -2908,7 +2902,7 @@ export
             elsif maybe.isSome(x.callee) then
                 closureCall(f x false)
             elsif maybe.isNone(x.moduleRef) then
-                fail("a call of no function")
+                fail(:Ok "a call of no function")
             else
                 case maybe.unwrap(x.moduleRef)
                     when refImport with imp then
@@ -2923,14 +2917,14 @@ export
                             (* an external of the library, compiled in place *)
                             externalCall(f maybe.unwrap(symbol) x.args x.descriptors maybe.none())
                         elsif f.g.isCore andif maybe.isSome(imp.i.libPath) then
-                            fail("the runtime's call of the library's " <> imp.i.canonicalPath <> "." <> member
+                            fail(:Ok "the runtime's call of the library's " <> imp.i.canonicalPath <> "." <> member
                                 <> ", which the backend does not compile itself")
                         else
                             (* the function the unit exports by name (section
                              * 5.1), at its interface type's signature *)
                             let key = imp.i.canonicalPath <> "." <> member
                             if not(hashMap.contains(f.g.importFunctions key)) then
-                                fail("a call of the unit " <> imp.i.canonicalPath <> "'s " <> member)
+                                fail(:Ok "a call of the unit " <> imp.i.canonicalPath <> "'s " <> member)
                             end
                             emit(f i1(ops.globalGet f.g.noClosure))
                             descriptors(f x.descriptors)
@@ -2941,7 +2935,7 @@ export
                         (* the member's variable, a global of the unit *)
                         let member = maybe.unwrapOr(x.member "")
                         let v = ir.member(r.m.members member)
-                        if maybe.isNone(v) then fail("a call of no member " <> member) end
+                        if maybe.isNone(v) then fail(:Ok "a call of no member " <> member) end
                         let y = tuple
                             let var callee = v
                             let var typeArgs = x.typeArgs
@@ -2971,7 +2965,7 @@ export
     let typeApp(f: F x: ir.OpTypeApp target: maybe.T(ir.Variable)): Ok =
         begin
             if maybe.isSome(x.thunkParams) then
-                fail("a type application whose instance is a function, not its thunk's closure")
+                fail(:Ok "a type application whose instance is a function, not its thunk's closure")
             end
             let asCall = fun(callee: maybe.T(ir.Variable) moduleRef: maybe.T(ir.ModuleRef)): ir.OpCall
                 tuple
@@ -2984,7 +2978,7 @@ export
                     let var descriptors = x.descriptors
                 end
             if maybe.isSome(x.callee) then closureCall(f asCall(x.callee maybe.none()) false)
-            elsif maybe.isNone(x.moduleRef) then fail("a type application of no function")
+            elsif maybe.isNone(x.moduleRef) then fail(:Ok "a type application of no function")
             else call(f asCall(maybe.none() x.moduleRef))
             end
             if {extent x.plans > 0} andif maybe.isSome(x.plans[0]) then
@@ -2993,7 +2987,7 @@ export
                     when planBox, planSlotBox then box(f plan.source)
                     when planUnbox, planSlotUnbox then unboxFor(f plan.target target)
                     when planCast then ok
-                    else fail("a type application's conversion " <> ir.planKindName(plan.kind))
+                    else fail(:Ok "a type application's conversion " <> ir.planKindName(plan.kind))
                 end
             end
         end
@@ -3021,13 +3015,13 @@ export
     let fieldSlotOnStack(f: F view: ir.Type name: String): Ok =
         begin
             let vs = shapeOf(view)
-            if not(shapes.kindIs(vs shapes.shapeRecord)) then fail("a field of a value of no record type") end
+            if not(shapes.kindIs(vs shapes.shapeRecord)) then fail(:Ok "a field of a value of no record type") end
             let fields = shapes.sortedComponents(vs)
             let var k = ~1
             for j = 0 upto extent fields - 1 do
                 if stringOp.equal(maybe.unwrapOr(fields[j].name "") name) then k := j end
             end
-            if k < 0 then fail("a record type without the field " <> name) end
+            if k < 0 then fail(:Ok "a record type without the field " <> name) end
             let d = scratch(f model.eqref)
             emit(f i1(ops.localSet d))
             castTo(f rt.index("record"))
@@ -3072,7 +3066,7 @@ export
             elsif maybe.isSome(libraryException(name)) then
                 emit(f i1(ops.globalGet builtinException(maybe.unwrap(libraryException(name)))))
             else
-                fail("the module member " <> name)
+                fail(:Ok "the module member " <> name)
             end
         end
 
@@ -3089,7 +3083,7 @@ export
                 elsif maybe.isNone(x.member) then
                     (* the unit itself, its record *)
                     if not(hashMap.contains(f.g.importRecords imp.i.canonicalPath)) then
-                        fail("the unit " <> imp.i.canonicalPath <> "'s record")
+                        fail(:Ok "the unit " <> imp.i.canonicalPath <> "'s record")
                     end
                     let first = hashMap.find(f.g.importRecords imp.i.canonicalPath)
                     emit(f i1(ops.globalGet first))
@@ -3101,7 +3095,7 @@ export
                     let m = maybe.unwrapOr(x.member "")
                     if not(hashMap.contains(f.g.importRecords imp.i.canonicalPath))
                             orif maybe.isNone(imp.i.recordType) then
-                        fail("the unit " <> imp.i.canonicalPath <> "'s record")
+                        fail(:Ok "the unit " <> imp.i.canonicalPath <> "'s record")
                     end
                     let first = hashMap.find(f.g.importRecords imp.i.canonicalPath)
                     let recordType = maybe.unwrap(imp.i.recordType)
@@ -3115,7 +3109,7 @@ export
             when refModule with r then
                 if maybe.isNone(x.member) then
                     (* the module itself, its record *)
-                    if maybe.isNone(r.m.recordVar) then fail("a module without its record") end
+                    if maybe.isNone(r.m.recordVar) then fail(:Ok "a module without its record") end
                     let rv = maybe.unwrap(r.m.recordVar)
                     atom(f ir.atomOfVar(rv))
                     let boxedTarget = maybe.isSome(target) andif maybe.unwrap(target).boxed
@@ -3124,7 +3118,7 @@ export
                     end
                 else
                     let v = ir.member(r.m.members maybe.unwrapOr(x.member ""))
-                    if maybe.isNone(v) then fail("no member " <> maybe.unwrapOr(x.member "")) end
+                    if maybe.isNone(v) then fail(:Ok "no member " <> maybe.unwrapOr(x.member "")) end
                     atom(f ir.atomOfVar(maybe.unwrap(v)))
                 end
         end
@@ -3149,7 +3143,7 @@ export
                     for j = 0 upto extent ls - 1 do
                         if stringOp.equal(maybe.unwrapOr(ls[j].name "") name) then at := j end
                     end
-                    if at < 0 then fail("a view's field " <> name <> " that the record does not have") end
+                    if at < 0 then fail(:Ok "a view's field " <> name <> " that the record does not have") end
                     vector.append(init model.i32Const(at))
                 end
                 vector.append(init i2(ops.arrayNewFixed rt.index("i32s") extent vs))
@@ -3175,7 +3169,7 @@ export
         begin
             let runtime = x.runtimeOffsets orif maybe.isNone(x.offsets)
             if runtime andif {maybe.isNone(x.viewDescriptor) orif maybe.isNone(x.descriptor)} then
-                fail("a record whose table is known only at run time, without its descriptors")
+                fail(:Ok "a record whose table is known only at run time, without its descriptors")
             end
             (* its fields in name order: its layout's *)
             let names = array of(extent x.fields "")
@@ -3215,7 +3209,7 @@ export
                         found := true
                     end
                 end
-                if not(found) then fail("a record without its layout's field " <> name) end
+                if not(found) then fail(:Ok "a record without its layout's field " <> name) end
             end
             emit(f i2(ops.arrayNewFixed tSlots extent names))
             emit(f i1(ops.structNew tRecord))
@@ -3294,7 +3288,7 @@ export
                 emit(f model.i64Const(fieldIndex(shapeOf(ir.atomType(x.recordAtom)) x.name)))
                 runtimeUnitCall(f "wasm/core.viewRecordField")
             elsif x.stored then
-                if maybe.isNone(x.descriptor) then fail("a stored field without its descriptor") end
+                if maybe.isNone(x.descriptor) then fail(:Ok "a stored field without its descriptor") end
                 let dict = scratch(f model.eqref)
                 let value = scratch(f model.eqref)
                 recordAtom(f x.recordAtom)
@@ -3438,7 +3432,7 @@ export
     let rec slotConvert(f: F plan: ir.Plan): Ok =
         case plan.kind
             when planView, planRuntime then
-                if extent plan.descriptors < 2 then fail("a conversion by descriptors without them") end
+                if extent plan.descriptors < 2 then fail(:Ok "a conversion by descriptors without them") end
                 let v = scratch(f model.eqref)
                 emit(f i1(ops.localSet v))
                 emit(f i1(ops.globalGet f.g.noClosure))
@@ -3447,7 +3441,7 @@ export
                 descriptor(f plan.descriptors[1])
                 runtimeUnitCall(f "wasm/core.convert")
             when planRecordView then
-                if extent plan.descriptors < 1 then fail("a record view without its descriptor") end
+                if extent plan.descriptors < 1 then fail(:Ok "a record view without its descriptor") end
                 let payload = scratch(f model.eqref)
                 castTo(f tRecBox)
                 emit(f i2(ops.structGet tRecBox 0))
@@ -3477,9 +3471,9 @@ export
                 box(f plan.target)
             when planCopy then copyTuple(f plan)
             when planAdapt then
-                if maybe.isNone(plan.thunk) then fail("an adapt plan without its adapter") end
+                if maybe.isNone(plan.thunk) then fail(:Ok "an adapt plan without its adapter") end
                 let fn = maybe.unwrap(plan.thunk)
-                if capturedDescriptors(fn) > 0 then fail("an adapter whose closure supplies descriptors") end
+                if capturedDescriptors(fn) > 0 then fail(:Ok "an adapter whose closure supplies descriptors") end
                 let own = ownType(f.g fn)
                 let u = uniformEntry(f.g fn)
                 let native = hashMap.find(f.g.functions fn.id)
@@ -3533,9 +3527,9 @@ export
             when planAdapt then
                 (* a closure of the adapter (ir/thunks), which captures the
                  * closure it adapts *)
-                if maybe.isNone(x.plan.thunk) then fail("an adapt plan without its adapter") end
+                if maybe.isNone(x.plan.thunk) then fail(:Ok "an adapt plan without its adapter") end
                 let fn = maybe.unwrap(x.plan.thunk)
-                if capturedDescriptors(fn) > 0 then fail("an adapter whose closure supplies descriptors") end
+                if capturedDescriptors(fn) > 0 then fail(:Ok "an adapter whose closure supplies descriptors") end
                 let own = ownType(f.g fn)
                 let u = uniformEntry(f.g fn)
                 let native = hashMap.find(f.g.functions fn.id)
@@ -3567,7 +3561,7 @@ export
                     box(f x.plan.target)
                 end
             when planRecordView then
-                if extent x.plan.descriptors < 1 then fail("a record view without its descriptor") end
+                if extent x.plan.descriptors < 1 then fail(:Ok "a record view without its descriptor") end
                 let payload = scratch(f model.eqref)
                 let dict = scratch(f model.eqref)
                 recordAtom(f x.value)
@@ -3611,7 +3605,7 @@ export
             let logical = isOneOf(array of "/\\" "\\/" end)
             let concat = named("<>")
             if not(intCompares orif intArithmetic orif realCompares orif realArithmetic orif logical orif concat) then
-                fail("the built-in " <> name <> " as a value")
+                fail(:Ok "the built-in " <> name <> " as a value")
             end
             let operand = if intCompares orif intArithmetic then model.i64
                 elsif realCompares orif realArithmetic then model.f64
@@ -3816,7 +3810,7 @@ export
                             found := hashMap.find(g.functions fn.id)
                         end
                     end
-                    if found < 0 then fail("the core's " <> name) end
+                    if found < 0 then fail(:Ok "the core's " <> name) end
                     found
                 end
             let adaptArg = helper("adaptArg")
@@ -4124,7 +4118,7 @@ export
                         else ""
                     end
                 if not(hashMap.contains(f.g.importRecords unitName)) then
-                    fail("importedRecord of a unit not imported: " <> unitName)
+                    fail(:Ok "importedRecord of a unit not imported: " <> unitName)
                 end
                 emit(f i1(ops.globalGet hashMap.find(f.g.importRecords unitName)))
             elsif named("recordSet") then
@@ -4398,7 +4392,7 @@ export
                 emit(f i2(ops.structSet rt.index("obj") 0))
                 okValue()
             else
-                fail("the external " <> name <> ", which is no intrinsic")
+                fail(:Ok "the external " <> name <> ", which is no intrinsic")
             end
             ok
         end
@@ -4517,19 +4511,21 @@ export
                     if maybe.unwrap(target).boxed then box(f targetType()) end
                 when opMakeAuto with x then
                     (* its witness's descriptor and its other components' tuple *)
-                    if maybe.isNone(x.descriptor) then fail("an auto value without its witness") end
+                    if maybe.isNone(x.descriptor) then fail(:Ok "an auto value without its witness") end
                     emit(f model.i32Const(0))
                     descriptor(f maybe.unwrap(x.descriptor))
                     boxedAtom(f x.payload)
                     emit(f i1(ops.structNew rt.index("auto")))
                 (* Locations (section 2.6): a slot array and an index *)
                 when opAddrVar with x then
-                    if not(isLocated(f x.v)) then fail("the address of " <> x.v.hint <> ", which is not located") end
+                    if not(isLocated(f x.v)) then
+                        fail(:Ok "the address of " <> x.v.hint <> ", which is not located")
+                    end
                     getParts(f x.v)
                 (* A cell declared without a value holds null until assigned
                  * (sVarDecl): its slot, read without unboxing *)
                 when opIsSet with x then
-                    if not(isLocated(f x.v)) then fail("is_set of " <> x.v.hint <> ", which is not located") end
+                    if not(isLocated(f x.v)) then fail(:Ok "is_set of " <> x.v.hint <> ", which is not located") end
                     getParts(f x.v)
                     emit(f i1(ops.arrayGet tSlots))
                     emit(f i(ops.refIsNull))
@@ -4633,7 +4629,7 @@ export
                         elsif kindIs("hidden") then
                             literal(f "<hidden>")
                         elsif stringOp.isEmpty(kind) then
-                            fail("echo of a value its descriptor writes, without one")
+                            fail(:Ok "echo of a value its descriptor writes, without one")
                         else
                             literal(f "<val>")
                         end
@@ -5204,7 +5200,7 @@ export
                         end
                     end
                 end
-            when sFuns then fail("a function not closure-converted")
+            when sFuns then fail(:Ok "a function not closure-converted")
             when sInspect with x then inspectAuto(f x)
         end
 
@@ -5236,7 +5232,7 @@ export
             open(f "inspect.after" option labelIf of LabelKind end)
             for ci = 0 upto extent x.cases - 1 do
                 let c = x.cases[ci]
-                if maybe.isNone(c.descriptor) then fail("an inspect case without its descriptor") end
+                if maybe.isNone(c.descriptor) then fail(:Ok "an inspect case without its descriptor") end
                 let match = maybe.unwrap(c.descriptor)
                 emit(f i1(ops.globalGet f.g.noClosure))
                 emit(f i1(ops.localGet witness))
@@ -5477,7 +5473,7 @@ export
             for k = 0 upto quantified(fn.v.type).count - 1 do vector.append(params model.eqref) end
             for k = 0 upto extent fn.params - 1 do
                 let located = not(stringOp.equal(fn.params[k].mode "value"))
-                if fn.params[k].v.boxed andif not(located) then fail("a parameter held boxed") end
+                if fn.params[k].v.boxed andif not(located) then fail(:Ok "a parameter held boxed") end
                 let ps = paramParts(g fn k)
                 for j = 0 upto extent ps - 1 do vector.append(params ps[j]) end
             end
@@ -5634,11 +5630,11 @@ export
                         when valI32 then
                             castI31(f)
                             emit(f i(ops.i31GetU))
-                        else fail("a conversion at a unit's boundary")
+                        else fail(:Ok "a conversion at a unit's boundary")
                     end
                 when valI64 then runtimeCall(f "boxInt")
                 when valI32 then emit(f i(ops.refI31))
-                else fail("a conversion at a unit's boundary")
+                else fail(:Ok "a conversion at a unit's boundary")
             end
         end
 
@@ -6227,7 +6223,7 @@ export
                         let index = index
                     end)
                 exportFunction("init" mainIndex)
-                if maybe.isNone(mod.recordVar) then fail("a module without its record") end
+                if maybe.isNone(mod.recordVar) then fail(:Ok "a module without its record") end
                 let recordVar = maybe.unwrap(mod.recordVar)
                 let first = global(initF recordVar)
                 for j = 0 upto 1 do
@@ -6262,7 +6258,7 @@ export
                                     (* converted to its interface's types *)
                                     if {extent outer.params isnot extent innerParams}
                                             orif {extent outer.results isnot 1} orif {extent inner.results isnot 1} then
-                                        fail("an exported function whose interface type differs in its parts: "
+                                        fail(:Ok "an exported function whose interface type differs in its parts: "
                                             <> sigText(g outer) <> " against " <> sigText(g inner))
                                     end
                                     let names = array of(extent outer.params + 1 "")
