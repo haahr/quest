@@ -518,6 +518,19 @@ The layout above follows these conventions:
   `QUEST_GC_NEVER=1`), under the 1% bar: a set is a tuple around a map, one more load per operation.
 - **A table by register class is `targets.PerClass(A)`,** read for a class with `targets.at(table targets.classInt)`;
   the allocator's loops over classes index it by `targets.index`.
+- **Process-wide compilation switches** are module state that a compilation sets before it checks any unit, and
+  that every unit it checks or compiles reads. There are five, each set by the paths named here and nowhere else:
+
+  | Switch | What it decides | Set by |
+  |---|---|---|
+  | `env.setDefaultRegistry` (`stdlib.install`) | the standard library's built-in registry an environment gets | the driver's program, unit-file, and build paths; the build engine; a worker; the language server |
+  | `inlined.setInlined` | the modules inlined into their importers (ir/opened) | the driver's `programSettings` and `--inline-module` resolution; a worker, from its batch |
+  | `shapes.setTransparentAbstractTypes` | whether modules' abstract types are laid out as their representations (a whole program, ir.md §4.1) | the driver's `programSettings`; `moduleCompiler`, off while it compiles a module and restored after |
+  | `abstractTypes.setRegisteringApart` | whether an abstract type's registered representation belongs to a module compiled apart | `moduleCompiler`, on while it compiles a module and restored after |
+  | `files.setWorkerTag` | the suffix that keeps a worker's temporary files apart from others' | a worker |
+
+  A new switch is listed here; a path that needs another setting passes it as an argument instead, as
+  `represent.representUnit` takes `referencesAlike` (ir/pipeline.runThrough).
 
 Type operators were also weighed for these, and left out (2026-11-26):
 
