@@ -1,0 +1,27 @@
+(* Quest Self-Hosted Compiler: The Interactive Notation's Declarations Interface
+ *
+ * Writes a top-level declaration as the REPL echoes it, in Cardelli's
+ * interactive notation: let var x:T for a value, Let T::K = U for a type,
+ * DEF K = K' for a kind, and exception e. The interpreter's formatting
+ * (questlang/interpreter/formatting), the IR's lowering of echoed phrases
+ * (questlang/ir/lower), the Jupyter kernel, and the language server's hovers
+ * all write them here, so that the interpreter's echo and compiled code's
+ * agree byte for byte. The counterpart is bootstrap/python/quest/types/echo.py. *)
+
+interface Echo
+import
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+export
+    (* let x:T, or let var x:T for a var, which the echo follows with " = " and
+     * the value *)
+    valueDeclaration(name: String sym: symbols.ValueSymbol): String
+    (* A function's echo, whose value prints as <fun>: let f:T = <fun> *)
+    functionDeclaration(name: String type: model.Type): String
+    (* Let T::K = U, or Let T::K for an abstract type *)
+    typeDeclaration(name: String sym: symbols.TypeSymbol): String
+    (* DEF K = K' *)
+    kindDefinition(name: String kind: model.Kind): String
+    (* exception e *)
+    exceptionDeclaration(name: String): String
+end

@@ -33,6 +33,7 @@ from quest.types import (
     unalias,
     unfold_head,
 )
+from quest.types.echo import exception_declaration, kind_definition, type_declaration, value_declaration
 from quest.typechecker.typed_ast import (
     TypedDefKind,
     TypedException,
@@ -206,16 +207,10 @@ def format_interactive_result(
 
     match phrase:
         case TypedLetValue(name=name, symbol=symbol):
-            var_str = "var " if symbol.is_var else ""
-            type_str = str(symbol.type_val)
-            val_str = format_value_with_type(val, symbol.type_val)
-            return f"let {var_str}{name}:{type_str} = {val_str}"
+            return f"{value_declaration(name, symbol)} = {format_value_with_type(val, symbol.type_val)}"
 
         case TypedLetType(name=name, symbol=symbol):
-            kind_str = str(symbol.kind)
-            if symbol.definition is not None:
-                return f"Let {name}::{kind_str} = {symbol.definition}"
-            return f"Let {name}::{kind_str}"
+            return type_declaration(name, symbol)
 
         case TypedLetTypeGroup(members=members):
             return "\n".join(format_interactive_result(member, val) for member in members)
@@ -227,14 +222,13 @@ def format_interactive_result(
             )
 
         case TypedDefKind(name=name, symbol=symbol):
-            kind_str = str(symbol.kind)
-            return f"DEF {name} = {kind_str}"
+            return kind_definition(name, symbol.kind)
 
         case TypedImport() | TypedInterface() | TypedModule():
             return ""
 
         case TypedExprStmt(expr=TypedException(name=name)):
-            return f"exception {name}"
+            return exception_declaration(name)
 
         case TypedExprStmt(expr=inner_expr):
             if isinstance(val, QOk):
@@ -243,7 +237,7 @@ def format_interactive_result(
             return f"{val_str} : {inner_expr.type_val}"
 
         case TypedException(name=name):
-            return f"exception {name}"
+            return exception_declaration(name)
 
         case TypedExpr():
             if isinstance(val, QOk):

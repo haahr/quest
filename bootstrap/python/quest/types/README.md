@@ -28,6 +28,8 @@ introduction; this one says what is particular to the Python version.
   scopes, and the `Environment` with its scope stack, units, and the standard library's `BuiltinRegistry`.
 - **Printing** ([`dump.py`](dump.py)): the compact formatter for messages and the typed AST dump
   (`format_type_compact`) and the canonical S-expression dump (`qtype_dump`).
+- **Echoes** ([`echo.py`](echo.py)): a top-level declaration as the REPL echoes it, for the interpreter's
+  formatting and the IR's lowering of echoed phrases alike.
 - **Reduced and canonical forms** ([`reduce.py`](reduce.py), [`canonical.py`](canonical.py)): for the backend only.
   `canonical_type` minimizes a recursive type's graph so that equal recursive types get one C struct and descriptor;
   the checker does not canonicalize.

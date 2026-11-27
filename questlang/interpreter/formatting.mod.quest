@@ -12,9 +12,9 @@ import
 
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
     questlang/types/dump : questlang/types/Dump
+    questlang/types/echo : questlang/types/Echo
     questlang/types/kinds : questlang/types/Kinds
     tm = questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
     questlang/values/model : questlang/values/Model
 export
     Let Value = model.Value
@@ -229,20 +229,10 @@ export
 
     let formatValueWithType(v: Value t: tm.Type): String = formatTyped(v t vector.new())
 
-    let valueDeclaration(name: String sym: symbols.ValueSymbol): String =
-        "let " <> {if sym.isVar then "var " else "" end} <> name <> ":" <> tm.show(sym.type)
-
-    let typeDeclaration(name: String sym: symbols.TypeSymbol): String =
-        if maybe.isSome(sym.definition) then
-            "Let " <> name <> "::" <> tm.showKind(sym.kind) <> " = " <> tm.show(maybe.unwrap(sym.definition))
-        else
-            "Let " <> name <> "::" <> tm.showKind(sym.kind)
-        end
-
     let formatLetValue(lv: typedAst.LetValue v: Value): String =
-        valueDeclaration(lv.name lv.symbol) <> " = " <> formatValueWithType(v lv.symbol.type)
+        echo.valueDeclaration(lv.name lv.symbol) <> " = " <> formatValueWithType(v lv.symbol.type)
 
-    let formatLetType(lt: typedAst.LetType): String = typeDeclaration(lt.name lt.symbol)
+    let formatLetType(lt: typedAst.LetType): String = echo.typeDeclaration(lt.name lt.symbol)
 
     let formatInteractiveResult(phrase: typedAst.Binding v: Value): String =
         case phrase.form
@@ -266,10 +256,10 @@ export
                         end
                     else ""
                 end
-            when bindDefKind with x then "DEF " <> x.name <> " = " <> tm.showKind(x.symbol.kind)
+            when bindDefKind with x then echo.kindDefinition(x.name x.symbol.kind)
             when bindExprStmt with x then
                 case x.expr.form
-                    when exprException with e then "exception " <> e.name
+                    when exprException with e then echo.exceptionDeclaration(e.name)
                     else
                         if v?vOk then ""
                         else formatValueWithType(v x.expr.type) <> " : " <> tm.show(x.expr.type)

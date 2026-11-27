@@ -1,0 +1,26 @@
+(* Quest Self-Hosted Compiler: The Interactive Notation's Declarations Implementation *)
+
+module echo : Echo
+import
+    util/maybe : util/Maybe
+
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+export
+    let valueDeclaration(name: String sym: symbols.ValueSymbol): String =
+        "let " <> {if sym.isVar then "var " else "" end} <> name <> ":" <> model.show(sym.type)
+
+    let functionDeclaration(name: String type: model.Type): String =
+        "let " <> name <> ":" <> model.show(type) <> " = <fun>"
+
+    let typeDeclaration(name: String sym: symbols.TypeSymbol): String =
+        if maybe.isSome(sym.definition) then
+            "Let " <> name <> "::" <> model.showKind(sym.kind) <> " = " <> model.show(maybe.unwrap(sym.definition))
+        else
+            "Let " <> name <> "::" <> model.showKind(sym.kind)
+        end
+
+    let kindDefinition(name: String kind: model.Kind): String = "DEF " <> name <> " = " <> model.showKind(kind)
+
+    let exceptionDeclaration(name: String): String = "exception " <> name
+end

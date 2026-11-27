@@ -23,6 +23,13 @@ from quest.common.diagnostics import MAIN_FRAME, frame_name, init_frame
 from quest.modules.elaboration import build_record_type_from_scope
 from quest.modules.stdlib import STANDARD_LIBRARY_MODULE_NAMES, STANDARD_LIBRARY_MODULES
 from quest.config import CompilerOptions
+from quest.types.echo import (
+    exception_declaration,
+    function_declaration,
+    kind_definition,
+    type_declaration,
+    value_declaration,
+)
 from quest.types.env import Environment, ValueSymbol
 from quest.ir import nodes as ir
 from quest.repr.layout import resolved_shape
@@ -1060,7 +1067,7 @@ class _Lowerer:
                     var = self.bind_symbol(symbol)
                     self.emit(ir.Funs((self.function(value, var, name),), recursive=b.is_rec))
                     if show:
-                        self.emit(ir.EchoText(f"let {name}:{_display(symbol.type_val)} = <fun>"))
+                        self.emit(ir.EchoText(function_declaration(name, symbol.type_val)))
                     return
                 if symbol.is_var and symbol.symbol_id in self.captured:
                     # Held in a box that closures capture (captured_mutables)
@@ -1094,7 +1101,7 @@ class _Lowerer:
                 self.emit(ir.Funs(functions, recursive=True))
                 if show:
                     for m in members:
-                        self.emit(ir.EchoText(f"let {m.name}:{_display(m.symbol.type_val)} = <fun>"))
+                        self.emit(ir.EchoText(function_declaration(m.name, m.symbol.type_val)))
             case TypedLetValueGroup(members=members):
                 # Simultaneous: every member's value refers to the bindings the
                 # members shadow, which their symbols keep apart, so lowering
@@ -1105,17 +1112,13 @@ class _Lowerer:
                 self.phrase_expr(expr, show)
             case TypedLetType(name=name, symbol=symbol):
                 if show:
-                    kind_str = str(symbol.kind)
-                    if symbol.definition is not None:
-                        self.emit(ir.EchoText(f"Let {name}::{kind_str} = {symbol.definition}"))
-                    else:
-                        self.emit(ir.EchoText(f"Let {name}::{kind_str}"))
+                    self.emit(ir.EchoText(type_declaration(name, symbol)))
             case TypedLetTypeGroup(members=members):
                 for m in members:
                     self.binding(m, show)
             case TypedDefKind(name=name, symbol=symbol):
                 if show:
-                    self.emit(ir.EchoText(f"DEF {name} = {symbol.kind}"))
+                    self.emit(ir.EchoText(kind_definition(name, symbol.kind)))
             case TypedException():
                 self.phrase_expr(b, show)
             case TypedImport(items=items):
@@ -1143,7 +1146,7 @@ class _Lowerer:
         if show:
             for m, var in zip(members, vars_):
                 if isinstance(m.value, TypedFun):
-                    self.emit(ir.EchoText(f"let {m.name}:{_display(m.symbol.type_val)} = <fun>"))
+                    self.emit(ir.EchoText(function_declaration(m.name, m.symbol.type_val)))
                 else:
                     self.echo_binding(m.name, m.symbol, var)
 
@@ -1151,7 +1154,7 @@ class _Lowerer:
         if isinstance(e, TypedException) and e.name:
             self.value(e)
             if show:
-                self.emit(ir.EchoText(f"exception {e.name}"))
+                self.emit(ir.EchoText(exception_declaration(e.name)))
             return
         if e.type_val is OK_TYPE:
             self.effect(e)
@@ -1161,7 +1164,7 @@ class _Lowerer:
             self.emit(ir.Echo(atom, e.type_val, ""))
 
     def echo_binding(self, name: str, symbol: ValueSymbol, var: ir.Var) -> None:
-        prefix = f"let {'var ' if symbol.is_var else ''}{name}:{_display(symbol.type_val)} = "
+        prefix = f"{value_declaration(name, symbol)} = "
         if symbol.type_val is OK_TYPE:
             self.emit(ir.EchoText(prefix + "ok"))
         else:
@@ -1233,11 +1236,6 @@ class _Lowerer:
                     case _:
                         self.binding(phrase, show)
         return ir.Unit(main, modules, tuple(self.imports), source_map=self.source_map)
-
-
-def _display(t: QType) -> str:
-    # As the interpreter prints a phrase's type
-    return str(t)
 
 
 def lower_module_file(mod: TypedModule, env: Environment) -> ir.Unit:

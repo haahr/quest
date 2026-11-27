@@ -111,7 +111,7 @@ their names: a let's offset is its keyword's, and a selection's is its target's.
 tokens at or after its node's offset, as the first identifier that spells it, after a `.` for a field.
 
 - **Occurrences:** each binder and use of a value or type symbol, with its symbol id and its declaration as the REPL
-  shows it (`formatting.valueDeclaration`); each module member selected (`m.f`); and each unit name (imports,
+  shows it (`echo.valueDeclaration`, in `types/echo`); each module member selected (`m.f`); and each unit name (imports,
   modules, interfaces).
 - **Definition:**
   - of a symbol, its binder in the document;

@@ -15,6 +15,7 @@ This package provides:
 - quest.types.reduce: Reduced types (type operator applications reduced and
   recursive types unfolded at a type's head) and queries on option types.
 - quest.types.canonical: The canonical (minimal graph) forms of recursive types.
+- quest.types.echo: Top-level declarations as the REPL echoes them.
 """
 
 from __future__ import annotations

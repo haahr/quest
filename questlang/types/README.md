@@ -105,6 +105,9 @@ checker because the module system ([`../modules`](../modules)) and the kind chec
 [`dump.int.quest`](dump.int.quest) prints types in two styles: a compact one for error messages and the typed AST dump,
 which keeps alias names, shows a module's record type as `Module 'name'`, and bounds recursion; and a canonical
 S-expression dump for golden tests. `model.show` is the plain printer the others build on.
+[`echo.int.quest`](echo.int.quest) writes a top-level declaration as the REPL echoes it (`let var x:T`, `Let T::K =
+U`, `DEF K = K'`, `exception e`), for the interpreter's formatting and the IR's lowering of echoed phrases, whose
+echoes must agree byte for byte, and for the Jupyter kernel and the language server.
 
 ## Reduced and canonical forms, for the backends
 

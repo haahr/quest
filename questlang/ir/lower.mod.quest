@@ -22,6 +22,7 @@ import
     questlang/repr/layout : questlang/repr/Layout
     questlang/repr/shapes : questlang/repr/Shapes
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
+    questlang/types/echo : questlang/types/Echo
     questlang/types/env : questlang/types/Env
     questlang/types/model : questlang/types/Model
     questlang/types/reduce : questlang/types/Reduce
@@ -1835,7 +1836,7 @@ export
     (* Bindings *)
 
     and funText(name: String t: Type): Stmt =
-        option sEchoText of Stmt with let text = "let " <> name <> ":" <> model.show(t) <> " = <fun>" end
+        option sEchoText of Stmt with let text = echo.functionDeclaration(name t) end
 
     (* Whether a let binds a slot that the unit holds in a box *)
     and boxedLet(l: Lowerer lv: typedAst.LetValue): Bool = l.boxSlots andif boxesSlot(l.env lv.symbol)
@@ -2113,9 +2114,7 @@ export
                     for i = 0 upto {extent x.members - 1} do letType(l x.members[i] show) end
                 when bindDefKind with x then
                     if show then
-                        emit(l option sEchoText of Stmt with
-                            let text = "DEF " <> x.name <> " = " <> model.showKind(x.symbol.kind)
-                        end)
+                        emit(l option sEchoText of Stmt with let text = echo.kindDefinition(x.name x.symbol.kind) end)
                     end
                 when bindImport with x then addImports(l x.items)
                 when bindInterface then fail("TypedInterface inside a block")
@@ -2124,17 +2123,7 @@ export
         end
 
     and letType(l: Lowerer lt: typedAst.LetType show: Bool): Ok =
-        if show then
-            let kindText = model.showKind(lt.symbol.kind)
-            if maybe.isSome(lt.symbol.definition) then
-                emit(l option sEchoText of Stmt with
-                    let text =
-                        "Let " <> lt.name <> "::" <> kindText <> " = " <> model.show(maybe.unwrap(lt.symbol.definition))
-                end)
-            else
-                emit(l option sEchoText of Stmt with let text = "Let " <> lt.name <> "::" <> kindText end)
-            end
-        end
+        if show then emit(l option sEchoText of Stmt with let text = echo.typeDeclaration(lt.name lt.symbol) end) end
 
     (* Recursive values (and functions) declared together: each member's value
      * is computed into its variable in a let rec, where closures may refer to
@@ -2192,7 +2181,7 @@ export
                 if show then
                     case e.form
                         when exprException with x then
-                            emit(l option sEchoText of Stmt with let text = "exception " <> x.name end)
+                            emit(l option sEchoText of Stmt with let text = echo.exceptionDeclaration(x.name) end)
                         else ok
                     end
                 end
@@ -2214,8 +2203,7 @@ export
 
     and echoBinding(l: Lowerer name: String symbol: symbols.ValueSymbol v: Variable): Ok =
         begin
-            let prefix =
-                "let " <> if symbol.isVar then "var " else "" end <> name <> ":" <> model.show(symbol.type) <> " = "
+            let prefix = echo.valueDeclaration(name symbol) <> " = "
             if isOk(symbol.type) then
                 emit(l option sEchoText of Stmt with let text = prefix <> "ok" end)
             else

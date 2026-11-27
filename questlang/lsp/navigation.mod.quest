@@ -21,13 +21,13 @@ import
     questlang/common/location : questlang/common/Location
     questlang/common/maps : questlang/common/Maps
     questlang/common/strings : questlang/common/Strings
-    questlang/interpreter/formatting : questlang/interpreter/Formatting
     questlang/lsp/analysis : questlang/lsp/Analysis
     questlang/syntax/ast : questlang/syntax/AST
     questlang/syntax/parser : questlang/syntax/Parser
     questlang/syntax/tokenizer : questlang/syntax/Tokenizer
     questlang/syntax/tokens : questlang/syntax/Tokens
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
+    questlang/types/echo : questlang/types/Echo
     questlang/types/env : questlang/types/Env
     questlang/types/symbols : questlang/types/Symbols
 export
@@ -176,7 +176,7 @@ export
                             "module " <> name <> " : " <> shown maybe.some(name))
                 else
                     add(ix maybe.unwrap(t) option value of Kind end sym.symbolId isBinder
-                            formatting.valueDeclaration(name sym) maybe.none())
+                            echo.valueDeclaration(name sym) maybe.none())
                 end
             end
         end
@@ -186,7 +186,7 @@ export
             let t = findName(ix.toks offset name false)
             if maybe.isSome(t) then
                 add(ix maybe.unwrap(t) option typeName of Kind end sym.symbolId true
-                        formatting.typeDeclaration(name sym) maybe.none())
+                        echo.typeDeclaration(name sym) maybe.none())
             end
         end
 
@@ -212,7 +212,7 @@ export
                     end
                 let shownName = if maybe.isSome(owner) then maybe.unwrap(owner) <> "." <> field else field end
                 add(ix maybe.unwrap(t) option member of Kind end ~1 false
-                        formatting.valueDeclaration(shownName symbols.valueSymbol(field e.type)) owner)
+                        echo.valueDeclaration(shownName symbols.valueSymbol(field e.type)) owner)
             end
         end
 
@@ -684,10 +684,10 @@ export
                         end)
                     elsif maybe.isSome(ty) then
                         fromSymbol(maybe.unwrap(ty).symbolId option typeName of Kind end
-                                formatting.typeDeclaration(t.lexeme maybe.unwrap(ty)))
+                                echo.typeDeclaration(t.lexeme maybe.unwrap(ty)))
                     elsif maybe.isSome(v) then
                         fromSymbol(maybe.unwrap(v).symbolId option value of Kind end
-                                formatting.valueDeclaration(t.lexeme maybe.unwrap(v)))
+                                echo.valueDeclaration(t.lexeme maybe.unwrap(v)))
                     else
                         maybe.none()
                     end
@@ -904,7 +904,7 @@ export
                     vector.append(result tuple
                         let label = name
                         let kind = completionKindVariable
-                        let detail = formatting.valueDeclaration(name sym)
+                        let detail = echo.valueDeclaration(name sym)
                     end)
                 end
                 let types = hashMap.keys(at.types)
