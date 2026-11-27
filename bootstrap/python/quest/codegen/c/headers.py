@@ -112,7 +112,9 @@ def compile_interface_to_header(decl: ast.InterfaceDecl, iface_scope: Scope, can
             if isinstance(concrete_t, QRecordType):
                 lines.append(f"typedef struct quest_rec_{c_name}_{member_ident(sig.name)} {{")
                 for f in concrete_t.fields:
-                    lines.append(f"    {slot_representation(f.type_val)} {f.name};")
+                    # qf_ and the member's identifier, as declarations spells a
+                    # record's fields, so a field named like a C keyword is a C name
+                    lines.append(f"    {slot_representation(f.type_val)} qf_{member_ident(f.name)};")
                 lines.append(f"}} quest_rec_{c_name}_{member_ident(sig.name)};")
                 lines.append(f"typedef QRecordVal quest_type_{c_name}_{member_ident(sig.name)};")
             else:
