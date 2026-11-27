@@ -71,7 +71,9 @@ first phase that reported an error. The driver then prints every diagnostic to s
 
 **The self-hosted compiler.** Each compilation has a diagnostic bag (`diagbag.T`). A phase adds the diagnostics of
 the errors it catches; an error after which the phase cannot go on, such as a syntax error, is added and then raises
-`diagbag.fatalError` (`addStoppingError`), as a fatal one does (`addFatal`). The driver's phases run only while the bag
+`diagbag.fatalError` (`addStoppingError`), as a fatal one does (`addFatal`). Code deep in the front end raises an
+internal error, the compiler's own failure, with `diagnostics.internal`: a fatal `compilerError` whose message starts
+`internal:`, which no recovery point reports and goes on from (§4.5). The driver's phases run only while the bag
 has no errors, and `finish` in `driver/main` prints the bag's diagnostics to standard error and exits with 1 if there
 are any.
 
@@ -205,9 +207,9 @@ span, and then any further errors it finds:
   silently. So does a block or a module with a failed member. A binding with a declared type (`let f(x: Int): Int =
   ...`, `let x: T = ...`) is bound at that type even when its value fails, so its users are still checked. A failed
   import or module poisons the names it would have bound.
-- **Fatal errors** stay fatal. An error that leaves nothing sensible to check (a cycle of imports, an internal error,
-  the well-scopedness check of `scoping`) adds a fatal diagnostic and raises `diagbag.fatalError`, as syntax errors
-  do.
+- **Fatal errors** stay fatal. An error that leaves nothing sensible to check (a cycle of imports, an internal error
+  raised by `diagnostics.internal`, the well-scopedness check of `scoping`) is fatal: each recovery point raises it
+  on, so it stops the check, and the driver reports it, as it does syntax errors.
 - **Limit.** After 20 errors the checker reports that it stopped (`checker.maxErrors`), with a fatal diagnostic.
 - **Output.** The typed AST is printed only when there are no errors. The errors are printed in the order found,
   which is source order.
