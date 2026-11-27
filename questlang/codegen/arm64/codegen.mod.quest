@@ -713,31 +713,19 @@ export
     (* The label just past the code of the unit's function numbered index *)
     let endLabel(index: Int): String = "Lf" <> conv.int(index) <> "_end"
 
-    (* Emits a function's machine code (after load/store pairing and branch
-     * relaxation) together with its GC frame-table entry when the function
-     * does not enter a try. A temporary label (prefix_mN) after each mapped
-     * call tracks its return address through peephole pairing and branch
-     * relaxation, then is stripped once its instruction offset is recorded. *)
-    Let Machined = Tuple code: Code frame: maybe.T(Frame) end
-    let machineCode(f: Function index: Int defined: maps.StringMap(Bool)): Machined =
+    (* Where each block's code is: its own, or, passed over, where its jumps
+     * lead (its own again for a cycle of blocks that only jump). A non-entry
+     * block that is not a raise target and contains only an unconditional
+     * jump is bypassed by redirecting incoming edges to its target. *)
+    let finalBlocks(m: machine.Function): Array(Int) =
         begin
-            let c = compile(f index defined)
-            let s = c.selection
-            let m = s.f
-            let e = tuple let c = c let code = vector.new(:minst.Inst) end
             let nBlocks = vector.length(m.blocks)
-            (* A non-entry block that is not a raise target and contains only
-             * an unconditional jump is bypassed by redirecting incoming edges
-             * to its target *)
             let passes(b: Int): Bool =
                 begin
                     let blk = machine.block(m b)
                     {b > 0} andif not(blk.raised) andif {vector.length(blk.insts) is 1}
                         andif machine.isKind(vector.get(blk.insts 0) machine.kindJump)
                 end
-            (* Where each block's code is: its own, or, passed over, where its
-             * jumps lead (its own again for a cycle of blocks that only
-             * jump) *)
             let final = array of(nBlocks 0)
             for b = 0 upto {nBlocks - 1} do
                 let var to = b
@@ -748,115 +736,132 @@ export
                 end
                 final[b] := if passes(to) then b else to end
             end
-            let printed = vector.new(:Int)
-            let order = chains(s final)
-            for k = 0 upto {extent order - 1} do vector.append(printed order[k]) end
-            let bare = frameless(c)
-            if not(bare) then prologue(e) end
-            let var liveLabels = 0
-            let marker = s.prefix <> "_m"
-            let mapped = vector.new(:CallMap)
-            (* Emit a .loc directive before each instruction whose source
-             * position differs from the previous one. Rematerialized values
-             * (constants or addresses recomputed at use sites) still carry
-             * their definition's location, so they do not emit .loc. *)
-            let var last = ssa.noLoc
-            for k = 0 upto {vector.length(printed) - 1} do
-                let b = vector.get(printed k)
-                let next = if {k + 1} < vector.length(printed) then vector.get(printed k + 1) else ~1 end
-                emit(e minst.label(select.label(s b)))
-                let insts = machine.block(m b).insts
-                let count = vector.length(insts)
-                let var inverted = false
-                let var calls = 0
-                let var mappedCalls = 0
-                for j = 0 upto {count - 1} do
-                    let i = vector.get(insts j)
-                    let regs = array of(extent i.operands 0)
-                    for r = 0 upto {extent regs - 1} do regs[r] := i.operands[r].reg end
-                    let base = vector.get(s.ops i.op)
-                    let op = if i.target >= 0 then minst.withLabel(base select.label(s final[i.target])) else base end
-                    (* If a conditional branch targets the next block and is
-                     * immediately followed by a trailing unconditional jump,
-                     * invert the condition to branch to the jump's target and
-                     * drop the jump. An unconditional jump to the next block
-                     * also falls through. *)
-                    let c = peephole.conditional(op)
-                    let following =
-                        if {j + 1} < count then
-                            maybe.some(vector.get(insts j + 1))
+            final
+        end
+
+    (* What emitting a function's blocks shares: the emitter, the function's
+     * symbol, where each block's code is (finalBlocks), whether the function
+     * has no frame, the prefix of the labels that mark mapped calls and the
+     * maps of those calls so far, how many live-slot labels it has, and the
+     * last source position emitted *)
+    Let Emitting = Tuple
+        e: Emitter
+        symbol: String
+        final: Array(Int)
+        bare: Bool
+        marker: String
+        mapped: vector.T(CallMap)
+        var liveLabels: Int
+        var last: ssa.Loc
+    end
+
+    (* Emits block b, which next follows in the layout (~1 for none) *)
+    let emitBlock(x: Emitting b: Int next: Int): Ok =
+        begin
+            let e = x.e
+            let s = e.c.selection
+            let m = s.f
+            let final = x.final
+            emit(e minst.label(select.label(s b)))
+            let insts = machine.block(m b).insts
+            let count = vector.length(insts)
+            let var inverted = false
+            let var calls = 0
+            let var mappedCalls = 0
+            for j = 0 upto {count - 1} do
+                let i = vector.get(insts j)
+                let regs = array of(extent i.operands 0)
+                for r = 0 upto {extent regs - 1} do regs[r] := i.operands[r].reg end
+                let base = vector.get(s.ops i.op)
+                let op = if i.target >= 0 then minst.withLabel(base select.label(s final[i.target])) else base end
+                (* If a conditional branch targets the next block and is
+                 * immediately followed by a trailing unconditional jump,
+                 * invert the condition to branch to the jump's target and
+                 * drop the jump. An unconditional jump to the next block also
+                 * falls through. *)
+                let c = peephole.conditional(op)
+                let following =
+                    if {j + 1} < count then maybe.some(vector.get(insts j + 1)) else maybe.none(:machine.Inst) end
+                let invert = maybe.isSome(c) andif {final[i.target] is next} andif {{j + 2} is count}
+                    andif machine.isKind(maybe.unwrap(following) machine.kindJump)
+                    andif {final[maybe.unwrap(following).target] isnot next}
+                let falls = inverted orif {machine.isKind(i machine.kindJump) andif {final[i.target] is next}}
+                (* A jump to a block that only returns returns itself, with
+                 * its own epilogue, so that whichever way a branch is laid
+                 * out, the path that leaves takes one branch, not a branch and
+                 * a jump (tak's base case, once the layout let a rotated
+                 * loop's guard fall into the loop) *)
+                let returned =
+                    if machine.isKind(i machine.kindJump) andif not(falls) then
+                        let to = machine.block(m final[i.target])
+                        if not(to.raised) andif {vector.length(to.insts) is 1}
+                                andif machine.isKind(vector.get(to.insts 0) machine.kindReturn) then
+                            let r = vector.get(to.insts 0)
+                            let rop = vector.get(s.ops r.op)
+                            if isBrk(rop) orif isTableEnd(rop) then maybe.none(:machine.Inst) else maybe.some(r) end
                         else
                             maybe.none(:machine.Inst)
                         end
-                    let invert = maybe.isSome(c) andif {final[i.target] is next} andif {{j + 2} is count}
-                        andif machine.isKind(maybe.unwrap(following) machine.kindJump)
-                        andif {final[maybe.unwrap(following).target] isnot next}
-                    let falls = inverted orif {machine.isKind(i machine.kindJump) andif {final[i.target] is next}}
-                    (* A jump to a block that only returns returns itself,
-                     * with its own epilogue, so that whichever way a branch
-                     * is laid out, the path that leaves takes one branch, not
-                     * a branch and a jump (tak's base case, once the layout
-                     * let a rotated loop's guard fall into the loop) *)
-                    let returned =
-                        if machine.isKind(i machine.kindJump) andif not(falls) then
-                            let to = machine.block(m final[i.target])
-                            if not(to.raised) andif {vector.length(to.insts) is 1}
-                                    andif machine.isKind(vector.get(to.insts 0) machine.kindReturn) then
-                                let r = vector.get(to.insts 0)
-                                let rop = vector.get(s.ops r.op)
-                                if isBrk(rop) orif isTableEnd(rop) then maybe.none(:machine.Inst) else maybe.some(r) end
-                            else
-                                maybe.none(:machine.Inst)
-                            end
-                        else
-                            maybe.none(:machine.Inst)
-                        end
-                    if maybe.isSome(returned) then
-                        let r = maybe.unwrap(returned)
-                        let rregs = array of(extent r.operands 0)
-                        for q = 0 upto {extent rregs - 1} do rregs[q] := r.operands[q].reg end
-                        if not(bare) then restore(e) end
-                        emit(e tuple let op = vector.get(s.ops r.op) let regs = rregs end)
-                    elsif invert orif not(falls) then
-                        let l = vector.get(s.locs i.op)
-                        if ssa.hasLoc(l) andif not(ssa.sameLoc(l last)) andif not(select.rematerializable(s i)) then
-                            emit(e minst.loc(l.file l.line l.col))
-                            last := l
-                        end
-                        if machine.isKind(i machine.kindReturn) andif not(isBrk(op)) andif not(isTableEnd(op))
-                                andif not(bare) then
-                            restore(e)
-                        end
-                        if invert then
-                            let to = select.label(s final[maybe.unwrap(following).target])
-                            emit(e tuple let op = maybe.unwrap(c).inverse(to) let regs = regs end)
-                            inverted := true
-                        else
-                            emit(e tuple let op = op let regs = regs end)
-                        end
+                    else
+                        maybe.none(:machine.Inst)
                     end
-                    if machine.isKind(i machine.kindCall) andif {mappedCalls < extent e.c.maps[b]} then
-                        emit(e minst.label(marker <> conv.int(vector.length(mapped))))
-                        vector.append(mapped e.c.maps[b][mappedCalls])
-                        mappedCalls := mappedCalls + 1
+                if maybe.isSome(returned) then
+                    let r = maybe.unwrap(returned)
+                    let rregs = array of(extent r.operands 0)
+                    for q = 0 upto {extent rregs - 1} do rregs[q] := r.operands[q].reg end
+                    if not(x.bare) then restore(e) end
+                    emit(e tuple let op = vector.get(s.ops r.op) let regs = rregs end)
+                elsif invert orif not(falls) then
+                    (* A .loc directive before each instruction whose source
+                     * position differs from the previous one. Rematerialized
+                     * values (constants or addresses recomputed at use
+                     * sites) still carry their definition's location, so they
+                     * do not emit .loc. *)
+                    let l = vector.get(s.locs i.op)
+                    if ssa.hasLoc(l) andif not(ssa.sameLoc(l x.last)) andif not(select.rematerializable(s i)) then
+                        emit(e minst.loc(l.file l.line l.col))
+                        x.last := l
                     end
-                    (* Under QUEST_LIVE_SLOTS=1, emit a symbol and comment at
-                     * the call's return address recording the frame size and
-                     * the values live across the call so a debugger can
-                     * inspect them (docs/profiling.md section 6). Marking the
-                     * symbol .alt_entry prevents the linker from treating it
-                     * as a separate function. *)
-                    if machine.isKind(i machine.kindCall) andif {calls < extent e.c.liveAtCalls[b]} then
-                        let name = asm.symbol(f.symbol <> "_live_" <> conv.int(liveLabels))
-                        let described = e.c.liveAtCalls[b][calls]
-                        let comment = "// live (frame " <> conv.int(e.c.size) <> "): " <> described
-                        emit(e minst.label(".alt_entry " <> name <> "\n" <> comment <> "\n" <> name))
-                        calls := calls + 1
-                        liveLabels := liveLabels + 1
+                    if machine.isKind(i machine.kindReturn) andif not(isBrk(op)) andif not(isTableEnd(op))
+                            andif not(x.bare) then
+                        restore(e)
+                    end
+                    if invert then
+                        let to = select.label(s final[maybe.unwrap(following).target])
+                        emit(e tuple let op = maybe.unwrap(c).inverse(to) let regs = regs end)
+                        inverted := true
+                    else
+                        emit(e tuple let op = op let regs = regs end)
                     end
                 end
+                if machine.isKind(i machine.kindCall) andif {mappedCalls < extent e.c.maps[b]} then
+                    emit(e minst.label(x.marker <> conv.int(vector.length(x.mapped))))
+                    vector.append(x.mapped e.c.maps[b][mappedCalls])
+                    mappedCalls := mappedCalls + 1
+                end
+                (* Under QUEST_LIVE_SLOTS=1, emit a symbol and comment at the
+                 * call's return address recording the frame size and the
+                 * values live across the call so a debugger can inspect them
+                 * (docs/profiling.md section 6). Marking the symbol
+                 * .alt_entry prevents the linker from treating it as a
+                 * separate function. *)
+                if machine.isKind(i machine.kindCall) andif {calls < extent e.c.liveAtCalls[b]} then
+                    let name = asm.symbol(x.symbol <> "_live_" <> conv.int(x.liveLabels))
+                    let described = e.c.liveAtCalls[b][calls]
+                    let comment = "// live (frame " <> conv.int(e.c.size) <> "): " <> described
+                    emit(e minst.label(".alt_entry " <> name <> "\n" <> comment <> "\n" <> name))
+                    calls := calls + 1
+                    x.liveLabels := x.liveLabels + 1
+                end
             end
-            let relaxed = peephole.relaxBranches(peephole.pairs(e.code) s.prefix peephole.branchReach)
+        end
+
+    (* The code with the labels that mark mapped calls taken out, and each
+     * such call's site: its return address's offset, in instructions, and
+     * its map *)
+    Let Stripped = Tuple code: Code sites: vector.T(CallSite) end
+    let stripMarkers(relaxed: Code marker: String mapped: vector.T(CallMap)): Stripped =
+        begin
             let code = vector.new(:minst.Inst)
             let sites = vector.new(:CallSite)
             let var at = 0
@@ -877,19 +882,58 @@ export
                         vector.append(code i)
                 end
             end
-            let var savedMask = 0
-            for k = {extent c.saved - 1} downto 0 do
+            tuple let code = code let sites = sites end
+        end
+
+    (* The frame table's bitmask of the saved pairs, by their indices *)
+    let savedMask(saved: Array(Int)): Int =
+        begin
+            let var mask = 0
+            for k = {extent saved - 1} downto 0 do
                 let var bit = 1
-                for x = 1 upto c.saved[k] do bit := 2 * bit end
-                savedMask := savedMask + bit
+                for x = 1 upto saved[k] do bit := 2 * bit end
+                mask := mask + bit
             end
+            mask
+        end
+
+    (* Emits a function's machine code (after load/store pairing and branch
+     * relaxation) together with its GC frame-table entry when the function
+     * does not enter a try. A temporary label (prefix_mN) after each mapped
+     * call tracks its return address through peephole pairing and branch
+     * relaxation, then is stripped once its instruction offset is recorded. *)
+    Let Machined = Tuple code: Code frame: maybe.T(Frame) end
+    let machineCode(f: Function index: Int defined: maps.StringMap(Bool)): Machined =
+        begin
+            let c = compile(f index defined)
+            let s = c.selection
+            let e = tuple let c = c let code = vector.new(:minst.Inst) end
+            let final = finalBlocks(s.f)
+            let printed = chains(s final)
+            let bare = frameless(c)
+            if not(bare) then prologue(e) end
+            let x = tuple
+                let e = e
+                let symbol = f.symbol
+                let final = final
+                let bare = bare
+                let marker = s.prefix <> "_m"
+                let mapped = vector.new(:CallMap)
+                let var liveLabels = 0
+                let var last = ssa.noLoc
+            end
+            for k = 0 upto {extent printed - 1} do
+                emitBlock(x printed[k] if {k + 1} < extent printed then printed[k + 1] else ~1 end)
+            end
+            let relaxed = peephole.relaxBranches(peephole.pairs(e.code) s.prefix peephole.branchReach)
+            let stripped = stripMarkers(relaxed x.marker x.mapped)
             tuple
-                let code = code
+                let code = stripped.code
                 let frame = if s.entersTry then maybe.none() else maybe.some(tuple
                     let below = {{pairBytes * extent c.saved} + c.size} / wordBytes
-                    let saved = savedMask
+                    let saved = savedMask(c.saved)
                     let undescribed = s.slotsEnd / wordBytes
-                    let calls = vector.toArray(sites)
+                    let calls = vector.toArray(stripped.sites)
                 end) end
             end
         end
