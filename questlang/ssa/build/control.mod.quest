@@ -372,6 +372,176 @@ export
             end
         end
 
+    (* A variable's declaration: its slot made, unless it is a global, and its
+     * value stored *)
+    let varDecl(fn: vals.Fn x: ir.StmtVarDecl): Ok =
+        begin
+            if not(vals.isGlobal(fn x.v)) then begin vals.slotOf(fn x.v) ok end end
+            if maybe.isSome(x.init) then
+                vals.write(fn x.v vals.atom(fn maybe.unwrap(x.init)))
+            else
+                (* Without a value, its words are null until assigned
+                 * (opIsSet), each time the declaration runs *)
+                let ps = parts.varParts(x.v)
+                let zeros = array of(extent ps 0)
+                for k = 0 upto {extent ps - 1} do
+                    zeros[k] :=
+                        case ps[k].type
+                            when typePtr then vals.null(fn)
+                            when typeVal then vals.toVal(fn vals.constant(fn 0))
+                            else vals.constant(fn 0)
+                        end
+                end
+                vals.write(fn x.v zeros)
+            end
+        end
+
+    (* A jump to a join point, with its arguments' values *)
+    let jump(fn: vals.Fn x: ir.StmtJump): Ok =
+        begin
+            (* A parameter of no parts (an Ok) takes nothing, whatever
+             * its argument: a call at Ok of a function whose result is
+             * generic returns a word *)
+            let counts = hashMap.find(fn.joinParts x.label)
+            let passed = vector.new(:Int)
+            for i = 0 upto {extent x.args - 1} do
+                if {i >= extent counts} orif {counts[i] > 0} then
+                    let vs = vals.atom(fn x.args[i])
+                    for k = 0 upto {extent vs - 1} do vector.append(passed vs[k]) end
+                end
+            end
+            let args = vector.toArray(passed)
+            leaveTo(fn labelDepth(fn x.label))
+            vals.jump(fn hashMap.find(fn.joins x.label) args)
+        end
+
+    (* A return, leaving every try entered *)
+    let returnStatement(fn: vals.Fn x: ir.StmtReturn): Ok =
+        begin
+            (* A C function returning void returns nothing, and Ok
+             * returned as a QVal word is 0 *)
+            let wanted = vector.length(fn.f.resultTypes)
+            let vs = if wanted is 0 then vals.noValues else vals.atom(fn x.value) end
+            let zero = fun(): Int
+                begin
+                    let n = vals.constant(fn 0)
+                    case vector.get(fn.f.resultTypes 0)
+                        when typeVal then vals.toVal(fn n)
+                        when typeInt, typePtr, typeReal then n
+                    end
+                end
+            let values = if {wanted is 1} andif {extent vs is 0} then array of zero() end else vs end
+            leaveTo(fn 0)
+            vals.terminate(fn option termReturn of ssa.Terminator with let values = values end)
+        end
+
+    (* A store to a tuple's component, then its barrier *)
+    let storeComponent(fn: vals.Fn x: ir.StmtStoreComponent): Ok =
+        begin
+            if maybe.isSome(x.viewMap) then
+                let comp =
+                    objects.componentShape(layout.resolvedShape(shapes.shape(ir.atomType(x.base)))
+                            x.index)
+                let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(x.viewMap)))
+                let slot = vals.call1(fn "quest_view_tuple_slot" array of vals.atom1(fn x.base) vm
+                    vals.constant(fn x.index)
+                end)
+                objects.writeSlot(fn slot comp.type vals.atom(fn x.value))
+                if parts.holdsPointer(ir.atomType(x.value)) then
+                    vals.callVoid(fn "quest_barrier_slot" array of slot end)
+                end
+            else
+                let ts = layout.resolvedShape(shapes.shape(ir.atomType(x.base)))
+                let comp = objects.componentShape(ts x.index)
+                let b = vals.atom1(fn x.base)
+                let v = vals.atom(fn x.value)
+                let barrier = parts.holdsPointer(ir.atomType(x.value))
+                case x.access
+                    when original then
+                        let o = objects.unproxy(fn b)
+                        objects.writeSlot(fn vals.offsetPtr(fn o 8 * x.index) comp.type v)
+                        if barrier then vals.callVoid(fn "quest_barrier" array of o end) end
+                    (* A var component of a proxy lives in the original
+                     * object; quest_proxy_store runs its own write
+                     * barrier *)
+                    when proxy then
+                        objects.choose(fn vals.isProxy(fn b) vals.noValuesTypes
+                                fun(): Array(Int)
+                                    begin
+                                        vals.callVoid(fn "quest_proxy_store"
+                                                array of b
+                                                    vals.constant(fn x.index)
+                                                    objects.slotToWord(fn v comp.type)
+                                                end)
+                                        vals.noValues
+                                    end
+                                fun(): Array(Int)
+                                    begin
+                                        objects.writeSlot(fn vals.offsetPtr(fn b 8 * x.index) comp.type
+                                                v)
+                                        if barrier then vals.callVoid(fn "quest_barrier" array of b end) end
+                                        vals.noValues
+                                    end)
+                        ok
+                    when direct then
+                        objects.writeSlot(fn vals.offsetPtr(fn b 8 * x.index) comp.type v)
+                        if barrier then vals.callVoid(fn "quest_barrier" array of b end) end
+                end
+            end
+        end
+
+    (* An echo of a value, by its kind or its descriptor *)
+    let echo(fn: vals.Fn x: ir.StmtEcho): Ok =
+        begin
+            let word = objects.slotToWord(fn vals.atom(fn x.value) x.type)
+            let suffix = if stringOp.length(x.prefix) > 0 then "" else " : "
+                <> genericLayout.qtypeToNameStr(x.type) end
+            let kind = describe.echoValueKind(x.type)
+            let prefix = vals.symbolAt(fn vals.stringSymbol(fn.u x.prefix))
+            let suffixAt = vals.symbolAt(fn vals.stringSymbol(fn.u suffix))
+            if stringOp.length(kind) > 0 then
+                vals.callVoid(fn "quest_print_value" array of prefix
+                    word
+                    vals.symbolAt(fn vals.stringSymbol(fn.u kind))
+                    suffixAt
+                end)
+            else
+                vals.callVoid(fn "quest_print_typed" array of prefix
+                    word
+                    descriptors.maybeDescriptor(fn x.descriptor)
+                    suffixAt
+                end)
+            end
+        end
+
+    (* A raise of an exception, with its payload as a QVal word *)
+    let raiseStatement(fn: vals.Fn x: ir.StmtRaise): Ok =
+        begin
+            let payload =
+                if maybe.isNone(x.payload) then
+                    vals.toVal(fn vals.constant(fn 0))
+                (* Convert the payload from its slot form (records and
+                 * variants are already boxed by the slots pass) to a
+                 * QVal word, matching C's shapeSlotToQval *)
+                else
+                    objects.slotToWord(fn vals.atom(fn maybe.unwrap(x.payload))
+                            ir.atomType(maybe.unwrap(x.payload)))
+                end
+            if maybe.isSome(x.descriptor) then
+                vals.callVoid(fn "quest_raise_typed_at" array of vals.atom1(fn x.exc) payload
+                    descriptors.maybeDescriptor(fn x.descriptor)
+                    vals.symbolAt(fn vals.stringSymbol(fn.u x.payloadText))
+                    vals.site(fn x.offset)
+                end)
+            else
+                vals.callVoid(fn "quest_raise_at" array of vals.atom1(fn x.exc)
+                    payload
+                    vals.site(fn x.offset)
+                end)
+            end
+            vals.terminate(fn ssa.termUnreachable)
+        end
+
     (* Emits s at fn.cur, leaving fn.cur at the block where control goes on
      * after it, which is terminated if s cannot fall through (a return, a
      * jump, a raise). A statement after a terminator is unreachable, and
@@ -385,124 +555,19 @@ export
             case s
                 when sLet with x then vals.write(fn x.v operation(fn x.value maybe.some(x.v)))
                 when sDo with x then begin operation(fn x.value maybe.none()) ok end
-                when sVarDecl with x then
-                    if not(vals.isGlobal(fn x.v)) then begin vals.slotOf(fn x.v) ok end end
-                    if maybe.isSome(x.init) then
-                        vals.write(fn x.v vals.atom(fn maybe.unwrap(x.init)))
-                    else
-                        (* Without a value, its words are null until assigned
-                         * (opIsSet), each time the declaration runs *)
-                        let ps = parts.varParts(x.v)
-                        let zeros = array of(extent ps 0)
-                        for k = 0 upto {extent ps - 1} do
-                            zeros[k] :=
-                                case ps[k].type
-                                    when typePtr then vals.null(fn)
-                                    when typeVal then vals.toVal(fn vals.constant(fn 0))
-                                    else vals.constant(fn 0)
-                                end
-                        end
-                        vals.write(fn x.v zeros)
-                    end
+                when sVarDecl with x then varDecl(fn x)
                 when sAssign with x then vals.write(fn x.v vals.atom(fn x.value))
-                when sIf with x then
-                    let c = vals.atom1(fn x.cond)
-                    let thenB = newBlock(fn)
-                    let elseB = newBlock(fn)
-                    let after = newBlock(fn)
-                    vals.terminate(fn option termBranch of ssa.Terminator with
-                        let cond = c
-                        let ifTrue = ssa.target(thenB vals.noValues)
-                        let ifFalse = ssa.target(elseB vals.noValues)
-                    end)
-                    fn.cur := thenB
-                    body(fn x.thenBody)
-                    if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
-                    fn.cur := elseB
-                    body(fn x.elseBody)
-                    if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
-                    fn.cur := after
-                when sLoop with x then
-                    vals.put(fn.labelDepth x.label vector.length(fn.handlers))
-                    let head = newBlock(fn)
-                    let after = newBlock(fn)
-                    vals.put(fn.loops x.label tuple let head = head let after = after end)
-                    vals.jump(fn head vals.noValues)
-                    fn.cur := head
-                    body(fn x.body)
-                    if not(vals.terminated(fn)) then vals.jump(fn head vals.noValues) end
-                    fn.cur := after
+                when sIf with x then ifStatement(fn x)
+                when sLoop with x then loopStatement(fn x)
                 when sBreak with x then
                     leaveTo(fn labelDepth(fn x.label))
                     vals.jump(fn hashMap.find(fn.loops x.label).after vals.noValues)
                 when sContinue with x then
                     leaveTo(fn labelDepth(fn x.label))
                     vals.jump(fn hashMap.find(fn.loops x.label).head vals.noValues)
-                when sJoin with x then
-                    (* A join point (ir.sJoin) is a block k with a block
-                     * parameter for each part of each of its parameters: the
-                     * values each jump to it passes, which it receives as a
-                     * function receives arguments. The body is built first,
-                     * where a jump to the label goes to k (sJump, below); then
-                     * the continuation is built at k. Both fall through to
-                     * after. The number of trys entered here is kept, so that
-                     * a jump from inside a try in the body leaves that try
-                     * first. *)
-                    let k = newBlock(fn)
-                    let received = array of(extent x.params vals.noValues)
-                    let counts = array of(extent x.params 0)
-                    for i = 0 upto {extent x.params - 1} do
-                        let ps = parts.varParts(x.params[i])
-                        counts[i] := extent ps
-                        let vs = array of(extent ps 0)
-                        for j = 0 upto {extent ps - 1} do vs[j] := ssa.addParam(fn.f k ps[j].type) end
-                        received[i] := vs
-                    end
-                    vals.put(fn.joins x.label k)
-                    vals.put(fn.joinParts x.label counts)
-                    vals.put(fn.labelDepth x.label vector.length(fn.handlers))
-                    let after = newBlock(fn)
-                    body(fn x.body)
-                    if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
-                    fn.cur := k
-                    (* Bind join parameters like any other variable; if a
-                     * parameter is global, writing it stores to static data so
-                     * other functions see it *)
-                    for i = 0 upto {extent x.params - 1} do vals.write(fn x.params[i] received[i]) end
-                    body(fn x.continuation)
-                    if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
-                    fn.cur := after
-                when sJump with x then
-                    (* A parameter of no parts (an Ok) takes nothing, whatever
-                     * its argument: a call at Ok of a function whose result is
-                     * generic returns a word *)
-                    let counts = hashMap.find(fn.joinParts x.label)
-                    let passed = vector.new(:Int)
-                    for i = 0 upto {extent x.args - 1} do
-                        if {i >= extent counts} orif {counts[i] > 0} then
-                            let vs = vals.atom(fn x.args[i])
-                            for k = 0 upto {extent vs - 1} do vector.append(passed vs[k]) end
-                        end
-                    end
-                    let args = vector.toArray(passed)
-                    leaveTo(fn labelDepth(fn x.label))
-                    vals.jump(fn hashMap.find(fn.joins x.label) args)
-                when sReturn with x then
-                    (* A C function returning void returns nothing, and Ok
-                     * returned as a QVal word is 0 *)
-                    let wanted = vector.length(fn.f.resultTypes)
-                    let vs = if wanted is 0 then vals.noValues else vals.atom(fn x.value) end
-                    let zero = fun(): Int
-                        begin
-                            let n = vals.constant(fn 0)
-                            case vector.get(fn.f.resultTypes 0)
-                                when typeVal then vals.toVal(fn n)
-                                when typeInt, typePtr, typeReal then n
-                            end
-                        end
-                    let values = if {wanted is 1} andif {extent vs is 0} then array of zero() end else vs end
-                    leaveTo(fn 0)
-                    vals.terminate(fn option termReturn of ssa.Terminator with let values = values end)
+                when sJoin with x then join(fn x)
+                when sJump with x then jump(fn x)
+                when sReturn with x then returnStatement(fn x)
                 when sUnreachable then vals.terminate(fn ssa.termUnreachable)
                 when sStoreAt with x then
                     (* The GC write barrier follows the store, here and below:
@@ -521,57 +586,7 @@ export
                     if parts.holdsPointer(ir.atomType(x.value)) then
                         vals.callVoid(fn "quest_barrier_slot" array of slot end)
                     end
-                when sStoreComponent with x then
-                    if maybe.isSome(x.viewMap) then
-                        let comp =
-                            objects.componentShape(layout.resolvedShape(shapes.shape(ir.atomType(x.base)))
-                                    x.index)
-                        let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(x.viewMap)))
-                        let slot = vals.call1(fn "quest_view_tuple_slot" array of vals.atom1(fn x.base) vm
-                            vals.constant(fn x.index)
-                        end)
-                        objects.writeSlot(fn slot comp.type vals.atom(fn x.value))
-                        if parts.holdsPointer(ir.atomType(x.value)) then
-                            vals.callVoid(fn "quest_barrier_slot" array of slot end)
-                        end
-                    else
-                        let ts = layout.resolvedShape(shapes.shape(ir.atomType(x.base)))
-                        let comp = objects.componentShape(ts x.index)
-                        let b = vals.atom1(fn x.base)
-                        let v = vals.atom(fn x.value)
-                        let barrier = parts.holdsPointer(ir.atomType(x.value))
-                        case x.access
-                            when original then
-                                let o = objects.unproxy(fn b)
-                                objects.writeSlot(fn vals.offsetPtr(fn o 8 * x.index) comp.type v)
-                                if barrier then vals.callVoid(fn "quest_barrier" array of o end) end
-                            (* A var component of a proxy lives in the original
-                             * object; quest_proxy_store runs its own write
-                             * barrier *)
-                            when proxy then
-                                objects.choose(fn vals.isProxy(fn b) vals.noValuesTypes
-                                        fun(): Array(Int)
-                                            begin
-                                                vals.callVoid(fn "quest_proxy_store"
-                                                        array of b
-                                                            vals.constant(fn x.index)
-                                                            objects.slotToWord(fn v comp.type)
-                                                        end)
-                                                vals.noValues
-                                            end
-                                        fun(): Array(Int)
-                                            begin
-                                                objects.writeSlot(fn vals.offsetPtr(fn b 8 * x.index) comp.type
-                                                        v)
-                                                if barrier then vals.callVoid(fn "quest_barrier" array of b end) end
-                                                vals.noValues
-                                            end)
-                                ok
-                            when direct then
-                                objects.writeSlot(fn vals.offsetPtr(fn b 8 * x.index) comp.type v)
-                                if barrier then vals.callVoid(fn "quest_barrier" array of b end) end
-                        end
-                    end
+                when sStoreComponent with x then storeComponent(fn x)
                 when sStoreElement with x then
                     let arr = vals.atom1(fn x.base)
                     let elem = aggregates.elementShape(x.base)
@@ -591,71 +606,108 @@ export
                     let state = vals.handlerState(fn x.exc)
                     vals.callVoid(fn "quest_reraise" array of state end)
                     vals.terminate(fn ssa.termUnreachable)
-                when sLetRec with x then
-                    let saved = fn.deferred
-                    let vars = maps.newIntSet()
-                    for i = 0 upto {extent x.vars - 1} do vals.mark(vars x.vars[i].id) end
-                    let d = tuple let vars = vars let captures = vector.new(:vals.DeferredCapture) end
-                    fn.deferred := maybe.some(d)
-                    body(fn x.body)
-                    for i = 0 upto {vector.length(d.captures) - 1} do
-                        let c = vector.get(d.captures i)
-                        let vs = vals.atom(fn c.a)
-                        (* The closure was made before the body ran *)
-                        for k = 0 upto {extent vs - 1} do vals.store(fn c.env c.offset + 8 * k 8 vs[k]) end
-                        if parts.holdsPointer(ir.atomType(c.a)) then
-                            vals.callVoid(fn "quest_barrier" array of c.env end)
-                        end
-                    end
-                    fn.deferred := saved
-                when sEcho with x then
-                    let word = objects.slotToWord(fn vals.atom(fn x.value) x.type)
-                    let suffix = if stringOp.length(x.prefix) > 0 then "" else " : "
-                        <> genericLayout.qtypeToNameStr(x.type) end
-                    let kind = describe.echoValueKind(x.type)
-                    let prefix = vals.symbolAt(fn vals.stringSymbol(fn.u x.prefix))
-                    let suffixAt = vals.symbolAt(fn vals.stringSymbol(fn.u suffix))
-                    if stringOp.length(kind) > 0 then
-                        vals.callVoid(fn "quest_print_value" array of prefix
-                            word
-                            vals.symbolAt(fn vals.stringSymbol(fn.u kind))
-                            suffixAt
-                        end)
-                    else
-                        vals.callVoid(fn "quest_print_typed" array of prefix
-                            word
-                            descriptors.maybeDescriptor(fn x.descriptor)
-                            suffixAt
-                        end)
-                    end
+                when sLetRec with x then letRec(fn x)
+                when sEcho with x then echo(fn x)
                 when sEchoText with x then
                     vals.callVoid(fn "quest_echo_text" array of vals.symbolAt(fn vals.stringSymbol(fn.u x.text)) end)
-                when sRaise with x then
-                    let payload =
-                        if maybe.isNone(x.payload) then
-                            vals.toVal(fn vals.constant(fn 0))
-                        (* Convert the payload from its slot form (records and
-                         * variants are already boxed by the slots pass) to a
-                         * QVal word, matching C's shapeSlotToQval *)
-                        else
-                            objects.slotToWord(fn vals.atom(fn maybe.unwrap(x.payload))
-                                    ir.atomType(maybe.unwrap(x.payload)))
-                        end
-                    if maybe.isSome(x.descriptor) then
-                        vals.callVoid(fn "quest_raise_typed_at" array of vals.atom1(fn x.exc) payload
-                            descriptors.maybeDescriptor(fn x.descriptor)
-                            vals.symbolAt(fn vals.stringSymbol(fn.u x.payloadText))
-                            vals.site(fn x.offset)
-                        end)
-                    else
-                        vals.callVoid(fn "quest_raise_at" array of vals.atom1(fn x.exc)
-                            payload
-                            vals.site(fn x.offset)
-                        end)
-                    end
-                    vals.terminate(fn ssa.termUnreachable)
+                when sRaise with x then raiseStatement(fn x)
                 else raise vals.unsupported with "statement " <> vals.statementName(s) end
             end
+        end
+
+    (* An if: a branch to its two bodies, which join after *)
+    and ifStatement(fn: vals.Fn x: ir.StmtIf): Ok =
+        begin
+            let c = vals.atom1(fn x.cond)
+            let thenB = newBlock(fn)
+            let elseB = newBlock(fn)
+            let after = newBlock(fn)
+            vals.terminate(fn option termBranch of ssa.Terminator with
+                let cond = c
+                let ifTrue = ssa.target(thenB vals.noValues)
+                let ifFalse = ssa.target(elseB vals.noValues)
+            end)
+            fn.cur := thenB
+            body(fn x.thenBody)
+            if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
+            fn.cur := elseB
+            body(fn x.elseBody)
+            if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
+            fn.cur := after
+        end
+
+    (* A loop: its head, which its body jumps back to, and the block after it,
+     * where a break goes *)
+    and loopStatement(fn: vals.Fn x: ir.StmtLoop): Ok =
+        begin
+            vals.put(fn.labelDepth x.label vector.length(fn.handlers))
+            let head = newBlock(fn)
+            let after = newBlock(fn)
+            vals.put(fn.loops x.label tuple let head = head let after = after end)
+            vals.jump(fn head vals.noValues)
+            fn.cur := head
+            body(fn x.body)
+            if not(vals.terminated(fn)) then vals.jump(fn head vals.noValues) end
+            fn.cur := after
+        end
+
+    and join(fn: vals.Fn x: ir.StmtJoin): Ok =
+        begin
+            (* A join point (ir.sJoin) is a block k with a block
+             * parameter for each part of each of its parameters: the
+             * values each jump to it passes, which it receives as a
+             * function receives arguments. The body is built first,
+             * where a jump to the label goes to k (sJump, below); then
+             * the continuation is built at k. Both fall through to
+             * after. The number of trys entered here is kept, so that
+             * a jump from inside a try in the body leaves that try
+             * first. *)
+            let k = newBlock(fn)
+            let received = array of(extent x.params vals.noValues)
+            let counts = array of(extent x.params 0)
+            for i = 0 upto {extent x.params - 1} do
+                let ps = parts.varParts(x.params[i])
+                counts[i] := extent ps
+                let vs = array of(extent ps 0)
+                for j = 0 upto {extent ps - 1} do vs[j] := ssa.addParam(fn.f k ps[j].type) end
+                received[i] := vs
+            end
+            vals.put(fn.joins x.label k)
+            vals.put(fn.joinParts x.label counts)
+            vals.put(fn.labelDepth x.label vector.length(fn.handlers))
+            let after = newBlock(fn)
+            body(fn x.body)
+            if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
+            fn.cur := k
+            (* Bind join parameters like any other variable; if a
+             * parameter is global, writing it stores to static data so
+             * other functions see it *)
+            for i = 0 upto {extent x.params - 1} do vals.write(fn x.params[i] received[i]) end
+            body(fn x.continuation)
+            if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
+            fn.cur := after
+        end
+
+    (* A let rec: its body, then the captures of the variables it binds,
+     * which the closures it made could not take before *)
+    and letRec(fn: vals.Fn x: ir.StmtLetRec): Ok =
+        begin
+            let saved = fn.deferred
+            let vars = maps.newIntSet()
+            for i = 0 upto {extent x.vars - 1} do vals.mark(vars x.vars[i].id) end
+            let d = tuple let vars = vars let captures = vector.new(:vals.DeferredCapture) end
+            fn.deferred := maybe.some(d)
+            body(fn x.body)
+            for i = 0 upto {vector.length(d.captures) - 1} do
+                let c = vector.get(d.captures i)
+                let vs = vals.atom(fn c.a)
+                (* The closure was made before the body ran *)
+                for k = 0 upto {extent vs - 1} do vals.store(fn c.env c.offset + 8 * k 8 vs[k]) end
+                if parts.holdsPointer(ir.atomType(c.a)) then
+                    vals.callVoid(fn "quest_barrier" array of c.env end)
+                end
+            end
+            fn.deferred := saved
         end
 
     (* Lowers a case on a variant or option to an SSA switch on its tag,
