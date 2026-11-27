@@ -95,7 +95,8 @@ export
         var name: String
     end
     and Component = Tuple name: maybe.T(String) shape: maybe.T(Shape) isVar: Bool end
-    and Param = Tuple name: String shape: Shape mode: String end
+    and Param = Tuple name: String shape: Shape mode: ParamMode end
+    and ParamMode = Option modeValue modeVar modeOut end
     and TypeParam = Tuple name: String symbolId: Int kind: model.Kind bound: maybe.T(Shape) end
 
     let counter = tuple let var id = 0 end
@@ -536,13 +537,18 @@ export
                         s
                     when typeFun with x then
                         let s = newShape(shapeFun t)
-                        let params = array of(extent x.params tuple let name = "" let shape = s let mode = "value" end)
+                        let params = array of(extent x.params
+                                tuple let name = "" let shape = s let mode = option modeValue of ParamMode end end)
                         for i = 0 upto {extent x.params - 1} do
                             let p = x.params[i]
                             params[i] := tuple
                                 let name = p.name
                                 let shape = shapeOf(p.type)
-                                let mode = if p.isVar then "var" elsif p.isOut then "out" else "value" end
+                                let mode =
+                                    if p.isVar then option modeVar of ParamMode end
+                                    elsif p.isOut then option modeOut of ParamMode end
+                                    else option modeValue of ParamMode end
+                                    end
                             end
                         end
                         s.params := params
