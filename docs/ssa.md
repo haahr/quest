@@ -225,7 +225,7 @@ dumps show the passes under the policy of the backend chosen (`--backend ssac` d
   what the body stored (arm64.md §3.6), and no such block gets a parameter for a promoted variable, which it never
   loads; a variable captured by a closure is a heap cell, and one passed as a `var` argument keeps its slot, its
   address escaping. `language/mutable_locals` covers each kind.
-- **`ssa/scalars`** replaces the objects that block parameters merge, which escape analysis leaves, by the values of
+- **`ssa/passes/scalars`** replaces the objects that block parameters merge, which escape analysis leaves, by the values of
   their words (§4.3): a loop that carries a tuple carries its components. It runs after promotion, which makes the
   variables a loop carries its parameters, and before `ssa/passes/constants`.
 - **`ssa/passes/constants`** makes constant the globals bound to constants. A global the unit does not export (another
@@ -539,7 +539,7 @@ that fresh tuples and options keep their identity.
 
 ### 4.3. Scalar Replacement
 
-`ssa/scalars` replaces by the values of their words the objects that escape analysis leaves because a block parameter
+`ssa/passes/scalars` replaces by the values of their words the objects that escape analysis leaves because a block parameter
 merges them: wc-scanStream's loop carries its stream, a tuple of a chunk and a position, as a parameter bound to a new
 tuple on every edge, and its reader's inlined returns join an allocated option and a constant one, a datum of the
 unit's static data, at another ([benchmarks.md](benchmarks.md) §20). MLton's SSA passes

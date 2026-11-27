@@ -13,6 +13,7 @@ import
     questlang/common/maps : questlang/common/Maps
     questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     questlang/repr/syntax : questlang/repr/Syntax
+    questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let Function = ssa.Function
@@ -427,8 +428,8 @@ export
     (* A boolean array marking every SSA value that is live (possibly read
      * before redefinition) at the start of some exception handler in f. Because
      * every path from a handler stays within the blocks reachable from
-     * handlers, liveness is computed over those blocks alone by iterating each
-     * block's live-in set to a fixed point. *)
+     * handlers, liveness is computed over those blocks alone
+     * (cfg.liveIns). *)
     let handlerLive(f: Function): Array(Bool) =
         begin
             let n = vector.length(f.blocks)
@@ -457,35 +458,7 @@ export
                     end
                 end
             end
-            let liveIn = array of(n bitset.new(0))
-            for b = 0 upto {n - 1} do if reached[b] then liveIn[b] := bitset.new(nv) end end
-            let var changed = true
-            while changed do
-                changed := false
-                for k = 0 upto {n - 1} do
-                    let b = {n - 1} - k
-                    if reached[b] then
-                        let blk = ssa.block(f b)
-                        let live = bitset.new(nv)
-                        let succs = ssa.successors(blk.term)
-                        for i = 0 upto {extent succs - 1} do bitset.unionWith(live liveIn[succs[i]]) end
-                        let uses = ssa.terminatorUses(blk.term)
-                        for i = 0 upto {extent uses - 1} do bitset.insert(live uses[i]) end
-                        for j = 0 upto {vector.length(blk.insts) - 1} do
-                            let inst = vector.get(blk.insts {vector.length(blk.insts) - 1} - j)
-                            for i = 0 upto {extent inst.results - 1} do bitset.remove(live inst.results[i]) end
-                            for i = 0 upto {extent inst.args - 1} do bitset.insert(live inst.args[i]) end
-                        end
-                        for i = 0 upto {vector.length(blk.params) - 1} do
-                            bitset.remove(live vector.get(blk.params i))
-                        end
-                        if not(bitset.equal(live liveIn[b])) then
-                            bitset.assign(liveIn[b] live)
-                            changed := true
-                        end
-                    end
-                end
-            end
+            let liveIn = cfg.liveIns(f reached)
             for i = 0 upto {vector.length(handlers) - 1} do
                 let live = bitset.elements(liveIn[vector.get(handlers i)])
                 for j = 0 upto {extent live - 1} do result[live[j]] := true end

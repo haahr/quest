@@ -19,13 +19,17 @@
  *   one of whose predecessors it does dominate: the joins where a value
  *   stored in b may meet another;
  * - on demand, loop depths, by which the register allocator and the arm64
- *   block layout estimate how often a block runs.
+ *   block layout estimate how often a block runs;
+ * - on demand, the values live into each of a set of blocks closed under
+ *   successors (liveIns), which ssac asks of the blocks a try's handler
+ *   reaches.
  *
  * A graph describes the function as it was when it was made; a pass that
  * changes the blocks or their terminators makes it again. *)
 
 interface CFG
 import
+    collections/bitset : collections/Bitset
     collections/vector : collections/Vector
 
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
@@ -78,6 +82,12 @@ export
     (* Each block's loop depth: the number of natural loops (of back edges to
      * a block that dominates their source) it is in *)
     loopDepths(g: Graph): Array(Int)
+    (* The values live into each block of f that within marks (possibly read
+     * before they are defined again), by block, each a set of value numbers
+     * (an empty one for a block within does not mark). The marked blocks must
+     * be closed under successors, since nothing is taken to be live out of
+     * the others; each block's set is iterated to a fixed point. *)
+    liveIns(f: ssa.Function within: Array(Bool)): Array(bitset.T)
     (* What cutTail takes from a block: its instructions from an index on,
      * its terminator, and the terminator's position *)
     Def Tail = Tuple insts: vector.T(ssa.Inst) term: ssa.Terminator termLoc: ssa.Loc end
