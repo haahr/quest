@@ -80,6 +80,14 @@ algorithm with a stack of its own rather than recursion: the tail jumps pass use
 the SSA's functions, and the inliner for recursion among the IR's. `types/canonical` keeps its own walk, since it does
 each component's work as the walk completes it.
 
+## Keyed maps and sets
+
+Nearly every table in the compiler is keyed by an integer (a symbol's, a variable's, or a node's id) or by a name.
+[`maps.int.quest`](maps.int.quest) names those maps and sets: `IntMap(V)` and `StringMap(V)`, operators over the
+values' type, and `IntSet` and `StringSet`, all transparent, so `collections/hashMap`'s and `collections/hashSet`'s
+operations apply to them. Their constructors, `newIntMap`, `newStringMap`, `newIntSet`, and `newStringSet`, supply the
+key's equality and hash, and `newIntMap()` with no type argument takes its values' type from where the map goes.
+
 [`strings.int.quest`](strings.int.quest) holds the one string helper the compiler needs beyond `lib/util/strutil`. It
 lives here rather than in `lib/` because the released compiler that builds this one compiles it against the release's
 own `lib/`.

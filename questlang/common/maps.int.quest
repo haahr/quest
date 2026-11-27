@@ -1,0 +1,28 @@
+(* Quest Self-Hosted Compiler: Keyed Maps and Sets Interface
+ *
+ * Hash maps and sets keyed by integers or by strings, which is how the
+ * compiler keys nearly all of its tables: by symbol, variable, or node id,
+ * or by name. Each type is an operator over the map's values (of kind
+ * ALL(V::TYPE) TYPE) or a set, transparent, so collections/hashMap's and
+ * collections/hashSet's operations apply to them as they are; the
+ * constructors supply the key's equality and hash, which every map would
+ * otherwise repeat. A constructor called with no type argument takes its
+ * value type from where its result goes: let m: maps.IntMap(String) =
+ * maps.newIntMap(). *)
+
+interface Maps
+import
+    collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
+export
+    Def IntMap = Fun(V::TYPE) hashMap.T(Int V)
+    Def StringMap = Fun(V::TYPE) hashMap.T(String V)
+    Def IntSet = hashSet.T(Int)
+    Def StringSet = hashSet.T(String)
+
+    (* An empty map, or set *)
+    newIntMap(V::TYPE)(): IntMap(V)
+    newStringMap(V::TYPE)(): StringMap(V)
+    newIntSet(): IntSet
+    newStringSet(): StringSet
+end

@@ -48,6 +48,7 @@ questlang/
 │   ├── pyrepr               # Python's repr of strings, lists, and tuples, as the bootstrap's messages show them
 │   ├── strings              # String helpers beyond lib/util/strutil's (isOneOf)
 │   ├── scc                  # Strongly connected components (Tarjan's), for tail jumps and the inliner
+│   ├── maps                 # Maps and sets keyed by Int or String (IntMap(V), StringMap(V), IntSet, StringSet)
 │   └── sha256               # SHA-256, for layout tags, type digests, and fingerprints
 │
 ├── syntax/                  # Concrete syntax and parsing
