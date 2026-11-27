@@ -122,24 +122,15 @@ let cPhases = commandLine.cPhases
 let isOneOf = strings.isOneOf
 let usage(message: String): Ok = commandLine.usage(message)
 
-(* quest fmt formats source files and exits (questlang/format) *)
-if commandLine.fmtMode then
-    let rest = array of(extent(system.args) - 2 "")
-    for i = 2 upto {extent(system.args) - 1} do rest[i - 2] := system.args[i] end
-    format.main(rest)
-end
-
-(* quest lsp serves the Language Server Protocol on standard input and output
- * until the client exits it (docs/lsp.md) *)
-if commandLine.lspMode then
-    if extent(system.args) > 2 then usage("lsp takes no arguments") end
-    system.sysexit(server.run())
-end
-
-(* A whole program's modules are one unit, so their abstract types are laid out
- * as their representations are, everywhere (docs/ir.md section 4.1) *)
-if options.wholeProgram then shapes.setTransparentAbstractTypes(true) end
-inlined.setInlined(options.inlineLibrary options.inlineModules)
+(* The settings of a compilation, made before any unit is checked: a whole
+ * program's modules are one unit, so their abstract types are laid out as
+ * their representations are, everywhere (docs/ir.md section 4.1); and the
+ * modules inlined into their importers (ir/opened) *)
+let programSettings(): Ok =
+    begin
+        if options.wholeProgram then shapes.setTransparentAbstractTypes(true) end
+        inlined.setInlined(options.inlineLibrary options.inlineModules)
+    end
 
 (* The text a reader holds *)
 let readAll(r: reader.T): String =
@@ -1196,27 +1187,24 @@ let buildProgram(): Ok =
         finish(bag sm)
     end
 
-(* A worker of a parallel build compiles one module (build/workers). A
- * program goes to the build engine when it is to be built into a binary
- * (compile, or -o) and nothing asks for another path: no --whole-program, no
- * phase or dump, no --echo, no compile --emit-c or --print-result, a file
- * rather than -e or standard input, and a backend other than wasm (whose
- * programs run() builds and runs; docs/wasm.md section 8.2); anything else
- * goes through run(). A unit file is compiled alone unless a phase or -e asks
- * for it to be run. *)
-if workers.isUnitMode(system.args) then
-    workers.unitMain(system.args)
-else
-    case units.unitKind(options.file)
-        when programUnit then
-            if {compileMode orif maybe.isSome(options.output)} andif not(options.wholeProgram)
-                    andif not(options.stopGiven) andif {extent options.dumpAfter is 0} andif not(options.echo)
-                    andif not(compileMode andif {options.emitC orif options.printResult}) andif options.fromFile
-                    andif not(choice.isWasm(programBackend)) then
-                buildProgram()
-            else
-                run()
-            end
-        else if options.stopGiven orif maybe.isSome(options.code) then run() else compileUnitFile() end
-    end
+(* What the command line asks for (options.Command) *)
+case commandLine.command
+    when commandFmt then
+        (* quest fmt formats source files and exits (questlang/format) *)
+        begin
+            let rest = array of(extent(system.args) - 2 "")
+            for i = 2 upto {extent(system.args) - 1} do rest[i - 2] := system.args[i] end
+            format.main(rest)
+        end
+    when commandLsp then
+        (* quest lsp serves the Language Server Protocol on standard input and
+         * output until the client exits it (docs/lsp.md) *)
+        begin
+            if extent(system.args) > 2 then usage("lsp takes no arguments") end
+            system.sysexit(server.run())
+        end
+    when commandWorker then begin programSettings() workers.unitMain(system.args) end
+    when commandUnitFile then begin programSettings() compileUnitFile() end
+    when commandBuild then begin programSettings() buildProgram() end
+    when commandRun then begin programSettings() run() end
 end

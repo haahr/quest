@@ -560,4 +560,27 @@ export
                 let reportInferable = reportInferable
             end
         end
+
+    Let Command = Option commandFmt commandLsp commandWorker commandUnitFile commandBuild commandRun end
+    let command: Command =
+        if fmtMode then
+            option commandFmt of Command end
+        elsif lspMode then
+            option commandLsp of Command end
+        elsif workers.isUnitMode(system.args) then
+            option commandWorker of Command end
+        elsif not(isProgramFile(options.file)) then
+            if options.stopGiven orif maybe.isSome(options.code) then
+                option commandRun of Command end
+            else
+                option commandUnitFile of Command end
+            end
+        elsif {compileMode orif maybe.isSome(options.output)} andif not(options.wholeProgram)
+                andif not(options.stopGiven) andif {extent options.dumpAfter is 0} andif not(options.echo)
+                andif not(compileMode andif {options.emitC orif options.printResult}) andif options.fromFile
+                andif not(choice.isWasm(choice.forUnit(options.backends choice.programUnit))) then
+            option commandBuild of Command end
+        else
+            option commandRun of Command end
+        end
 end

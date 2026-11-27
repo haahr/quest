@@ -80,4 +80,20 @@ export
         reportInferable: String
     end
     options: T
+
+    (* What the driver does with its command line, decided once:
+     * - fmt formats files and lsp serves the language server, with arguments
+     *   of their own;
+     * - a worker of a parallel build compiles one module (build/workers);
+     * - a unit file (an interface or module) is compiled alone, unless a phase
+     *   or -e asks for it to be run;
+     * - a program goes to the build engine (build) when it is to be built
+     *   into a binary (compile, or -o) and nothing asks for another path: no
+     *   --whole-program, no phase or dump, no --echo, no compile --emit-c or
+     *   --print-result, a file rather than -e or standard input, and a backend
+     *   other than wasm, whose programs run builds and runs (docs/wasm.md
+     *   section 8.2);
+     * - anything else runs through the phases (run). *)
+    Def Command = Option commandFmt commandLsp commandWorker commandUnitFile commandBuild commandRun end
+    command: Command
 end
