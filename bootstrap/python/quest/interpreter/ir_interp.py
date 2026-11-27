@@ -38,6 +38,7 @@ from quest.interpreter.primitives import (
     ARRAY_OP_ERROR_EXC,
     QuestRuntimeError,
     VARIANT_ERROR_EXC,
+    inspect_matches,
     int_arithmetic,
     int_relational,
     real_arithmetic,
@@ -80,7 +81,10 @@ from quest.values.model import (
     QTypeValue,
     QValue,
     QVariant,
+    bind_type_arguments,
     qvalue_is,
+    runs_when_applied,
+    unwrap_refs,
 )
 from quest.ir import nodes as ir
 from quest.types import (
@@ -91,7 +95,6 @@ from quest.types import (
     QTupleTypeBinding,
     QTupleTypeFormal,
     QType,
-    is_subtype,
     is_type_equal,
 )
 from quest.repr.descriptors import hole_var
@@ -220,9 +223,8 @@ class _Closure(TailCallable):
         return self.interp.renv.call_stack
 
     def instantiate(self, interp: Interpreter, type_args: tuple[QType, ...]) -> _Closure:
-        unbound = [tp.symbol_id for tp in self.function.type_params if tp.symbol_id not in self.type_bindings]
-        bindings = dict(self.type_bindings)
-        bindings.update(zip(unbound, type_args))
+        params = [tp.symbol_id for tp in self.function.type_params]
+        bindings = bind_type_arguments(self.type_bindings, params, type_args)
         return _Closure(interp, self.function, self.frame, bindings, self.env)
 
     def to_str(self, visited: Optional[set[int]] = None) -> str:
@@ -336,8 +338,7 @@ class Interpreter:
         record = self.module(module)
         if not isinstance(record, QRecord):
             raise IRInterpreterError(f"module '{module.name}' is a {record.type_name}")
-        value = record.get(member)
-        return value.deref() if isinstance(value, QRef) else value
+        return record.read_field(member)
 
     # Atoms
 
@@ -410,7 +411,11 @@ class Interpreter:
         match callee:
             case _Closure(function=f):
                 inst = callee.instantiate(self, type_args)
-                if not f.params and len(inst.type_bindings) >= len(f.type_params) and not _is_function_type(f):
+                # A function whose type parameters are its only parameters: it
+                # has no value parameters, and its type, applied to all its
+                # types, is not a function's
+                type_only = not f.params and not _is_function_type(f)
+                if runs_when_applied(type_only, [tp.symbol_id for tp in f.type_params], inst.type_bindings):
                     return self.apply(inst, [])
                 return inst
             case QClosure():
@@ -480,17 +485,17 @@ class Interpreter:
             case ir.MakeTuple(args=args, type_components=type_components):
                 return self.make_tuple(self.atoms(args, frame), type_components, result, frame)
             case ir.TupleField(tuple=t, index=index):
-                tup = _deref(self.atom(t, frame))
+                tup = unwrap_refs(self.atom(t, frame))
                 return tup.elements[_element_index(tup, index)]
             case ir.MakeRecord(fields=fields):
                 return QRecord({
                     name: QRef(self.atom(a, frame)) if is_var else self.atom(a, frame) for name, a, is_var in fields
                 })
             case ir.RecordField(record=r, name=name):
-                rec = _deref(self.atom(r, frame))
+                rec = unwrap_refs(self.atom(r, frame))
                 if isinstance(rec, QTuple):
                     return rec.get_by_name(name)
-                return _deref(rec.get(name))
+                return unwrap_refs(rec.get(name))
             case ir.MakeVariant(tag=tag, payload=payload):
                 return QVariant(tag=tag, payload=self.atom(payload, frame) if payload is not None else None)
             case ir.MakeOption(tag=tag, payload=payload, ordinal=ordinal, offset=offset, cases=cases):
@@ -550,7 +555,7 @@ class Interpreter:
                 # A cell declared without a value holds _UNSET until assigned
                 return QBool(frame.lookup(var).value is not _UNSET)
             case ir.Load(address=a):
-                return _deref(self.atom(a, frame))
+                return unwrap_refs(self.atom(a, frame))
         raise IRInterpreterError(f"not an operation: {type(o).__name__}")
 
     def prim(self, op: str, args: list[QValue], at: Optional[QType] = None) -> QValue:
@@ -654,17 +659,17 @@ class Interpreter:
             case ir.AddrCell(init=init):
                 return QRef(self.atom(init, frame))
             case ir.AddrField(base=b, name=name):
-                cell = _deref(self.atom(b, frame)).get(name)
+                cell = unwrap_refs(self.atom(b, frame)).get(name)
                 if not isinstance(cell, QRef):
                     raise QuestRuntimeError(f"Field '{name}' is not mutable")
                 return cell
             case ir.AddrComponent(base=b, index=index):
-                base = _deref(self.atom(b, frame))
+                base = unwrap_refs(self.atom(b, frame))
                 i = _element_index(base, index)
                 element = base.elements[i]
                 return element if isinstance(element, QRef) else QTupleElementRef(base, i)
             case ir.AddrElement(base=b, index=index, offset=offset):
-                base = _deref(self.atom(b, frame))
+                base = unwrap_refs(self.atom(b, frame))
                 idx = self.atom(index, frame).value
                 if idx < 0 or idx >= base.size():
                     raise self.raising(ARRAY_OP_ERROR_EXC, offset)
@@ -677,21 +682,16 @@ class Interpreter:
             case ir.StoreAt(address=address):
                 self.atom(address, frame).assign(value)
             case ir.StoreField(base=b, name=name):
-                base = _deref(self.atom(b, frame))
-                cell = base.fields.get(name)
-                if isinstance(cell, QRef):
-                    cell.assign(value)
-                else:
-                    base.fields[name] = value
+                unwrap_refs(self.atom(b, frame)).store_field(name, value)
             case ir.StoreComponent(base=b, index=index):
-                base = _deref(self.atom(b, frame))
+                base = unwrap_refs(self.atom(b, frame))
                 i = _element_index(base, index)
                 if isinstance(base.elements[i], QRef):
                     base.elements[i].assign(value)
                 else:
                     base.set_by_index(i, value)
             case ir.StoreElement(base=b, index=index, offset=offset):
-                base = _deref(self.atom(b, frame))
+                base = unwrap_refs(self.atom(b, frame))
                 idx = self.atom(index, frame).value
                 if idx < 0 or idx >= base.size():
                     raise self.raising(ARRAY_OP_ERROR_EXC, offset)
@@ -770,7 +770,7 @@ class Interpreter:
                     if c.descriptor is not None:
                         self.check_descriptors((c.descriptor,), (c.match_type,), frame)
                     match_type = frame.resolve(c.match_type)
-                    if is_type_equal(v.type_val, match_type) if c.exact else is_subtype(v.type_val, match_type):
+                    if inspect_matches(v.type_val, match_type, c.exact):
                         for b in c.binders:
                             frame.values[id(b)] = v.value
                         return self.body(c.body, frame)
@@ -872,12 +872,6 @@ def _returns(statements: list, i: int, var: ir.Var, returning: frozenset[str]) -
             return s.label in returning and len(s.args) == 1 and s.args[0] is var
         return False
     return False
-
-
-def _deref(v: QValue) -> QValue:
-    while isinstance(v, QRef):
-        v = v.deref()
-    return v
 
 
 def _element_index(tup: QTuple, index: int) -> int:

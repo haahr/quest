@@ -29,6 +29,8 @@ from quest.interpreter.primitives import (
     QuestRuntimeError,
     STACK_OVERFLOW_EXC,
     VARIANT_ERROR_EXC,
+    check_index,
+    inspect_matches,
     int_arithmetic,
     int_relational,
     real_arithmetic,
@@ -65,14 +67,13 @@ from quest.values.model import (
     QValue,
     QVariant,
     qvalue_is,
+    unwrap_refs,
 )
 from quest.types.reduce import option_case_names
 from quest.types import (
     QOptionType,
     QTupleType,
     QType,
-    is_subtype,
-    is_type_equal,
 )
 from quest.typechecker.typed_ast import (
     binding_members,
@@ -487,9 +488,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment, tail: bool = False) -> Q
             return target_val.deref() if isinstance(target_val, QRef) else target_val
 
         case TypedSelectRef(target=tgt, field=fld, offset=offset):
-            rec_val = eval_expr(tgt, env)
-            while isinstance(rec_val, QRef):
-                rec_val = rec_val.deref()
+            rec_val = unwrap_refs(eval_expr(tgt, env))
             if not isinstance(rec_val, QRecord):
                 raise QuestRuntimeError("Field selection target must be Record", offset=offset)
             field_cell = rec_val.get(fld)
@@ -498,17 +497,14 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment, tail: bool = False) -> Q
             raise QuestRuntimeError(f"Field '{fld}' is not mutable", offset=offset)
 
         case TypedIndexRef(target=tgt, index=idx, offset=offset):
-            arr_val = eval_expr(tgt, env)
-            while isinstance(arr_val, QRef):
-                arr_val = arr_val.deref()
+            arr_val = unwrap_refs(eval_expr(tgt, env))
             if not isinstance(arr_val, QArray):
                 raise QuestRuntimeError(f"Index target must be Array, got {arr_val.type_name}", offset=offset)
             idx_val = eval_expr(idx, env)
             if not isinstance(idx_val, QInt):
                 raise QuestRuntimeError(f"Array index must be Int, got {idx_val.type_name}", offset=offset)
             i = idx_val.value
-            if i < 0 or i >= arr_val.size():
-                raise QuestException(ARRAY_OP_ERROR_EXC, offset=offset)
+            check_index(arr_val, i, offset)
             return QArrayElementRef(arr_val, i)
 
         case TypedTupleSelectRef(target=tgt, index=idx, field=fld, offset=offset):
@@ -518,9 +514,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment, tail: bool = False) -> Q
                 tup_val = _own_payload(tgt, env)
                 idx = idx - 1 if idx >= 0 else idx
             else:
-                tup_val = eval_expr(tgt, env)
-            while isinstance(tup_val, QRef):
-                tup_val = tup_val.deref()
+                tup_val = unwrap_refs(eval_expr(tgt, env))
             if not isinstance(tup_val, QTuple):
                 raise QuestRuntimeError(f"Tuple select target must be Tuple, got {tup_val.type_name}", offset=offset)
             val_idx = idx
@@ -552,16 +546,10 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment, tail: bool = False) -> Q
                         env.assign(name, rhs_val, offset=offset)
                     return OK_VALUE
                 case TypedSelect(target=rec_expr, field=field):
-                    rec_val = eval_expr(rec_expr, env)
-                    while isinstance(rec_val, QRef):
-                        rec_val = rec_val.deref()
+                    rec_val = unwrap_refs(eval_expr(rec_expr, env))
                     rhs_val = eval_expr(val, env)
                     if isinstance(rec_val, QRecord):
-                        field_cell = rec_val.get(field)
-                        if isinstance(field_cell, QRef):
-                            field_cell.assign(rhs_val)
-                        else:
-                            rec_val.fields[field] = rhs_val
+                        rec_val.store_field(field, rhs_val)
                         return OK_VALUE
                     elif isinstance(rec_val, QTuple):
                         rec_val.set_by_name(field, rhs_val)
@@ -788,13 +776,10 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment, tail: bool = False) -> Q
             return QTuple(elements=tuple(elems), labels=labels)
 
         case TypedSelect(target=target, field=field, offset=offset):
-            target_val = eval_expr(target, env)
-            while isinstance(target_val, QRef):
-                target_val = target_val.deref()
+            target_val = unwrap_refs(eval_expr(target, env))
             match target_val:
                 case QRecord():
-                    field_val = target_val.get(field)
-                    return field_val.deref() if isinstance(field_val, QRef) else field_val
+                    return target_val.read_field(field)
                 case QTuple():
                     return target_val.get_by_name(field)
                 case _:
@@ -823,8 +808,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment, tail: bool = False) -> Q
             idx_val = eval_expr(index, env)
             match (target_val, idx_val):
                 case (QArray(), QInt(value=idx)):
-                    if idx < 0 or idx >= target_val.size():
-                        raise QuestException(ARRAY_OP_ERROR_EXC, offset=offset)
+                    check_index(target_val, idx, offset)
                     return target_val.get(idx)
                 case (QArray(), _):
                     raise QuestRuntimeError(f"Array index must be Int, got {idx_val.type_name}", offset=offset)
@@ -837,8 +821,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment, tail: bool = False) -> Q
             rhs_val = eval_expr(value, env)
             match (target_val, idx_val):
                 case (QArray(), QInt(value=idx)):
-                    if idx < 0 or idx >= target_val.size():
-                        raise QuestException(ARRAY_OP_ERROR_EXC, offset=offset)
+                    check_index(target_val, idx, offset)
                     target_val.set(idx, rhs_val)
                     return OK_VALUE
                 case (QArray(), _):
@@ -1013,11 +996,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment, tail: bool = False) -> Q
                 )
             for branch in branches:
                 match_type = env.resolve_type(branch.match_type)
-                if (
-                    is_type_equal(target_dyn.type_val, match_type)
-                    if branch.exact
-                    else is_subtype(target_dyn.type_val, match_type)
-                ):
+                if inspect_matches(target_dyn.type_val, match_type, branch.exact):
                     if branch.binders:
                         child_env = env.push_scope()
                         for b_sym in branch.binders:

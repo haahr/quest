@@ -14,6 +14,7 @@ import
     questlang/common/strings : questlang/common/Strings
     tm = questlang/types/model : questlang/types/Model
     questlang/types/reduce : questlang/types/Reduce
+    questlang/types/subtyping : questlang/types/Subtyping
     questlang/values/model : questlang/values/Model
 export
     let arrayOpError = model.exceptionValue("arrayOp.error")
@@ -152,6 +153,14 @@ export
         end
 
     let inBounds(a: Array(model.Value) i: Int): Bool = {i >= 0} andif {i < extent a}
+
+    let checkIndex(a: Array(model.Value) i: Int offset: maybe.T(Int)): Ok =
+        if not(inBounds(a i)) then model.raiseException(:Ok arrayOpError offset) end
+
+    let inspectMatches(valueType: tm.Type matchType: tm.Type exact: Bool): Bool =
+        if exact then subtyping.isTypeEqual(valueType matchType maybe.none())
+        else subtyping.isSubtype(valueType matchType maybe.none())
+        end
 
     let rec sameAt(t: tm.Type v1: model.Value v2: model.Value): Bool =
         model.same(v1 v2) orif case v1

@@ -26,7 +26,6 @@ import
     questlang/types/env : questlang/types/Env
     tm = questlang/types/model : questlang/types/Model
     questlang/types/reduce : questlang/types/Reduce
-    questlang/types/subtyping : questlang/types/Subtyping
     questlang/types/symbols : questlang/types/Symbols
     questlang/values/model : questlang/values/Model
 export
@@ -327,50 +326,18 @@ export
             else model.internalError("A closure of a non-function" at(fun0.offset))
         end
 
-    let bindTypesInto(into: maps.IntMap(tm.Type) from: maps.IntMap(tm.Type)): Ok =
-        begin
-            let ids = hashMap.keys(from)
-            for i = 0 upto {vector.length(ids) - 1} do
-                let id = vector.get(ids i)
-                hashMap.insert(into id hashMap.find(from id))
-            end
-        end
-
     (* The closure with its next unbound type parameters bound to typeArgs (a
      * type application) *)
     let instantiate(c: model.Closure typeArgs: Array(tm.Type)): model.Closure =
-        begin
-            let bindings = maps.newIntMap(:tm.Type)
-            bindTypesInto(bindings c.typeBindings)
-            let var next = 0
-            for i = 0 upto {extent c.typeParamIds - 1} do
-                let id = c.typeParamIds[i]
-                if not(hashMap.contains(c.typeBindings id)) andif {next < extent typeArgs} then
-                    hashMap.insert(bindings id typeArgs[next])
-                    next := next + 1
-                end
-            end
-            tuple
-                let params = c.params
-                let body = c.body
-                let env = c.env
-                let name = c.name
-                let typeParamIds = c.typeParamIds
-                let typeBindings = bindings
-                let typeOnly = c.typeOnly
-                let traceName = c.traceName
-            end
-        end
-
-    (* Whether applying the closure to types runs it: when its type parameters
-     * are its only parameters, and all of them are bound *)
-    let runsWhenApplied(c: model.Closure): Bool =
-        begin
-            let var all = c.typeOnly
-            for i = 0 upto {extent c.typeParamIds - 1} do
-                if not(hashMap.contains(c.typeBindings c.typeParamIds[i])) then all := false end
-            end
-            all
+        tuple
+            let params = c.params
+            let body = c.body
+            let env = c.env
+            let name = c.name
+            let typeParamIds = c.typeParamIds
+            let typeBindings = model.bindTypeArguments(c.typeBindings c.typeParamIds typeArgs)
+            let typeOnly = c.typeOnly
+            let traceName = c.traceName
         end
 
     let reversedStack(f: Frame): Array(String) =
@@ -398,8 +365,6 @@ export
     (* ======================================================================
      * 3. Expressions
      * ====================================================================== *)
-
-    let rec unwrapRefs(v: Value): Value = case v when vRef with r then unwrapRefs(model.deref(r.r)) else v end
 
     (* The position of an option's case among its type's cases *)
     let position(names: Array(String) tag: String): Int =
@@ -557,7 +522,7 @@ export
                     let v = evalExpr(x.target f)
                     case v when vRef with r then model.deref(r.r) else v end
                 when exprSelectRef with x then
-                    case unwrapRefs(evalExpr(x.target f))
+                    case model.unwrapRefs(evalExpr(x.target f))
                         when vRecord with r then
                             let cell = hashMap.find(r.r.fields x.field)
                             if cell?vRef then cell
@@ -566,13 +531,11 @@ export
                         else model.internalError("Field selection target must be Record" offset)
                     end
                 when exprIndexRef with x then
-                    let target = unwrapRefs(evalExpr(x.target f))
+                    let target = model.unwrapRefs(evalExpr(x.target f))
                     case target
                         when vArray with a then
                             let i = indexOf(evalExpr(x.index f) offset)
-                            if not(primitives.inBounds(a.a i)) then
-                                model.raiseException(:Ok primitives.arrayOpError offset)
-                            end
+                            primitives.checkIndex(a.a i offset)
                             option vRef of Value with
                                 let r = tuple
                                     let form = option arrayElement of model.RefForm with
@@ -590,10 +553,10 @@ export
                     let target =
                         if maybe.isSome(through) then
                             option vTuple of Value with
-                                let t = ownPayload(unwrapRefs(evalExpr(extracted(x.target) f)) x.target)
+                                let t = ownPayload(model.unwrapRefs(evalExpr(extracted(x.target) f)) x.target)
                             end
                         else
-                            unwrapRefs(evalExpr(x.target f))
+                            model.unwrapRefs(evalExpr(x.target f))
                         end
                     case target
                         when vTuple with t then
@@ -633,7 +596,7 @@ export
                          * own component f (matching a case binder). Evaluate o
                          * and check its tag before evaluating v. *)
                         let ex = maybe.unwrap(through)
-                        let payload = ownPayload(unwrapRefs(evalExpr(extracted(ex) f)) ex)
+                        let payload = ownPayload(model.unwrapRefs(evalExpr(extracted(ex) f)) ex)
                         let rhs = evalExpr(x.value f)
                         case x.target.form
                             when exprSelect with s then storeComponent(payload s.field rhs offset)
@@ -650,14 +613,10 @@ export
                                     else assignName(f v.name rhs offset)
                                 end
                             when exprSelect with s then
-                                let target = unwrapRefs(evalExpr(s.target f))
+                                let target = model.unwrapRefs(evalExpr(s.target f))
                                 let rhs = evalExpr(x.value f)
                                 case target
-                                    when vRecord with r then
-                                        case hashMap.find(r.r.fields s.field)
-                                            when vRef with cell then model.assign(cell.r rhs)
-                                            else begin hashMap.insert(r.r.fields s.field rhs) ok end
-                                        end
+                                    when vRecord with r then model.fieldSet(r.r s.field rhs)
                                     when vTuple with t then storeComponent(t.t s.field rhs offset)
                                     else
                                         model.internalError(:Ok "Field assignment target must be Record or Tuple"
@@ -683,7 +642,11 @@ export
                     end
                     case callee
                         when vClosure with c then
-                            if runsWhenApplied(c.c) then runClosure(c.c array of :Value end offset) else callee end
+                            if model.runsWhenApplied(c.c.typeOnly c.c.typeParamIds c.c.typeBindings) then
+                                runClosure(c.c array of :Value end offset)
+                            else
+                                callee
+                            end
                         else callee
                     end
                 when exprApp with x then
@@ -797,13 +760,14 @@ export
                     end
                 when exprTuple with x then evalTuple(e.type x.elements x.simultaneousGroups f)
                 when exprSelect with x then
-                    let target = unwrapRefs(evalExpr(x.target f))
+                    let target = model.unwrapRefs(evalExpr(x.target f))
                     case target
                         when vRecord with r then
-                            case hashMap.find(r.r.fields x.field)
-                                when vRef with cell then model.deref(cell.r)
-                                else hashMap.find(r.r.fields x.field)
+                            let found = model.fieldGet(r.r x.field)
+                            if maybe.isNone(found) then
+                                model.internalError(:Value "Record has no field '" <> x.field <> "'" offset)
                             end
+                            maybe.unwrap(found)
                         when vTuple with t then
                             let found = model.tupleGet(t.t x.field)
                             if maybe.isNone(found) then noComponent(:Value x.field offset) end
@@ -830,9 +794,7 @@ export
                     case target
                         when vArray with a then
                             let i = indexOf(idx offset)
-                            if not(primitives.inBounds(a.a i)) then
-                                model.raiseException(:Ok primitives.arrayOpError offset)
-                            end
+                            primitives.checkIndex(a.a i offset)
                             a.a[i]
                         else model.internalError("Index target must be Array, got " <> model.typeName(target) offset)
                     end
@@ -843,9 +805,7 @@ export
                     case target
                         when vArray with a then
                             let i = indexOf(idx offset)
-                            if not(primitives.inBounds(a.a i)) then
-                                model.raiseException(:Ok primitives.arrayOpError offset)
-                            end
+                            primitives.checkIndex(a.a i offset)
                             a.a[i] := rhs
                             model.okValue
                         else model.internalError("Index target must be Array, got " <> model.typeName(target) offset)
@@ -950,18 +910,7 @@ export
                                 else
                                     maybe.none(:tm.Type)
                                 end
-                            raise model.runError with
-                                tuple
-                                    let cause = option raised of model.Cause with
-                                        let exc = exc.e
-                                        let payload = payload
-                                        let payloadType = payloadType
-                                    end
-                                    let var offset = offset
-                                    let var sourceMap = maybe.none()
-                                    let var frames = maybe.none()
-                                end
-                            end
+                            raise model.runError with model.raisedError(exc.e payload payloadType offset) end
                         else model.internalError("Target of raise must be Exception, got "
                             <> model.typeName(evalExpr(x.exc f)) offset)
                     end
@@ -1025,13 +974,7 @@ export
                             while maybe.isNone(result) andif {i < extent x.branches} do
                                 let b = x.branches[i]
                                 let matchType = resolveType(f b.matchType)
-                                let matches =
-                                    if b.exact then
-                                        subtyping.isTypeEqual(a.a.type matchType maybe.none())
-                                    else
-                                        subtyping.isSubtype(a.a.type matchType maybe.none())
-                                    end
-                                if matches then
+                                if primitives.inspectMatches(a.a.type matchType b.exact) then
                                     result := maybe.some(if extent b.binders > 0 then
                                         let child = pushScope(f)
                                         for j = 0 upto {extent b.binders - 1} do

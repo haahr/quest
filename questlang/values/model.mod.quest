@@ -230,6 +230,48 @@ export
                 end
         end
 
+    let rec unwrapRefs(v: Value): Value = case v when vRef with r then unwrapRefs(deref(r.r)) else v end
+
+    let fieldGet(r: RecordValue name: String): maybe.T(Value) =
+        begin
+            let found = hashMap.get(r.fields name)
+            if maybe.isNone(found) then
+                found
+            else
+                case maybe.unwrap(found)
+                    when vRef with c then maybe.some(deref(c.r))
+                    else found
+                end
+            end
+        end
+
+    let fieldSet(r: RecordValue name: String v: Value): Ok =
+        case hashMap.find(r.fields name)
+            when vRef with cell then assign(cell.r v)
+            else begin hashMap.insert(r.fields name v) ok end
+        end
+
+    let bindTypeArguments(bound: maps.IntMap(tm.Type) params: Array(Int) args: Array(tm.Type)): maps.IntMap(tm.Type) =
+        begin
+            let bindings = maps.newIntMap(:tm.Type)
+            hashMap.forEach(bound fun(k: Int t: tm.Type): Ok begin hashMap.insert(bindings k t) ok end)
+            let var next = 0
+            for i = 0 upto {extent params - 1} do
+                if not(hashMap.contains(bound params[i])) andif {next < extent args} then
+                    hashMap.insert(bindings params[i] args[next])
+                    next := next + 1
+                end
+            end
+            bindings
+        end
+
+    let runsWhenApplied(typeOnly: Bool params: Array(Int) bound: maps.IntMap(tm.Type)): Bool =
+        begin
+            let var all = typeOnly
+            for i = 0 upto {extent params - 1} do if not(hashMap.contains(bound params[i])) then all := false end end
+            all
+        end
+
     (* ======================================================================
      * 3. Type names and identity
      * ====================================================================== *)
@@ -461,22 +503,26 @@ export
 
     let runError: Exception(RunError) = exception runError: RunError end
 
-    let raiseError(A::TYPE cause: Cause offset: maybe.T(Int)): A =
-        raise runError with
-            tuple
-                let cause = cause
-                let var offset = offset
-                let var sourceMap = maybe.none()
-                let var frames = maybe.none()
-            end
+    let newError(cause: Cause offset: maybe.T(Int)): RunError =
+        tuple
+            let cause = cause
+            let var offset = offset
+            let var sourceMap = maybe.none()
+            let var frames = maybe.none()
         end
 
-    let raiseException(A::TYPE exc: ExceptionValue offset: maybe.T(Int)): A =
-        raiseError(option raised of Cause with
+    let raisedError(exc: ExceptionValue payload: maybe.T(Value) payloadType: maybe.T(tm.Type) offset: maybe.T(Int)):
+            RunError =
+        newError(option raised of Cause with
             let exc = exc
-            let payload = maybe.none()
-            let payloadType = maybe.none()
+            let payload = payload
+            let payloadType = payloadType
         end offset)
+
+    let raiseError(A::TYPE cause: Cause offset: maybe.T(Int)): A = raise runError with newError(cause offset) end
+
+    let raiseException(A::TYPE exc: ExceptionValue offset: maybe.T(Int)): A =
+        raise runError with raisedError(exc maybe.none() maybe.none() offset) end
 
     let internalError(A::TYPE message: String offset: maybe.T(Int)): A =
         raiseError(option internal of Cause with let message = message end offset)

@@ -20,12 +20,12 @@ from quest.values.model import (
     QOption,
     QReal,
     QRecord,
-    QRef,
     QString,
     QTuple,
     QValue,
     QVariant,
     QWord,
+    unwrap_refs,
 )
 from quest.values.dynamic_json import FORMAT_VERSION, TypeRef, _fail, _TypeGraph, _canonical_table, _field_name
 
@@ -61,11 +61,6 @@ class _Writer:
         # The witnesses of the auto values being written, innermost last, which
         # param nodes refer to
         self.witnesses: list[TypeRef] = []
-
-    def _deref(self, val: QValue) -> QValue:
-        while isinstance(val, QRef):
-            val = val.value
-        return val
 
     @staticmethod
     def _has_identity(val: QValue) -> bool:
@@ -138,7 +133,7 @@ class _Writer:
                 return [(val.payload, payload_ref)]
             # An option's components are stored in the option value itself (as
             # in compiled code), so they are written in place and never shared
-            payload = self._deref(val.payload)
+            payload = unwrap_refs(val.payload)
             components = self.graph.nodes[payload_ref][1]
             if not isinstance(payload, QTuple) or len(payload.elements) < len(components):
                 raise _fail()
@@ -167,7 +162,7 @@ class _Writer:
 
     def scan(self, val: QValue, ref: TypeRef) -> None:
         """Finds the records, tuples, and arrays reached more than once."""
-        val = self._deref(val)
+        val = unwrap_refs(val)
         if self._has_identity(val):
             if id(val) in self.seen:
                 self.shared.add(id(val))
@@ -202,7 +197,7 @@ class _Writer:
           The witness is a root of the type table.
         - An external type's value is its word, and a built-in type's value as
           _encode_builtin writes it (a Real's infinities as strings)."""
-        val = self._deref(val)
+        val = unwrap_refs(val)
         ref = self._concrete(ref)
         if isinstance(ref, str):
             return self._encode_builtin(val, ref)

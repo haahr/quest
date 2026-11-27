@@ -179,6 +179,23 @@ export
     (* Stores v where r refers, through a reference a tuple component holds,
      * as deref reads *)
     assign(r: Ref v: Value): Ok
+    (* v, or what the chain of references v is ends at *)
+    unwrapRefs(v: Value): Value
+    (* A record's field, read through its cell if it is a var field; none if
+     * the record has no such field *)
+    fieldGet(r: RecordValue name: String): maybe.T(Value)
+    (* Stores v in a record's field: in its cell, for a var field *)
+    fieldSet(r: RecordValue name: String v: Value): Ok
+
+    (* A polymorphic function's type bindings after a type application: bound,
+     * with the first of its type parameters (params) that bound leaves
+     * unbound bound to args, in order *)
+    bindTypeArguments(bound: maps.IntMap(tm.Type) params: Array(Int) args: Array(tm.Type)): maps.IntMap(tm.Type)
+    (* Whether applying a polymorphic function to types runs it, in either
+     * interpreter: when its type parameters are its only parameters
+     * (typeOnly), and every one of them is bound *)
+    runsWhenApplied(typeOnly: Bool params: Array(Int) bound: maps.IntMap(tm.Type)): Bool
+
     (* A tuple's component by label; none if it has none, which in a
      * well-typed program is the interpreter's error, not the program's *)
     tupleGet(t: TupleValue name: String): maybe.T(Value)
@@ -212,6 +229,10 @@ export
      * ====================================================================== *)
 
     runError: Exception(RunError)
+    (* The error of raising exc, with its payload and the payload's type, at
+     * offset (none: not yet located) *)
+    raisedError(exc: ExceptionValue payload: maybe.T(Value) payloadType: maybe.T(tm.Type) offset: maybe.T(Int)):
+            RunError
     (* Raises the Quest exception exc, without a payload *)
     raiseException(A::TYPE exc: ExceptionValue offset: maybe.T(Int)): A
     (* Raises an error of the interpreter (QuestRuntimeError) *)

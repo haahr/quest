@@ -293,24 +293,15 @@ export
     let raising(A::TYPE it: Interpreter exc: model.ExceptionValue offset: maybe.T(Int)): A =
         at(it offset fun(): A model.raiseException(:A exc maybe.none(:Int)))
 
+    (* Raises arrayOp.error at offset unless i indexes a *)
+    let checkIndex(it: Interpreter a: Array(Value) i: Int offset: maybe.T(Int)): Ok =
+        if not(primitives.inBounds(a i)) then raising(:Ok it primitives.arrayOpError offset) end
+
     (* What a variable declared without a value holds until it is assigned:
      * a string no program can make, told apart by identity (opIsSet) *)
     let unsetText = "<unset>"
     let unsetValue: Value = model.stringValue(unsetText)
     let isUnset(v: Value): Bool = case v when vString with x then x.s is unsetText else false end
-
-    let deref(v0: Value): Value =
-        begin
-            let var v = v0
-            let var more = true
-            while more do
-                case v
-                    when vRef with r then v := model.deref(r.r)
-                    else more := false
-                end
-            end
-            v
-        end
 
     let moduleValue(it: Interpreter r: nodes.ModuleRef): Value =
         begin
@@ -323,14 +314,11 @@ export
     let member(it: Interpreter r: nodes.ModuleRef name: String): Value =
         case moduleValue(it r)
             when vRecord with x then
-                let found = hashMap.get(x.r.fields name)
+                let found = model.fieldGet(x.r name)
                 if maybe.isNone(found) then
                     fail(:Value "module '" <> nodes.moduleRefName(r) <> "' has no member " <> name)
                 end
-                case maybe.unwrap(found)
-                    when vRef with c then model.deref(c.r)
-                    else maybe.unwrap(found)
-                end
+                maybe.unwrap(found)
             else fail("module '" <> nodes.moduleRefName(r) <> "' is a " <> model.typeName(moduleValue(it r)))
         end
 
@@ -383,7 +371,7 @@ export
         end
 
     let tupleOf(v: Value): model.TupleValue =
-        case deref(v)
+        case model.unwrapRefs(v)
             when vTuple with x then x.t
             else fail("not a tuple: " <> model.typeName(v))
         end
@@ -427,19 +415,18 @@ export
             t.form?typeFun
         end
 
-    let instantiate(c: IrClosure typeArgs: Array(Type)): IrClosure =
+    let typeParamIds(fn: nodes.Function): Array(Int) =
         begin
-            let bindings = newTypes()
-            hashMap.forEach(c.typeBindings fun(k: Int t: Type): Ok begin hashMap.insert(bindings k t) ok end)
-            let var next = 0
-            for i = 0 upto {extent c.function.typeParams - 1} do
-                let id = c.function.typeParams[i].symbolId
-                if not(hashMap.contains(c.typeBindings id)) andif {next < extent typeArgs} then
-                    hashMap.insert(bindings id typeArgs[next])
-                    next := next + 1
-                end
-            end
-            tuple let function = c.function let frame = c.frame let typeBindings = bindings end
+            let ids = array of(extent fn.typeParams 0)
+            for i = 0 upto {extent fn.typeParams - 1} do ids[i] := fn.typeParams[i].symbolId end
+            ids
+        end
+
+    let instantiate(c: IrClosure typeArgs: Array(Type)): IrClosure =
+        tuple
+            let function = c.function
+            let frame = c.frame
+            let typeBindings = model.bindTypeArguments(c.typeBindings typeParamIds(c.function) typeArgs)
         end
 
     (* The frame code's closures run their calls in: parent, with code's
@@ -613,9 +600,11 @@ export
                 let c = maybe.unwrap(irc)
                 let inst = instantiate(c typeArgs)
                 let instValue = closureValue(it inst)
-                if {extent c.function.params is 0}
-                        andif {hashMap.size(inst.typeBindings) >= extent c.function.typeParams}
-                        andif not(isFunctionType(c.function)) then
+                (* A function whose type parameters are its only parameters: it
+                 * has no value parameters, and its type, applied to all its
+                 * types, is not a function's *)
+                let typeOnly = {extent c.function.params is 0} andif not(isFunctionType(c.function))
+                if model.runsWhenApplied(typeOnly typeParamIds(c.function) inst.typeBindings) then
                     apply(it instValue array of :Value end)
                 else
                     instValue
@@ -624,8 +613,10 @@ export
                 case callee
                     when vClosure with x then
                         let inst = if extent x.c.typeParamIds > 0 then treewalk.instantiate(x.c typeArgs) else x.c end
-                        if treewalk.runsWhenApplied(inst) then treewalk.runClosure(inst array of :Value end none)
-                        else option vClosure of Value with let c = inst end
+                        if model.runsWhenApplied(inst.typeOnly inst.typeParamIds inst.typeBindings) then
+                            treewalk.runClosure(inst array of :Value end none)
+                        else
+                            option vClosure of Value with let c = inst end
                         end
                     else callee
                 end
@@ -760,7 +751,7 @@ export
             when opAddrVar with x then lookup(f x.v)
             when opAddrCell with x then model.cellValue(atom(it x.init f))
             when opAddrField with x then
-                case deref(atom(it x.base f))
+                case model.unwrapRefs(atom(it x.base f))
                     when vRecord with r then
                         let cell = hashMap.get(r.r.fields x.name)
                         if maybe.isSome(cell) andif maybe.unwrap(cell)?vRef then maybe.unwrap(cell)
@@ -783,10 +774,10 @@ export
                     end
                 end
             when opAddrElement with x then
-                case deref(atom(it x.base f))
+                case model.unwrapRefs(atom(it x.base f))
                     when vArray with a then
                         let idx = intOf(atom(it x.index f))
-                        if not(primitives.inBounds(a.a idx)) then raising(:Ok it primitives.arrayOpError x.offset) end
+                        checkIndex(it a.a idx x.offset)
                         option vRef of Value with
                             let r =
                                 tuple
@@ -893,7 +884,7 @@ export
                 end
                 model.recordValue(fields)
             when opRecordField with x then
-                case deref(atom(it x.recordAtom f))
+                case model.unwrapRefs(atom(it x.recordAtom f))
                     when vTuple with t then
                         let found = model.tupleGet(t.t x.name)
                         if maybe.isNone(found) then fail(:Value "no component " <> x.name) end
@@ -901,7 +892,7 @@ export
                     when vRecord with r then
                         let found = hashMap.get(r.r.fields x.name)
                         if maybe.isNone(found) then fail(:Value "no field " <> x.name) end
-                        deref(maybe.unwrap(found))
+                        model.unwrapRefs(maybe.unwrap(found))
                     else fail("not a record")
                 end
             when opMakeVariant with x then
@@ -948,7 +939,7 @@ export
                 case atom(it x.arr f)
                     when vArray with a then
                         let idx = intOf(atom(it x.index f))
-                        if not(primitives.inBounds(a.a idx)) then raising(:Ok it primitives.arrayOpError x.offset) end
+                        checkIndex(it a.a idx x.offset)
                         a.a[idx]
                     else fail("not an array")
                 end
@@ -995,7 +986,7 @@ export
             when opAddrField then address(it o f)
             when opAddrComponent then address(it o f)
             when opAddrElement then address(it o f)
-            when opLoad with x then deref(atom(it x.address f))
+            when opLoad with x then model.unwrapRefs(atom(it x.address f))
         end
 
     and store(it: Interpreter s: Stmt f: Frame): Ok =
@@ -1008,15 +999,8 @@ export
                 end
             when sStoreField with x then
                 let value = atom(it x.value f)
-                case deref(atom(it x.base f))
-                    when vRecord with r then
-                        let cell = hashMap.get(r.r.fields x.name)
-                        let isCell = maybe.isSome(cell) andif maybe.unwrap(cell)?vRef
-                        if isCell then
-                            case maybe.unwrap(cell) when vRef with c then model.assign(c.r value) else ok end
-                        else
-                            begin hashMap.insert(r.r.fields x.name value) ok end
-                        end
+                case model.unwrapRefs(atom(it x.base f))
+                    when vRecord with r then model.fieldSet(r.r x.name value)
                     else fail("a field store into a value that is not a record")
                 end
             when sStoreComponent with x then
@@ -1029,10 +1013,10 @@ export
                 end
             when sStoreElement with x then
                 let value = atom(it x.value f)
-                case deref(atom(it x.base f))
+                case model.unwrapRefs(atom(it x.base f))
                     when vArray with a then
                         let idx = intOf(atom(it x.index f))
-                        if not(primitives.inBounds(a.a idx)) then raising(:Ok it primitives.arrayOpError x.offset) end
+                        checkIndex(it a.a idx x.offset)
                         a.a[idx] := value
                     else fail("not an array")
                 end
@@ -1189,9 +1173,9 @@ export
                                             array of maybe.unwrap(c.descriptor) end array of c.matchType end f)
                                 end
                                 let matchType = resolve(f c.matchType)
-                                let matches = if c.exact then subtyping.isTypeEqual(a.a.type matchType maybe.none())
-                                    else subtyping.isSubtype(a.a.type matchType maybe.none()) end
-                                if matches then chosen := maybe.some(c) end
+                                if primitives.inspectMatches(a.a.type matchType c.exact) then
+                                    chosen := maybe.some(c)
+                                end
                             end
                         end
                         if maybe.isSome(chosen) then
@@ -1285,17 +1269,7 @@ export
                     end
                 case exc
                     when vException with y then
-                        rethrow(located(it tuple
-                            let cause =
-                                option raised of model.Cause with
-                                    let exc = y.e
-                                    let payload = payload
-                                    let payloadType = payloadType
-                                end
-                            let var offset = maybe.none()
-                            let var sourceMap = maybe.none()
-                            let var frames = maybe.none()
-                        end x.offset))
+                        rethrow(located(it model.raisedError(y.e payload payloadType maybe.none()) x.offset))
                     else fail("Target of raise must be Exception, got " <> model.typeName(exc))
                 end
             when sReraise with x then

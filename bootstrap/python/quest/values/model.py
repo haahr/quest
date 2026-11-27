@@ -314,6 +314,19 @@ class QRecord(QValue):
             raise KeyError(f"Record has no field '{field_name}'")
         return self.fields[field_name]
 
+    def read_field(self, field_name: str) -> QValue:
+        """A field, read through its cell if it is a var field."""
+        value = self.get(field_name)
+        return value.deref() if isinstance(value, QRef) else value
+
+    def store_field(self, field_name: str, value: QValue) -> None:
+        """Stores value in a field: in its cell, for a var field."""
+        cell = self.fields.get(field_name)
+        if isinstance(cell, QRef):
+            cell.assign(value)
+        else:
+            self.fields[field_name] = value
+
     def to_str(self, visited: Optional[set[int]] = None) -> str:
         if visited is None:
             visited = set()
@@ -523,18 +536,15 @@ class QClosure(QValue):
     def instantiate(self, type_args: Sequence[Any]) -> QClosure:
         """This closure with its next unbound type parameters bound to type_args
         (a type application)."""
-        unbound = [i for i in self.type_param_ids if i not in self.type_bindings]
-        bindings = dict(self.type_bindings)
-        bindings.update(zip(unbound, type_args))
+        bindings = bind_type_arguments(self.type_bindings, self.type_param_ids, type_args)
         return QClosure(
             self.params, self.body, self.env, self.name, self.type_param_ids, bindings, self.trace_name,
             self.type_only,
         )
 
     def runs_when_applied(self) -> bool:
-        """Whether applying it to types runs it: when its type parameters are
-        its only parameters, and all of them are bound."""
-        return self.type_only and all(i in self.type_bindings for i in self.type_param_ids)
+        """Whether applying it to types runs it (runs_when_applied)."""
+        return runs_when_applied(self.type_only, self.type_param_ids, self.type_bindings)
 
     @property
     def type_name(self) -> str:
@@ -544,6 +554,22 @@ class QClosure(QValue):
         if self.name:
             return f"<fun:{self.name}>"
         return "<fun>"
+
+
+def bind_type_arguments(bound: dict[int, Any], params: Sequence[int], args: Sequence[Any]) -> dict[int, Any]:
+    """A polymorphic function's type bindings after a type application: bound,
+    with the first of its type parameters (params) that bound leaves unbound
+    bound to args, in order."""
+    bindings = dict(bound)
+    bindings.update(zip([i for i in params if i not in bound], args))
+    return bindings
+
+
+def runs_when_applied(type_only: bool, params: Sequence[int], bound: dict[int, Any]) -> bool:
+    """Whether applying a polymorphic function to types runs it, in either
+    interpreter: when its type parameters are its only parameters (type_only),
+    and every one of them is bound."""
+    return type_only and all(i in bound for i in params)
 
 
 class QBuiltinFun(QValue):
@@ -653,6 +679,13 @@ class QTupleElementRef(QRef):
 # ============================================================================
 # 7. Dynamic & Exception Envelopes
 # ============================================================================
+
+def unwrap_refs(v: QValue) -> QValue:
+    """v, or what the chain of references v is ends at."""
+    while isinstance(v, QRef):
+        v = v.deref()
+    return v
+
 
 class QAutoVal(QValue):
     """Auto value (Cardelli §4.6): a tuple of components packaged with the

@@ -14,7 +14,8 @@ import math
 from typing import Optional
 
 from quest.common.diagnostics import Diagnostic, DiagnosticLabel, QuestCompilerError, Severity
-from quest.values.model import QExceptionVal, QuestException
+from quest.types.subtyping import is_subtype, is_type_equal
+from quest.values.model import QArray, QExceptionVal, QuestException
 
 
 class QuestRuntimeError(QuestCompilerError):
@@ -55,6 +56,18 @@ VARIANT_ERROR_EXC = QExceptionVal("variant.tagMismatch")
 # (docs/exceptions.md §6).
 STACK_OVERFLOW_EXC = QExceptionVal("stack.overflow")
 MAX_CALL_DEPTH = 1000
+
+
+def check_index(array: QArray, i: int, offset: Optional[int]) -> None:
+    """Raises arrayOp.error at offset unless i indexes array."""
+    if i < 0 or i >= array.size():
+        raise QuestException(ARRAY_OP_ERROR_EXC, offset=offset)
+
+
+def inspect_matches(value_type, match_type, exact: bool) -> bool:
+    """Whether an inspect case for match_type takes an auto value of type
+    value_type: its type is match_type (an exact case) or a subtype of it."""
+    return is_type_equal(value_type, match_type) if exact else is_subtype(value_type, match_type)
 
 
 def truncating_div(a: int, b: int) -> int:

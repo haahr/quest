@@ -76,7 +76,6 @@ export
          * param nodes refer to *)
         witnesses: vector.T(Ref)
     end
-    let rec derefValue(v: Value): Value = case v when vRef with r then derefValue(model.deref(r.r)) else v end
     (* Whether a value may be shared: records, arrays, and nonempty tuples
      * (compiled code has one empty tuple) *)
     let hasIdentity(v: Value): Bool =
@@ -215,7 +214,7 @@ export
                              * value itself (as in compiled code), so they are
                              * written in place and never shared *)
                             let components = nodeOf(w.graph p).children
-                            case derefValue(payload)
+                            case model.unwrapRefs(payload)
                                 when vTuple with x then
                                     if extent x.t.elements < extent components then fail(:Ok) end
                                     for i = 0 upto {extent components - 1} do
@@ -242,7 +241,7 @@ export
     (* Finds the records, tuples, and arrays reached more than once *)
     let rec scan(w: Writer v0: Value r: Ref): Ok =
         begin
-            let v = derefValue(v0)
+            let v = model.unwrapRefs(v0)
             let var done = false
             if hasIdentity(v) then
                 if hashMap.contains(w.seen v) then
@@ -276,7 +275,7 @@ export
     let isInfinite(r: Real): Bool = {r >> realOp.maxReal} orif {r << {0.0 -- realOp.maxReal}}
     let rec encodeValue(w: Writer v0: Value r0: Ref): json.Value =
         begin
-            let v = derefValue(v0)
+            let v = model.unwrapRefs(v0)
             let r = concrete(w r0)
             if isBuiltin(r) then
                 encodeBuiltin(w v r.name)
