@@ -10,6 +10,7 @@ import
     util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
 
+    questlang/codegen/arm64/asm : questlang/codegen/arm64/Asm
     questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
 export
     Let Bytes = vector.T(Int)
@@ -89,29 +90,19 @@ export
             if slash >= 0 then stringOp.getSub(path slash + 1 {stringOp.length(path) - slash} - 1) else path end
         end
 
-    (* The compile unit's and the subprograms' abbreviations *)
+    (* The compile unit's and the subprograms' abbreviations, the
+     * assembler's *)
     let abbreviations(): Bytes =
         begin
             let b = vector.new(:Int)
-            (* 1: DW_TAG_compile_unit, with children: producer, language,
-             * name, comp_dir, stmt_list, low_pc, high_pc (a length) *)
-            uleb(b 1) uleb(b 0x11) byte(b 1)
-            uleb(b 0x25) uleb(b 0x08) uleb(b 0x13) uleb(b 0x05) uleb(b 0x03) uleb(b 0x08) uleb(b 0x1b) uleb(b 0x08)
-            uleb(b 0x10) uleb(b 0x17) uleb(b 0x11) uleb(b 0x01) uleb(b 0x12) uleb(b 0x07)
-            uleb(b 0) uleb(b 0)
-            (* 2: DW_TAG_subprogram, without: name, low_pc, high_pc, and
-             * frame_base, x29 *)
-            uleb(b 2) uleb(b 0x2e) byte(b 0)
-            uleb(b 0x03) uleb(b 0x08) uleb(b 0x11) uleb(b 0x01) uleb(b 0x12) uleb(b 0x07) uleb(b 0x40) uleb(b 0x18)
-            uleb(b 0) uleb(b 0)
-            uleb(b 0)
+            for i = 0 upto {extent asm.debugAbbreviations - 1} do byte(b asm.debugAbbreviations[i]) end
             b
         end
 
     (* Builds the __debug_info section for one DWARF 4 compile unit covering
      * the unit's code, named after its first source file, with a subprogram
-     * entry for each function and its line table at offset 0. Uses language
-     * code 0x8000 (DWARF's user-defined range), matching codegen/arm64/asm. *)
+     * entry for each function and its line table at offset 0, its
+     * attributes in the order of codegen/arm64/asm's abbreviations. *)
     let information(e: encode.Encoded codeAddress: Int files: Array(String)): Bytes =
         begin
             let body = vector.new(:Int)
@@ -120,21 +111,19 @@ export
             byte(body 8)
             let main = if extent files > 0 then files[0] else "<jit>" end
             uleb(body 1)
-            cString(body "quest")
-            u16(body 0x8000)
+            cString(body asm.dwarfProducer)
+            u16(body asm.dwarfLanguage)
             cString(body main)
-            cString(body directory(main))
             u32(body 0)
+            cString(body directory(main))
             u64(body codeAddress)
-            u64(body 4 * extent e.code)
+            u32(body 4 * extent e.code)
             for k = 0 upto {extent e.functions - 1} do
                 let f = e.functions[k]
                 uleb(body 2)
-                cString(body f.name)
                 u64(body codeAddress + f.offset)
-                u64(body f.size)
-                uleb(body 1)
-                byte(body 0x6d)
+                u32(body f.size)
+                cString(body f.name)
             end
             uleb(body 0)
             let b = vector.new(:Int)

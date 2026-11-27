@@ -30,8 +30,10 @@ export
         relocBranch26 relocPage21 relocPageOff12 relocGotPage21 relocGotPageOff12
         relocAbsolute64
     end
-    (* At offset bytes into its section, the symbol's address plus addend *)
-    Def Reloc = Tuple offset: Int kind: RelocKind symbol: String addend: Int end
+    (* At offset bytes into its section, the symbol's address plus addend;
+     * width is the bytes a load or store with a page offset accesses, by which
+     * its offset is scaled, and 1 for every other relocation *)
+    Def Reloc = Tuple offset: Int kind: RelocKind symbol: String addend: Int width: Int end
     (* A symbol defined at offset bytes into its section, of size bytes *)
     Def Symbol = Tuple name: String offset: Int size: Int exported: Bool end
 
@@ -71,6 +73,14 @@ export
         files: Array(String)
         frames: Array(Int)
     end
+
+    (* The immediate of adr, a distance in bytes, or of adrp, in pages: its
+     * low 21 bits, as the instruction's two fields *)
+    adrImmediate(distance: Int): Int
+    (* The 12-bit field of an add's offset in a page (width 1), or a load's or
+     * store's, scaled by the bytes it accesses (width); offset must be a
+     * multiple of width *)
+    pageOffsetImmediate(offset: Int width: Int): Int
 
     (* What cannot be encoded, naming it *)
     unencodable: Exception(String)

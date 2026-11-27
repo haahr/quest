@@ -53,8 +53,6 @@ export
 
     (* n's low bits bits, as an unsigned field *)
     let field(n: Int bits: Int): Int = words.toInt(words.extract(words.fromInt(n) 0 bits))
-    let bits(w: Int from: Int count: Int): Int = words.toInt(words.extract(words.fromInt(w) from count))
-    let shl(n: Int k: Int): Int = words.toInt(words.shift(words.fromInt(n) k))
 
     (* Room for bytes in a region, aligned to 16 *)
     let allocateData(l: T bytes: Int): Int =
@@ -103,22 +101,16 @@ export
             if {delta >= 0x100000} orif {delta < ~0x100000} then
                 raise loadError with "a page beyond adrp's reach" end
             end
-            (* Its 21 bits, the low 2 at 29 and the rest at 5: split from the
-             * field, since / truncates a negative delta *)
-            let f = field(delta 21)
-            shl(f % 4 29) + shl(f / 4 5)
+            encode.adrImmediate(delta)
         end
 
-    (* An add's or load's offset in a page, scaled by the access's size *)
-    let pageOffset(w: Int target: Int): Int =
+    (* An add's or a load's or store's offset in a page of target, scaled by
+     * the bytes it accesses (width, the relocation's) *)
+    let pageOffset(width: Int target: Int): Int =
         begin
             let low = field(target 12)
-            (* A load or store with an unsigned offset: bits 29-27 are 111,
-             * 25-24 are 01; its size is in bits 31-30 *)
-            let isAccess = {bits(w 27 3) is 7} andif {bits(w 24 2) is 1}
-            let scale = if isAccess then shl(1 bits(w 30 2)) else 1 end
-            if {low % scale} isnot 0 then raise loadError with "a misaligned page offset" end end
-            shl(low / scale 10)
+            if {low % width} isnot 0 then raise loadError with "a misaligned page offset" end end
+            encode.pageOffsetImmediate(low width)
         end
 
     (* A stub that branches to a driver function through its slot, made
@@ -134,7 +126,7 @@ export
                 let at = codeBase(l) + offset
                 code.write32(l.code offset array of
                     0x90000010 (* adrp x16 *) + page(s at)
-                    0xF9400210 (* ldr x16, [x16] *) + pageOffset(0xF9400210 s)
+                    0xF9400210 (* ldr x16, [x16] *) + pageOffset(8 s)
                     0xD61F0200  (* br x16 *)
                 end)
                 hashMap.insert(l.stubs name at)
@@ -192,9 +184,9 @@ export
                             else stub(l r.symbol resolve) end
                         field({target - pc} / 4 26)
                     when relocPage21 then page(resolve(r.symbol) pc)
-                    when relocPageOff12 then pageOffset(w resolve(r.symbol))
+                    when relocPageOff12 then pageOffset(r.width resolve(r.symbol))
                     when relocGotPage21 then page(slot(l r.symbol resolve) pc)
-                    when relocGotPageOff12 then pageOffset(w slot(l r.symbol resolve))
+                    when relocGotPageOff12 then pageOffset(r.width slot(l r.symbol resolve))
                     when relocAbsolute64 then raise loadError with "an absolute relocation in code" end
                 end
             end

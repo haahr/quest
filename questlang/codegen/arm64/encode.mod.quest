@@ -28,7 +28,7 @@ export
         relocBranch26 relocPage21 relocPageOff12 relocGotPage21 relocGotPageOff12
         relocAbsolute64
     end
-    Let Reloc = Tuple offset: Int kind: RelocKind symbol: String addend: Int end
+    Let Reloc = Tuple offset: Int kind: RelocKind symbol: String addend: Int width: Int end
     Let Symbol = Tuple name: String offset: Int size: Int exported: Bool end
     Let Function = Tuple symbol: String exported: Bool code: vector.T(minst.Inst) endLabel: String end
     Let Line = Tuple offset: Int file: Int line: Int column: Int end
@@ -67,6 +67,16 @@ export
     let rt2(r: Int): Int = reg(r) * 1024
 
     let shl(n: Int k: Int): Int = words.toInt(words.shift(words.fromInt(n) k))
+
+    (* The 21 bits of distance, the low 2 at bit 29 and the rest at 5: split
+     * from the field, since / truncates a negative distance *)
+    let adrImmediate(distance: Int): Int =
+        begin
+            let f = field(distance 21)
+            shl(f % 4 29) + shl(f / 4 5)
+        end
+
+    let pageOffsetImmediate(offset: Int width: Int): Int = shl(offset / width 10)
 
     let cond(c: minst.Cond): Int =
         case c
@@ -193,13 +203,19 @@ export
                             let kind = option relocBranch26 of RelocKind end
                             let symbol = symbol
                             let addend = 0
+                            let width = 1
                         end)
                         base
                     end
                 end
-            let reloc(kind: RelocKind symbol: String): Ok =
-                vector.append(relocs
-                        tuple let offset = at let kind = kind let symbol = symbol let addend = 0 end)
+            let reloc(kind: RelocKind symbol: String width: Int): Ok =
+                vector.append(relocs tuple
+                    let offset = at
+                    let kind = kind
+                    let symbol = symbol
+                    let addend = 0
+                    let width = width
+                end)
             (* A label's distance from here, in instructions, as a field of
              * bits *)
             let distance(label: String bits: Int): Int =
@@ -219,7 +235,7 @@ export
                     when modePre with x then a.unscaled + 3072 (* 0xC00 *) + shl(field(x.imm 9) 12) + rn(base) + rd(t)
                     when modePost with x then a.unscaled + 1024 (* 0x400 *) + shl(field(x.imm 9) 12) + rn(base) + rd(t)
                     when modePageOff with x then
-                        reloc(pageOffKind(x.reloc) x.symbol)
+                        reloc(pageOffKind(x.reloc) x.symbol a.width)
                         a.scaled + rn(base) + rd(t)
                     (* The register form: bit 21 set, the index's extension
                      * LSL (option 011), and S, whether it is shifted *)
@@ -336,15 +352,13 @@ export
                 when opLdp with x then pair(true x.mode)
                 when opStp with x then pair(false x.mode)
                 when opAdrp with x then
-                    reloc(pageKind(x.reloc) x.symbol)
+                    reloc(pageKind(x.reloc) x.symbol 1)
                     0x90000000 + rd(rs[0])
                 when opAddPageOff with x then
-                    reloc(option relocPageOff12 of RelocKind end x.symbol)
+                    reloc(option relocPageOff12 of RelocKind end x.symbol 1)
                     0x91000000 + rn(rs[1]) + rd(rs[0])
                 when opAdr with x then
-                    let d = labelOffset(x.label) - at
-                    let f = field(d 21)
-                    0x10000000 + shl(f % 4 29) + shl(f / 4 5) + rd(rs[0])
+                    0x10000000 + adrImmediate(labelOffset(x.label) - at) + rd(rs[0])
                 when opB with x then 0x14000000 + distance(x.label 26)
                 when opBSymbol with x then toSymbol(0x14000000 x.symbol)
                 when opBl with x then toSymbol(0x94000000 x.symbol)
@@ -492,6 +506,7 @@ export
                                         let kind = option relocAbsolute64 of RelocKind end
                                         let symbol = v.symbol
                                         let addend = v.addend
+                                        let width = 1
                                     end)
                                     littleEndian(v.addend)
                             end
