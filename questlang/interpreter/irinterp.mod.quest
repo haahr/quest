@@ -8,7 +8,15 @@
  * through, or the terminator's (return, jump, break, continue); a raise is
  * model.runError, as in the tree-walking interpreter. A handler's exception
  * variable holds the exception raised; its frame keeps the error, for its
- * payload and for raising it again. *)
+ * payload and for raising it again.
+ *
+ * The interpreter is an oracle for the IR's passes, so it tells the IR's
+ * mistakes apart from the program's. Malformed IR (a value of the wrong kind,
+ * a variable bound nowhere, a case without its tag) raises fail, an
+ * irInterpreterError, which the driver reports as an internal error; it never
+ * coerces such a value to a default. Only the program's own errors raise
+ * model's errors: an exception it raises, an index out of bounds, an ordinal
+ * out of range, or a let rec's variable read before its value is computed. *)
 
 module irInterp : IRInterp
 import
@@ -49,6 +57,16 @@ export
 
     let fail(A::TYPE message: String): A = raise irInterpreterError with message end
     let rethrow(A::TYPE e: model.RunError): A = raise model.runError with e end
+
+    (* What a value of a scalar type or an array holds; a value of another
+     * type is malformed IR *)
+    let intOf(v: Value): Int = case v when vInt with x then x.n else fail("not an Int: " <> model.typeName(v)) end
+    let realOf(v: Value): Real = case v when vReal with x then x.r else fail("not a Real: " <> model.typeName(v)) end
+    let boolOf(v: Value): Bool = case v when vBool with x then x.b else fail("not a Bool: " <> model.typeName(v)) end
+    let stringOf(v: Value): String =
+        case v when vString with x then x.s else fail("not a String: " <> model.typeName(v)) end
+    let arrayOf(v: Value): Array(Value) =
+        case v when vArray with x then x.a else fail("not an array: " <> model.typeName(v)) end
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
     let none = maybe.none(:Int)
@@ -367,14 +385,14 @@ export
     let tupleOf(v: Value): model.TupleValue =
         case deref(v)
             when vTuple with x then x.t
-            else model.internalError("not a tuple: " <> model.typeName(v) none)
+            else fail("not a tuple: " <> model.typeName(v))
         end
 
     let tagOf(v: Value): String =
         case v
             when vVariant with x then x.v.tag
             when vOption with x then x.v.tag
-            else model.internalError("not a variant or option: " <> model.typeName(v) none)
+            else fail("not a variant or option: " <> model.typeName(v))
         end
 
     (* A variant's payload, or an option's components (its ordinal in its
@@ -577,7 +595,7 @@ export
         case callee
             when vBuiltin with x then x.b.fn(args)
             when vClosure with x then treewalk.runClosure(x.c args none)
-            else model.internalError("Cannot call non-function of type " <> model.typeName(callee) none)
+            else fail("Cannot call non-function of type " <> model.typeName(callee))
         end
 
     (* A polymorphic value applied to types: its instance (the value, for a
@@ -741,9 +759,9 @@ export
                     when vRecord with r then
                         let cell = hashMap.get(r.r.fields x.name)
                         if maybe.isSome(cell) andif maybe.unwrap(cell)?vRef then maybe.unwrap(cell)
-                        else model.internalError("Field '" <> x.name <> "' is not mutable" none)
+                        else fail("Field '" <> x.name <> "' is not mutable")
                         end
-                    else model.internalError("Field '" <> x.name <> "' is not mutable" none)
+                    else fail("Field '" <> x.name <> "' is not mutable")
                 end
             when opAddrComponent with x then
                 let base = tupleOf(atom(it x.base f))
@@ -762,7 +780,7 @@ export
             when opAddrElement with x then
                 case deref(atom(it x.base f))
                     when vArray with a then
-                        let idx = case atom(it x.index f) when vInt with n then n.n else ~1 end
+                        let idx = intOf(atom(it x.index f))
                         if not(primitives.inBounds(a.a idx)) then raising(:Ok it primitives.arrayOpError x.offset) end
                         option vRef of Value with
                             let r =
@@ -771,22 +789,13 @@ export
                                         option arrayElement of model.RefForm with let arr = a.a let index = idx end
                                 end
                         end
-                    else model.internalError("not an array" none)
+                    else fail("not an array")
                 end
             else fail("not an address")
         end
 
     and prim(it: Interpreter op: nodes.Prim args: Array(Value)): Value =
         begin
-            let intOf =
-                fun(v: Value): Int case v when vInt with x then x.n else model.internalError("not an Int" none) end
-            let realOf =
-                fun(v: Value): Real case v when vReal with x then x.r else model.internalError("not a Real" none) end
-            let boolOf =
-                fun(v: Value): Bool case v when vBool with x then x.b else model.internalError("not a Bool" none) end
-            let stringOf =
-                fun(v: Value): String
-                    case v when vString with x then x.s else model.internalError("not a String" none) end
             let ints = fun(o: primitives.Arithmetic): Value
                 model.intValue(primitives.intArithmetic(o intOf(args[0]) intOf(args[1]) none))
             let intsCompared =
@@ -799,9 +808,8 @@ export
             case op
                 when primIs then model.boolValue(model.same(args[0] args[1]))
                 when primIsnot then model.boolValue(not(model.same(args[0] args[1])))
-                when primNot then case args[0] when vBool with x then model.boolValue(not(x.b)) else model.trueValue end
-                when primExtent then
-                    case args[0] when vArray with x then model.intValue(extent x.a) else model.intValue(0) end
+                when primNot then model.boolValue(not(boolOf(args[0])))
+                when primExtent then model.intValue(extent arrayOf(args[0]))
                 when primAdd then ints(primitives.add)
                 when primSub then ints(primitives.sub)
                 when primMul then ints(primitives.mul)
@@ -881,12 +889,15 @@ export
                 model.recordValue(fields)
             when opRecordField with x then
                 case deref(atom(it x.recordAtom f))
-                    when vTuple with t then model.tupleGet(t.t x.name)
+                    when vTuple with t then
+                        let found = model.tupleGet(t.t x.name)
+                        if maybe.isNone(found) then fail(:Value "no component " <> x.name) end
+                        maybe.unwrap(found)
                     when vRecord with r then
                         let found = hashMap.get(r.r.fields x.name)
-                        if maybe.isNone(found) then model.internalError(:Value "no field " <> x.name none) end
+                        if maybe.isNone(found) then fail(:Value "no field " <> x.name) end
                         deref(maybe.unwrap(found))
-                    else model.internalError("not a record" none)
+                    else fail("not a record")
                 end
             when opMakeVariant with x then
                 model.variantValue(x.tag if maybe.isSome(x.payload) then maybe.some(atom(it maybe.unwrap(x.payload) f))
@@ -899,7 +910,7 @@ export
                         maybe.none(:Value)
                     end
                 if maybe.isSome(x.ordinalAtom) then
-                    let n = case atom(it maybe.unwrap(x.ordinalAtom) f) when vInt with y then y.n else ~1 end
+                    let n = intOf(atom(it maybe.unwrap(x.ordinalAtom) f))
                     if {n < 0} orif {n >= extent x.cases} then
                         at(it x.offset fun(): Ok
                             model.internalError(:Ok "Option ordinal " <> model.toString(model.intValue(n))
@@ -920,21 +931,21 @@ export
                         for i = {extent x.cases - 1} downto 0 do if eq(x.cases[i] y.v.tag) then index := i end end
                         if index < 0 then fail(:Ok "no case " <> y.v.tag) end
                         model.intValue(index)
-                    else model.internalError("ordinal expects Option, got " <> model.typeName(atom(it x.value f)) none)
+                    else fail("ordinal expects Option, got " <> model.typeName(atom(it x.value f)))
                 end
             when opMakeArray with x then option vArray of Value with let a = atoms(it x.args f) end
             when opArrayRep with x then
-                let n = case atom(it x.count f) when vInt with y then y.n else 0 end
+                let n = intOf(atom(it x.count f))
                 if n < 0 then raising(:Ok it primitives.arrayOpError x.offset) end
                 let v = atom(it x.init f)
                 option vArray of Value with let a = array of(n v) end
             when opIndex with x then
                 case atom(it x.arr f)
                     when vArray with a then
-                        let idx = case atom(it x.index f) when vInt with y then y.n else ~1 end
+                        let idx = intOf(atom(it x.index f))
                         if not(primitives.inBounds(a.a idx)) then raising(:Ok it primitives.arrayOpError x.offset) end
                         a.a[idx]
-                    else model.internalError("not an array" none)
+                    else fail("not an array")
                 end
             when opMakeAuto with x then
                 if maybe.isSome(x.descriptor) then
@@ -988,7 +999,7 @@ export
                 let value = atom(it x.value f)
                 case atom(it x.address f)
                     when vRef with r then model.assign(r.r value)
-                    else model.internalError("a store through a value that is not an address" none)
+                    else fail("a store through a value that is not an address")
                 end
             when sStoreField with x then
                 let value = atom(it x.value f)
@@ -1001,7 +1012,7 @@ export
                         else
                             begin hashMap.insert(r.r.fields x.name value) ok end
                         end
-                    else model.internalError("a field store into a value that is not a record" none)
+                    else fail("a field store into a value that is not a record")
                 end
             when sStoreComponent with x then
                 let value = atom(it x.value f)
@@ -1015,10 +1026,10 @@ export
                 let value = atom(it x.value f)
                 case deref(atom(it x.base f))
                     when vArray with a then
-                        let idx = case atom(it x.index f) when vInt with y then y.n else ~1 end
+                        let idx = intOf(atom(it x.index f))
                         if not(primitives.inBounds(a.a idx)) then raising(:Ok it primitives.arrayOpError x.offset) end
                         a.a[idx] := value
-                    else model.internalError("not an array" none)
+                    else fail("not an array")
                 end
             else ok
         end
@@ -1133,7 +1144,7 @@ export
             when sIf with x then
                 case atom(it x.cond f)
                     when vBool with b then runBody(it if b.b then x.thenBody else x.elseBody end f)
-                    else model.internalError("a condition that is not a Bool" none)
+                    else fail("a condition that is not a Bool")
                 end
             when sSwitch with x then
                 let v = atom(it x.value f)
@@ -1160,7 +1171,7 @@ export
                 elsif maybe.isSome(x.elseBody) then
                     runBody(it maybe.unwrap(x.elseBody) f)
                 else
-                    model.internalError("Unhandled case tag '" <> tag <> "'" none)
+                    fail("Unhandled case tag '" <> tag <> "'")
                 end
             when sInspect with x then
                 case atom(it x.value f)
@@ -1189,8 +1200,8 @@ export
                             raising(it model.dynamicError x.offset)
                         end
                     else
-                        model.internalError("Inspect target must be an auto value, got "
-                            <> model.typeName(atom(it x.value f)) none)
+                        fail("Inspect target must be an auto value, got "
+                            <> model.typeName(atom(it x.value f)))
                 end
             when sLoop with x then
                 let var result = noSignal
@@ -1281,7 +1292,7 @@ export
                             let var sourceMap = maybe.none()
                             let var frames = maybe.none()
                         end x.offset))
-                    else model.internalError("Target of raise must be Exception, got " <> model.typeName(exc) none)
+                    else fail("Target of raise must be Exception, got " <> model.typeName(exc))
                 end
             when sReraise with x then
                 let e = raisedError(f x.exc)

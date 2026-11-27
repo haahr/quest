@@ -172,6 +172,14 @@ export
             end
         end
 
+    (* A tuple's component that the type checker accepted but the tuple lacks:
+     * the interpreter's error, located at the selection *)
+    let noComponent(A::TYPE name: String offset: maybe.T(Int)): A =
+        model.internalError("Tuple has no labeled component '" <> name <> "'" offset)
+
+    let storeComponent(t: model.TupleValue name: String v: Value offset: maybe.T(Int)): Ok =
+        if not(model.tupleSetByName(t name v)) then noComponent(:Ok name offset) end
+
     (* The Int of v, an operand of op whose other operand is w, or an internal
      * error naming both operands' types; realOperand likewise for a Real *)
     let intOperand(op: String v: Value w: Value offset: maybe.T(Int)): Int =
@@ -272,9 +280,17 @@ export
             end
             for i = 0 upto {extent ops - 1} do define(f ops[i] operatorFunction(ops[i])) end
             define(f "not" model.builtinValue("not" fun(args: Array(Value)): Value
-                case args[0] when vBool with x then model.boolValue(not(x.b)) else model.falseValue end))
+                case args[0]
+                    when vBool with x then model.boolValue(not(x.b))
+                    else model.internalError("Operator 'not' requires a Bool operand, got " <> model.typeName(args[0])
+                            none)
+                end))
             define(f "extent" model.builtinValue("extent" fun(args: Array(Value)): Value
-                case args[0] when vArray with x then model.intValue(extent x.a) else model.intValue(0) end))
+                case args[0]
+                    when vArray with x then model.intValue(extent x.a)
+                    else model.internalError("Operator 'extent' requires an Array operand, got "
+                        <> model.typeName(args[0]) none)
+                end))
             (* ordinal counts in its operand's static type, so its applications
              * are evaluated as such (exprApp) *)
             define(f "ordinal" model.builtinValue("ordinal" fun(args: Array(Value)): Value
@@ -620,7 +636,7 @@ export
                         let payload = ownPayload(unwrapRefs(evalExpr(extracted(ex) f)) ex)
                         let rhs = evalExpr(x.value f)
                         case x.target.form
-                            when exprSelect with s then model.tupleSetByName(payload s.field rhs)
+                            when exprSelect with s then storeComponent(payload s.field rhs offset)
                             else ok
                         end
                     else
@@ -642,7 +658,7 @@ export
                                             when vRef with cell then model.assign(cell.r rhs)
                                             else begin hashMap.insert(r.r.fields s.field rhs) ok end
                                         end
-                                    when vTuple with t then model.tupleSetByName(t.t s.field rhs)
+                                    when vTuple with t then storeComponent(t.t s.field rhs offset)
                                     else
                                         model.internalError(:Ok "Field assignment target must be Record or Tuple"
                                                 offset)
@@ -788,7 +804,10 @@ export
                                 when vRef with cell then model.deref(cell.r)
                                 else hashMap.find(r.r.fields x.field)
                             end
-                        when vTuple with t then model.tupleGet(t.t x.field)
+                        when vTuple with t then
+                            let found = model.tupleGet(t.t x.field)
+                            if maybe.isNone(found) then noComponent(:Value x.field offset) end
+                            maybe.unwrap(found)
                         else
                             model.internalError("Cannot select field '" <> x.field <> "' from "
                                 <> model.typeName(target) offset)

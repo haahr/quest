@@ -179,10 +179,12 @@ export
     (* Stores v where r refers, through a reference a tuple component holds,
      * as deref reads *)
     assign(r: Ref v: Value): Ok
-    (* A tuple's component by label; raises fieldMissing if it has none *)
-    tupleGet(t: TupleValue name: String): Value
-    tupleSetByName(t: TupleValue name: String v: Value): Ok
-    fieldMissing: Exception(String)
+    (* A tuple's component by label; none if it has none, which in a
+     * well-typed program is the interpreter's error, not the program's *)
+    tupleGet(t: TupleValue name: String): maybe.T(Value)
+    (* Stores v in a tuple's component by label, or by position for a numeric
+     * name (n or _n); false if there is no such component *)
+    tupleSetByName(t: TupleValue name: String v: Value): Bool
     (* The human-readable type name of a value (QValue.type_name) *)
     typeName(v: Value): String
 

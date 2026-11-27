@@ -145,6 +145,7 @@ sys.setrecursionlimit(max(sys.getrecursionlimit(), MAX_CALL_DEPTH * PYTHON_FRAME
 # 1. Control Signals
 # ============================================================================
 
+
 class _LoopExit(Exception):
     """Internal control-flow signal raised by TypedExit to break out of
     loops."""
@@ -181,6 +182,15 @@ class TailCall:
 # ============================================================================
 # 2. Scoped Runtime Environment
 # ============================================================================
+
+
+def _not(b: QValue) -> QValue:
+    """The builtin not, which a value other than a Bool reaches only through a
+    bug in the interpreter or the type checker."""
+    if not isinstance(b, QBool):
+        raise QuestRuntimeError(f"Operator 'not' requires a Bool operand, got {b.type_name}")
+    return FALSE_VALUE if b.value else TRUE_VALUE
+
 
 class RuntimeEnvironment:
     """Lexically scoped symbol table mapping variable names to QValue
@@ -389,7 +399,7 @@ class RuntimeEnvironment:
         # Monadic Operators: not, extent, ordinal (Cardelli §4.2, §4.3, §4.5)
         env.define(
             "not",
-            QBuiltinFun("not", lambda b: FALSE_VALUE if b.value else TRUE_VALUE),
+            QBuiltinFun("not", _not),
         )
         env.define(
             "extent",

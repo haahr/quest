@@ -560,6 +560,8 @@ class Interpreter:
             a, b = (x.raised.exc_val if isinstance(x, _Raised) else x for x in args)
             return TRUE_VALUE if qvalue_is(a, b, at) == (op == "is") else FALSE_VALUE
         if op == "not":
+            if not isinstance(args[0], QBool):
+                raise IRInterpreterError(f"not of a {args[0].type_name}")
             return FALSE_VALUE if args[0].value else TRUE_VALUE
         if op == "extent":
             return QInt(len(args[0].elements))

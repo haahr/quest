@@ -163,18 +163,11 @@ export
      * 2. References and tuples
      * ====================================================================== *)
 
-    let fieldMissing: Exception(String) = exception fieldMissing: String end
-
-    let tupleIndex(t: TupleValue name: String): Int =
+    let tupleGet(t: TupleValue name: String): maybe.T(Value) =
         begin
             let found = hashMap.get(t.nameToIndex name)
-            if maybe.isNone(found) then
-                raise fieldMissing with "Tuple has no labeled component '" <> name <> "'" end
-            end
-            maybe.unwrap(found)
+            if maybe.isNone(found) then maybe.none() else maybe.some(t.elements[maybe.unwrap(found)]) end
         end
-
-    let tupleGet(t: TupleValue name: String): Value = t.elements[tupleIndex(t name)]
 
     let isDigits(s: String): Bool =
         begin
@@ -197,16 +190,22 @@ export
 
     (* The bootstrap's QTuple.set_by_name: by label, or a numeric name (n or _n)
      * by position *)
-    let tupleSetByName(t: TupleValue name: String v: Value): Ok =
-        if hashMap.contains(t.nameToIndex name) then
-            t.elements[tupleIndex(t name)] := v
-        elsif isDigits(name) then
-            t.elements[digitsValue(name)] := v
-        elsif {stringOp.length(name) > 1} andif {stringOp.getChar(name 0) is '_'}
-                andif isDigits(stringOp.getSub(name 1 {stringOp.length(name) - 1})) then
-            t.elements[digitsValue(stringOp.getSub(name 1 {stringOp.length(name) - 1}))] := v
-        else
-            raise fieldMissing with "Tuple has no labeled component '" <> name <> "'" end
+    let tupleSetByName(t: TupleValue name: String v: Value): Bool =
+        begin
+            let found = hashMap.get(t.nameToIndex name)
+            let index =
+                if maybe.isSome(found) then
+                    maybe.unwrap(found)
+                elsif isDigits(name) then
+                    digitsValue(name)
+                elsif {stringOp.length(name) > 1} andif {stringOp.getChar(name 0) is '_'}
+                        andif isDigits(stringOp.getSub(name 1 {stringOp.length(name) - 1})) then
+                    digitsValue(stringOp.getSub(name 1 {stringOp.length(name) - 1}))
+                else
+                    ~1
+                end
+            if index >= 0 then t.elements[index] := v end
+            index >= 0
         end
 
     let rec deref(r: Ref): Value =
