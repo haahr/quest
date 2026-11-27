@@ -5,8 +5,6 @@ module checker : Checker
 import
     conv : Conv
     raised : Raised
-    stringOp = string : StringOp
-    system : System
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
@@ -29,7 +27,6 @@ export
         var pendingTypeArgs: maybe.T(vector.T(PendingTypeArg))
         errors: vector.T(diagnostics.CompilerError)
         warnings: vector.T(diagnostics.CompilerError)
-        checksState: Bool
         var checkHook: All(c: T expr: ast.Expr expected: model.Type) typedAst.Expr
         var synthHook: All(c: T expr: ast.Expr isCallee: Bool) typedAst.Expr
     end
@@ -42,20 +39,10 @@ export
             let var pendingTypeArgs = maybe.none()
             let errors = vector.new()
             let warnings = vector.new()
-            let checksState = stringOp.equal(system.getEnv("QUEST_CHECK_SCOPES") "1")
             let var checkHook = fun(c: T expr: ast.Expr expected: model.Type): typedAst.Expr
                 diagnostics.internal("the checker has no dispatch" expr.span.startOffset)
             let var synthHook = fun(c: T expr: ast.Expr isCallee: Bool): typedAst.Expr
                 diagnostics.internal("the checker has no dispatch" expr.span.startOffset)
-        end
-
-    let agree(c: T e: env.T loopDepth: Int): Ok =
-        if c.checksState then
-            if not(e is c.env) then diagnostics.internal(:Ok "the environment passed is not the checker's" 0) end
-            if loopDepth isnot c.loopDepth then
-                diagnostics.internal(:Ok "the loop depth passed (" <> conv.int(loopDepth)
-                    <> ") is not the checker's (" <> conv.int(c.loopDepth) <> ")" 0)
-            end
         end
 
     let forBinding(A::TYPE c: T e: env.T loopDepth: Int body: All(c: T) A): A =
@@ -79,7 +66,6 @@ export
                 let var pendingTypeArgs = c.pendingTypeArgs
                 let errors = c.errors
                 let warnings = c.warnings
-                let checksState = c.checksState
                 let var checkHook = c.checkHook
                 let var synthHook = c.synthHook
             end)

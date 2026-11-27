@@ -32,10 +32,9 @@ export
     Def Rec T = Tuple
         env: env.T
         (* The number of loops enclosing the code being checked, for checking
-         * exit. The loopDepth argument threaded through the elaboration
-         * functions is authoritative; this field is only the counter that
-         * inLoop and inFunction adjust, set from the argument just before
-         * (see the while case of synthExpr in typecheck). *)
+         * exit: one more inside each loop's body (inLoop), and 0 inside a
+         * function's body (inFunction), where exit cannot leave an enclosing
+         * function's loop *)
         var loopDepth: Int
         (* The number of functions enclosing the code being checked; one more
          * inside each function body (inFunction). A symbol records the depth
@@ -49,9 +48,6 @@ export
         errors: vector.T(diagnostics.CompilerError)
         (* The warnings found, in order, which do not stop elaboration *)
         warnings: vector.T(diagnostics.CompilerError)
-        (* Whether agree checks the state passed (QUEST_CHECK_SCOPES=1, as
-         * in the test runs) *)
-        checksState: Bool
         (* The dispatch, which typecheck defines *)
         var checkHook: All(c: T expr: ast.Expr expected: model.Type) typedAst.Expr
         var synthHook: All(c: T expr: ast.Expr isCallee: Bool) typedAst.Expr
@@ -59,11 +55,6 @@ export
 
     (* A checker of the environment, without its dispatch *)
     new(e: env.T loopDepth: Int): T
-
-    (* Under QUEST_CHECK_SCOPES=1, an internal error unless e is c.env and
-     * loopDepth is c.loopDepth: the families pass both, and each must be
-     * the checker's (until they read them from c alone) *)
-    agree(c: T e: env.T loopDepth: Int): Ok
 
     (* Runs body with the checker of a binding that the module system
      * elaborates in e at loopDepth (elaboration.hooks.elaborateBinding, as
