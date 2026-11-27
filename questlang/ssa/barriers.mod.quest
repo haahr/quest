@@ -14,10 +14,9 @@ import
     questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
+    questlang/ssa/verify : questlang/ssa/Verify
 export
     Let Function = ssa.Function
-
-    let barrierError: Exception(String) = exception barrierError: String end
 
     (* What a call of a symbol is to the rule *)
     let callOther = 0
@@ -319,7 +318,9 @@ export
                 for k = 0 upto {extent ps - 1} do vector.append(all ps[k]) end
             end
             if not(vector.empty(all)) then
-                raise barrierError with "internal: the SSA misses write barriers:\n  " <> strutil.join("\n  " all) end
+                raise verify.verifyError with
+                    "internal: the SSA misses write barriers:\n  " <> strutil.join("\n  " all)
+                end
             end
         end
 end

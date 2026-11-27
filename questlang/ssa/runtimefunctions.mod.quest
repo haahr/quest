@@ -10,6 +10,7 @@ import
 
     questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/verify : questlang/ssa/Verify
 export
     Def Memory = Option memoryNone memoryReads memoryWrites end
     Def Effects = Tuple memory: Memory raises: Bool allocates: Bool noReturn: Bool end
@@ -165,15 +166,13 @@ export
                 array of "const void *" "const QViewMap *" "size_t" end effects(memoryReads false false false))
     end
 
-    let unknown: Exception(String) = exception unknown: String end
-
     let function(name: String): Function =
         begin
             let var found = maybe.none(:Function)
             for i = 0 upto {extent functions - 1} do
                 if stringOp.equal(functions[i].name name) then found := maybe.some(functions[i]) end
             end
-            if maybe.isNone(found) then raise unknown with name end end
+            if maybe.isNone(found) then raise verify.verifyError with "internal: no runtime function " <> name end end
             maybe.unwrap(found)
         end
 

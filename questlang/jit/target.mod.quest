@@ -36,9 +36,7 @@ import
     questlang/modules/elaboration : questlang/modules/Elaboration
     questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     mangling = questlang/repr/symbols : questlang/repr/Symbols
-    ssaBuild = questlang/ssa/build : questlang/ssa/Build
     ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
-    ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
     questlang/types/env : questlang/types/Env
 export
     Let T = Tuple
@@ -316,14 +314,17 @@ export
                 try
                     (* The passes hold a pointer and a QVal word alike, as
                      * arm64 does (choice.referencesAlike) *)
-                    let built = ssaPipeline.build(passes.runPasses(unit true) arm64.ssaPolicy)
-                    ssaPipeline.lower(built)
-                    arm64.encodeUnit(built)
+                    let optimized = passes.runPasses(unit true)
+                    let encoded = fun(): encode.Encoded
+                        begin
+                            let built = ssaPipeline.build(optimized arm64.ssaPolicy)
+                            ssaPipeline.lower(built)
+                            arm64.encodeUnit(built)
+                        end
+                    ssaPipeline.attempt(encoded fun(x: String): encode.Encoded fail(x))
                 (* Convert IR, SSA, arm64, and encoding failures into
                  * unsupported *)
                 when nodes.irError with x then fail(:encode.Encoded x)
-                when ssaBuild.unsupported with x then fail(:encode.Encoded "ssa: unsupported: " <> x)
-                when ssaVerify.verifyError with x then fail(:encode.Encoded x)
                 when arm64.unsupported with x then fail(:encode.Encoded x)
                 when encode.unencodable with x then fail(:encode.Encoded "encoding: " <> x)
                 end

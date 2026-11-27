@@ -6,16 +6,15 @@ import
 
     arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
     questlang/ir/nodes : questlang/ir/Nodes
-    ssaBuild = questlang/ssa/build : questlang/ssa/Build
     ssaNodes = questlang/ssa/nodes : questlang/ssa/Nodes
     ssaParser = questlang/ssa/parser : questlang/ssa/Parser
     ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
     ssaPrinter = questlang/ssa/printer : questlang/ssa/Printer
-    ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
 export
-    let run(unit: nodes.Unit shows: All(name: String) Bool dump: All(text: String) Ok checks: Bool): String =
-        try
-            (* The SSA as the default backend's passes leave it *)
+    (* The SSA as the default backend's passes leave it, dumped as shows
+     * asks; a failure's message, or "" *)
+    let dumped(unit: nodes.Unit shows: All(name: String) Bool dump: All(text: String) Ok checks: Bool): String =
+        begin
             let built = ssaPipeline.run(unit arm64.ssaPolicy fun(name: String u: ssaNodes.Unit): Ok
                 if shows("ssa_" <> name) then dump(ssaPrinter.formatUnit(u)) end)
             let var failure = ""
@@ -28,8 +27,10 @@ export
                 dump(text)
             end
             failure
-        when ssaBuild.unsupported with m then "ssa: unsupported: " <> m
-        when ssaVerify.verifyError with m then m
+        end
+
+    let run(unit: nodes.Unit shows: All(name: String) Bool dump: All(text: String) Ok checks: Bool): String =
+        try ssaPipeline.attempt(fun(): String dumped(unit shows dump checks) fun(m: String): String m)
         when ssaParser.readError with m then "ssa: " <> m
         end
 end

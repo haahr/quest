@@ -12,45 +12,44 @@ import
     questlang/codegen/c/ssac : questlang/codegen/c/SSAC
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/repr/syntax : questlang/repr/Syntax
-    ssaBuild = questlang/ssa/build : questlang/ssa/Build
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
-    ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
 export
     let unsupported: Exception(String) = exception unsupported: String end
 
     Let Datum = Tuple symbol: String text: String end
 
+    (* unit's code from the SSA, for backend ssac or arm64, with datum's text
+     * among the SSA's data *)
+    let ssaCode(unit: nodes.Unit backend: String datum: maybe.T(Datum)): String =
+        begin
+            (* ssac, through clang, rotates no loop itself; it keeps arm64's
+             * opcodes block-local until narrowing them is measured
+             * (docs/ssa.md section 4.1) *)
+            let policy =
+                if stringOp.equal(backend "ssac") then
+                    tuple let rotateAll = false let rematerializable = arm64.ssaPolicy.rematerializable end
+                else
+                    arm64.ssaPolicy
+                end
+            let built = ssaPipeline.build(unit policy)
+            if maybe.isSome(datum) then
+                let d = maybe.unwrap(datum)
+                vector.append(built.data tuple
+                    let symbol = d.symbol
+                    let exported = true
+                    let writable = false
+                    let contents = option contentsText of ssa.Contents with let text = d.text end
+                end)
+            end
+            ssaPipeline.lower(built)
+            if stringOp.equal(backend "ssac") then ssac.printUnit(built) else arm64.assembleUnit(built) end
+        end
+
     let unitCode(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String datum: maybe.T(Datum)): String =
         if stringOp.equal(backend "ssac") orif stringOp.equal(backend "arm64") then
-            try
-                (* ssac, through clang, rotates no loop itself; it keeps
-                 * arm64's opcodes block-local until narrowing them is
-                 * measured (docs/ssa.md section 4.1) *)
-                let policy =
-                    if stringOp.equal(backend "ssac") then
-                        tuple let rotateAll = false let rematerializable = arm64.ssaPolicy.rematerializable end
-                    else
-                        arm64.ssaPolicy
-                    end
-                let built = ssaPipeline.build(unit policy)
-                if maybe.isSome(datum) then
-                    let d = maybe.unwrap(datum)
-                    vector.append(built.data tuple
-                        let symbol = d.symbol
-                        let exported = true
-                        let writable = false
-                        let contents = option contentsText of ssa.Contents with let text = d.text end
-                    end)
-                end
-                ssaPipeline.lower(built)
-                if stringOp.equal(backend "ssac") then
-                    ssac.printUnit(built)
-                else
-                    arm64.assembleUnit(built)
-                end
-            when ssaBuild.unsupported with m then raise unsupported with "ssa: unsupported: " <> m end
-            when ssaVerify.verifyError with m then raise unsupported with m end
+            let failed = fun(m: String): String raise unsupported with m end
+            try ssaPipeline.attempt(fun(): String ssaCode(unit backend datum) failed)
             when ssac.unsupported with m then raise unsupported with m end
             when arm64.unsupported with m then raise unsupported with m end
             end
