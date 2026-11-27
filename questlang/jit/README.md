@@ -42,6 +42,17 @@ the existing box. The cost is that such a function is always called through its 
 An input that raises an exception reports it as an `Outcome` (its name, where it was raised, and the frames running
 there) rather than ending the driver; its bindings are forgotten, so no later input reads its record.
 
+## Targets
+
+What the session needs of a target is [`target`](target.int.quest): compiling and loading a unit, running an
+input's entry point, and asking for the driver's built-in modules and their fingerprints. The build picks one of
+three implementations by module variant ([docs/build-process.md](../../docs/build-process.md) §6.4). The default,
+`target.mod.quest`, compiles to arm64 and loads into the driver's process through `loader`, as the rest of this
+README describes; `target.wasm.mod.quest`, for a driver that itself runs on WebAssembly, compiles each unit with the
+wasm backend and hands its bytes to the host to instantiate and run ([docs/wasm.md](../../docs/wasm.md) §6.1); and
+`target.none.mod.quest` has no JIT, so the driver interprets its inputs (the wasmtime-hosted driver, which has no
+host to load modules).
+
 ## The driver as the library, and its limits
 
 An input's references to library modules resolve to the driver's own symbols. That only works if the driver's

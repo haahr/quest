@@ -178,8 +178,9 @@ and `unit` (functions, static data, registration, and the unit).
   `symbol` takes. They were thread-locals, reached by an instruction of their own, until each use's call of the
   accessor proved costly (arm64.md §3.6).
 - **Runtime helpers expanded inline,** as the C printer gets them from the header's `static inline` functions, so that
-  `ssac` and arm64 both gain: an option's tag and unproxying, by a test of the proxy bit (`representation.choose`), the
-  runtime called only for a proxy; real `+`, `-`, `*`, and `/` by their instruction and an `isNaN` test; `Int` `div` and
+  `ssac` and arm64 both gain: an option's tag, by a test of the proxy bit (`representation.choose`), the runtime called
+  only for a proxy, and unproxying, an `unproxy` instruction (`representation.unproxy`) that `ssa/passes/unproxies`
+  lowers to such a test; real `+`, `-`, `*`, and `/` by their instruction and an `isNaN` test; `Int` `div` and
   `mod` with the test for zero inline; and the bounds, count, and ordinal checks. Each check branches to a block that
   computes the site and calls the runtime's raise (`values.check`), so that the common path computes no site. The word
   module's operations, `static inline` in the header, are their instructions wherever they are called
@@ -187,7 +188,7 @@ and `unit` (functions, static data, registration, and the unit).
   by a constant count; so is `ascii.val`, a conversion of a Char, which the SSA holds zero-extended, and so is
   `real.int` (`quest_real_from_int`), an `intToReal`, though the runtime defines it out of line: as a call it was 13%
   of mandelbrot's samples. The other string and `ascii` helpers are calls in C too, and stay calls.
-- **The library's external functions that C inlines are their instructions** (`calls.libraryOperation`). The C
+- **The library's external functions that C inlines are their instructions** (`calls.externalOperation`). The C
   printer calls a library member's C function in place of its wrapper (`libraryExternal`,
   [c-representation.md](c-representation.md) §6.2), and clang inlines the word module's `static inline` primitives;
   the SSA would call the wrapper, out of line. So for an import that resolves to `lib/`, at a signature of words and
@@ -401,7 +402,9 @@ dumps use too):
   member copied in jumps to its copy's first block; a tail call of the function itself is left, which arm64 makes a
   jump to its first block and clang a loop. even-odd's `even1` holds a copy of `odd1`, whose tail call of `even1` is
   then a self tail call: one loop, without pushing and popping a frame at each step. A call through a closure is
-  indirect and is left. `ssa_tailjumps` shows each case.
+  indirect and is left. The pass list's `tailJumps` also runs `loops.loopTailCalls` after it (`pipeline.jumpUnit`),
+  which makes a function's one self tail call, such as `even1`'s, a loop, as `loops` does before. `ssa_tailjumps` shows
+  each case.
 - **`ssa/passes/trampolines`**, after it, makes an export its function ([benchmarks.md](benchmarks.md) §22).
   Another unit calls a module's function through its export (`qv_`), which passes a null environment and tail-calls the
   function, often through an adapter that tail-calls it in turn ([ir.md](ir.md) §8.4.1): vector.get was three branches

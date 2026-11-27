@@ -110,7 +110,7 @@ none.
 ## Connections
 
 `typecheck.elaborateProgram` is the entry point for a program; the driver ([`../driver`](../driver)), the REPL, the
-JIT session, and the build engine call it. Module and interface elaboration lives in
+language server ([`../lsp`](../lsp)), and the build engine call it. Module and interface elaboration lives in
 [`../modules`](../modules), below the checker in the import order, so the checker installs callbacks into
 `modules/elaboration`'s hooks for elaborating a module's bindings, and the loader installs one for loading units.
 After checking, when `QUEST_CHECK_SCOPES=1` (as the test runners set it), [`scoping`](scoping.mod.quest) verifies that

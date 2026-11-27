@@ -704,18 +704,22 @@ would need `else` for the rest. What is specific to a target happens after the S
    beside them, indexed by instruction, which shared code never reads. A physical operand is fixed, and moves (and a
    jump's arguments with its target's parameters) are the allocator's hints. The register allocator, liveness over
    virtual registers, and parallel moves work on that shape; when they must make an instruction (a move, a spill, a
-   reload, a jump), they ask the target through a record of its functions (`Lowering`: a move, a load and a store of
-   a virtual register's slot, and the scratch registers). Frame layout (`codegen/arm64/codegen`) and branch relaxation
+   reload), they ask the target through a record of its functions (`Lowering`: a move, a load and a store of a
+   virtual register's slot, and the scratch registers). A jump is never made: the allocator keeps each jump's `Op`,
+   its arguments turned into its edge's moves. Frame layout (`codegen/arm64/codegen`) and branch relaxation
    (`codegen/arm64/peephole`) are the target's own.
 
 **A target description** (`codegen/machine/target`) gives the shared code a target's registers (numbers, classes,
 names), which are allocatable, caller-saved, and callee-saved, its argument and result registers by class, its scratch
 registers, its stack alignment, and its word size. `codegen/arm64/target` is the only one; nothing outside a target's
 own modules names a register. Selection gives each conditional branch's target a block of its own, where its edge's
-moves go, and a `try` a block beside it that a raise enters; the printer expands three pseudo-instructions (a constant,
-a symbol's address). An x86-64 backend would be a selection, a printer, and a target description,
-reusing everything in `codegen/machine/machine`; an LLVM or WASM backend would print the SSA with its signatures (WASM
-would also need `try` through its exception handling, slots on a shadow stack, and precise roots).
+moves go, and a `try` a block beside it that a raise enters; the printer expands two pseudo-instructions (a constant, a
+symbol's address). An x86-64 backend would be a selection, a printer, a target description, and a code generator,
+reusing everything in `codegen/machine/machine`. Besides the frame, `codegen/arm64/codegen` holds code that knows no
+arm64 (block layout into fall-through chains, `chains`; the marking of cold blocks, `coldBlocks`; jump threading, in
+`machineCode`; and `definedSymbols`), which a second target would move to `codegen/machine` or write again. An LLVM or
+WASM backend would print the SSA with its signatures (WASM would also need `try` through its exception handling, slots
+on a shadow stack, and precise roots).
 
 ## 4. Testing
 

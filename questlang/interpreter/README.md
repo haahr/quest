@@ -72,6 +72,12 @@ result: `quest_string_get_char` is `stringOp.getChar`. The native function's sem
 code's, and an error the library raises (`stringOp.error`) is caught and re-raised as the interpreted exception the
 program's `try` expects. Only operations on interpreted values themselves are written here: `dynamic.copy`,
 `extern`, and `intern` (through `questlang/values`' reader and writer), identity hashing, and `system.args`.
+[`filecalls.mod.quest`](filecalls.mod.quest) exposes the runtime primitives behind `os/files`, which that module keeps
+private, so that the builtins return the status codes compiled code receives.
+
+[`literals.mod.quest`](literals.mod.quest) marks a string literal read-only as both interpreters first evaluate it,
+as compiled code's static literals are marked, so that `string.setChar` on one raises `string.error`; the builtins'
+`quest_string_freeze` uses it too.
 
 [`formatting.mod.quest`](formatting.mod.quest) prints a value as its static type shows it, as Cardelli specifies:
 a value of an abstract type prints as `<hidden>`, a function as `<fun>`, and a record shows only the fields of the

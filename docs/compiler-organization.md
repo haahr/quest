@@ -42,8 +42,9 @@ questlang/
 │   ├── diagnostics          # Diagnostic messages, error severity
 │   ├── diagbag              # Diagnostic accumulator and reporter
 │   ├── keys                 # Integer keys for the type tables (the bootstrap keys them by tuples)
-│   ├── json                 # JSON text, as the dynamic format and the build's artifacts use it
+│   ├── jsoncache            # Parsed JSON documents, shared: each artifact's text parsed once in a build
 │   ├── files                # Paths and files: joining, components, text and times, atomic writes
+│   ├── overlays             # Texts that stand in for files on disk: the language server's open documents
 │   ├── memoryfiles          # Artifacts kept in memory rather than on disk, for the JIT (docs/jit.md §3.4.1)
 │   ├── pyrepr               # Python's repr of strings, lists, and tuples, as the bootstrap's messages show them
 │   ├── strings              # String helpers beyond lib/util/strutil's (isOneOf)
@@ -60,7 +61,9 @@ questlang/
 │   ├── parser/              # Data-driven PEG / Packrat parser (bootstrap syntax/parser and grammar)
 │   │   ├── engine           # Generic PEG engine (constructs, syntax targets, rules, memo) and semantic values
 │   │   ├── grammar          # The grammar's syntax targets and rules
-│   │   └── actions          # Semantic actions constructing AST nodes
+│   │   ├── actions          # Semantic actions constructing AST nodes
+│   │   ├── expected         # What a syntax error says was expected, from the farthest token's failures
+│   │   └── unclosed         # What was left open where a parse failed
 │   └── desugar              # Rewriting syntactic sugar into the forms the type checker elaborates
 │
 ├── types/                   # Semantic types and kinds
@@ -126,8 +129,8 @@ questlang/
 │   ├── build/               # The SSA built from the described IR: values, descriptors, calls, aggregates, control,
 │   │                        # adapters, unit, representation
 │   └── passes/              # Its passes: escape, promote, constants, valueNumbers, selects, tables, accumulate,
-│                            # tailCalls, tailJumps, trampolines, unproxies, interrupts, allocations, and
-│                            # proxyFold, what escape and scalars share
+│                            # tailCalls, tailJumps, trampolines, unproxies, interrupts, allocations, concats,
+│                            # nanChecks, conditions, loops, and proxyFold, what escape and scalars share
 │
 ├── codegen/                 # Backends: the shared layer, the native backend, and the C backend
 │   ├── backend
@@ -139,10 +142,16 @@ questlang/
 │   └── c/                   # declarations, headers, printer, types; ssac, the SSA's C printer (docs/arm64.md
 │                            # §3.14)
 │
-├── jit/                     # The JIT (docs/jit.md): session, loader, debugobject
+├── jit/                     # The JIT (docs/jit.md): session, loader, debugobject; target, what session needs of
+│                            # a target, with a wasm variant (the host loads and runs) and a none variant (no JIT)
 ├── wasm/                    # The wasm backend (docs/wasm.md): model (modules as data), ops, encode (the
 │                            # binary format), printer (the text), runtimeTypes (R); codegen, the described IR as
 │                            # a module, and runtime, the module every unit imports
+│
+├── format/                  # quest fmt (docs/formatter.md): format, the formatter; structure, its reading of a
+│                            # program's structure
+├── lsp/                     # The language server (docs/lsp.md): protocol, positions, analysis, navigation,
+│                            # outline, server
 │
 ├── config/                  # The ABI version and artifacts' format
 ├── build/                   # The build engine and its log; compilerrunner, the host C compiler and linker;
@@ -411,17 +420,21 @@ between parts of the type checker:
 Layer 0: common/*
 Layer 1: syntax/* (tokens, tokenizer, ast, astprint, parser, parser/*, desugar)
 Layer 2: types/model → symbols, dump → subtyping; typechecker/typedast
-Layer 3: modules/paths, units, graph
+Layer 3: modules/paths, units, graph; format/*
 Layer 4: types/env → kinds, contractiveness
 Layer 5: typechecker/typedastprint, elaboratetypes, checks, escape
-Layer 6: modules/abstracttypes, loader, elaboration, stdlib
+Layer 6: modules/abstracttypes → types/reduce; modules/loader, elaboration, stdlib
 Layer 7: typechecker/checker → bindings, application, aggregates, tuples, control, exceptions, autovalues →
          typecheck, scoping
-Layer 8: types/reduce → canonical → values/model → dynamicjson → interpreter/primitives, builtins,
-         formatting → treewalk | repr/* → ir/* → ssa/* → codegen/*, wasm/* → jit/*, modules' artifacts, config/*,
-         build/*
+Layer 8: types/canonical → values/model → dynamicjson → interpreter/primitives, builtins,
+         formatting → treewalk, lsp/* | repr/* → ir/* → ssa/* → codegen/*, wasm/* → jit/*, modules' artifacts,
+         config/*, build/*
 Layer 9: driver/*
 ```
+
+Modules' artifacts and `build/`, the last of layer 8, are not ordered: they import each other.
+`modules/artifacts/moduleCompiler` imports `build/compilerRunner` and `build/headers`, and `build/engine` and
+`build/workers` import it, so the modules form a DAG but the two directories interleave.
 
 The bootstrap's lazy imports made cycles that this order does not allow; they were broken in the bootstrap before the
 port: symbols and scopes are `types/symbols`; the operator table is
@@ -465,6 +478,11 @@ further:
   type applications' thunks, and closures of external functions into functions of the unit, so that every backend
   compiles them alike ([ir.md](ir.md) §8.4.1); the bootstrap's C printer makes them as it prints. Its IR dumps of the
   described stage show them, and are its own (testing.md §2.8).
+- **Three `repr/` modules are the self-hosted compiler's alone.** `repr/staticdata` describes a unit's static data
+  for every backend, where the bootstrap's C backend works it out as it prints; `repr/runtimeLayout` gives the
+  runtime's struct layouts to the backends that do not print C; and `repr/externals`, which `tools/externals`
+  generates from `lib/`, lets importers call the library's external C functions directly
+  ([c-representation.md](c-representation.md) §6.2), which the bootstrap does not do.
 - **The interpreters' builtins** are only the symbols `lib/` binds, and each calls the native library
   ([interpreter.md](interpreter.md) §1).
 - **The build.** A Quest program can neither read the clock nor append to a file, so the build log's entries are

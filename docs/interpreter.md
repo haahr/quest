@@ -1,4 +1,4 @@
-# Quest Bootstrap Tree-Walking Interpreter & REPL
+# Quest Tree-Walking Interpreter & REPL
 
 This document details the architecture, runtime value representation, evaluation engine, and semantic decisions
 implemented for the bootstrap tree-walking interpreter in `bootstrap/python/quest/values/model.py` (the values,
@@ -30,8 +30,9 @@ is in [compiler-organization.md](compiler-organization.md) §6.
 
 - **Values.** A scalar holds its Quest value; a string, reader, writer, string builder, or process holds the native
   object, so `is` on interpreted values is `is` on what they hold. Records, tuples, arrays, closures, auto values,
-  exception values, and type values are tuples whose identity is the interpreted value's. References are cells with
-  `var` fields.
+  exception values, and type values are tuples whose identity is the interpreted value's. A reference is a mutable
+  cell, a tuple with a `var` field, or, as the bootstrap's `QArrayElementRef` and `QTupleElementRef` are, a reference
+  to an array's element or a tuple's component (`model.RefForm`).
 - **Builtins.** `interpreter/builtins` maps each external symbol `lib/` binds to an implementation: a function of the
   argument values, or a value (such as `quest_writer_output` and `QUEST_INT_MAX`). A function unwraps its arguments,
   calls the native library function the symbol names (`quest_string_get_char` is `stringOp.getChar`), and wraps the
@@ -154,7 +155,8 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
   - Standard constants: `true`, `false`, and `ok`.
   - Monadic operators: `not` (boolean negation), `extent` (array size), `ordinal` (option tag index).
   - Dyadic arithmetic and comparison operators: `+`, `-`, `*`, `/`, `%`, `mod`, `<`, `<=`, `>`, `>=`,
-    `++`, `--`, `**`, `//`, `^^`, `<<`, `<<=`, `>>`, `>>=`, `<>`, `/\`, `\/`, `is`, `isnot`.
+    `++`, `--`, `**`, `//`, `^^`, `<<`, `<<=`, `>>`, `>>=`, `<>`, `/\`, `\/`; not `is` and `isnot`, which the
+    evaluator applies where they occur (§3.2).
   - Not the standard library's pre-linked modules, which are resolved on demand (§4.11).
 
 ### 3.2. Evaluation Rules

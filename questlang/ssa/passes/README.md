@@ -60,8 +60,10 @@ allocation was; its write barriers go, since a stack slot is already a root for 
 and the ones escape analysis just made, into SSA values. This is the classic SSA construction of Cytron et al.: each
 word of a slot is a variable; a block where different definitions of it meet gets a parameter (placed at the
 iterated dominance frontier, using [`../cfg.int.quest`](../cfg.int.quest)); and a walk down the dominator tree
-replaces each load with the value last stored. A slot whose address is used for anything but loads and stores, or any
-slot in a function that enters a `try` (whose handler must see memory as the body left it), stays a slot.
+replaces each load with the value last stored. A slot whose address is used for anything but loads and stores stays
+a slot, and so does one accessed in a block that a `try`'s handler reaches, since the handler must see memory as the
+body left it. A slot accessed only elsewhere (by the body, before the `try`, or in a function with no `try`) is
+promoted.
 
 **Scalar replacement** ([`../scalars.mod.quest`](../scalars.mod.quest)) handles what escape analysis cannot: an object
 that a block parameter merges with others, such as a tuple carried round a loop and rebuilt on every iteration, or an
@@ -128,6 +130,13 @@ exported entry point that does nothing but tail-call the function, often through
 turn. The pass copies a small enough function, and its adapter, into its exported entry point, so that a call from
 another unit runs the function without the intermediate hops. It reuses tail jumps' copying (`tailJumps.spliceInto`).
 
+## Interrupt checks
+
+**Interrupts** ([`interrupts.mod.quest`](interrupts.mod.quest)), for the Jupyter kernel only, splits each function's
+entry and each loop head to test the runtime's interrupt flag, so that a cell stuck in a loop can be interrupted. It
+is not a lowering: it runs at the end of `pipeline.build`, after the numbered passes, when the kernel's driver turns
+it on.
+
 ## Lowering for the backends
 
 **Unproxies** ([`unproxies.mod.quest`](unproxies.mod.quest)): until now, the test of whether a pointer is a proxy, and
@@ -138,9 +147,6 @@ loop's repeated tests into one before the loop. This pass expands each into a br
 path inline from the runtime's header. The SSA backends get it here: each `quest_alloc` of a constant size becomes a
 load of the allocation cursor and limit, a bump of the cursor when there is room, a store of the header word, and a
 call of the runtime's slow path otherwise.
-
-**Interrupts** ([`interrupts.mod.quest`](interrupts.mod.quest)), for the Jupyter kernel only, splits each function's
-entry and each loop head to test the runtime's interrupt flag, so that a cell stuck in a loop can be interrupted.
 
 ## Testing
 
@@ -153,6 +159,6 @@ verifier, and prints the functions before and after; `tests/golden/run/questlang
 - [docs/ssa.md](../../../docs/ssa.md) §4.1 (each pass in detail, with the measurements that motivated it), §4.2
   (escape analysis), and §4.3 (scalar replacement).
 - [docs/benchmarks.md](../../../docs/benchmarks.md), where the effect of each pass was measured.
-- [docs/arm64.md](../../../docs/arm64.md) §3.7 (tail calls) and §3.6 (why a function with a `try` keeps its slots).
+- [docs/arm64.md](../../../docs/arm64.md) §3.7 (tail calls) and §3.6 (why a slot a handler reaches is kept).
 - [docs/collector.md](../../../docs/collector.md) §3.4 (the inline allocation sequence) and §3.5 (write barriers).
 - [docs/jupyter-kernel.md](../../../docs/jupyter-kernel.md) §5 (interrupts).

@@ -30,9 +30,9 @@ Tree:
 ```
 
 The paths are the bootstrap's, under `bootstrap/python/quest/`. The self-hosted compiler has the same stages in
-`questlang/syntax/` (`tokens`, `tokenizer`, `ast`, `astprint`, `desugar`, and the parser in four modules,
-`parser/engine`, `parser/grammar`, `parser/actions`, and `parser`), with the same grammar, ASTs, and error messages,
-which shared golden tests check.
+`questlang/syntax/` (`tokens`, `tokenizer`, `ast`, `astprint`, `desugar`, and the parser in six modules,
+`parser/engine`, `parser/grammar`, `parser/actions`, `parser/expected`, `parser/unclosed`, and `parser`), with the
+same grammar, ASTs, and error messages, which shared golden tests check.
 
 The formal EBNF grammar is [grammar.txt](grammar.txt).
 

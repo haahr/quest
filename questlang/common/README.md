@@ -48,9 +48,11 @@ The two compilers share their golden test outputs, so the self-hosted compiler m
 bootstrap wherever the tests look, and must read and write the same artifact files. Several modules here exist to
 reproduce what the bootstrap gets from Python's standard library:
 
-- [`json.int.quest`](json.int.quest) parses and prints JSON as Python's `json` module does, keeping object members in
-  insertion order and numbers as their text (a full machine word's integer does not fit Quest's `Int`). The dynamic
-  format, `.qi` and `.qm` artifacts, and the Jupyter kernel's protocol use it.
+- JSON is the standard library's `util/json` ([docs/json.md](../../docs/json.md)), which prints as Python's `json`
+  module does, keeping object members in insertion order and numbers as their text (a full machine word's integer
+  does not fit Quest's `Int`). The dynamic format, `.qi` and `.qm` artifacts, and the Jupyter kernel's protocol use
+  it. The library does not cache, so [`jsoncache.int.quest`](jsoncache.int.quest) parses each artifact's text once in
+  a build and shares the tree.
 - [`pyrepr.int.quest`](pyrepr.int.quest) writes strings, lists, and tuples as Python's `repr` does, for dumps and
   messages that show them.
 - [`sha256.int.quest`](sha256.int.quest) gives the hexadecimal SHA-256 of a text, as `hashlib` does, for layout

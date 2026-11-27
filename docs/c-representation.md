@@ -256,7 +256,8 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
 - **Slots:**
   Every slot of an aggregate (a tuple component, an option payload component, a record field, an array element, an
   auto value's component, a module record's field) is one 8-byte word holding the value's *slot representation*
-  (`slot_representation` in `repr/layout.py`): a record or variant is a pointer to an immutable 16-byte box
+  (`slot_representation` in `repr/layout.py`, `layout.slotRepresentation` in the self-hosted compiler): a record or
+  variant is a pointer to an immutable 16-byte box
   (`QRecordVal *`, `QVariantVal *`, made by `quest_record_box` and `quest_variant_box`), a `Bool` or `Char` is a word
   of its own (`QBoolSlot`, `QCharSlot`: 0 or 1, or the character, as a `QVal`'s `.i` holds it), an `Ok` is the word
   `Q_OK_VAL` (a `QVal`, since `Ok` has no C type of its own), and any other value is its representation. A slot thus holds exactly the value's `QVal` form, so the slots generic code lays out for a
@@ -335,7 +336,8 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
   A closure passed to a polymorphic function, or returned from one, at a type that mentions its type parameters
   (`All(b: Box(A)) A` at `A = Bool`) gets a thunk that converts its arguments from the callee's generic layouts to
   native ones and its result back, as calls do (Polymorphic Calls, below). So does the closure that applies a
-  polymorphic function to types only (`getBox(:Bool)` used as a value, `type_app` in `codegen/c/printer.py`), which converts
+  polymorphic function to types only (`getBox(:Bool)` used as a value, `type_app` in `codegen/c/printer.py`,
+  `printer.typeApp` in the self-hosted compiler), which converts
   native arguments to the function's generic layouts and its result back.
 
 - **Tuple Conversions:**
@@ -348,14 +350,17 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     :A :B end` builds a `QTuple_QVal_QVal`), whether the type is written out or reached through a type operator
     (`Box(A)`) or a recursive type (`List(A)`, whose nodes hold `QVal` heads). A call converts each such argument from
     the native layout of its type at the call's type arguments to the callee's layout, and each such result back
-    (plans with a layout context: the instantiation, and the direction; `layout_plan` in `ir/represent.py`). Every slot
+    (plans with a layout context: the instantiation, and the direction; `layout_plan` in `ir/represent.py`,
+    `represent.layoutPlan` in the self-hosted compiler). Every slot
     holds a value's `QVal` form (Slots, above), so the layouts agree in memory whatever the type arguments
-    (`generic_layout_agrees`, §6.4.5), and the value is used as it is, through a pointer cast: it keeps its identity,
+    (`generic_layout_agrees`, the self-hosted `genericLayout.genericLayoutAgrees`, §6.4.5), and the value is used as it
+    is, through a pointer cast: it keeps its identity,
     and a recursive value is not copied (a bounded type parameter's value is held at its own view, above). The
     layouts differ only where a component is a closure whose C signature changes (a `QVal` parameter or result in a
     register agrees only with integers and pointers). Such a value is converted by `quest_convert`, from and to the
     descriptor of the type laid out each way (for the callee's layout, the type's template with a hole for each of the
-    callee's type parameters, instantiated with the type arguments, `layout_descriptor` in `ir/describe.py`): a tuple or
+    callee's type parameters, instantiated with the type arguments, `layout_descriptor` in `ir/describe.py`,
+    `describe.layoutDescriptor` in the self-hosted compiler): a tuple or
     option into a proxy (§5.8), which shares the original's identity and `var` components, or a copy where the target
     type cannot be proxied (a closure among its components whose C signature changes with the layout).
     A value whose conversion would copy mutable data laid out differently (an array of such values) cannot be
@@ -367,13 +372,16 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     operator (`handler.T(Real)`, for `Let T = Fun(K::TYPE) Tuple f: All(k: K) K end`) is opaque outside the module,
     which cannot convert it, so it has one layout there whoever made it: the module's generic code's, its
     representation laid out with each of the operator's parameters a `QVal` (`abstract_instance` in
-    `repr/layout.py`). The module's code at concrete arguments lays the representation out natively, which
+    `repr/generic_layout.py`, `genericLayout.abstractInstance` in the self-hosted compiler). The module's code at
+    concrete arguments lays the representation out natively, which
     differs where a closure's C signature changes with them (a `QReal` or a record's register pair for a `QVal`), and
     converts at the module's boundary: where a member of one of the unit's modules is called from outside it, an
     argument or result of the abstract type at the representation's native type converts by a `view` plan between
     the generic layout's descriptor (the representation's template) and the native one (`_abstract_plan` in
-    `ir/represent.py`); a module file's export whose interface type holds such a value is bound converted to that
-    type (`abstract_layouts_differ`), so its adapter converts for other units. A generic function of the module
+    `ir/represent.py`, `abstractPlan` in the self-hosted `represent`); a module file's export whose interface type holds
+    such a value is bound converted to that
+    type (`abstract_layouts_differ`, the self-hosted `genericLayout.abstractLayoutsDiffer`), so its adapter converts for
+    other units. A generic function of the module
     takes and returns such values as they are, its own layout being the generic one. A call from outside the module
     that would be specialized to such a native layout is not (ir.md §8.1), so that the generic code serves it
     without converting (`modules/abstract_closure_layouts`). Where the conversion would copy mutable data (an
@@ -669,8 +677,10 @@ Equal types share one C representation, so a value moves between them with a pla
 - **Canonical forms:** A type containing recursion stands for the regular tree of its unfoldings, which any number
   of types write differently: as a recursive type, as an unfolding written out (to any depth), or with a different
   period (`Rec(L) Option nil cons with head: Int tail: L end end` and the same type unrolled twice inside its
-  `Rec`). Its tag (`type_tag`), descriptor (`descriptor_form`), and type digests are computed from its
-  canonical form (`canonical_type` in `types/canonical.py`): the graph of its nodes is minimized by partition refinement
+  `Rec`). Its tag (`type_tag`, the self-hosted `layout.typeTag`), descriptor (`descriptor_form`,
+  `staticdata.descriptorForm`), and type digests are computed from its
+  canonical form (`canonical_type` in `types/canonical.py`, `canonical.canonicalType` in the self-hosted compiler): the
+  graph of its nodes is minimized by partition refinement
   (as the dynamic type table is, §11), and the minimal graph is written back as a type whose recursion variables
   have reserved ids and bind the targets of the back edges of a depth-first walk. Nodes are tuples (with or without
   type components), records, variants, options, arrays, `var` and `out` types, function types (polymorphic or
@@ -727,7 +737,8 @@ typedef struct QProxy {
   variant, auto value, type variable, abstract type, function whose signature mentions one, or a tuple or option that
   may be a proxy), or may hold a proxy (any tuple, or an option with a payload: a value of its subtype there may be a
   proxy, and must be converted when the container is upcast to a type at which it never is), or of an option type
-  with two or more cases or such a payload component (`may_be_proxied` in `repr/layout.py`). No value of any other
+  with two or more cases or such a payload component (`may_be_proxied` in `repr/layout.py`, `layout.mayBeProxied` in the
+  self-hosted compiler). No value of any other
   type is a proxy: an upcast to such a type unwraps one (`quest_unproxy`; its original serves, as no component of the
   type changes view), and `quest_convert` copies rather than proxies a value whose target type cannot be proxied
   otherwise (the runtime decides with the same rule on descriptors, `quest_may_be_proxied`, conservatively).
@@ -773,7 +784,8 @@ static_assert(sizeof(QClosure) == 8, qclosure_must_be_8_bytes);
 A function value is a `QClosure *`, whatever its closure holds after `fn`; `is` compares the pointers.
 
 ### 6.2. Function Signatures and Calling Conventions
-1. **Closed IR Functions:** Every Quest function is lifted by closure conversion (`ir/closure_convert.py`) to a
+1. **Closed IR Functions:** Every Quest function is lifted by closure conversion (`ir/closure.py`,
+   `questlang/ir/closure` in the self-hosted compiler) to a
    module-scope C function `qf_<name>` with a leading `void *_raw_env` parameter, the closure it was called
    through:
    ```c
@@ -888,7 +900,8 @@ unbounded generic functions called with 16-byte record fat pointers (`QRecordVal
 (`QVariantVal`) undergo **Selective Call-Site Specialization**:
 - **Selective Trigger**: Specialization is only synthesized when at least one concrete type argument involves a
   `Record`, `Variant`, or aggregate containing them, or when the function has a `var` or `out` parameter, or a tuple
-  parameter or result, over its type parameters (`should_specialize`). Such a tuple's generic layout agrees with the
+  parameter or result, over its type parameters (`should_specialize`, the self-hosted `specialize.shouldSpecialize`).
+  Such a tuple's generic layout agrees with the
   native one in memory, but a closure among its components may have another C signature, so the generic function
   converts it at every call (`generic_closures` runs 2.5 times as fast specialized); the tuple is recognized by its
   shape, however its type is written (`Box(A)` for `Let Box = Fun(A::TYPE) Tuple x: A end`, at a cost of 0.1% more
@@ -952,7 +965,8 @@ struct QTypeDescriptor {
   number of value elements before it, and `text`, as echo writes it, `Let A = Int` or `<Hidden>::TYPE`). Only echo
   reads them. Descriptors are shared by types equal but for alias names, so echo writes a type whose type components
   (or whose parts' components) would print differently with alias names by a descriptor of its own, a copy laid out
-  the same (`quest_type_<tag>_echo_<digest>`, `echo_descriptor_form`). A recursive type is unfolded for echo, through
+  the same (`quest_type_<tag>_echo_<digest>`, `echo_descriptor_form`, the self-hosted `staticdata.echoDescriptorForm`).
+  A recursive type is unfolded for echo, through
   its alias if it has one, as the interpreter unfolds it; its recursive occurrences refer back to its own echo-only
   descriptor, which they share a digest with. Descriptors the runtime makes have none.
 - **Variants & Options (`QVariantTypeDescriptor`):** Holds `size_t case_count` and an array of `QVariantCaseDescriptor`
@@ -983,7 +997,8 @@ struct QTypeDescriptor {
 - **Exceptions (`QExceptionTypeDescriptor`):** Holds `payload_type`; subtyping is invariant in it.
 
 ##### Choosing a Descriptor (`descriptor_form`)
-Every type the program describes gets its own descriptor, chosen by `descriptor_form` (`codegen/c/types.py`), which
+Every type the program describes gets its own descriptor, chosen by `descriptor_form` (`codegen/c/types.py`;
+`descriptorForm` in the self-hosted `repr/staticdata`), which
 both descriptor references (`c_type_descriptor`) and descriptor emission use. A type parameter in scope is described
 by the descriptor passed for it. Tags of compound types include a digest of the type's text, because C tags conflate
 types with the same representation. Recursive types (`Rec(X) ...`, recursive type operator applications) are
@@ -1065,7 +1080,8 @@ function passes on ([type-system.md](type-system.md) §6.12).
   function type adapters it needs. The code passes the template and the parameters' descriptors to
   `quest_instantiate_descriptor(template, n, args)`, which copies the template's nodes that reach a hole (templates
   may be cyclic), naming each copy from the template node's name with its holes replaced by the arguments' names, cut
-  off at 80 characters as static descriptors' names are (`short_type_name`), so that an auto value made by generic
+  off at 80 characters as static descriptors' names are (`short_type_name`, the self-hosted `dump.shortTypeName`), so
+  that an auto value made by generic
   code prints its witness at its type arguments as the interpreter does, and memoizes the result by template and
   arguments.
 - **Stored types:** In an instance, each hole becomes a `QTYPE_KIND_STORED` descriptor (`QStoredDescriptor`) of its
@@ -1083,7 +1099,8 @@ function passes on ([type-system.md](type-system.md) §6.12).
   abstract type's, viewed at its bound, agrees only with the bound's own layout. Aggregates agree when
   their components do, records when their views' field types do. Recursive descriptors are compared coinductively.
   The compiler makes the same judgement statically for a type laid out by generic code and its instance at known
-  type arguments (`generic_layout_agrees` in `repr/generic_layout.py`), conservatively: when it cannot tell, the value
+  type arguments (`generic_layout_agrees` in `repr/generic_layout.py`, `genericLayout.genericLayoutAgrees` in the
+  self-hosted compiler), conservatively: when it cannot tell, the value
   is left to `quest_convert`, which returns it unchanged if the layouts agree after all.
 - **Conversion:** `quest_convert(v, from, to)` converts a value between layouts as well as between a subtype and a
   supertype. A value whose layout already suits `to` is returned as it is (so tuples keep their identity and `var`
@@ -1123,7 +1140,7 @@ address is passed as it is (cast to `QVal *`); so is any location whose represen
 - **Tier 2 (Shadow Cell Fallback Mode):** When calling an unspecialized polymorphic function (such as across separate
   compilation boundaries or through first-class generic closures):
   - The caller declares a shadow cell of the parameter's representation, a `QVal` (`ref_argument` in
-    `ir/represent.py`).
+    `ir/represent.py`, `represent.refArgument` in the self-hosted compiler).
   - **Copy-in (`var` only):** For `var` parameters, the caller converts the current native value into the shadow cell
     (a `box` plan). For `out` parameters, copy-in is skipped because the callee cannot read the parameter.
   - **Callee Invocation:** Callee receives the shadow cell's address (`QVal *`).
@@ -1278,7 +1295,8 @@ if (Q_SETJMP(q_handler.env_jmp) == 0) {
 A local that is modified between `setjmp` and `longjmp` and is not `volatile` has an indeterminate value after the
 `longjmp` (C99 §7.13.2.1), and at `-O2` clang keeps such locals in registers, so an assignment made in the protected
 body before a raise was lost. Mutable locals (`let var`) assigned in the protected body of a `try` are therefore
-declared `volatile` (`volatile_vars` in `codegen/c/printer.py`), and the address of one passed for a
+declared `volatile` (`volatile_vars` in `codegen/c/printer.py`, `printer.volatileVars` in the self-hosted compiler), and
+the address of one passed for a
 `var` or `out` argument is cast to a plain pointer. Named exceptions constructed locally are `volatile` for the same
 reason.
 
@@ -1324,7 +1342,8 @@ end end` the inner `a2` is written `6`, as the interpreters write it and as `dyn
 ([dynamic.md](dynamic.md) §2.4). A variable with no witness is written `<hidden>`.
 
 - **Construction:** `auto :T with ... end` builds the `Tuple S[T/A] end` struct, converts it to the stored layout
-  with the payload's own plan (`auto_payload_plan` in `ir/represent.py`: closure adapters, and conversions of
+  with the payload's own plan (`auto_payload_plan` in `ir/represent.py`, `represent.autoPayloadPlan` in the self-hosted
+  compiler: closure adapters, and conversions of
   components not of the type component's type; a slot already holds its `QVal` form), and calls
   `quest_auto_new(descriptor_T, payload)`. Components holding values of the type component are stored at `T`'s own
   view, as generic code holds a bounded type parameter's values too, so they are stored as they are. A branch at a
@@ -1339,7 +1358,8 @@ end end` the inner `a2` is written `6`, as the interpreters write it and as `dyn
   differs) the binder is a statically converted copy, which is rejected with an error for signatures with `var`
   components, whose updates would be lost. When the layouts differ, the binder is a copy converted by
   descriptor (as the case's arm, decided by the represent pass, says, by the descriptors the describe pass gave it;
-  `auto_arm_converted` in `codegen/c/printer.py`): each component that mentions `A` is converted from its stored
+  `auto_arm_converted` in `codegen/c/printer.py`, `printer.autoArmConverted` in the self-hosted compiler): each
+  component that mentions `A` is converted from its stored
   type, described with `A` standing for the type component (a template instantiated with the inspect's witness, the
   value's `type_desc`), to its type in `S[T/A]`. For a
   signature with `var` components that is a fatal run-time error; the type checker keeps it from happening for
@@ -1531,12 +1551,15 @@ When an interface `x.int.quest` is compiled (`quest -c x.int.quest`), the compil
 - **Runtime Dependency:** Always includes `#include "quest_runtime.h"`.
 - **Recursive Interface Includes:** For every imported interface (`import : Dep`), emits `#include "dep.int.h"`.
 - **Abstract Type Erasure:** Abstract types (`T::TYPE`) cannot have a fixed scalar size across implementations and
-  erase uniformly to `typedef QVal quest_type_<Interface>_T;`.
+  erase uniformly to `typedef QVal quest_type_<Interface>_T;`. A bounded abstract type (`T::POWER(B)`) does not: outside
+  its module it is seen at its bound and held as a value of it, so its typedef is the bound's C type (`QInt` for
+  `POWER(Int)`).
 - **Manifest Types:** Transparent types (`Def T = ...`) emit concrete C typedefs or struct definitions (e.g.
   `struct quest_rec_<Interface>_<Name>` for records).
 - **Function Signature Typedefs:** Exported member functions emit function pointer typedefs
   `typedef <Ret> (*quest_sig_<Interface>_<Member>)(<Params>);`, with uniform parameter conversions
-  (integers to `QInt`, reals to `QReal`, strings to `QString *`, records to `QRecordVal`, and abstract types to `QVal`).
+  (integers to `QInt`, reals to `QReal`, strings to `QString *`, records to `QRecordVal`, and unbounded abstract types
+  to `QVal`).
 
 ---
 

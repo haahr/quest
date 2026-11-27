@@ -33,13 +33,20 @@ The forms of the command line, which `main.quest`'s header describes in full:
   AST, the IR at a stage, the SSA after a pass, the generated C or assembly, or a compiled run's output. Each phase
   runs only if the ones before it found no errors. The test runner compares these outputs with golden files
   ([docs/testing.md](../../docs/testing.md) §2.3), so their formats are fixed. There is no framework of phase
-  objects, as the bootstrap has: the phases are function calls in sequence.
+  objects, as the bootstrap has: the phases are function calls in sequence. The SSA's phases run in
+  [`ssaphases.int.quest`](ssaphases.int.quest), a module of its own so that a driver compiled to WebAssembly can
+  substitute its variant `ssaphases.wasm` and leave out the SSA ([docs/wasm.md](../../docs/wasm.md) §5.1).
 - **A unit file** given alone (`x.int.quest` or `x.mod.quest`, `-c` optional). `compileUnitFile` compiles an
   interface to its `.qi` and C header, or a module to its C or assembly, object, and `.qm`.
 - **Building** (`quest compile FILE`, or `-o`). `buildProgram` hands the program to the build engine, which compiles
   each stale unit separately and links a binary. Other compiled runs (`--stop-after run_c_compiled`, `--emit-c`,
   `--whole-program`) go through `compiled`, which translates the program's own unit here and uses the engine only for
   the modules that unit imports.
+- **Formatting** (`quest fmt [-w | --check] [FILE|DIRECTORY...]`). The driver hands the files to the formatter
+  ([`questlang/format`](../format), [docs/formatter.md](../../docs/formatter.md)), which prints each formatted,
+  rewrites it with `-w`, or with `--check` names the files that would change.
+- **The language server** (`quest lsp`). The driver hands standard input and output to
+  [`questlang/lsp`](../lsp)'s server ([docs/lsp.md](../../docs/lsp.md)).
 - **A parallel build's worker**. Run with a worker's command line, the driver compiles a batch of modules for its
   parent ([`build/workers`](../build/workers.int.quest)).
 

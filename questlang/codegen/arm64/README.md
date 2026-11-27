@@ -30,9 +30,10 @@ stack), is expressed as moves to and from fixed physical registers around each c
 that the register allocator, which knows nothing of arm64, sees them as constraints.
 
 **The instructions are data.** [`minst`](minst.int.quest) defines `Op`, an option with one case per operation (with
-its immediates, condition, addressing mode, or label), and `Inst`, an `Op` with its registers. Only selection, the
-printer, and the encoder case on `Op`; everything else sees an instruction through the shared machine-function view
-in [`../machine`](../machine/README.md), with the `Op` in a side table. Labels, unwind directives, and source
+its immediates, condition, addressing mode, or label), and `Inst`, an `Op` with its registers. Only this directory's
+modules case on `Op`: `minst` itself, selection, `codegen` (frames, calls, and jump tables), the peephole pass, the
+printer, and the encoder. The shared code sees an instruction through the machine-function view in
+[`../machine`](../machine/README.md), with the `Op` in a side table. Labels, unwind directives, and source
 positions are instructions too, so a function's code is one sequence. [`target`](target.int.quest) numbers arm64's
 registers for that shared code and says which are allocatable, which a call preserves, and which are kept as scratch.
 
@@ -88,11 +89,12 @@ printer's text, which keeps the two forms in agreement.
 
 ## Connections
 
-[`../backend`](../backend.int.quest) calls `assembleUnit` after the SSA pipeline, and
-[`../../jit/session`](../../jit/session.int.quest) calls `encodeUnit`. What the backend cannot compile raises
-`unsupported`, naming the construct; there is no fallback to C. Units it compiles link with units the C backend
-compiles, since both follow the same C ABI and the shared layouts of [`../../repr`](../../repr); mixed builds and the
-ssac printer ([`../c`](../c/README.md)) are how its bugs are located. The bootstrap compiler has no counterpart.
+[`../native`](../native.int.quest) calls `assembleUnit` after the SSA pipeline, for
+[`../backend`](../backend.int.quest), and [`../../jit/target`](../../jit/target.int.quest) calls `encodeUnit`. What
+the backend cannot compile raises `unsupported`, naming the construct; there is no fallback to C. Units it compiles
+link with units the C backend compiles, since both follow the same C ABI and the shared layouts of
+[`../../repr`](../../repr); mixed builds and the ssac printer ([`../c`](../c/README.md)) are how its bugs are located.
+The bootstrap compiler has no counterpart.
 
 ## Further reading
 

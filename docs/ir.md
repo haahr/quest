@@ -27,7 +27,8 @@ the IR and running small, single-responsibility passes ensures that:
 - specialization and closure conversion are IR-to-IR transforms whose results are ordinary IR, analyzed and printed
   like anything else (no side tables keyed by AST node identity, no clones that analyses miss);
 - every binder is a symbol, so identity never depends on names;
-- types reaching the backend are lowered shapes (§4), never aliases or unreduced applications;
+- types stay as written, alias names and all, and the backend decides by their shapes (§4), computed from them,
+  in which aliases are stripped and applications reduced;
 - expression-versus-statement plumbing (destination passing, temporaries for `if` and blocks as values) disappears
   into the normal form;
 - each stage can be dumped (goldens) and verified (invariants) on its own.
@@ -51,9 +52,9 @@ every golden test compares the two.
    promoted to SSA values, which the self-hosted compiler's `ssa/passes/promote` does ([ssa.md](ssa.md) §4.1).
 5. **Symbols for every binder.** Variables, functions, join points, type parameters, and globals are IR symbols
    (unique ids, with a name hint for printing). Lookups are by symbol only.
-6. **Types are lowered shapes; type arguments become values.** Quest cannot erase types (`Dynamic`, auto types,
-   and `inspect` use them at run time), so type abstraction and application are explicit, and a later pass turns
-   them into descriptor values (§7).
+6. **Types are kept as written, decided by their shapes; type arguments become values.** Quest cannot erase types
+   (`Dynamic`, auto types, and `inspect` use them at run time), so type abstraction and application are explicit,
+   and a later pass turns them into descriptor values (§7).
 7. **Target-independent, ABI-aware.** The IR knows nothing of C syntax or AArch64 registers, but its lowered stage
    fixes representations as the Quest runtime ABI defines them ([c-representation.md](c-representation.md)), which
    compiled C and native code share with one runtime and one serialized form of dynamic values.
@@ -84,10 +85,10 @@ An IR **unit** corresponds to a compilation unit (a program, or a module compile
   one-component `var` tuple that uses load and redefinitions store to, and that the record holds.
 - **Imports:** the units it depends on and the symbols it uses from them; interfaces (`.qi`) are unchanged.
 
-Type declarations do not appear as items: the shapes in the IR carry everything later stages need, and the printer
-derives C struct declarations from the shapes it meets. After the describe pass (§8.4), the unit lists its **static
-data**: the static descriptors its operations refer to, the static offset tables of its record literals, and the tag
-maps of its `variant_tags` plans, which a backend emits.
+Type declarations do not appear as items: the types in the IR, through their shapes, carry everything later stages need,
+and the printer derives C struct declarations from the shapes it meets. After the describe pass (§8.4), the unit lists
+its **static data**: the static descriptors its operations refer to, the static offset tables of its record literals,
+and the tag maps of its `variant_tags` plans, which a backend emits.
 
 ## 4. Types: Shapes and Representations
 
@@ -800,7 +801,7 @@ of results fit every backend's convention. Tuples have identity, so this is deci
 
 | Stage | After | Invariants (checked by the verifier) |
 |---|---|---|
-| **Core** | lowering | ANF: operation arguments are atoms; every variable is bound once and used only in its scope; functions do not use mutable variables of enclosing functions; jumps name enclosing join points with matching arity, and breaks and continues enclosing loops, within one function; returns only in functions; terminators last; ordinal operations record a permutation of their option's cases, and option payloads their ordinals (`ir/verify.py`). Types are shapes, so aliases and unreduced applications cannot occur. Type parameters are checked on the typed AST (`typechecker/scoping.py`), as abstract types of modules are type variables too |
+| **Core** | lowering | ANF: operation arguments are atoms; every variable is bound once and used only in its scope; functions do not use mutable variables of enclosing functions; jumps name enclosing join points with matching arity, and breaks and continues enclosing loops, within one function; returns only in functions; terminators last; ordinal operations record a permutation of their option's cases, and option payloads their ordinals (`ir/verify.py`). Types are as written (§4.1); passes decide by their shapes, in which aliases and unreduced applications cannot occur. Type parameters are checked on the typed AST (`typechecker/scoping.py`), as abstract types of modules are type variables too |
 | **Simplified** | the simplifier, inliner, and contification (§8.6) | as Core; an inlined call's copy has fresh binders and labels. The self-hosted compiler's alone: the bootstrap goes from Core to Specialized |
 | **Specialized** | §8.1 | as Core; every specialized call refers to an existing clone |
 | **Closed** | §8.2 | no `funs` statement remains; every closure is of one of the unit's functions; those functions use only their parameters, their environment, and globals (the variables the unit's top levels bind outside loops). `type_app` remains, an operation on closures |

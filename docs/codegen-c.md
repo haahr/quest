@@ -23,7 +23,8 @@ Typed AST (TypedProgram, or a module file's TypedModule)
            |
 +-----------------------+      repr/layout.py, repr/descriptors.py, repr/symbols.py (shared by backends)
 |   c/printer.py        | <--- c/types.py: C spellings; c/declarations.py: structs, tables, descriptors
-|   (CPrinter)          |      Prints what the passes decided: no representation decisions or descriptors of its own
+|   (CPrinter)          |      Prints what the passes decided: no descriptors of its own, and no representation
+|                       |      decisions but the self-hosted printer's fused tuples (printer.py below)
 +-----------------------+
            |
            v  (C99 source)
@@ -65,8 +66,10 @@ The C backend (`codegen/backend.py` and `codegen/c/`):
   used by `modules/artifacts/module_compiler.py` and `BuildEngine` (`build/engine.py`); the pipeline runs the same
   steps as phases (`ir_core` ... `ir_described`, then `codegen_c`).
 - **`printer.py`:** `CPrinter`, printing a described IR unit as C: the descriptors it is given (descriptor variables,
-  static descriptors, instantiated templates) and the unit's static data (static descriptors, offset tables, tag
-  maps), which declarations.py declares.
+  static descriptors, instantiated templates) and the unit's static data (static descriptors, offset tables, tag maps),
+  which declarations.py declares. The self-hosted printer makes one representation decision of its own (`fusedTuples`):
+  a single-use tuple built only as an option's payload is never allocated, its components going straight into the
+  option, and a payload extracted only to read one component is read in place.
 - **`declarations.py`:** The declarations of the types a unit uses (structs, offset and coercion tables, type
   descriptors, function type adapters), the extern declarations of imported modules' functions, and the signature of
   the functions a module file exports (`module_function_signature`).
@@ -74,7 +77,8 @@ The C backend (`codegen/backend.py` and `codegen/c/`):
   beside their `.qi` files, up to date when at least as new as the `.qi` (`build/headers.py`,
   [build-process.md §5.3](build-process.md)).
 - **`types.py`:** C spellings: the C types of representations, function pointer types, `QVal` wrapping, literals,
-  record struct and offset table names, and descriptor expressions (`descriptor_form`).
+  record struct and offset table names, and descriptor expressions (`descriptor_form`, which the self-hosted compiler
+  keeps in `repr/staticdata`: `descriptorForm`, giving a `DescriptorForm`).
 
 Only C compilation's drivers import `codegen/c/` (`tests/python/test_dependencies.py`).
 
