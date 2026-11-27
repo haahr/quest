@@ -15,6 +15,7 @@ import
     strutil = util/strutil : util/Strutil
 
     diagbag = questlang/common/diagbag : questlang/common/DiagBag
+    diagnostics = questlang/common/diagnostics : questlang/common/Diagnostics
     location = questlang/common/location : questlang/common/Location
     questlang/common/pyRepr : questlang/common/PyRepr
     tokens = questlang/syntax/tokens : questlang/syntax/Tokens
@@ -208,6 +209,17 @@ export
     let error(tok: T start: Int message: String): Ok =
         diagbag.addError(tok.bag location.span(tok.file start tok.cursor) message)
 
+    let unclosedCommentCode = "syntax.unclosedComment"
+    let unterminatedStringCode = "syntax.unterminatedString"
+
+    (* An error, as error reports one, with a code for callers that act on it *)
+    let errorWithCode(tok: T start: Int message: String code: String): Ok =
+        begin
+            let d = diagnostics.error(message location.span(tok.file start tok.cursor))
+            diagnostics.setCode(d code)
+            diagbag.add(tok.bag d)
+        end
+
     (* The token from start to the cursor *)
     let finish(tok: T kind: K start: Int value: tokens.TokenValue): tokens.Token =
         tokens.make(
@@ -237,7 +249,7 @@ export
                 end
                 vector.append(tok.commentSpans location.span(tok.file start tok.cursor))
                 if depth > 0 then
-                    error(tok start "Unclosed comment")
+                    errorWithCode(tok start "Unclosed comment" unclosedCommentCode)
                     exit
                 end
             else
@@ -426,7 +438,7 @@ export
                 end
             end
             if atEnd(tok) then
-                error(tok start "Unterminated string literal")
+                errorWithCode(tok start "Unterminated string literal" unterminatedStringCode)
             else
                 tok.cursor := tok.cursor + 1  (* Closing quote *)
             end

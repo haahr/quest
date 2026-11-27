@@ -56,7 +56,11 @@ known, the "imported here" labels, and whether it is silent (§4.5). Its interpr
 It also has `suggestions` (machine-applicable fixes) and an `error_code`, which the renderer prints but nothing sets.
 `diagnostic_of(error)` makes an error's diagnostic. The self-hosted `diagnostics.Diagnostic` holds the same things
 (its labels are `Label` tuples of a span, a message, and whether the label is primary), and
-`diagnostics.errorDiagnostic` makes one of a `CompilerError`.
+`diagnostics.errorDiagnostic` makes one of a `CompilerError`. Its `code` (`diagnostics.setCode`) is not printed; it
+is set on the diagnostics that callers act on, so that rewording a message changes nothing: the tokenizer's unclosed
+comment and unterminated string (`tokenizer.unclosedCommentCode`, `unterminatedStringCode`), on which the REPL reads
+another line, and a syntax error that marks where the parse stopped (`syntax.stoppedHere`, `syntax.stoppedAtEnd`),
+which `parser.stoppedAt` reads.
 
 ---
 

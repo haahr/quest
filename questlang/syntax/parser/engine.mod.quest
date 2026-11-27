@@ -220,21 +220,27 @@ export
     end
 
     (* The secondary label of a syntax error located at what was left open,
-     * or its note when the parse stopped at the end of the input *)
+     * or its note when the parse stopped at the end of the input, and the
+     * codes that tell stoppedAt which of the two a diagnostic has *)
     let stoppedHere = "parsing stopped here"
     let stoppedAtEnd = "parsing stopped at the end of the file"
+    let stoppedHereCode = "syntax.stoppedHere"
+    let stoppedAtEndCode = "syntax.stoppedAtEnd"
 
     let stoppedAt(d: diagnostics.Diagnostic endOffset: Int): Int =
         begin
-            let labels = diagnostics.labels(d)
-            let notes = diagnostics.notes(d)
+            let code = diagnostics.code(d)
+            let has = fun(c: String): Bool maybe.isSome(code) andif stringOp.equal(maybe.unwrap(code) c)
             let var at = diagnostics.span(d).startOffset
-            for i = 0 upto {vector.length(labels) - 1} do
-                let l = vector.get(labels i)
-                if not(l.isPrimary) andif stringOp.equal(l.message stoppedHere) then at := l.sp.startOffset end
-            end
-            for i = 0 upto {vector.length(notes) - 1} do
-                if stringOp.equal(vector.get(notes i) stoppedAtEnd) then at := endOffset end
+            if has(stoppedAtEndCode) then
+                at := endOffset
+            elsif has(stoppedHereCode) then
+                (* At its one secondary label *)
+                let labels = diagnostics.labels(d)
+                for i = 0 upto {vector.length(labels) - 1} do
+                    let l = vector.get(labels i)
+                    if not(l.isPrimary) then at := l.sp.startOffset end
+                end
             end
             at
         end
@@ -436,8 +442,10 @@ export
                 if maybe.isSome(u.note) then diagnostics.addNote(d maybe.unwrap(u.note)) end
                 if isEof(tok) then
                     diagnostics.addNote(d stoppedAtEnd)
+                    diagnostics.setCode(d stoppedAtEndCode)
                 elsif u.tok.span.startOffset isnot tok.span.startOffset then
                     diagnostics.addLabel(d sp stoppedHere false)
+                    diagnostics.setCode(d stoppedHereCode)
                 end
                 diagbag.add(ps.bag d)
                 raise diagbag.fatalError with d end

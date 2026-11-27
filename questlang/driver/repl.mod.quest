@@ -50,9 +50,10 @@ export
                 let toks = tokenizer.tokenizeAll(tokenizer.new(sm bag))
                 if diagbag.count(bag) > 0 then
                     (* More lines can close a comment or a string *)
-                    let message = diagnostics.message(diagbag.get(bag 0))
-                    {strutil.find(message "Unclosed comment") >= 0}
-                        orif {strutil.find(message "Unterminated string") >= 0}
+                    let code = diagnostics.code(diagbag.get(bag 0))
+                    maybe.isSome(code)
+                        andif {stringOp.equal(maybe.unwrap(code) tokenizer.unclosedCommentCode)
+                            orif stringOp.equal(maybe.unwrap(code) tokenizer.unterminatedStringCode)}
                 else
                     let endOffset = vector.get(toks {vector.length(toks) - 1}).span.startOffset
                     try

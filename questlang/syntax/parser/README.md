@@ -60,7 +60,8 @@ same failures. The error goes to the bag and `diagbag.fatalError` is raised.
 When the tokens show a construct left open before the farthest position, or a closer with nothing to close
 ([`unclosed.mod.quest`](unclosed.mod.quest)), the error is reported at that construct instead, with the farthest
 position as a secondary label ("parsing stopped here") or, at the end of the input, a note. `stoppedAt` reads where
-the parse stopped back from the error. The REPL relies on it, not on where the error is located: if the parse stopped
+the parse stopped back from the error, by the error's code (`syntax.stoppedHere` or `syntax.stoppedAtEnd`), not its
+text. The REPL relies on it, not on where the error is located: if the parse stopped
 at the end of the input, the input is incomplete and the REPL reads another line. The language server uses it to cut
 out the declaration the parse stopped in.
 
