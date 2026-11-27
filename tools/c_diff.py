@@ -8,6 +8,7 @@ revision's compiler prints it, against the C of the working tree's.
     tools/c-diff -k option          only the programs whose test names contain "option"
     tools/c-diff --stat             only which programs differ, and by how many lines
     tools/c-diff --questlang        the tests of the self-hosted compiler's modules too (slow)
+    tools/c-diff --backend arm64    the arm64 assembly instead (or ssac's C)
 
 The revision's files are exported (git archive) to .build/c-diff/REVISION and
 kept, with what the compilers build there, so a later comparison against the
@@ -23,6 +24,7 @@ import concurrent.futures
 import difflib
 import os
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -56,11 +58,15 @@ def export_revision(revision: str) -> Path:
     return tree
 
 
+STRING_ARRAY_SIZE = re.compile(r"(static const char qs_[0-9]+)\[[0-9]+\]")
+
+
 class Side:
     """One tree's compiler: what runs it, and where it builds."""
 
-    def __init__(self, name: str, tree: Path, bootstrap: bool, python: str) -> None:
+    def __init__(self, name: str, tree: Path, bootstrap: bool, python: str, backend: str | None) -> None:
         self.name = name
+        self.backend = backend
         self.tree = tree
         self.bootstrap = bootstrap
         self.python = python
@@ -99,6 +105,8 @@ class Side:
         """The C the compiler prints for program, as run_c_compiled compiles it,
         with the tree's paths relative; or, if it fails, why."""
         command = [*self.command, "--stop-after", "codegen_c", "--print-result", "--build-dir", str(build_dir)]
+        if self.backend:
+            command += ["--backend", self.backend]
         if echo:
             command.append("--echo")
         command.append(str(program))
@@ -110,6 +118,9 @@ class Side:
         text = process.stdout
         for root in {str(self.tree), str(self.tree.resolve())}:
             text = text.replace(root.rstrip(os.sep) + os.sep, "")
+        # ssac sizes each string array by its bytes, which count the paths
+        # just made relative, so the sizes go too
+        text = STRING_ARRAY_SIZE.sub(r"\1[]", text)
         return True, text
 
 
@@ -143,11 +154,12 @@ def main() -> int:
     parser.add_argument("-j", "--jobs", type=int, default=os.cpu_count() or 1, help="programs compiled at once")
     parser.add_argument("--questlang", action="store_true", help="include the tests of the compiler's modules")
     parser.add_argument("--stat", action="store_true", help="list the programs that differ, not their diffs")
+    parser.add_argument("--backend", help="the backend whose code to compare (arm64 or ssac; default C)")
     args = parser.parse_args()
 
     python = sys.executable
-    base = Side("base", export_revision(args.base), args.bootstrap, python)
-    work = Side("working", ROOT_DIR, args.bootstrap, python)
+    base = Side("base", export_revision(args.base), args.bootstrap, python, args.backend)
+    work = Side("working", ROOT_DIR, args.bootstrap, python, args.backend)
     base.prepare()
     work.prepare()
 

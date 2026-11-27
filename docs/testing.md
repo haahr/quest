@@ -603,6 +603,7 @@ tools/c-diff --base origin/main  # against another revision's
 tools/c-diff --bootstrap         # the bootstrap's C
 tools/c-diff -k option --stat    # the programs whose names contain "option": which differ, by how many lines
 tools/c-diff --questlang         # the tests of the self-hosted compiler's modules too (slow)
+tools/c-diff --backend arm64     # the arm64 assembly instead (or --backend ssac, its C)
 ```
 
 Each side compiles its own copy of the programs against its own `lib/` and `runtime/`, and paths under each tree are
