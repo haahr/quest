@@ -813,6 +813,12 @@ function. The IR interpreter also checks that each operation's descriptors descr
 The verifier runs after every pass when `QUEST_CHECK_IR=1`, which the test runners set (like
 `QUEST_CHECK_CANONICAL`); production builds skip it.
 
+In the self-hosted compiler, the verifier's failures and every other internal error of lowering and the passes (a
+conversion, descriptor, or closure no pass can make) are one exception, `nodes.irError`, raised by `nodes.internal`.
+Each caller (the driver, the build's unit compiles, the JIT) catches it alone and reports its message as the
+compiler's error. A conversion `represent` rejects because it would copy mutable data is the program's error instead,
+reported as a diagnostic at the statement whose conversion it is.
+
 ## 10. Textual Form
 
 Every stage can be dumped (`--dump-after ir_core`, `ir_closed`, ... in the driver), for goldens and debugging. The
