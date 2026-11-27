@@ -58,7 +58,7 @@ export
 
     let checkClosedType(t: Type what: String offset: Int): Ok = escape.checkNoPackageTypes(t what offset)
 
-    let elaborateInspect(c: checker.T expr: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
+    let elaborateInspect(c: checker.T expr: ast.Expr expected: maybe.T(Type)): typedAst.Expr =
         case expr.form
             when exprInspect with x then
                 begin
@@ -79,14 +79,14 @@ export
                     let bodies = vector.new(:typedAst.Expr)
                     for i = 0 upto {vector.length(x.branches) - 1} do
                         let branch = vector.get(x.branches i)
-                        let matchT = elaborateTypes.elaborateType(branch.matchType e)
+                        let matchT = elaborateTypes.elaborateType(branch.matchType c.env)
                         checkClosedType(matchT "The type in an inspect when clause" branch.matchType.span.startOffset)
                         (* In the branch for type T, of Auto A with S end, the
                          * binders denote the auto value's components, of type
                          * Tuple S[T/A] end *)
                         let armType = model.autoPayloadType(autoType maybe.some(matchT))
                         Let Arm = Tuple binders: Array(symbols.ValueSymbol) body: typedAst.Expr end
-                        let arm = env.localScoped(e "inspect_branch" fun(s: symbols.Scope): Arm
+                        let arm = env.localScoped(c.env "inspect_branch" fun(s: symbols.Scope): Arm
                             begin
                                 let syms = vector.new(:symbols.ValueSymbol)
                                 for j = 0 upto {vector.length(branch.binders) - 1} do
@@ -94,8 +94,8 @@ export
                                     let bType =
                                         if maybe.isSome(binder.typeAnnot) then
                                             let annot = maybe.unwrap(binder.typeAnnot)
-                                            let t = elaborateTypes.elaborateType(annot e)
-                                            if not(subtyping.isSubtype(armType t env.lookupOf(e))) then
+                                            let t = elaborateTypes.elaborateType(annot c.env)
+                                            if not(subtyping.isSubtype(armType t env.lookupOf(c.env))) then
                                                 diagnostics.fail(:Ok "Inspect binder '" <> binder.name
                                                     <> "' has components of type '" <> model.show(armType)
                                                     <> "', which is not a subtype of the declared type '"
@@ -108,7 +108,7 @@ export
                                         end
                                     let sym =
                                         symbols.newValueSymbol(binder.name bType false false false c.functionDepth 0)
-                                    symbols.declareValue(e.currentScope sym)
+                                    symbols.declareValue(c.env.currentScope sym)
                                     vector.append(syms sym)
                                 end
                                 tuple
@@ -135,7 +135,7 @@ export
                                 let elseBranch = elseTyped
                             end
                         else
-                            checker.joinBodies(maybe.none() vector.toArray(bodies) elseTyped e expr.span.startOffset
+                            checker.joinBodies(maybe.none() vector.toArray(bodies) elseTyped c.env expr.span.startOffset
                                     "Cannot find common supertype join for inspect branch types '{t1}' and '{t2}'")
                         end
                     let typedBranches = vector.toArray(branches)
@@ -169,7 +169,7 @@ export
             diagnostics.fail(message offset)
         end
 
-    let elaborateAuto(c: checker.T expr: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
+    let elaborateAuto(c: checker.T expr: ast.Expr expected: maybe.T(Type)): typedAst.Expr =
         case expr.form
             when exprAuto with x then
                 begin
@@ -187,28 +187,29 @@ export
                                     <> model.show(expectedType) <> "' is expected; auto values have Auto types"
                                         expr.span.startOffset)
                         end
-                    let witness = elaborateTypes.elaborateType(x.witnessType e)
+                    let witness = elaborateTypes.elaborateType(x.witnessType c.env)
                     let witnessOffset = x.witnessType.span.startOffset
                     checkClosedType(witness "The type component of an auto value" witnessOffset)
-                    checkWitnessKind(witness kindBound e "Type component '" <> model.show(witness)
+                    checkWitnessKind(witness kindBound c.env "Type component '" <> model.show(witness)
                         <> "' of the auto value does not have kind '" <> checks.describeKind(kindBound)
                         <> "' required by '" <> model.show(expectedType) <> "'" witnessOffset)
                     let payloadType = model.autoPayloadType(autoType maybe.some(witness))
-                    let payloadTyped = env.localScoped(e "auto_value" fun(s: symbols.Scope): typedAst.Expr
+                    let payloadTyped = env.localScoped(c.env "auto_value" fun(s: symbols.Scope): typedAst.Expr
                         begin
                             if maybe.isSome(x.witnessName) then
                                 let name = maybe.unwrap(x.witnessName)
                                 let localBound =
                                     if maybe.isSome(x.witnessBound) then
-                                        elaborateTypes.elaborateKind(maybe.unwrap(x.witnessBound) e)
+                                        elaborateTypes.elaborateKind(maybe.unwrap(x.witnessBound) c.env)
                                     else
                                         model.typeKind
                                     end
-                                checkWitnessKind(witness localBound e "Type component '" <> model.show(witness)
+                                checkWitnessKind(witness localBound c.env "Type component '" <> model.show(witness)
                                     <> "' of the auto value does not have the declared kind '"
                                     <> checks.describeKind(localBound) <> "' of '" <> name <> "'" witnessOffset)
-                                symbols.declareType(e.currentScope
-                                        symbols.newTypeSymbol(name env.freshSymbolId(e) localBound maybe.some(witness)))
+                                symbols.declareType(c.env.currentScope
+                                        symbols.newTypeSymbol(name env.freshSymbolId(c.env) localBound
+                                                maybe.some(witness)))
                                 ok
                             end
                             checker.checkExpr(c x.payload payloadType)
