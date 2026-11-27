@@ -31,6 +31,7 @@ export
         planSlotBox planSlotUnbox planView planRuntime planAdapt planCopy
     end
     Def Access = Option direct original proxy end
+    Def Identity = Option identityWords identityQVal identityVariant identityOption identityRecord end
     Def Catching = Option catchListed catchAll catchAllTraced catchUnknown end
 
     Let Rec Variable = Tuple
@@ -114,6 +115,7 @@ export
             offset: maybe.T(Int)
             var access: Access
             var descriptor: maybe.T(Descriptor)
+            var identity: Identity
         end
         opCall with
             var callee: maybe.T(Variable)
@@ -306,7 +308,7 @@ export
         var args: Array(Atom)
         offset: maybe.T(Int)
         var access: Access
-        var descriptor: maybe.T(Descriptor)
+        var descriptor: maybe.T(Descriptor) var identity: Identity
     end
     and OpCall = Tuple
         var callee: maybe.T(Variable)
@@ -512,6 +514,20 @@ export
     let proxy: Access = option proxy of Access end
     let accessName(a: Access): String =
         case a when direct then "direct" when original then "original" when proxy then "proxy" end
+
+    let identityWords: Identity = option identityWords of Identity end
+    let identityQVal: Identity = option identityQVal of Identity end
+    let identityVariant: Identity = option identityVariant of Identity end
+    let identityOption: Identity = option identityOption of Identity end
+    let identityRecord: Identity = option identityRecord of Identity end
+    let identityName(i: Identity): String =
+        case i
+            when identityWords then "words"
+            when identityQVal then "qval"
+            when identityVariant then "variant"
+            when identityOption then "option"
+            when identityRecord then "record"
+        end
 
     let catchListed: Catching = option catchListed of Catching end
     let catchAll: Catching = option catchAll of Catching end
@@ -821,6 +837,7 @@ export
             let offset = offset
             let var access = direct
             let var descriptor = maybe.none()
+            let var identity = identityWords
         end
 
     let call(callee: maybe.T(Variable) typeArgs: Array(Type) args: Array(Atom) moduleRef: maybe.T(ModuleRef)

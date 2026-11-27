@@ -122,6 +122,26 @@ export
     original: Access
     proxy: Access
     accessName(a: Access): String
+    (* How is and isnot compare their operands, which the describe pass decides
+     * by their type, so that each backend only switches on it (docs/ir.md
+     * section 8.4):
+     * - identityWords: their words (a pointer, an Int, a Real, ...), the
+     *   originals' when the access is original; until the describe pass,
+     *   every is's;
+     * - identityQVal: QVal words, by the type's descriptor (quest_val_is);
+     * - identityVariant: variants, by case and value, by the descriptor
+     *   (quest_variant_is);
+     * - identityOption: options that is compares by case or component (an
+     *   identity rule, docs/extensions.md), by the descriptor
+     *   (quest_option_is);
+     * - identityRecord: records, by their payloads, whatever their views. *)
+    Def Identity = Option identityWords identityQVal identityVariant identityOption identityRecord end
+    identityWords: Identity
+    identityQVal: Identity
+    identityVariant: Identity
+    identityOption: Identity
+    identityRecord: Identity
+    identityName(i: Identity): String
 
     (* What a try's handler catches: listed exceptions, all, all with their
      * frames captured (its else branch names the exception, docs/raised.md
@@ -294,9 +314,10 @@ export
     and Op = Option
         opAtom with var atom: Atom end
         (* For is and isnot: access original (set by the represent pass) when
-         * the values may be proxies, and a descriptor of their type (set by
-         * the describe pass) when they are QVal words (quest_val_is),
-         * options that is compares by case (quest_option_is), or variants
+         * the values may be proxies, and how they are compared (identity) and
+         * a descriptor of their type, both set by the describe pass: the
+         * descriptor when they are QVal words (quest_val_is), options that is
+         * compares by case (quest_option_is), or variants
          * (quest_variant_is), since then whether two are the same depends on
          * the type *)
         opPrim with
@@ -305,6 +326,7 @@ export
             offset: maybe.T(Int)
             var access: Access
             var descriptor: maybe.T(Descriptor)
+            var identity: Identity
         end
         (* A call of a function a funs statement binds or a variable holds
          * (callee), or of a module's member (moduleRef and member, the
@@ -645,7 +667,7 @@ export
         var args: Array(Atom)
         offset: maybe.T(Int)
         var access: Access
-        var descriptor: maybe.T(Descriptor)
+        var descriptor: maybe.T(Descriptor) var identity: Identity
     end
     and OpCall = Tuple
         var callee: maybe.T(Variable)

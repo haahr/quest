@@ -61,61 +61,66 @@ export
                     vals.check(fn nan false "quest_raise_real_error_at" site)
                     array of r end
                 end
-            (* is, or with isIs false, isnot *)
+            (* is, or with isIs false, isnot, compared as the describe pass
+             * decided *)
             let identity(isIs: Bool): Array(Int) =
                 begin
                     let first = o.args[0]
                     let same =
-                        if layout.isQVal(shapes.shape(ir.atomType(first))) then
-                            let args =
-                                array of descriptors.maybeDescriptor(fn o.descriptor)
-                                    vals.atom1(fn o.args[0])
-                                    vals.atom1(fn o.args[1])
-                                end
-                            vals.narrowed(fn vals.call1(fn "quest_val_is" args) parts.part(vals.tInt 1 false))
-                        elsif maybe.isSome(o.descriptor)
-                                andif vals.eq(layout.representation(ir.atomType(first)) "QVariantVal") then
-                            (* Compares variants by tag and payload value (see
-                             * docs/extensions.md, "Variants as Values") *)
-                            let a = vals.atom(fn o.args[0])
-                            let b = vals.atom(fn o.args[1])
-                            let args = array of descriptors.maybeDescriptor(fn o.descriptor) a[0] a[1] b[0] b[1] end
-                            vals.narrowed(fn vals.call1(fn "quest_variant_is" args) parts.part(vals.tInt 1 false))
-                        elsif vals.eq(layout.representation(ir.atomType(first)) "QRecordVal") then
-                            (* Record identity compares payload pointers only: a
-                             * supertype view (quest_record_view) replaces the
-                             * offset table without changing the record itself *)
-                            vals.binary(fn ssa.opPeq vals.atom(fn o.args[0])[0] vals.atom(fn o.args[1])[0])
-                        elsif maybe.isSome(o.descriptor) then
-                            (* Compares option values by case or component using
-                             * their descriptor (docs/extensions.md, "Options as
-                             * Values") *)
-                            let args = array of descriptors.maybeDescriptor(fn o.descriptor) vals.atom1(fn o.args[0])
-                                vals.atom1(fn o.args[1])
-                            end
-                            vals.narrowed(fn vals.call1(fn "quest_option_is" args) parts.part(vals.tInt 1 false))
-                        else
-                            let a = vals.atom(fn o.args[0])
-                            let b = vals.atom(fn o.args[1])
-                            if extent a isnot 1 then
-                                raise vals.unsupported with "is of a value of "
-                                    <> layout.representation(ir.atomType(first)) end
-                            end
-                            case ssa.typeOf(fn.f a[0])
-                                when typePtr then
-                                    case o.access
-                                        when original then
-                                            vals.binary(fn ssa.opPeq objects.unproxy(fn a[0])
-                                                    objects.unproxy(fn b[0]))
-                                        when direct, proxy then vals.binary(fn ssa.opPeq a[0] b[0])
+                        case o.identity
+                            when identityQVal then
+                                let args =
+                                    array of descriptors.maybeDescriptor(fn o.descriptor)
+                                        vals.atom1(fn o.args[0])
+                                        vals.atom1(fn o.args[1])
                                     end
-                                when typeReal then vals.binary(fn ssa.opFeq a[0] b[0])
-                                when typeInt then vals.binary(fn ssa.opEq a[0] b[0])
-                                (* QVal words are the same if their bits are *)
-                                when typeVal then
-                                    vals.binary(fn ssa.opEq vals.fromVal(fn a[0] vals.tInt)
-                                            vals.fromVal(fn b[0] vals.tInt))
-                            end
+                                vals.narrowed(fn vals.call1(fn "quest_val_is" args) parts.part(vals.tInt 1 false))
+                            when identityVariant then
+                                (* Compares variants by tag and payload value
+                                 * (see docs/extensions.md, "Variants as
+                                 * Values") *)
+                                let a = vals.atom(fn o.args[0])
+                                let b = vals.atom(fn o.args[1])
+                                let args = array of descriptors.maybeDescriptor(fn o.descriptor) a[0] a[1] b[0] b[1] end
+                                vals.narrowed(fn vals.call1(fn "quest_variant_is" args) parts.part(vals.tInt 1 false))
+                            when identityRecord then
+                                (* Record identity compares payload pointers
+                                 * only: a supertype view (quest_record_view)
+                                 * replaces the offset table without changing
+                                 * the record itself *)
+                                vals.binary(fn ssa.opPeq vals.atom(fn o.args[0])[0] vals.atom(fn o.args[1])[0])
+                            when identityOption then
+                                (* Compares option values by case or component
+                                 * using their descriptor (docs/extensions.md,
+                                 * "Options as Values") *)
+                                let args =
+                                    array of descriptors.maybeDescriptor(fn o.descriptor) vals.atom1(fn o.args[0])
+                                        vals.atom1(fn o.args[1])
+                                    end
+                                vals.narrowed(fn vals.call1(fn "quest_option_is" args) parts.part(vals.tInt 1 false))
+                            when identityWords then
+                                let a = vals.atom(fn o.args[0])
+                                let b = vals.atom(fn o.args[1])
+                                if extent a isnot 1 then
+                                    raise vals.unsupported with "is of a value of "
+                                        <> layout.representation(ir.atomType(first)) end
+                                end
+                                case ssa.typeOf(fn.f a[0])
+                                    when typePtr then
+                                        case o.access
+                                            when original then
+                                                vals.binary(fn ssa.opPeq objects.unproxy(fn a[0])
+                                                        objects.unproxy(fn b[0]))
+                                            when direct, proxy then vals.binary(fn ssa.opPeq a[0] b[0])
+                                        end
+                                    when typeReal then vals.binary(fn ssa.opFeq a[0] b[0])
+                                    when typeInt then vals.binary(fn ssa.opEq a[0] b[0])
+                                    (* QVal words are the same if their bits
+                                     * are *)
+                                    when typeVal then
+                                        vals.binary(fn ssa.opEq vals.fromVal(fn a[0] vals.tInt)
+                                                vals.fromVal(fn b[0] vals.tInt))
+                                end
                         end
                     array of if isIs then same else vals.binary(fn ssa.opXor same vals.constant(fn 1)) end end
                 end

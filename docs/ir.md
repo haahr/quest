@@ -547,6 +547,13 @@ plans, nested ones included (a copy's view fields, an adapter's fields). A thunk
 only its own type parameters' descriptors: a type there that mentions a type parameter of the enclosing function is
 rejected (`UnsupportedDescriptor`; no program does).
 
+In the self-hosted compiler, describe also decides how each `is` and `isnot` compares (`nodes.Identity`), so that each
+backend only switches on the decision: QVal words, variants, and options compared by case or component (an identity
+rule) by their descriptor; records by their payloads; anything else, and a handler's exception variable, by their
+words (the originals' when the access is `original`). The dump writes all but the last after the operands, `prim
+is(a, b) by variant of descriptor(T)`. wasm compares exceptions (which its handlers hold in their
+state) and options in its own way first, as its representation of them needs.
+
 In the self-hosted compiler, a lifted function whose body never uses the descriptors of the enclosing functions' type
 parameters (§8.2) loses them once the functions are described (`unusedEnclosing`): those type parameters and
 descriptor variables are dropped, its closures pass no type arguments for them, and a closure left capturing nothing

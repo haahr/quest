@@ -2014,97 +2014,115 @@ export
                         optionIs(f shapeOf(ir.atomType(x.args[0])) a b)
                     end
                     if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
-                elsif isVariant(ir.atomType(x.args[0])) then
-                    (* by case and value, the core's valIs at the variant's
-                     * descriptor (quest_variant_is; docs/extensions.md,
-                     * Variants as Values) *)
-                    if maybe.isNone(x.descriptor)
-                            orif not(hashMap.contains(f.g.runtimeUnits "wasm/core.valIs")) then
-                        fail(:Ok "is on variants without their descriptor")
-                    end
-                    emit(f i1(ops.globalGet f.g.noClosure))
-                    descriptor(f maybe.unwrap(x.descriptor))
-                    boxedAtom(f x.args[0])
-                    boxedAtom(f x.args[1])
-                    runtimeUnitCall(f "wasm/core.valIs")
-                    if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
-                elsif isRecord(ir.atomType(x.args[0])) then
-                    (* the same payload, whatever the views: a boxed
-                     * record's from its box, else its first part *)
-                    for k = 0 upto 1 do
-                        atom(f x.args[k])
-                        if isBoxedVar(x.args[k]) then
-                            castTo(f tRecBox)
-                            emit(f i2(ops.structGet tRecBox 0))
-                        else
-                            emit(f i(ops.drop))
-                        end
-                    end
-                    emit(f i(ops.refEq))
-                    if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
                 else
-                    if maybe.isSome(x.descriptor) andif atomType(x.args[0])?valRef then
-                        (* a type parameter's values, as slots hold them: the same
-                         * reference, or two boxed Ints of one value *)
-                        let tBox = rt.index("boxInt")
-                        let a = scratch(f model.eqref)
-                        let b = scratch(f model.eqref)
-                        atom(f x.args[0])
-                        emit(f i1(ops.localTee a))
-                        atom(f x.args[1])
-                        emit(f i1(ops.localTee b))
-                        emit(f i(ops.refEq))
-                        emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i32 end ""))
-                        emit(f model.i32Const(1))
-                        emit(f model.elseInst)
-                        if hashMap.contains(f.g.runtimeUnits "wasm/core.valIs") then
-                            (* by the descriptor, which may be an abstract type's
-                             * whose representation compares otherwise *)
+                    (* by their words: tuples or options that may be proxies
+                     * by their originals *)
+                    let words = fun(): Ok
+                        if x.access?original andif not(f.g.isRuntime) then
+                            (* tuples or options that may be proxies: their
+                             * originals *)
+                            for k = 0 upto 1 do
+                                atom(f x.args[k])
+                                accessAs(f tTuple ir.original)
+                            end
+                            emit(f i(ops.refEq))
+                        else
+                            atoms(f x.args)
+                            case atomType(x.args[0])
+                                when valI64 then emit(f i(ops.i64Eq))
+                                when valI32 then emit(f i(ops.i32Eq))
+                                when valRef then emit(f i(ops.refEq))
+                                when valF64 then emit(f i(ops.f64Eq))
+                                else fail(:Ok "is on a value of no kind")
+                            end
+                        end
+                    (* as the describe pass decided, but for the exceptions and
+                     * options above, which wasm compares in its own way *)
+                    case x.identity
+                        when identityVariant then
+                            (* by case and value, the core's valIs at the
+                             * variant's descriptor (quest_variant_is;
+                             * docs/extensions.md, Variants as Values) *)
+                            if maybe.isNone(x.descriptor)
+                                    orif not(hashMap.contains(f.g.runtimeUnits "wasm/core.valIs")) then
+                                fail(:Ok "is on variants without their descriptor")
+                            end
                             emit(f i1(ops.globalGet f.g.noClosure))
                             descriptor(f maybe.unwrap(x.descriptor))
-                            emit(f i1(ops.localGet a))
-                            emit(f i1(ops.localGet b))
+                            boxedAtom(f x.args[0])
+                            boxedAtom(f x.args[1])
                             runtimeUnitCall(f "wasm/core.valIs")
-                        else
+                        when identityRecord then
+                            (* the same payload, whatever the views: a boxed
+                             * record's from its box, else its first part *)
                             for k = 0 upto 1 do
-                                emit(f i1(ops.localGet if k is 0 then a else b end))
-                                emit(f option instRefTest of Inst with
-                                    let type = tuple
-                                        let nullable = false
-                                        let heap = heapOf(tBox)
+                                atom(f x.args[k])
+                                if isBoxedVar(x.args[k]) then
+                                    castTo(f tRecBox)
+                                    emit(f i2(ops.structGet tRecBox 0))
+                                else
+                                    emit(f i(ops.drop))
+                                end
+                            end
+                            emit(f i(ops.refEq))
+                        when identityQVal then
+                            if atomType(x.args[0])?valRef then
+                                (* a type parameter's values, as slots hold
+                                 * them: the same reference, or two boxed Ints
+                                 * of one value *)
+                                let tBox = rt.index("boxInt")
+                                let a = scratch(f model.eqref)
+                                let b = scratch(f model.eqref)
+                                atom(f x.args[0])
+                                emit(f i1(ops.localTee a))
+                                atom(f x.args[1])
+                                emit(f i1(ops.localTee b))
+                                emit(f i(ops.refEq))
+                                emit(f
+                                        model.ifInst(option blockValue of model.BlockType with
+                                            let type = model.i32
+                                        end ""))
+                                emit(f model.i32Const(1))
+                                emit(f model.elseInst)
+                                if hashMap.contains(f.g.runtimeUnits "wasm/core.valIs") then
+                                    (* by the descriptor, which may be an
+                                     * abstract type's whose representation
+                                     * compares otherwise *)
+                                    emit(f i1(ops.globalGet f.g.noClosure))
+                                    descriptor(f maybe.unwrap(x.descriptor))
+                                    emit(f i1(ops.localGet a))
+                                    emit(f i1(ops.localGet b))
+                                    runtimeUnitCall(f "wasm/core.valIs")
+                                else
+                                    for k = 0 upto 1 do
+                                        emit(f i1(ops.localGet if k is 0 then a else b end))
+                                        emit(f option instRefTest of Inst with
+                                            let type = tuple
+                                                let nullable = false
+                                                let heap = heapOf(tBox)
+                                            end
+                                        end)
                                     end
-                                end)
+                                    emit(f i(ops.i32And))
+                                    emit(f
+                                            model.ifInst(option blockValue of model.BlockType with
+                                                let type = model.i32
+                                            end ""))
+                                    for k = 0 upto 1 do
+                                        emit(f i1(ops.localGet if k is 0 then a else b end))
+                                        castTo(f tBox)
+                                        emit(f i2(ops.structGet tBox 0))
+                                    end
+                                    emit(f i(ops.i64Eq))
+                                    emit(f model.elseInst)
+                                    emit(f model.i32Const(0))
+                                    emit(f model.endInst)
+                                end
+                                emit(f model.endInst)
+                            else
+                                words()
                             end
-                            emit(f i(ops.i32And))
-                            emit(f model.ifInst(option blockValue of model.BlockType with let type = model.i32 end ""))
-                            for k = 0 upto 1 do
-                                emit(f i1(ops.localGet if k is 0 then a else b end))
-                                castTo(f tBox)
-                                emit(f i2(ops.structGet tBox 0))
-                            end
-                            emit(f i(ops.i64Eq))
-                            emit(f model.elseInst)
-                            emit(f model.i32Const(0))
-                            emit(f model.endInst)
-                        end
-                        emit(f model.endInst)
-                    elsif x.access?original andif not(f.g.isRuntime) then
-                        (* tuples or options that may be proxies: their
-                         * originals *)
-                        for k = 0 upto 1 do
-                            atom(f x.args[k])
-                            accessAs(f tTuple ir.original)
-                        end
-                        emit(f i(ops.refEq))
-                    else
-                        atoms(f x.args)
-                        case atomType(x.args[0])
-                            when valI64 then emit(f i(ops.i64Eq))
-                            when valI32 then emit(f i(ops.i32Eq))
-                            when valRef then emit(f i(ops.refEq))
-                            when valF64 then emit(f i(ops.f64Eq))
-                            else fail(:Ok "is on a value of no kind")
-                        end
+                        when identityOption, identityWords then words()
                     end
                     if x.op?primIsnot then emit(f i(ops.i32Eqz)) end
                 end

@@ -169,6 +169,13 @@ export
     let access(a: nodes.Access): String =
         case a when direct then "" when original, proxy then " via " <> nodes.accessName(a) end
 
+    (* How is compares, after the describe pass: nothing for words *)
+    let identity(i: nodes.Identity): String =
+        case i
+            when identityWords then ""
+            when identityQVal, identityVariant, identityOption, identityRecord then " by " <> nodes.identityName(i)
+        end
+
     (* How the components of a tuple or option are read: nothing if all are
      * direct *)
     let accesses(items: Array(nodes.Access)): String =
@@ -247,7 +254,7 @@ export
             when opAtom with x then atom(p x.atom)
             when opPrim with x then
                 "prim " <> nodes.primName(x.op) <> "(" <> atoms(p x.args) <> ")" <> access(x.access)
-                    <> ofDescriptor(p x.descriptor)
+                    <> identity(x.identity) <> ofDescriptor(p x.descriptor)
             when opCall with x then
                 "call " <> callee(p x.callee x.moduleRef x.member) <> typeArgs(p x.typeArgs x.descriptors) <> "("
                     <> atoms(p x.args) <> ")"

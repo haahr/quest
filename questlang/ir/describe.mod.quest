@@ -489,6 +489,27 @@ export
             vector.toArray(result)
         end
 
+    (* How is compares values of a's type: a QVal word, a variant (by case and
+     * value), and an option is compares by case, by their descriptor; a
+     * record by its payload; anything else, and a handler's exception
+     * variable (compared by the exception's address), by its words *)
+    let identityOf(d: Describer a: Atom): nodes.Identity =
+        begin
+            let t = typeOf(a)
+            let isHandler = case a when atomVar with y then hashSet.contains(d.handlerVars y.v.id) else false end
+            if isHandler then
+                nodes.identityWords
+            else
+                case layout.representationKind(t)
+                    when repQVal then nodes.identityQVal
+                    when repVariant then nodes.identityVariant
+                    when repRecord then nodes.identityRecord
+                    when repVoid, repInt, repWord, repBool, repChar, repReal, repPointer then
+                        if comparesAsOption(t) then nodes.identityOption else nodes.identityWords end
+                end
+            end
+        end
+
     let memberType(m: nodes.Module name: String): Type = hashMap.find(m.members.vars name).type
 
     (* Attaches the run-time descriptors and view maps needed by operation o in
@@ -528,14 +549,11 @@ export
             case o
                 when opPrim with x then
                     if nodes.comparesIdentity(x.op) andif {extent x.args > 0} then
-                        let a = x.args[0]
-                        let isHandler =
-                            case a when atomVar with y then hashSet.contains(d.handlerVars y.v.id) else false end
-                        (* A QVal word, an option is compares by case, or a
-                         * variant, which is compares by case and value *)
-                        if not(isHandler) andif {layout.isQVal(shapes.shape(typeOf(a))) orif comparesAsOption(typeOf(a))
-                                orif stringOp.equal(layout.representation(typeOf(a)) "QVariantVal")} then
-                            x.descriptor := maybe.some(describeType(d typeOf(a)))
+                        x.identity := identityOf(d x.args[0])
+                        case x.identity
+                            when identityQVal, identityVariant, identityOption then
+                                x.descriptor := maybe.some(describeType(d typeOf(x.args[0])))
+                            when identityWords, identityRecord then ok
                         end
                     end
                 when opCall with x then x.descriptors := describeTypes(d x.typeArgs)

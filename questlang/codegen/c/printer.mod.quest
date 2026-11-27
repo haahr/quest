@@ -1641,61 +1641,52 @@ export
             let infix(c: String): String = "((" <> left <> ") " <> c <> " (" <> right() <> "))"
             let checked(helper: String): String =
                 helper <> "(" <> left <> ", " <> right() <> ", " <> site(p o.offset) <> ")"
-            (* is, or with isIs false, isnot *)
+            (* is, or with isIs false, isnot, compared as the describe pass
+             * decided *)
             let identity(isIs: Bool): String =
                 begin
-                    let first = o.args[0]
-                    let var t = maybe.some(atomType(first))
-                    case first
-                        when atomVar with x then
-                            if hashSet.contains(p.handlerVars x.v.id) then t := maybe.none() end
-                        else ok
-                    end
-                    if maybe.isSome(t) andif layout.isQVal(shapeOf(maybe.unwrap(t))) then
-                        let negate = if isIs then "" else "!" end
-                        "(" <> negate <> "quest_val_is(" <> maybeDescriptor(p o.descriptor) <> ", " <> left <> ", "
-                            <> right() <> "))"
-                    elsif maybe.isSome(t) andif maybe.isSome(o.descriptor)
-                            andif isVariant(maybe.unwrap(t)) then
-                        (* By case and value (docs/extensions.md, Variants as
-                         * Values) *)
-                        let negate = if isIs then "" else "!" end
-                        "(" <> negate <> "quest_variant_is(" <> maybeDescriptor(p o.descriptor) <> ", " <> left <> ", "
-                            <> right() <> "))"
-                    elsif maybe.isSome(t) andif maybe.isSome(o.descriptor) then
-                        (* An option type whose options is compares by case or
-                         * component (docs/extensions.md, Options as Values) *)
-                        let negate = if isIs then "" else "!" end
-                        "(" <> negate <> "quest_option_is(" <> maybeDescriptor(p o.descriptor) <> ", (const void *)("
-                            <> left <> "), (const void *)(" <> right() <> ")))"
-                    else
-                        let var l = left
-                        let var r = right()
-                        let t2 =
-                            if maybe.isSome(t) then
-                                maybe.some(atomType(o.args[1]))
-                            else
-                                maybe.none(:Type)
+                    let negate = if isIs then "" else "!" end
+                    let t = atomType(o.args[0])
+                    let isHandler =
+                        case o.args[0] when atomVar with x then hashSet.contains(p.handlerVars x.v.id) else false end
+                    case o.identity
+                        when identityQVal then
+                            "(" <> negate <> "quest_val_is(" <> maybeDescriptor(p o.descriptor) <> ", " <> left <> ", "
+                                <> right() <> "))"
+                        when identityVariant then
+                            (* By case and value (docs/extensions.md, Variants
+                             * as Values) *)
+                            "(" <> negate <> "quest_variant_is(" <> maybeDescriptor(p o.descriptor) <> ", " <> left
+                                <> ", " <> right() <> "))"
+                        when identityOption then
+                            (* An option type whose options is compares by case
+                             * or component (docs/extensions.md, Options as
+                             * Values) *)
+                            "(" <> negate <> "quest_option_is(" <> maybeDescriptor(p o.descriptor)
+                                <> ", (const void *)(" <> left <> "), (const void *)(" <> right() <> ")))"
+                        when identityRecord, identityWords then
+                            let var l = left
+                            let var r = right()
+                            let viaOriginal = case o.access when original then true when direct, proxy then false end
+                            if o.identity?identityRecord then
+                                (* A record is its payload: a view changes only
+                                 * its offset table (quest_record_view) *)
+                                l := "(" <> l <> ").val"
+                                r := "(" <> r <> ").val"
+                            elsif viaOriginal then
+                                (* A proxy is the object it views *)
+                                l := "quest_unproxy(" <> l <> ")"
+                                r := "quest_unproxy(" <> r <> ")"
+                            elsif not(isHandler) andif not(eq(cType(t) cType(atomType(o.args[1]))))
+                                    andif layout.isPointer(shapeOf(t)) then
+                                (* Pointers to aggregates of different (subtype-
+                                 * related) types: compared as addresses (a
+                                 * handler's exception variable is compared as
+                                 * it is) *)
+                                l := "(const void *)(" <> l <> ")"
+                                r := "(const void *)(" <> r <> ")"
                             end
-                        let viaOriginal = case o.access when original then true when direct, proxy then false end
-                        if maybe.isSome(t) andif isRecord(maybe.unwrap(t)) then
-                            (* A record is its payload: a view changes only its
-                             * offset table (quest_record_view) *)
-                            l := "(" <> l <> ").val"
-                            r := "(" <> r <> ").val"
-                        elsif viaOriginal then
-                            (* A proxy is the object it views *)
-                            l := "quest_unproxy(" <> l <> ")"
-                            r := "quest_unproxy(" <> r <> ")"
-                        elsif maybe.isSome(t2)
-                                andif not(eq(cType(maybe.unwrap(t)) cType(maybe.unwrap(t2))))
-                                andif layout.isPointer(shapeOf(maybe.unwrap(t))) then
-                            (* Pointers to aggregates of different (subtype-
-                             * related) types: compared as addresses *)
-                            l := "(const void *)(" <> l <> ")"
-                            r := "(const void *)(" <> r <> ")"
-                        end
-                        "((" <> l <> ") " <> if isIs then "==" else "!=" end <> " (" <> r <> "))"
+                            "((" <> l <> ") " <> if isIs then "==" else "!=" end <> " (" <> r <> "))"
                     end
                 end
             case o.op
