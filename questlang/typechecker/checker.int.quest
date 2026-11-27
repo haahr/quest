@@ -5,8 +5,8 @@
  * bootstrap/python/quest/typechecker/checker.py. The families (bindings,
  * application, aggregates, tuples, control, exceptions, autovalues) reach the
  * expression dispatch (checkExpr, synthExpr) defined in typecheck through
- * function fields in T that typecheck fills when creating a checker; a family
- * calls lower-level families directly.
+ * function fields in T that typecheck passes to new; a family calls
+ * lower-level families directly.
  *
  * The checker also records the errors it finds (docs/diagnostics.md section
  * 4.5): a binding that fails reports its error and checking continues with the
@@ -49,12 +49,13 @@ export
         (* The warnings found, in order, which do not stop elaboration *)
         warnings: vector.T(diagnostics.CompilerError)
         (* The dispatch, which typecheck defines *)
-        var checkHook: All(c: T expr: ast.Expr expected: model.Type) typedAst.Expr
-        var synthHook: All(c: T expr: ast.Expr isCallee: Bool) typedAst.Expr
+        checkHook: All(c: T expr: ast.Expr expected: model.Type) typedAst.Expr
+        synthHook: All(c: T expr: ast.Expr isCallee: Bool) typedAst.Expr
     end
 
-    (* A checker of the environment, without its dispatch *)
-    new(e: env.T loopDepth: Int): T
+    (* A checker of the environment at loopDepth, with its dispatch *)
+    new(e: env.T loopDepth: Int checkHook: All(c: T expr: ast.Expr expected: model.Type) typedAst.Expr
+            synthHook: All(c: T expr: ast.Expr isCallee: Bool) typedAst.Expr): T
 
     (* Runs body with the checker of a binding that the module system
      * elaborates in e at loopDepth (elaboration.hooks.elaborateBinding, as

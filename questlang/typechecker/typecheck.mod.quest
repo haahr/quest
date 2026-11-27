@@ -46,7 +46,7 @@
  * checkExpr calls with the expected type and synthExpr with none. The families
  * (bindings, application, aggregates, tuples, control, exceptions, autoValues)
  * reach checkExpr and synthExpr through the hooks of checker.T, which this
- * module fills when it makes a checker.
+ * module passes to checker.new.
  *
  * The checker's state is its env.T, holding a stack of scopes, each holding
  * the symbols declared in it. Bindings are declared into the current scope as
@@ -371,13 +371,7 @@ export
             end
         end
 
-    let newChecker(e: env.T loopDepth: Int): checker.T =
-        begin
-            let c = checker.new(e loopDepth)
-            c.checkHook := checkExpr
-            c.synthHook := synthExpr
-            c
-        end
+    let newChecker(e: env.T loopDepth: Int): checker.T = checker.new(e loopDepth checkExpr synthExpr)
 
     (* Binds a name a failed import or module declaration would have bound to a
      * poisoned value *)

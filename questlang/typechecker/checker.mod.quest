@@ -27,11 +27,12 @@ export
         var pendingTypeArgs: maybe.T(vector.T(PendingTypeArg))
         errors: vector.T(diagnostics.CompilerError)
         warnings: vector.T(diagnostics.CompilerError)
-        var checkHook: All(c: T expr: ast.Expr expected: model.Type) typedAst.Expr
-        var synthHook: All(c: T expr: ast.Expr isCallee: Bool) typedAst.Expr
+        checkHook: All(c: T expr: ast.Expr expected: model.Type) typedAst.Expr
+        synthHook: All(c: T expr: ast.Expr isCallee: Bool) typedAst.Expr
     end
 
-    let new(e: env.T loopDepth: Int): T =
+    let new(e: env.T loopDepth: Int checkHook: All(c: T expr: ast.Expr expected: model.Type) typedAst.Expr
+            synthHook: All(c: T expr: ast.Expr isCallee: Bool) typedAst.Expr): T =
         tuple
             let env = e
             let var loopDepth = loopDepth
@@ -39,10 +40,8 @@ export
             let var pendingTypeArgs = maybe.none()
             let errors = vector.new()
             let warnings = vector.new()
-            let var checkHook = fun(c: T expr: ast.Expr expected: model.Type): typedAst.Expr
-                diagnostics.internal("the checker has no dispatch" expr.span.startOffset)
-            let var synthHook = fun(c: T expr: ast.Expr isCallee: Bool): typedAst.Expr
-                diagnostics.internal("the checker has no dispatch" expr.span.startOffset)
+            let checkHook = checkHook
+            let synthHook = synthHook
         end
 
     let forBinding(A::TYPE c: T e: env.T loopDepth: Int body: All(c: T) A): A =
@@ -66,8 +65,8 @@ export
                 let var pendingTypeArgs = c.pendingTypeArgs
                 let errors = c.errors
                 let warnings = c.warnings
-                let var checkHook = c.checkHook
-                let var synthHook = c.synthHook
+                let checkHook = c.checkHook
+                let synthHook = c.synthHook
             end)
         end
 

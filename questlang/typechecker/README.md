@@ -87,8 +87,8 @@ optional expected type, the environment, and the loop depth:
 
 The families need the dispatch (`checkExpr`, `synthExpr`) to check their subexpressions, but the dispatch needs the
 families, and Quest modules cannot import each other cyclically. [`checker.int.quest`](checker.int.quest) breaks the
-cycle: `checker.T` holds the checker's state and two function-valued `var` fields, `checkHook` and `synthHook`, which
-`typecheck.newChecker` fills with the real dispatch. A family calls the families below it directly and reaches the
+cycle: `checker.T` holds the checker's state and two function-valued fields, `checkHook` and `synthHook`, which
+`typecheck` passes to `checker.new`. A family calls the families below it directly and reaches the
 dispatch through the hooks. `checker.T` also counts enclosing loops and functions, which the checks of `exit` and of
 closure capture (`checkCapturable`: a closure may not capture a `var` parameter of an enclosing function) rely on.
 
