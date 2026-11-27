@@ -127,7 +127,7 @@ export
                         checker.checkSubsumption(c x0 expected maybe.none())
                     end
                 when exprBlock then control.elaborateBlock(c x0 exp c.env c.loopDepth)
-                when exprFun then bindings.elaborateFun(c x0 exp c.env c.loopDepth)
+                when exprFun then bindings.elaborateFun(c x0 exp)
                 when exprRecord then aggregates.elaborateRecord(c x0 exp c.env c.loopDepth)
                 when exprTuple then tuples.elaborateTuple(c x0 exp c.env c.loopDepth)
                 when exprCase then control.elaborateCase(c x0 exp c.env c.loopDepth)
@@ -343,7 +343,7 @@ export
                 when exprFor then control.synthFor(c x0 c.env c.loopDepth)
 
                 when exprBlock then control.elaborateBlock(c x0 none c.env c.loopDepth)
-                when exprFun then bindings.elaborateFun(c x0 none c.env c.loopDepth)
+                when exprFun then bindings.elaborateFun(c x0 none)
                 when exprApp then application.elaborateApp(c x0 none c.env c.loopDepth)
 
                 (* Aggregates *)
@@ -415,7 +415,7 @@ export
      * expression), or none if it fails *)
     let elaboratePhrase(c: checker.T p: ast.Phrase): maybe.T(typedAst.Binding) =
         case p.form
-            when phraseDecl with x then bindings.elaborateRecovering(c x.decl c.env c.loopDepth)
+            when phraseDecl with x then bindings.elaborateRecovering(c x.decl)
             when phraseImport with x then
                 recovering(c importedNames(x.phrase) fun(): typedAst.Binding
                     elaboration.elaborateImport(x.phrase p.span.startOffset c.env))
@@ -447,7 +447,7 @@ export
                         end
                     let typed =
                         try
-                            bindings.elaborateBinding(c b en loopDepth)
+                            bindings.elaborateBinding(c b)
                         when diagnostics.compilerError with err then
                             begin
                                 firstRecorded()
@@ -476,7 +476,7 @@ export
             loader.install()
             elaboration.hooks.elaborateBinding := fun(b: ast.Decl en: env.T loopDepth: Int): maybe.T(typedAst.Binding)
                 checker.forBinding(c en loopDepth fun(hc: checker.T): maybe.T(typedAst.Binding)
-                    bindings.elaborateRecovering(hc b en loopDepth))
+                    bindings.elaborateRecovering(hc b))
             e.report := maybe.some(fun(err: diagnostics.CompilerError): Ok
                 checker.recordError(c err))
             let phrases = vector.new(:typedAst.Binding)
