@@ -1,0 +1,272 @@
+(* Quest Self-Hosted Compiler: The WebAssembly Bundle Implementation *)
+
+module wasmBundle : WasmBundle
+import
+    ascii : Ascii
+    conv : Conv
+    stringOp = string : StringOp
+    system : System
+    writer : Writer
+
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+
+    questlang/common/files : questlang/common/Files
+    questlang/modules/paths : questlang/modules/Paths
+export
+    let imports(bytes: String): Array(String) =
+        begin
+            let found = vector.new(:String)
+            let n = stringOp.length(bytes)
+            let var at = 8
+            let byte = fun(): Int
+                begin
+                    let b = if at < n then ascii.val(stringOp.getChar(bytes at)) else 0 end
+                    at := at + 1
+                    b
+                end
+            let leb = fun(): Int
+                begin
+                    let var result = 0
+                    let var scale = 1
+                    let var more = true
+                    while more andif {at < n} do
+                        let b = byte()
+                        result := result + {{b % 128} * scale}
+                        scale := scale * 128
+                        more := b >= 128
+                    end
+                    result
+                end
+            let skip = fun(): Ok
+                begin
+                    leb()
+                    ok
+                end
+            let name = fun(): String
+                begin
+                    let length = leb()
+                    let s = if {at + length} <= n then stringOp.getSub(bytes at length) else "" end
+                    at := at + length
+                    s
+                end
+            (* a value type: a byte, or a reference type's prefix and its heap
+             * type *)
+            let valType = fun(): Ok
+                begin
+                    let b = byte()
+                    if {b is 99} orif {b is 100} then skip() end
+                    ok
+                end
+            let limits = fun(): Ok
+                begin
+                    let flags = byte()
+                    skip()
+                    if {flags % 2} is 1 then skip() end
+                    ok
+                end
+            let var done = false
+            while not(done) andif {at < n} do
+                let id = byte()
+                let size = leb()
+                let next = at + size
+                if id is 2 then
+                    let count = leb()
+                    for k = 0 upto count - 1 do
+                        let moduleName = name()
+                        let field = name()
+                        let kind = byte()
+                        if kind is 0 then skip()
+                        elsif kind is 1 then
+                            valType()
+                            limits()
+                        elsif kind is 2 then limits()
+                        elsif kind is 3 then
+                            valType()
+                            let mutable = byte()
+                        elsif kind is 4 then
+                            let attribute = byte()
+                            skip()
+                        end
+                        let var seen = false
+                        for j = 0 upto vector.length(found) - 1 do
+                            if stringOp.equal(vector.get(found j) moduleName) then seen := true end
+                        end
+                        if not(seen) then vector.append(found moduleName) end
+                    end
+                    done := true
+                end
+                at := next
+            end
+            vector.toArray(found)
+        end
+
+    Let Unit = Tuple name: String path: String end
+
+    let ordered(objects: Array(String) buildDir: String): Array(Unit) =
+        begin
+            (* Each wasm unit's canonical name (its path in buildDir), its
+             * module's file, and the modules it imports, both the program's
+             * imports and the runtime modules the backend added *)
+            let units = vector.new(:Unit)
+            let needs = vector.new(:Array(String))
+            for k = 0 upto extent objects - 1 do
+                let o = files.absolute(objects[k])
+                let bytes = maybe.unwrapOr(files.readText(o) "")
+                if {stringOp.length(bytes) >= 4} andif stringOp.equal(stringOp.getSub(bytes 0 4) "\x00asm")
+                        andif strutil.startsWith(o buildDir <> "/") andif strutil.endsWith(o ".o") then
+                    let n = stringOp.length(buildDir) + 1
+                    vector.append(units tuple
+                        let name = stringOp.getSub(o n {{stringOp.length(o) - n} - 2})
+                        let path = o
+                    end)
+                    vector.append(needs imports(bytes))
+                end
+            end
+            (* Sorted topologically, so that each module comes after every
+             * module it imports, as WebAssembly instantiates them *)
+            let sorted = vector.new(:Unit)
+            let placed = array of(vector.length(units) false)
+            let var progress = true
+            while progress do
+                progress := false
+                for k = 0 upto vector.length(units) - 1 do
+                    if not(placed[k]) then
+                        let var ready = true
+                        let ns = vector.get(needs k)
+                        for j = 0 upto extent ns - 1 do
+                            for i = 0 upto vector.length(units) - 1 do
+                                if not(placed[i]) andif {i isnot k}
+                                        andif stringOp.equal(vector.get(units i).name ns[j]) then
+                                    ready := false
+                                end
+                            end
+                        end
+                        if ready then
+                            placed[k] := true
+                            progress := true
+                            vector.append(sorted vector.get(units k))
+                        end
+                    end
+                end
+            end
+            vector.toArray(sorted)
+        end
+
+    let save(path: String contents: String): Ok =
+        begin
+            let w = writer.file(path)
+            writer.putString(w contents)
+            writer.close(w)
+        end
+
+    let write(target: String program: String runtime: String units: Array(Unit)): Ok =
+        begin
+            save(target program)
+            save(target <> ".runtime.wasm" runtime)
+            let lines = stringBuilder.new()
+            for k = 0 upto extent units - 1 do
+                let path = target <> "." <> conv.int(k) <> ".wasm"
+                save(path maybe.unwrapOr(files.readText(units[k].path) ""))
+                stringBuilder.str(lines units[k].name <> "=" <> path <> "\n")
+            end
+            save(target <> ".units" stringBuilder.toString(lines))
+        end
+
+    let command(engine: String program: String runtimeName: String runtimePath: String units: Array(Unit)
+            args: Array(String)): Array(String) =
+        begin
+            let command = vector.new(:String)
+            if stringOp.equal(engine "node") then
+                (* Without Node's experimental node:wasi warning, which would
+                 * pollute the program's standard error *)
+                vector.append(command "node")
+                vector.append(command "--no-warnings")
+                (* About 8 MB of stack, matching native and wasmtime runs while
+                 * staying under the main thread's limit (like
+                 * benchmarks/run.py's --node-stack) *)
+                vector.append(command "--stack-size=7800")
+                vector.append(command files.join(paths.projectDir() "runtime/wasm/run.mjs"))
+                for k = 0 upto extent units - 1 do
+                    vector.append(command "--module")
+                    vector.append(command units[k].name <> "=" <> units[k].path)
+                end
+                vector.append(command runtimePath)
+            else
+                vector.append(command "wasmtime")
+                vector.append(command "run")
+                vector.append(command "-W")
+                vector.append(command "gc=y,function-references=y,tail-call=y,exceptions=y")
+                vector.append(command "-C")
+                vector.append(command "collector=copying")
+                (* wasmtime's stack limit raised from 512 KB to 8 MB, to match
+                 * native execution (docs/wasm.md section 8.2) *)
+                vector.append(command "-W")
+                vector.append(command "max-wasm-stack=8388608")
+                (* WASI access to / and ., the environment inherited, and the
+                 * current directory as PWD *)
+                vector.append(command "--dir")
+                vector.append(command "/")
+                vector.append(command "--dir")
+                vector.append(command ".")
+                vector.append(command "-S")
+                vector.append(command "inherit-env=y")
+                vector.append(command "--env")
+                vector.append(command "PWD=" <> system.currentDirectory())
+                (* an exit status above 125 as a line (asRun) *)
+                vector.append(command "--env")
+                vector.append(command "QUEST_WASM_EXIT_LINE=1")
+                vector.append(command "--preload")
+                vector.append(command runtimeName <> "=" <> runtimePath)
+                for k = 0 upto extent units - 1 do
+                    vector.append(command "--preload")
+                    vector.append(command units[k].name <> "=" <> units[k].path)
+                end
+            end
+            vector.append(command program)
+            for k = 0 upto extent args - 1 do vector.append(command args[k]) end
+            vector.toArray(command)
+        end
+
+    Let Ran = Tuple code: Int stdout: String stderr: String end
+
+    let asRun(r0: Ran): Ran =
+        begin
+            let r =
+                if {r0.code isnot 0} andif {strutil.find(r0.stderr "call stack exhausted") >= 0} then
+                    tuple let code = 1 let stdout = r0.stdout let stderr = "Exception: stack.overflow\n" end
+                else
+                    r0
+                end
+            let key = "quest: exit status "
+            let e = r.stderr
+            let var at = ~1
+            let var from = strutil.findFrom(e key 0)
+            while from >= 0 do
+                at := from
+                from := strutil.findFrom(e key from + 1)
+            end
+            if {r.code isnot 125} orif {at < 0} orif not(strutil.endsWith(e "\n"))
+                    orif {{at > 0} andif {stringOp.getChar(e at - 1) isnot '\n'}} then
+                r
+            else
+                let digits =
+                    stringOp.getSub(e at + stringOp.length(key) {stringOp.length(e) - 1} - {at + stringOp.length(key)})
+                let var valid = {stringOp.length(digits) > 0} andif {stringOp.length(digits) < 10}
+                for k = 0 upto stringOp.length(digits) - 1 do
+                    if strutil.find("0123456789" stringOp.getSub(digits k 1)) < 0 then valid := false end
+                end
+                if not(valid) then
+                    r
+                else
+                    tuple
+                        let code = strutil.toInt(digits)
+                        let stdout = r.stdout
+                        let stderr = stringOp.getSub(e 0 at)
+                    end
+                end
+            end
+        end
+end

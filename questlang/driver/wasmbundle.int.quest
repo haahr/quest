@@ -1,0 +1,49 @@
+(* Quest Self-Hosted Compiler: The WebAssembly Bundle Interface
+ *
+ * A wasm-compiled program is a bundle of modules (docs/wasm.md section 5.1):
+ * the program's own, the runtime's, and one for every unit it imports,
+ * standard library modules included, each built into the build directory as
+ * that unit's .o artifact. This module puts the imported units in the order
+ * WebAssembly instantiates them, writes a bundle beside a binary's path, and
+ * makes the command that runs one with node or wasmtime (section 8.2). The
+ * driver builds the units (main.compiled); this is the self-hosted compiler's
+ * alone, as its wasm backend is. *)
+
+interface WasmBundle
+export
+    (* The distinct module names a WebAssembly binary's import section
+     * (section id 2) names, in order: the modules it is instantiated after.
+     * Reads function, table, memory, global, and tag imports per the
+     * WebAssembly 3.0 binary format, stopping early if the bytes are truncated
+     * or malformed. *)
+    imports(bytes: String): Array(String)
+
+    (* A unit of a bundle: its canonical name (its path in the build directory,
+     * without .o) and its module's file *)
+    Def Unit = Tuple name: String path: String end
+
+    (* The units among objects (the build engine's artifacts) that are wasm
+     * modules in buildDir, each after every unit it imports *)
+    ordered(objects: Array(String) buildDir: String): Array(Unit)
+
+    (* Writes a bundle for target: the program's module (program) to target,
+     * the runtime's to TARGET.runtime.wasm, each unit's to TARGET.N.wasm, and
+     * their load order, a NAME=PATH line each, to TARGET.units. Raises
+     * writer.error if a file cannot be written. *)
+    write(target: String program: String runtime: String units: Array(Unit)): Ok
+
+    (* The command that runs the program's module at program with node or, for
+     * any other engine, wasmtime: the runtime's at runtimePath, named
+     * runtimeName, the units preloaded in order, and the program's arguments.
+     * Either runs with about 8 MB of stack, as native programs do. *)
+    command(engine: String program: String runtimeName: String runtimePath: String units: Array(Unit)
+            args: Array(String)): Array(String)
+
+    (* A run's result as the program left it: wasmtime cannot return an exit
+     * status above 125, so runtime/wasm/core's exitStatus exits with 125 and
+     * writes a last "quest: exit status N" line to standard error, which this
+     * removes, restoring N; and wasmtime's stack exhaustion is the uncaught
+     * stack.overflow (status 1) a native run reports *)
+    Def Ran = Tuple code: Int stdout: String stderr: String end
+    asRun(r: Ran): Ran
+end
