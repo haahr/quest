@@ -22,13 +22,13 @@ export
     end
 
     (* The protocol's SymbolKind *)
-    let moduleKind: Int = 2
-    let classKind: Int = 5
-    let fieldKind: Int = 8
-    let interfaceKind: Int = 11
-    let functionKind: Int = 12
-    let variableKind: Int = 13
-    let typeParameterKind: Int = 26
+    let symbolKindModule: Int = 2
+    let symbolKindClass: Int = 5
+    let symbolKindField: Int = 8
+    let symbolKindInterface: Int = 11
+    let symbolKindFunction: Int = 12
+    let symbolKindVariable: Int = 13
+    let symbolKindTypeParameter: Int = 26
 
     let noSymbols = array of :Symbol end
 
@@ -94,17 +94,20 @@ export
                 let isFunction =
                     {
                     vector.length(x.params) > 0} orif case x.value.form when exprFun then true else false end
-                vector.append(acc symbol(toks x.name if isFunction then functionKind else variableKind end ""
-                        d.span.startOffset d.span.endOffset false noSymbols))
+                vector.append(acc
+                        symbol(toks x.name if isFunction then symbolKindFunction else symbolKindVariable end ""
+                                d.span.startOffset d.span.endOffset false noSymbols))
             when declLetValGroup with x then
                 for i = 0 upto {vector.length(x.bindings) - 1} do declSymbols(toks vector.get(x.bindings i) acc) end
             when declTypeBinding with x then
-                vector.append(acc symbol(toks x.name classKind "" d.span.startOffset d.span.endOffset false noSymbols))
+                vector.append(acc
+                        symbol(toks x.name symbolKindClass "" d.span.startOffset d.span.endOffset false noSymbols))
             when declTypeBindingGroup with x then
                 for i = 0 upto {vector.length(x.bindings) - 1} do declSymbols(toks vector.get(x.bindings i) acc) end
             when declDefKind with x then
                 vector.append(acc
-                        symbol(toks x.name typeParameterKind "" d.span.startOffset d.span.endOffset false noSymbols))
+                        symbol(toks x.name symbolKindTypeParameter "" d.span.startOffset d.span.endOffset
+                                false noSymbols))
             else ok
         end
 
@@ -119,20 +122,25 @@ export
                             false
                         end
                     vector.append(acc
-                            symbol(toks maybe.unwrap(x.val.name) if isFunction then functionKind else fieldKind end
+                            symbol(toks maybe.unwrap(x.val.name) if isFunction then
+                                symbolKindFunction
+                            else
+                                symbolKindField
+                            end
                                     "" x.val.offset x.val.offset true noSymbols))
                 end
             when sigType with x then
-                vector.append(acc symbol(toks x.val.name classKind "" x.val.offset x.val.offset true noSymbols))
+                vector.append(acc symbol(toks x.val.name symbolKindClass "" x.val.offset x.val.offset true noSymbols))
             when sigTypeBinding with x then
-                vector.append(acc symbol(toks x.val.name classKind "" x.val.offset x.val.offset true noSymbols))
+                vector.append(acc symbol(toks x.val.name symbolKindClass "" x.val.offset x.val.offset true noSymbols))
             when sigTypeBindingGroup with x then
                 for i = 0 upto {vector.length(x.val) - 1} do
                     let b = vector.get(x.val i)
-                    vector.append(acc symbol(toks b.name classKind "" b.offset b.offset true noSymbols))
+                    vector.append(acc symbol(toks b.name symbolKindClass "" b.offset b.offset true noSymbols))
                 end
             when sigKindBinding with x then
-                vector.append(acc symbol(toks x.val.name typeParameterKind "" x.val.offset x.val.offset true noSymbols))
+                vector.append(acc
+                        symbol(toks x.val.name symbolKindTypeParameter "" x.val.offset x.val.offset true noSymbols))
         end
 
     let symbols(program: ast.Program toks: vector.T(tokens.Token)): Array(Symbol) =
@@ -146,15 +154,16 @@ export
                         for j = 0 upto {vector.length(x.iface.signatures) - 1} do
                             signatureSymbols(toks vector.get(x.iface.signatures j) members)
                         end
-                        vector.append(acc symbol(toks x.iface.name interfaceKind "" p.span.startOffset p.span.endOffset
-                                false vector.toArray(members)))
+                        vector.append(acc
+                                symbol(toks x.iface.name symbolKindInterface "" p.span.startOffset p.span.endOffset
+                                        false vector.toArray(members)))
                     when phraseModule with x then
                         let members = vector.new(:Symbol)
                         for j = 0 upto {vector.length(x.modDecl.bindings) - 1} do
                             declSymbols(toks vector.get(x.modDecl.bindings j) members)
                         end
                         vector.append(acc
-                                symbol(toks x.modDecl.name moduleKind x.modDecl.interfaceName p.span.startOffset
+                                symbol(toks x.modDecl.name symbolKindModule x.modDecl.interfaceName p.span.startOffset
                                         p.span.endOffset false vector.toArray(members)))
                     when phraseDecl with x then declSymbols(toks x.decl acc)
                     else ok

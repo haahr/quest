@@ -30,8 +30,9 @@ export
      * State
      * ====================================================================== *)
 
-    (* An open document: the URI the client names it by, its text, whether
-     * it must be checked again, its last check and index, and the last index
+    (* An open document: the URI the client names it by, its text and the
+     * text's line starts (kept with it, for the positions of every request),
+     * whether it must be checked again, its last check and index, and the last index
      * of a check that typed anything, which completion falls back on while
      * the text does not parse; others are the other files its last
      * diagnostics were published to *)
@@ -39,6 +40,7 @@ export
         uri: String
         path: String
         var text: String
+        var lines: positions.T
         var version: Int
         var stale: Bool
         var checked: maybe.T(analysis.T)
@@ -114,19 +116,20 @@ export
             if maybe.isSome(d) then maybe.unwrap(d).uri else uri.fromPath(path) end
         end
 
-    let textOf(path: String): String =
+    (* The line starts of a file, an open document's or the file's on disk *)
+    let linesOf(path: String): positions.T =
         begin
             let d = hashMap.get(state.documents path)
-            if maybe.isSome(d) then maybe.unwrap(d).text else fileText(path) end
+            if maybe.isSome(d) then maybe.unwrap(d).lines else positions.new(fileText(path)) end
         end
 
     let locationJson(p: analysis.Place): json.Value =
         obj(array of "uri" "range" end
-                array of str(uriOf(p.file)) rangeJson(positions.new(textOf(p.file)) p.start p.finish) end)
+                array of str(uriOf(p.file)) rangeJson(linesOf(p.file) p.start p.finish) end)
 
     (* The byte offset of a request's position in its document *)
     let offsetOf(d: Document params: json.Value): Int =
-        positions.toOffset(positions.new(d.text) json.toInt(at(params array of "position" "line" end))
+        positions.toOffset(d.lines json.toInt(at(params array of "position" "line" end))
                 json.toInt(at(params array of "position" "character" end)) state.utf16)
 
     (* ======================================================================
@@ -158,9 +161,8 @@ export
                     end)
         end
 
-    let publish(fileUri: String text: String version: maybe.T(Int) ds: vector.T(Diagnostic)): Ok =
+    let publish(fileUri: String t: positions.T version: maybe.T(Int) ds: vector.T(Diagnostic)): Ok =
         begin
-            let t = positions.new(text)
             let items = vector.new(:json.Value)
             for i = 0 upto {vector.length(ds) - 1} do vector.append(items diagnosticJson(t vector.get(ds i))) end
             let names = vector.new(:String)
@@ -231,19 +233,20 @@ export
                     end
                 end
             end
-            publish(d.uri d.text maybe.some(d.version) own)
+            publish(d.uri d.lines maybe.some(d.version) own)
             let others = hashMap.keys(byFile)
             for i = 0 upto {vector.length(others) - 1} do
                 let file = vector.get(others i)
                 if not(hashMap.contains(state.documents file)) then
-                    publish(uri.fromPath(file) fileText(file) maybe.none() maybe.unwrap(hashMap.get(byFile file)))
+                    publish(uri.fromPath(file) positions.new(fileText(file)) maybe.none()
+                            maybe.unwrap(hashMap.get(byFile file)))
                 end
             end
             (* Files that had problems and have none now are cleared *)
             for i = 0 upto {extent d.others - 1} do
                 if not(hashMap.contains(byFile d.others[i]))
                         andif not(hashMap.contains(state.documents d.others[i])) then
-                    publish(uri.fromPath(d.others[i]) "" maybe.none() vector.new(:Diagnostic))
+                    publish(uri.fromPath(d.others[i]) positions.new("") maybe.none() vector.new(:Diagnostic))
                 end
             end
             d.others := vector.toArray(others)
@@ -362,10 +365,12 @@ export
             let text = json.toString(at(params array of "textDocument" "text" end))
             let version = json.toInt(at(params array of "textDocument" "version" end))
             overlays.set(path text time.nowInNanoseconds())
+            let textLines = positions.new(text)
             hashMap.insert(state.documents path tuple
                 let uri = docUri
                 let path = path
                 let var text = text
+                let var lines = textLines
                 let var version = version
                 let var stale = true
                 let var checked = maybe.none(:analysis.T)
@@ -385,6 +390,7 @@ export
                 let changes = json.toArray(at(params array of "contentChanges" end))
                 if not(vector.empty(changes)) then
                     doc.text := json.toString(json.member(vector.last(changes) "text"))
+                    doc.lines := positions.new(doc.text)
                 end
                 doc.version := json.toInt(at(params array of "textDocument" "version" end))
                 overlays.set(path doc.text time.nowInNanoseconds())
@@ -406,7 +412,7 @@ export
                 if maybe.isNone(onDisk) orif not(stringOp.equal(maybe.unwrap(onDisk) doc.text)) then
                     try files.removeTree(state.settings.buildDir) else ok end
                 end
-                publish(doc.uri "" maybe.none() vector.new(:Diagnostic))
+                publish(doc.uri positions.new("") maybe.none() vector.new(:Diagnostic))
                 markAllStale()
             end
         end
@@ -467,7 +473,7 @@ export
             let items = vector.new(:json.Value)
             if maybe.isSome(d) andif maybe.isSome(maybe.unwrap(d).index) then
                 let doc = maybe.unwrap(d)
-                let t = positions.new(doc.text)
+                let t = doc.lines
                 let places = navigation.highlights(maybe.unwrap(doc.index) offsetOf(doc params))
                 for i = 0 upto {extent places - 1} do
                     vector.append(items obj(array of "range" "kind" end
@@ -500,7 +506,7 @@ export
                 let doc = maybe.unwrap(d)
                 let a = maybe.unwrap(doc.checked)
                 if maybe.isSome(a.syntax) andif maybe.isSome(a.tokens) then
-                    let t = positions.new(doc.text)
+                    let t = doc.lines
                     let symbols = outline.symbols(maybe.unwrap(a.syntax) maybe.unwrap(a.tokens))
                     for i = 0 upto {extent symbols - 1} do vector.append(items symbolJson(t symbols[i])) end
                 end
@@ -518,7 +524,7 @@ export
                 case format.source(path doc.text)
                     when formatted with x then
                         if not(stringOp.equal(x.text doc.text)) then
-                            let t = positions.new(doc.text)
+                            let t = doc.lines
                             vector.append(edits obj(array of "range" "newText" end
                                     array of rangeJson(t 0 stringOp.length(doc.text)) str(x.text) end))
                         end

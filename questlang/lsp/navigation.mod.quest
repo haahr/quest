@@ -807,13 +807,13 @@ export
     Let Completion = Tuple label: String kind: Int detail: String end
 
     (* The protocol's CompletionItemKind *)
-    let functionKind: Int = 3
-    let fieldKind: Int = 5
-    let variableKind: Int = 6
-    let classKind: Int = 7
-    let interfaceKind: Int = 8
-    let moduleKind: Int = 9
-    let keywordKind: Int = 14
+    let completionKindFunction: Int = 3
+    let completionKindField: Int = 5
+    let completionKindVariable: Int = 6
+    let completionKindClass: Int = 7
+    let completionKindInterface: Int = 8
+    let completionKindModule: Int = 9
+    let completionKindKeyword: Int = 14
 
     let isNameChar(c: Char): Bool = strutil.isAlnum(c) orif {c is '_'}
 
@@ -851,20 +851,25 @@ export
                                                 end
                                             vector.append(result tuple
                                                 let label = maybe.unwrap(y.val.name)
-                                                let kind = if isFunction then functionKind else fieldKind end
+                                                let kind =
+                                                    if isFunction then
+                                                        completionKindFunction
+                                                    else
+                                                        completionKindField
+                                                    end
                                                 let detail = lineAt(y.val.offset)
                                             end)
                                         end
                                     when sigType with y then
                                         vector.append(result tuple
                                             let label = y.val.name
-                                            let kind = classKind
+                                            let kind = completionKindClass
                                             let detail = lineAt(y.val.offset)
                                         end)
                                     when sigTypeBinding with y then
                                         vector.append(result tuple
                                             let label = y.val.name
-                                            let kind = classKind
+                                            let kind = completionKindClass
                                             let detail = lineAt(y.val.offset)
                                         end)
                                     when sigTypeBindingGroup with y then
@@ -872,7 +877,7 @@ export
                                             let b = vector.get(y.val k)
                                             vector.append(result tuple
                                                 let label = b.name
-                                                let kind = classKind
+                                                let kind = completionKindClass
                                                 let detail = lineAt(b.offset)
                                             end)
                                         end
@@ -898,14 +903,14 @@ export
                     let sym = maybe.unwrap(hashMap.get(at.values name))
                     vector.append(result tuple
                         let label = name
-                        let kind = variableKind
+                        let kind = completionKindVariable
                         let detail = formatting.valueDeclaration(name sym)
                     end)
                 end
                 let types = hashMap.keys(at.types)
                 for i = 0 upto {vector.length(types) - 1} do
                     let name = vector.get(types i)
-                    vector.append(result tuple let label = name let kind = classKind let detail = "" end)
+                    vector.append(result tuple let label = name let kind = completionKindClass let detail = "" end)
                 end
                 s := at.parent
             end
@@ -934,9 +939,9 @@ export
                     if o.isBinder then
                         let kind =
                             case o.kind
-                                when typeName then classKind
-                                when unitName then moduleKind
-                                else variableKind
+                                when typeName then completionKindClass
+                                when unitName then completionKindModule
+                                else completionKindVariable
                             end
                         vector.append(all tuple let label = o.name let kind = kind let detail = o.hover end)
                     end
@@ -946,14 +951,18 @@ export
                     let name = vector.get(names i)
                     vector.append(all tuple
                         let label = name
-                        let kind = moduleKind
+                        let kind = completionKindModule
                         let detail = "module " <> name <> " : " <> maybe.unwrap(hashMap.get(ix.imports name))
                     end)
                 end
                 if maybe.isSome(ix.a.scope) then scopeNames(all maybe.unwrap(ix.a.scope)) end
                 let keywords = tokenizer.keywordNames()
                 for i = 0 upto {extent keywords - 1} do
-                    vector.append(all tuple let label = keywords[i] let kind = keywordKind let detail = "" end)
+                    vector.append(all tuple
+                        let label = keywords[i]
+                        let kind = completionKindKeyword
+                        let detail = ""
+                    end)
                 end
             end
             (* Those that start with the prefix, once each, the first kept *)
