@@ -9,9 +9,9 @@ import
     collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
-    util/strutil : util/Strutil
 
     questlang/common/maps : questlang/common/Maps
+    questlang/repr/symbols : questlang/repr/Symbols
     questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
@@ -42,11 +42,6 @@ export
         if maybe.isSome(defs[v]) andif ssa.isOp(maybe.unwrap(defs[v]) ssa.opSymbol) then defs[v]
         else maybe.none()
         end
-
-    (* Whether symbol is a module's initialization, which the builder names
-     * qv_mod_<module>_init *)
-    let initialization(symbol: String): Bool =
-        strutil.startsWith(symbol "qv_mod_") andif strutil.endsWith(symbol "_init")
 
     (* What deciding whether code could read a global needs: the unit, the
      * definitions of each of its functions' values, its functions by symbol,
@@ -85,7 +80,7 @@ export
             let callee = hashMap.get(q.byName i.symbol)
             let storing = vector.get(q.u.functions q.storing).symbol
             if stringOp.equal(i.symbol storing) then true
-            elsif initialization(i.symbol) andif initialization(storing) then false
+            elsif symbols.isModuleInitSymbol(i.symbol) andif symbols.isModuleInitSymbol(storing) then false
             elsif maybe.isSome(callee) then functionReads(q maybe.unwrap(callee))
             else
                 not(runtimeFunctions.registers(i.symbol)) andif runtimeFunctions.callWrites(i)

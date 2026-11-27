@@ -334,7 +334,7 @@ export
 
     let run(t: T name: String capture: Bool): Ran =
         begin
-            let raised = code.call(symbolAt(t.symbols name <> "_entry"))
+            let raised = code.call(symbolAt(t.symbols mangling.phraseEntryIdent(name)))
             if maybe.isSome(raised) then
                 let r = maybe.unwrap(raised)
                 let name = code.exceptionName(r)
@@ -347,8 +347,10 @@ export
                     let fatal = fatal
                 end
             else
-                let shown = if capture then value.be(:String value.fetch(symbolAt(t.symbols name <> "_echo") 0))
-                    else "" end
+                let shown =
+                    if capture then value.be(:String value.fetch(symbolAt(t.symbols mangling.phraseEchoIdent(name)) 0))
+                    else ""
+                    end
                 option ran of Ran with let shown = shown end
             end
         end

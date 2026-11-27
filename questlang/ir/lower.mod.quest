@@ -21,6 +21,7 @@ import
     questlang/repr/genericLayout : questlang/repr/GenericLayout
     questlang/repr/layout : questlang/repr/Layout
     questlang/repr/shapes : questlang/repr/Shapes
+    linked = questlang/repr/symbols : questlang/repr/Symbols
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
     questlang/types/echo : questlang/types/Echo
     questlang/types/env : questlang/types/Env
@@ -375,8 +376,6 @@ export
                 else maybe.none(:String) end
             nodes.newImport(name modulePath canonicalPath interfacePath recordType libPath)
         end
-
-    let phraseModuleName(number: Int): String = "qj_" <> conv.int(number)
 
     (* The slot a symbol is bound to (docs/repl.md section 6): the id of
      * the first symbol bound to it, which is the symbol's own but for an
@@ -2403,7 +2402,7 @@ export
             hashMap.forEach(earlier fun(k: Int b: Earlier): Ok
                 begin hashMap.insert(l.earlier k b) ok end)
             captures.capturedMutables(prog l.captured)
-            l.modulePrefix := phraseModuleName(number) <> "_"
+            l.modulePrefix := linked.phraseModuleName(number) <> "_"
             l.boxSlots := e.interactive
             let init = nodes.newBody()
             let modules = vector.new(:nodes.Module)
@@ -2481,10 +2480,10 @@ export
                 vector.append(atoms tuple let name = n let atom = va(v) let isVar = v.isMutable end)
             end
             let recordType = model.recordType(vector.toArray(recordFields) maybe.none())
-            let rv = fresh(phraseModuleName(number) <> "_record" recordType false)
+            let rv = fresh(linked.phraseModuleName(number) <> "_record" recordType false)
             l.body := lastBody
             emit(l nodes.letStmt(rv nodes.makeRecord(vector.toArray(atoms))))
-            let m = nodes.newModule(phraseModuleName(number) "" init members)
+            let m = nodes.newModule(linked.phraseModuleName(number) "" init members)
             m.exports := maybe.some(members)
             m.recordVar := some(rv)
             vector.append(modules m)

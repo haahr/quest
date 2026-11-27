@@ -2987,7 +2987,7 @@ export
                 let imp = vector.get(imports i)
                 let clean = symbols.mangleModuleName(imp.canonicalPath)
                 add(lines "extern QRecordVal " <> symbols.moduleRecordIdent(clean) <> ";")
-                add(lines "extern void qv_mod_" <> clean <> "_init(void);")
+                add(lines "extern void " <> symbols.moduleInitIdent(clean) <> "(void);")
                 vector.append(records
                         tuple let name = imp.canonicalPath let recordType = imp.recordType end)
             end
@@ -3060,7 +3060,7 @@ export
             for i = 0 upto {vector.length(p.unit.modules) - 1} do
                 let m = vector.get(p.unit.modules i)
                 vector.append(entries tuple
-                    let cName = "qv_mod_" <> symbols.mangleModuleName(m.name) <> "_init"
+                    let cName = symbols.moduleInitIdent(symbols.mangleModuleName(m.name))
                     let frame = diagnostics.initFrame(m.name)
                 end)
             end
@@ -3147,7 +3147,7 @@ export
             let names = nodes.initOrder(unit exported)
             let res = vector.new(:String)
             for i = 0 upto {extent names - 1} do
-                add(res "    qv_mod_" <> symbols.mangleModuleName(names[i]) <> "_init();")
+                add(res "    " <> symbols.moduleInitIdent(symbols.mangleModuleName(names[i])) <> "();")
             end
             res
         end
@@ -3159,9 +3159,10 @@ export
             let exported = maybe.isSome(m.exports)
             let linkage = if exported then "" else "static " end
             let res = vector.new(:String)
-            add(res linkage <> "void qv_mod_" <> clean <> "_init(void) {")
-            add(res "    if (qv_mod_" <> clean <> "_initialized) return;")
-            add(res "    qv_mod_" <> clean <> "_initialized = true;")
+            let initialized = symbols.moduleInitializedIdent(clean)
+            add(res linkage <> "void " <> symbols.moduleInitIdent(clean) <> "(void) {")
+            add(res "    if (" <> initialized <> ") return;")
+            add(res "    " <> initialized <> " = true;")
             for i = 0 upto {vector.length(top.decls) - 1} do
                 let l = vector.get(top.decls i)
                 add(res "    " <> l.cType <> " " <> l.name <> ";")
@@ -3278,8 +3279,8 @@ export
                 let clean = symbols.mangleModuleName(m.name)
                 let linkage = if maybe.isSome(m.exports) then "" else "static " end
                 add(res linkage <> "QRecordVal " <> symbols.moduleRecordIdent(clean) <> ";")
-                add(res "static bool qv_mod_" <> clean <> "_initialized = false;")
-                if maybe.isSome(m.exports) then add(res "void qv_mod_" <> clean <> "_init(void);") end
+                add(res "static bool " <> symbols.moduleInitializedIdent(clean) <> " = false;")
+                if maybe.isSome(m.exports) then add(res "void " <> symbols.moduleInitIdent(clean) <> "(void);") end
             end
             add(res "")
             (* The unit's root table: its globals that may hold pointers, and
@@ -3308,7 +3309,8 @@ export
                 for i = 0 upto {vector.length(unit.modules) - 1} do
                     let m = vector.get(unit.modules i)
                     if maybe.isNone(m.exports) then
-                        add(res "static void qv_mod_" <> symbols.mangleModuleName(m.name) <> "_init(void);")
+                        add(res "static void " <> symbols.moduleInitIdent(symbols.mangleModuleName(m.name))
+                            <> "(void);")
                     end
                 end
                 if not(moduleFile) then add(res "int main(int argc, char **argv);") end

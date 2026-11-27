@@ -23,6 +23,7 @@ import
     questlang/jit/target : questlang/jit/Target
     questlang/modules/artifacts/fingerprint : questlang/modules/artifacts/Fingerprint
     questlang/modules/elaboration : questlang/modules/Elaboration
+    linked = questlang/repr/symbols : questlang/repr/Symbols
     questlang/typechecker/typecheck : questlang/typechecker/Typecheck
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
     questlang/types/env : questlang/types/Env
@@ -157,7 +158,7 @@ export
      * interface the import was compiled against. One the driver lacks was
      * loaded before (section 3.4). *)
     let checkImport(s: T imp: nodes.Import): Ok =
-        if strutil.startsWith(imp.canonicalPath "qj_") orif {stringOp.length(imp.interfacePath) is 0}
+        if linked.isPhraseModuleName(imp.canonicalPath) orif {stringOp.length(imp.interfacePath) is 0}
                 orif hashSet.contains(s.loaded imp.canonicalPath) then
             ok
         else
@@ -251,7 +252,7 @@ export
      * link it; an error compiling it is labeled as imported where program
      * imports it *)
     let loadImported(s: T imp: nodes.Import program: typedAst.Program file: String): Ok =
-        if strutil.startsWith(imp.canonicalPath "qj_") orif {stringOp.length(imp.interfacePath) is 0}
+        if linked.isPhraseModuleName(imp.canonicalPath) orif {stringOp.length(imp.interfacePath) is 0}
                 orif target.has(s.target imp.canonicalPath)
                 orif hashSet.contains(s.loaded imp.canonicalPath) then
             ok
@@ -334,7 +335,7 @@ export
         begin
             s.count := s.count + 1
             let number = s.count
-            let name = lower.phraseModuleName(number)
+            let name = linked.phraseModuleName(number)
             hashMap.insert(s.sources sourcePrefix <> conv.int(number) sourceMap)
             let compiled = location.newSourceMap(sourcePrefix <> conv.int(number) location.text(sourceMap))
             let unit =

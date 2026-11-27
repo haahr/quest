@@ -2,7 +2,6 @@
 
 module unit : Unit
 import
-    conv : Conv
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
@@ -219,10 +218,13 @@ export
     (* Names the synthetic module that runs a JIT phrase unit's phrases and the
      * entry point the JIT invokes (docs/jit.md section 3.2) *)
     let phraseModule(unit: ir.Unit): String =
-        if maybe.isSome(unit.phrase) then "qj_" <> conv.int(maybe.unwrap(unit.phrase).number)
+        if maybe.isSome(unit.phrase) then symbols.phraseModuleName(maybe.unwrap(unit.phrase).number)
         else ""
         end
-    let phraseEntry(unit: ir.Unit): String = phraseModule(unit) <> "_entry"
+    let phraseEntry(unit: ir.Unit): String = symbols.phraseEntryIdent(phraseModule(unit))
+
+    (* A module's initialization function's symbol *)
+    let initSymbol(name: String): String = symbols.moduleInitIdent(symbols.mangleModuleName(name))
 
     (* Emits the traceback function table qr_funcs (docs/exceptions.md section
      * 5.2), a placeholder frame table qr_frames, and the qr_register_dicts
@@ -252,7 +254,7 @@ export
                                 stringOp.length(m.name) - stringOp.length(prefix)))
                     else diagnostics.initFrame(m.name)
                     end
-                entry("qv_mod_" <> symbols.mangleModuleName(m.name) <> "_init" frame)
+                entry(initSymbol(m.name) frame)
             end
             if not(isModuleFile(unit)) andif maybe.isNone(unit.phrase) then
                 entry("main" diagnostics.mainFrame)
@@ -262,8 +264,8 @@ export
             (* Emit an empty placeholder for the GC frame table (docs/arm64.md
              * section 3.13); the arm64 backend replaces it with the real
              * table *)
-            addData(u ssa.words("qr_frames" false false array of wordOf(0) end))
-            vals.callVoid(fn "quest_register_frames" array of vals.symbolAt(fn "qr_frames") end)
+            addData(u ssa.words(symbols.framesIdent false false array of wordOf(0) end))
+            vals.callVoid(fn "quest_register_frames" array of vals.symbolAt(fn symbols.framesIdent) end)
             if not(vector.empty(entries)) then
                 addData(u ssa.words("qr_funcs" false false vector.toArray(entries)))
                 vals.callVoid(fn "quest_register_funcs"
@@ -345,9 +347,6 @@ export
             end
         end
 
-    (* A module's initialization function's symbol *)
-    let initSymbol(name: String): String = "qv_mod_" <> symbols.mangleModuleName(name) <> "_init"
-
     (* What a program's main, a JIT phrase's entry, and an exported module's
      * initializer each do before their own code: register the unit's tables,
      * then initialize the modules ir.initOrder names *)
@@ -405,7 +404,7 @@ export
     let moduleCode(u: vals.UnitBuilder m: ir.Module): Ok =
         begin
             let clean = symbols.mangleModuleName(m.name)
-            let initialized = "qv_mod_" <> clean <> "_initialized"
+            let initialized = symbols.moduleInitializedIdent(clean)
             let exported = maybe.isSome(m.exports)
             addData(u tuple
                 let symbol = symbols.moduleRecordIdent(clean)
@@ -425,7 +424,7 @@ export
                 let writable = true
                 let contents = option contentsZero of ssa.Contents with let bytes = 8 end
             end)
-            vector.append(u.built.functions topLevel(u "qv_mod_" <> clean <> "_init" m.init
+            vector.append(u.built.functions topLevel(u symbols.moduleInitIdent(clean) m.init
                     fun(fn: vals.Fn): Ok moduleInitStart(fn m initialized exported)
                     fun(fn: vals.Fn): Ok
                         begin
@@ -455,7 +454,7 @@ export
         begin
             let unit = u.unit
             let capture = maybe.unwrap(unit.phrase).capture
-            let echoed = phraseModule(unit) <> "_echo"
+            let echoed = symbols.phraseEchoIdent(phraseModule(unit))
             if capture then
                 addData(u tuple
                     let symbol = echoed
