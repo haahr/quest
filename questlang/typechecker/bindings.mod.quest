@@ -378,7 +378,7 @@ export
                                                     rt.span.startOffset)
                                         end
                                     end
-                                    let innerTyped = checker.checkExpr(c innerExpr bodyExp e loopDepth)
+                                    let innerTyped = checker.checkExpr(c innerExpr bodyExp)
                                     let quantArray = vector.toArray(quants)
                                     (* Keep the value parameters the function
                                      * writes, or for a type-only function
@@ -460,8 +460,9 @@ export
                                  * function type as it would be against any
                                  * other type of another form *)
                                 if hasTypeParams then
-                                    early := maybe.some(checker.checkSubsumption(c expr expectedType e
-                                            loopDepth maybe.some("Function")))
+                                    early :=
+                                            maybe.some(checker.checkSubsumption(c expr expectedType
+                                                    maybe.some("Function")))
                                 else
                                     let n = vector.length(x.params)
                                     if n isnot extent f.params then
@@ -472,7 +473,7 @@ export
                                     expectedFun := maybe.some(expectedLazy)
                                 end
                             else
-                                early := maybe.some(checker.checkSubsumption(c expr expectedType e loopDepth
+                                early := maybe.some(checker.checkSubsumption(c expr expectedType
                                         maybe.some("Function")))
                         end
                     end
@@ -541,7 +542,7 @@ export
                                 else
                                     fResult
                                 end
-                            let typed = checker.elaborateSubexpr(c body bodyExpected e c.loopDepth)
+                            let typed = checker.elaborateSubexpr(c body bodyExpected)
                             let ret =
                                 if maybe.isSome(fResult) then
                                     maybe.unwrap(fResult)
@@ -687,9 +688,9 @@ export
                                 let body = x.value
                                 let typeParams = vector.new()
                             end)
-                            checker.checkExpr(c fnExpr sym.type e loopDepth)
+                            checker.checkExpr(c fnExpr sym.type)
                         else
-                            checker.checkExpr(c x.value sym.type e loopDepth)
+                            checker.checkExpr(c x.value sym.type)
                         end
                     tuple
                         let offset = b.span.startOffset
@@ -758,7 +759,7 @@ export
                 when declExprStmt with x then
                     case x.expr.form
                         when exprException then exprStmt(offset exceptions.synthException(c x.expr e loopDepth true))
-                        else exprStmt(offset checker.synthExpr(c x.expr e loopDepth))
+                        else exprStmt(offset checker.synthExpr(c x.expr))
                     end
                 when declLetVal with x then
                     begin
@@ -777,11 +778,11 @@ export
                                 if maybe.isSome(x.typeAnnot) then
                                     let expected = elaborateTypes.elaborateType(maybe.unwrap(x.typeAnnot) e)
                                     tuple
-                                        let typed = checker.checkExpr(c x.value expected e loopDepth)
+                                        let typed = checker.checkExpr(c x.value expected)
                                         let type = expected
                                     end
                                 else
-                                    let typed = checker.synthExpr(c x.value e loopDepth)
+                                    let typed = checker.synthExpr(c x.value)
                                     tuple let typed = typed let type = typed.type end
                                 end
                             let sym = symbols.newValueSymbol(x.name valued.type x.isVar false false c.functionDepth 0)

@@ -62,7 +62,7 @@ export
         case expr.form
             when exprInspect with x then
                 begin
-                    let targetTyped = checker.synthExpr(c x.target e loopDepth)
+                    let targetTyped = checker.synthExpr(c x.target)
                     let autoType = model.evaluateLazily(targetTyped.type symbols.lookup)
                     if not(isAutoType(autoType)) then
                         diagnostics.fail(:Ok "Target of inspect must have an Auto type (such as Dynamic), got '"
@@ -113,7 +113,7 @@ export
                                 end
                                 tuple
                                     let binders = vector.toArray(syms)
-                                    let body = checker.elaborateSubexpr(c branch.body expected e loopDepth)
+                                    let body = checker.elaborateSubexpr(c branch.body expected)
                                 end
                             end)
                         vector.append(branches tuple
@@ -125,7 +125,7 @@ export
                         end)
                         vector.append(bodies arm.body)
                     end
-                    let elseTyped = checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
+                    let elseTyped = checker.elaborateOptionalBranch(c x.elseBranch expected)
                     let joined: checker.JoinedBodies =
                         if maybe.isSome(expected) then
                             tuple
@@ -211,7 +211,7 @@ export
                                         symbols.newTypeSymbol(name env.freshSymbolId(e) localBound maybe.some(witness)))
                                 ok
                             end
-                            checker.checkExpr(c x.payload payloadType e loopDepth)
+                            checker.checkExpr(c x.payload payloadType)
                         end)
                     typedAst.expr(expr.span.startOffset expectedType option exprAuto of typedAst.ExprForm with
                         let witnessType = witness

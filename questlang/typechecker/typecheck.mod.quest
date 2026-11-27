@@ -125,7 +125,7 @@ export
                     if maybe.isSome(x.elseBranch) andif not(x.shortCircuit) then
                         control.elaborateIf(c x0 exp e loopDepth)
                     else
-                        checker.checkSubsumption(c x0 expected e loopDepth maybe.none())
+                        checker.checkSubsumption(c x0 expected maybe.none())
                     end
                 when exprBlock then control.elaborateBlock(c x0 exp e loopDepth)
                 when exprFun then bindings.elaborateFun(c x0 exp e loopDepth)
@@ -162,7 +162,7 @@ export
                             maybe.none())
                 (* Subsumption: the minimal type is synthesized and must be a
                  * subtype *)
-                else checker.checkSubsumption(c x0 expected e loopDepth maybe.none())
+                else checker.checkSubsumption(c x0 expected maybe.none())
             end
         end
 
@@ -235,7 +235,7 @@ export
                                 <> "' cannot be used as a value without an operand"
                                     offset)
                         end
-                        let found = checker.lookupValue(c e name)
+                        let found = checker.lookupValue(c name)
                         if maybe.isNone(found) then
                             diagnostics.failWithHelp(:Ok "Undefined variable '" <> name <> "'" offset
                                     nearMiss.valueHelp(e name))
@@ -268,7 +268,7 @@ export
                         when exprId with id then
                             begin
                                 let targetOffset = x.target.span.startOffset
-                                let found = checker.lookupValue(c e id.name)
+                                let found = checker.lookupValue(c id.name)
                                 if maybe.isNone(found) then
                                     diagnostics.failWithHelp(:Ok "Undefined variable '" <> id.name <> "'" targetOffset
                                             nearMiss.valueHelp(e id.name))

@@ -85,20 +85,20 @@ export
             end)
         end
 
-    let checkExpr(c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int): typedAst.Expr =
+    let checkExpr(c: T expr: ast.Expr expected: model.Type): typedAst.Expr =
         begin
-            agree(c e loopDepth)
-            c.checkHook(c expr expected e loopDepth)
+            agree(c c.env c.loopDepth)
+            c.checkHook(c expr expected c.env c.loopDepth)
         end
-    let synthExpr(c: T expr: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
+    let synthExpr(c: T expr: ast.Expr): typedAst.Expr =
         begin
-            agree(c e loopDepth)
-            c.synthHook(c expr e loopDepth false)
+            agree(c c.env c.loopDepth)
+            c.synthHook(c expr c.env c.loopDepth false)
         end
-    let synthCallee(c: T expr: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
+    let synthCallee(c: T expr: ast.Expr): typedAst.Expr =
         begin
-            agree(c e loopDepth)
-            c.synthHook(c expr e loopDepth true)
+            agree(c c.env c.loopDepth)
+            c.synthHook(c expr c.env c.loopDepth true)
         end
 
     let inLoop(A::TYPE c: T body: All() A): A =
@@ -133,18 +133,18 @@ export
             result
         end
 
-    let elaborateSubexpr(c: T expr: ast.Expr expected: maybe.T(model.Type) e: env.T loopDepth: Int): typedAst.Expr =
+    let elaborateSubexpr(c: T expr: ast.Expr expected: maybe.T(model.Type)): typedAst.Expr =
         if maybe.isSome(expected) then
-            checkExpr(c expr maybe.unwrap(expected) e loopDepth)
+            checkExpr(c expr maybe.unwrap(expected))
         else
-            synthExpr(c expr e loopDepth)
+            synthExpr(c expr)
         end
 
     let elaborateOptionalBranch(
-            c: T expr: maybe.T(ast.Expr) expected: maybe.T(model.Type) e: env.T loopDepth: Int
+            c: T expr: maybe.T(ast.Expr) expected: maybe.T(model.Type)
             ): maybe.T(typedAst.Expr) =
         if maybe.isSome(expr) then
-            maybe.some(elaborateSubexpr(c maybe.unwrap(expr) expected e loopDepth))
+            maybe.some(elaborateSubexpr(c maybe.unwrap(expr) expected))
         else
             maybe.none()
         end
@@ -191,9 +191,8 @@ export
         end
 
     let checkSubsumption(
-            c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int typeDesc: maybe.T(String)
-            ): typedAst.Expr =
-        checks.requireSubtype(expr.span.startOffset synthExpr(c expr e loopDepth) expected e typeDesc)
+            c: T expr: ast.Expr expected: model.Type typeDesc: maybe.T(String)
+            ): typedAst.Expr = checks.requireSubtype(expr.span.startOffset synthExpr(c expr) expected c.env typeDesc)
 
     (* Reports whether sym is a global var variable, which functions may not
      * refer to directly (Typeful Programming section 4.8). A global var is one
@@ -244,10 +243,10 @@ export
     let checkPoisoned(sym: symbols.ValueSymbol): Ok =
         if symbols.isPoisonedValue(sym.symbolId) then diagnostics.raiseError(:Ok diagnostics.silentError) end
 
-    let lookupValue(c: T e: env.T name: String): maybe.T(symbols.ValueSymbol) =
+    let lookupValue(c: T name: String): maybe.T(symbols.ValueSymbol) =
         begin
-            agree(c e c.loopDepth)
-            let sym = env.lookupValue(e name)
+            agree(c c.env c.loopDepth)
+            let sym = env.lookupValue(c.env name)
             if maybe.isSome(sym) then checkPoisoned(maybe.unwrap(sym)) end
             sym
         end

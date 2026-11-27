@@ -56,9 +56,9 @@ export
         end
     let synthTupleComponent(c: checker.T b: ast.TupleFieldBinding e: env.T loopDepth: Int): typedAst.Expr =
         if maybe.isSome(b.typeAnnot) then
-            checker.checkExpr(c b.value elaborateTypes.elaborateType(maybe.unwrap(b.typeAnnot) e) e loopDepth)
+            checker.checkExpr(c b.value elaborateTypes.elaborateType(maybe.unwrap(b.typeAnnot) e))
         else
-            checker.synthExpr(c b.value e loopDepth)
+            checker.synthExpr(c b.value)
         end
     let newLabel(c: checker.T name: String t: Type isVar: Bool): symbols.ValueSymbol =
         symbols.newValueSymbol(name t isVar false false c.functionDepth 0)
@@ -375,7 +375,7 @@ export
                                                     diagnostics.fail(:Ok "Tuple field '" <> maybe.unwrapOr(expName "")
                                                         <> "' must be declared mutable (var)" b.offset)
                                                 end
-                                                let t = checker.checkExpr(c b.value eft e loopDepth)
+                                                let t = checker.checkExpr(c b.value eft)
                                                 if not(checks.isTypeEqual(t.type eft e)) then
                                                     diagnostics.fail(:Ok "Mutable tuple field '"
                                                         <> maybe.unwrapOr(expName "")
@@ -393,9 +393,9 @@ export
                                                         <> "' is not a subtype of expected field type '"
                                                         <> model.show(eft) <> "'" b.offset)
                                                 end
-                                                checker.checkExpr(c b.value annotType e loopDepth)
+                                                checker.checkExpr(c b.value annotType)
                                             else
-                                                checker.checkExpr(c b.value eft e loopDepth)
+                                                checker.checkExpr(c b.value eft)
                                             end
                                         tuple
                                             let value = valTyped
@@ -608,8 +608,9 @@ export
                                 expectedTuple := maybe.some(t.fields)
                                 expectedTupleType := maybe.some(expectedLazy)
                             else
-                                early := maybe.some(checker.checkSubsumption(c x0 maybe.unwrap(expected)
-                                        e loopDepth maybe.some("Tuple")))
+                                early :=
+                                        maybe.some(checker.checkSubsumption(c x0 maybe.unwrap(expected)
+                                                maybe.some("Tuple")))
                         end
                     end
                     if maybe.isSome(early) then

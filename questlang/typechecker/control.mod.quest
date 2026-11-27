@@ -181,7 +181,7 @@ export
                             begin
                                 let sym = symbols.newValueSymbol(binder binderT false false false c.functionDepth 0)
                                 symbols.declareValue(e.currentScope sym)
-                                let body = checker.elaborateSubexpr(c branch.body expected e loopDepth)
+                                let body = checker.elaborateSubexpr(c branch.body expected)
                                 if maybe.isNone(expected) then
                                     let ids = newIds()
                                     hashSet.insert(ids sym.symbolId)
@@ -192,7 +192,7 @@ export
                             end)
                     else
                         tuple
-                            let body = checker.elaborateSubexpr(c branch.body expected e loopDepth)
+                            let body = checker.elaborateSubexpr(c branch.body expected)
                             let binder = maybe.none()
                         end
                     end
@@ -226,11 +226,11 @@ export
         case x0.form
             when exprCase with x then
                 begin
-                    let targetTyped = checker.synthExpr(c x.target e loopDepth)
+                    let targetTyped = checker.synthExpr(c x.target)
                     let targetType = checks.evaluate(targetTyped.type)
                     let branches =
                         elaborateCaseBranches(c x0 x.target x.branches x.elseBranch targetType expected e loopDepth)
-                    let elseTyped = checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
+                    let elseTyped = checker.elaborateOptionalBranch(c x.elseBranch expected)
                     let bodies = vector.new(:typedAst.Expr)
                     for i = 0 upto {extent branches - 1} do vector.append(bodies branches[i].body) end
                     let joined: checker.JoinedBodies =
@@ -310,7 +310,7 @@ export
                 when exprId with id then
                     begin
                         let idOff = left.span.startOffset
-                        let found = checker.lookupValue(c e id.name)
+                        let found = checker.lookupValue(c id.name)
                         if maybe.isNone(found) then
                             diagnostics.failWithHelp(:Ok "Undefined variable '" <> id.name <> "'" idOff
                                     nearMiss.valueHelp(e id.name))
@@ -325,7 +325,7 @@ export
                                 let name = sym.name
                                 let symbol = sym
                             end)
-                        let rhsTyped = checker.checkExpr(c right sym.type e loopDepth)
+                        let rhsTyped = checker.checkExpr(c right sym.type)
                         typedAst.expr(offset model.okType assignForm(targetNode rhsTyped))
                     end
                 (* Target 2: a record or tuple field (r.field := rhs, t.field :=
@@ -334,7 +334,7 @@ export
                     begin
                         let selOff = left.span.startOffset
                         let field = sel.field
-                        let targetTyped = checker.synthExpr(c sel.target e loopDepth)
+                        let targetTyped = checker.synthExpr(c sel.target)
                         let var targetType = checks.evaluate(targetTyped.type)
                         let isTuple = case targetType.form when typeTuple then true else false end
                         if not(isTuple) andif maybe.isNone(kinds.resolveRecordBound(targetType maybe.some(e))) then
@@ -374,7 +374,7 @@ export
                                         diagnostics.fail(:Ok "Cannot assign to immutable tuple field '" <> field
                                             <> "'" selOff)
                                     end
-                                    let rhsTyped = checker.checkExpr(c right f.type e loopDepth)
+                                    let rhsTyped = checker.checkExpr(c right f.type)
                                     let targetSelect =
                                         typedAst.expr(selOff f.type option exprSelect of typedAst.ExprForm with
                                             let target = targetTyped
@@ -404,7 +404,7 @@ export
                                         diagnostics.fail(:Ok "Cannot assign to immutable record field '" <> field
                                             <> "'" selOff)
                                     end
-                                    let rhsTyped = checker.checkExpr(c right f.type e loopDepth)
+                                    let rhsTyped = checker.checkExpr(c right f.type)
                                     let targetSelect =
                                         typedAst.expr(selOff f.type option exprSelect of typedAst.ExprForm with
                                             let target = targetTyped
@@ -435,12 +435,12 @@ export
                         checks.notDesugared("ExprInfix" x0.span.startOffset)
                     elsif maybe.isSome(infix) then
                         let o = maybe.unwrap(infix)
-                        let leftTyped = checker.checkExpr(c x.left o.left e loopDepth)
-                        let rightTyped = checker.checkExpr(c x.right o.right e loopDepth)
+                        let leftTyped = checker.checkExpr(c x.left o.left)
+                        let rightTyped = checker.checkExpr(c x.right o.right)
                         typedAst.expr(offset o.result infixForm(leftTyped op rightTyped))
                     elsif stringOp.equal(op "is") orif stringOp.equal(op "isnot") then
-                        let leftTyped = checker.synthExpr(c x.left e loopDepth)
-                        let rightTyped = checker.synthExpr(c x.right e loopDepth)
+                        let leftTyped = checker.synthExpr(c x.left)
+                        let rightTyped = checker.synthExpr(c x.right)
                         if checks.isSubtype(leftTyped.type rightTyped.type e)
                                 orif checks.isSubtype(rightTyped.type leftTyped.type e) then
                             typedAst.expr(offset model.boolType infixForm(leftTyped op rightTyped))
@@ -474,7 +474,7 @@ export
                     let offset = x0.span.startOffset
                     if not(vector.empty(x.elsifs)) then checks.notDesugared(:Ok "ExprIf" x0.span.startOffset) end
                     let expected = if x.shortCircuit then maybe.some(model.boolType) else expected0 end
-                    let condTyped = checker.checkExpr(c x.cond model.boolType e loopDepth)
+                    let condTyped = checker.checkExpr(c x.cond model.boolType)
                     let ifForm(thenBranch: typedAst.Expr elseBranch: typedAst.Expr): typedAst.ExprForm =
                         option exprIf of typedAst.ExprForm with
                             let cond = condTyped
@@ -482,7 +482,7 @@ export
                             let elseBranch = elseBranch
                         end
                     if maybe.isNone(expected) andif maybe.isNone(x.elseBranch) then
-                        let thenTyped = checker.synthExpr(c x.thenBranch e loopDepth)
+                        let thenTyped = checker.synthExpr(c x.thenBranch)
                         let thenOffset = thenTyped.offset
                         let stmt = typedAst.binding(thenOffset option bindExprStmt of typedAst.BindingForm with
                             let expr = thenTyped
@@ -493,8 +493,8 @@ export
                         end)
                         typedAst.expr(offset model.okType ifForm(thenBody okExpr(offset)))
                     else
-                        let thenTyped = checker.elaborateSubexpr(c x.thenBranch expected e loopDepth)
-                        let elseTyped = checker.elaborateSubexpr(c maybe.unwrap(x.elseBranch) expected e loopDepth)
+                        let thenTyped = checker.elaborateSubexpr(c x.thenBranch expected)
+                        let elseTyped = checker.elaborateSubexpr(c maybe.unwrap(x.elseBranch) expected)
                         if maybe.isSome(expected) then
                             typedAst.expr(offset maybe.unwrap(expected) ifForm(thenTyped elseTyped))
                         else
@@ -511,8 +511,8 @@ export
         case x0.form
             when exprFor with x then
                 begin
-                    let startTyped = checker.checkExpr(c x.start model.intType e loopDepth)
-                    let stopTyped = checker.checkExpr(c x.stop model.intType e loopDepth)
+                    let startTyped = checker.checkExpr(c x.start model.intType)
+                    let stopTyped = checker.checkExpr(c x.stop model.intType)
                     Let Loop = Tuple sym: symbols.ValueSymbol body: typedAst.Expr end
                     let looped = env.localScoped(e "for_" <> x.varName fun(s: symbols.Scope): Loop
                         begin
@@ -521,7 +521,7 @@ export
                             symbols.declareValue(e.currentScope sym)
                             c.loopDepth := loopDepth
                             let body = checker.inLoop(c fun(): typedAst.Expr
-                                checker.synthExpr(c x.body e c.loopDepth))
+                                checker.synthExpr(c x.body))
                             tuple let sym = sym let body = body end
                         end)
                     typedAst.expr(x0.span.startOffset model.okType option exprFor of typedAst.ExprForm with
@@ -569,7 +569,7 @@ export
                                 when declExprStmt with s then
                                     begin
                                         result := checker.attempt(c fun(): typedAst.Expr
-                                            checker.elaborateSubexpr(c s.expr expected e loopDepth))
+                                            checker.elaborateSubexpr(c s.expr expected))
                                         if maybe.isNone(result) then state.failed := true end
                                     end
                                 else

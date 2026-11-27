@@ -96,7 +96,7 @@ export
                         if param.isVar orif param.isOut then
                             checkLvalueArg(c args[i] param.type e loopDepth param.isOut)
                         else
-                            checker.checkExpr(c args[i] param.type e loopDepth)
+                            checker.checkExpr(c args[i] param.type)
                         end)
             end
             vector.toArray(typed)
@@ -110,7 +110,7 @@ export
                 checkLvalueTarget(c x.target paramType e loopDepth isOut arg.span.startOffset)
             when exprVarCell with x then
                 typedAst.expr(arg.span.startOffset varType(paramType) option exprVarCell of typedAst.ExprForm with
-                    let value = checker.checkExpr(c x.value paramType e loopDepth)
+                    let value = checker.checkExpr(c x.value paramType)
                 end)
             else
                 diagnostics.fail("Argument to '" <> {if isOut then "out" else "var" end}
@@ -151,7 +151,7 @@ export
             case target.form
                 when exprId with x then
                     begin
-                        let found = checker.lookupValue(c e x.name)
+                        let found = checker.lookupValue(c x.name)
                         if maybe.isNone(found) then
                             diagnostics.failWithHelp(:Ok "Undefined variable '" <> x.name <> "'" offset
                                     nearMiss.valueHelp(e x.name))
@@ -176,7 +176,7 @@ export
                     end
                 when exprSelect with x then
                     begin
-                        let recTyped = checker.synthExpr(c x.target e loopDepth)
+                        let recTyped = checker.synthExpr(c x.target)
                         let var recType = checks.evaluate(recTyped.type)
                         let isTuple = case recType.form when typeTuple then true else false end
                         if not(isTuple) andif maybe.isNone(kinds.resolveRecordBound(recType maybe.some(e))) then
@@ -252,7 +252,7 @@ export
                     end
                 when exprIndex with x then
                     begin
-                        let arrTyped = checker.synthExpr(c x.target e loopDepth)
+                        let arrTyped = checker.synthExpr(c x.target)
                         let arrType = checks.evaluate(arrTyped.type)
                         let element =
                             case arrType.form
@@ -261,7 +261,7 @@ export
                                     diagnostics.fail(:Type "Target of array indexing in '" <> modeName
                                         <> "' argument must be an Array, got '" <> model.show(arrType) <> "'" offset)
                             end
-                        let idxTyped = checker.checkExpr(c x.index model.intType e loopDepth)
+                        let idxTyped = checker.checkExpr(c x.index model.intType)
                         let destType = checkLvalueModeType(paramType element isOut "array element" offset e)
                         typedAst.expr(offset varType(destType) option exprIndexRef of typedAst.ExprForm with
                             let target = arrTyped
@@ -688,7 +688,7 @@ export
                         (* The built-in monadic operator ordinal (Cardelli
                          * section 4.5) *)
                         if extent args isnot 1 then diagnostics.fail(:Ok "ordinal expects 1 argument" offset) end
-                        let argTyped = checker.synthExpr(c args[0] e loopDepth)
+                        let argTyped = checker.synthExpr(c args[0])
                         let argLazy = checks.evaluate(argTyped.type)
                         let isOption = case argLazy.form when typeOption then true else false end
                         if not(isOption) andif maybe.isNone(kinds.resolveOptionBound(argLazy maybe.none(:env.T))) then
@@ -696,13 +696,13 @@ export
                                 <> "'"
                                     args[0].span.startOffset)
                         end
-                        let funcTyped = checker.synthCallee(c x.func e loopDepth)
+                        let funcTyped = checker.synthCallee(c x.func)
                         typedAst.expr(offset model.intType option exprApp of typedAst.ExprForm with
                             let func = funcTyped
                             let args = array of argTyped end
                         end)
                     else
-                        let funcTyped = checker.synthCallee(c x.func e loopDepth)
+                        let funcTyped = checker.synthCallee(c x.func)
                         let fnType = checks.evaluate(funcTyped.type)
                         case fnType.form
                             when typeAll then synthPolymorphicApp(c offset args funcTyped fnType e loopDepth expected)

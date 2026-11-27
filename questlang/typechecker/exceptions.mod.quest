@@ -70,7 +70,7 @@ export
                         else
                             maybe.unwrapOr(asType model.okType)
                         end
-                    let excTyped = checker.synthExpr(c x.exc e loopDepth)
+                    let excTyped = checker.synthExpr(c x.exc)
                     let excType = model.evaluateLazily(excTyped.type symbols.lookup)
                     let payloadType = exceptionPayload(excType)
                     if maybe.isNone(payloadType) then
@@ -80,7 +80,7 @@ export
                     let pt = maybe.unwrap(payloadType)
                     let payloadTyped =
                         if maybe.isSome(x.payload) then
-                            maybe.some(checker.checkExpr(c maybe.unwrap(x.payload) pt e loopDepth))
+                            maybe.some(checker.checkExpr(c maybe.unwrap(x.payload) pt))
                         else
                             if not(model.same(pt model.okType)) then
                                 diagnostics.fail(:Ok "Exception '" <> model.show(excType)
@@ -101,12 +101,12 @@ export
         case expr.form
             when exprTry with x then
                 begin
-                    let bodyTyped = checker.elaborateSubexpr(c x.body expected e loopDepth)
+                    let bodyTyped = checker.elaborateSubexpr(c x.body expected)
                     let branches = vector.new(:typedAst.TryBranch)
                     let bodies = vector.new(:typedAst.Expr)
                     for i = 0 upto {vector.length(x.branches) - 1} do
                         let branch = vector.get(x.branches i)
-                        let excTyped = checker.synthExpr(c branch.excPattern e loopDepth)
+                        let excTyped = checker.synthExpr(c branch.excPattern)
                         let excType = model.evaluateLazily(excTyped.type symbols.lookup)
                         let payloadType = exceptionPayload(excType)
                         if maybe.isNone(payloadType) then
@@ -123,13 +123,13 @@ export
                                                 false false false c.functionDepth 0)
                                         symbols.declareValue(e.currentScope binderSym)
                                         tuple
-                                            let body = checker.elaborateSubexpr(c branch.body expected e loopDepth)
+                                            let body = checker.elaborateSubexpr(c branch.body expected)
                                             let binder = maybe.some(binderSym)
                                         end
                                     end)
                             else
                                 tuple
-                                    let body = checker.elaborateSubexpr(c branch.body expected e loopDepth)
+                                    let body = checker.elaborateSubexpr(c branch.body expected)
                                     let binder = maybe.none()
                                 end
                             end
@@ -167,10 +167,10 @@ export
                                     fun(s: symbols.Scope): maybe.T(typedAst.Expr)
                                         begin
                                             symbols.declareValue(e.currentScope binderSym)
-                                            checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
+                                            checker.elaborateOptionalBranch(c x.elseBranch expected)
                                         end)
                         else
-                            checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
+                            checker.elaborateOptionalBranch(c x.elseBranch expected)
                         end
                     let joined: checker.JoinedBodies =
                         if maybe.isSome(expected) then

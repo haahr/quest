@@ -91,8 +91,9 @@ export
                         case expectedLazy.form
                             when typeRecord with r then expectedRec := maybe.some(r.fields)
                             else
-                                early := maybe.some(checker.checkSubsumption(c x0 maybe.unwrap(expected)
-                                        e loopDepth maybe.some("Record")))
+                                early :=
+                                        maybe.some(checker.checkSubsumption(c x0 maybe.unwrap(expected)
+                                                maybe.some("Record")))
                         end
                     end
                     if maybe.isSome(early) then
@@ -120,7 +121,7 @@ export
                                     <> "' in record must be declared mutable (var)"
                                         b.offset)
                             end
-                            let valTyped = checker.checkExpr(c b.value expF.type e loopDepth)
+                            let valTyped = checker.checkExpr(c b.value expF.type)
                             if expF.isVar andif not(checks.isTypeEqual(valTyped.type expF.type e)) then
                                 diagnostics.fail(:Ok "Mutable record field '" <> expF.name
                                     <> "' is invariant; expected '"
@@ -139,7 +140,7 @@ export
                                 vector.append(typedFields tuple
                                     let offset = b.offset
                                     let name = b.name
-                                    let value = checker.synthExpr(c b.value e loopDepth)
+                                    let value = checker.synthExpr(c b.value)
                                     let isVar = b.isVar
                                 end)
                             end
@@ -241,7 +242,7 @@ export
                                     <> "' from compound or anonymous existential tuple; bind to an immutable variable first"
                                         offset)
                         end
-                    let valSym = checker.lookupValue(c e rootName)
+                    let valSym = checker.lookupValue(c rootName)
                     if maybe.isSome(valSym) andif maybe.unwrap(valSym).isVar then
                         diagnostics.fail(:Ok "Cannot select type-dependent member '" <> field
                             <> "' from mutable variable '"
@@ -296,7 +297,7 @@ export
                         when exprId with id then
                             begin
                                 let moduleScope = env.lookupModule(e id.name)
-                                let modSym = checker.lookupValue(c e id.name)
+                                let modSym = checker.lookupValue(c id.name)
                                 (* A value binding that shadows the module is
                                  * selected from as any other value *)
                                 if maybe.isSome(moduleScope) andif {maybe.isNone(modSym)
@@ -328,7 +329,7 @@ export
                     if maybe.isSome(moduleSelect) then
                         maybe.unwrap(moduleSelect)
                     else
-                        let targetTyped = checker.synthExpr(c x.target e loopDepth)
+                        let targetTyped = checker.synthExpr(c x.target)
                         let var targetType = checks.evaluate(targetTyped.type)
                         let isRecordOrTuple =
                             case targetType.form when typeRecord then true when typeTuple then true else false end
@@ -458,9 +459,9 @@ export
                     end
                 end
             if maybe.isSome(single) then
-                checker.checkExpr(c maybe.unwrap(single) expectedLazy e loopDepth)
+                checker.checkExpr(c maybe.unwrap(single) expectedLazy)
             else
-                checker.checkExpr(c payload expected e loopDepth)
+                checker.checkExpr(c payload expected)
             end
         end
 
@@ -492,7 +493,7 @@ export
                             let ordinalExpr = ordinalTyped
                         end)
                     if maybe.isSome(x.ordinalExpr) then
-                        let ordinalTyped = checker.checkExpr(c maybe.unwrap(x.ordinalExpr) model.intType e loopDepth)
+                        let ordinalTyped = checker.checkExpr(c maybe.unwrap(x.ordinalExpr) model.intType)
                         if extent options is 0 then
                             diagnostics.fail(:Ok "Option type '" <> model.show(optType) <> "' has no variants" offset)
                         end
@@ -579,7 +580,7 @@ export
                                     <> model.show(maybe.unwrap(fieldType)) <> "'" offset)
                             end
                             maybe.some(checker.checkExpr(c maybe.unwrap(x.payload)
-                                    maybe.unwrap(fieldType) e loopDepth))
+                                    maybe.unwrap(fieldType)))
                         else
                             if maybe.isSome(x.payload) then
                                 diagnostics.fail(:Ok "Variant tag '" <> x.tag <> "' does not accept a payload" offset)
@@ -598,7 +599,7 @@ export
         case x0.form
             when exprVariantCheck with x then
                 begin
-                    let targetTyped = checker.synthExpr(c x.target e loopDepth)
+                    let targetTyped = checker.synthExpr(c x.target)
                     let targetType = checks.evaluate(targetTyped.type)
                     resolveVariantOrOptionField(targetType x.tag "Variant query '?'" x0.span.startOffset e)
                     typedAst.expr(x0.span.startOffset model.boolType option exprVariantCheck of typedAst.ExprForm with
@@ -620,7 +621,7 @@ export
         case x0.form
             when exprVariantAssert with x then
                 begin
-                    let targetTyped = checker.synthExpr(c x.target e loopDepth)
+                    let targetTyped = checker.synthExpr(c x.target)
                     let targetType = checks.evaluate(targetTyped.type)
                     let tp = resolveVariantOrOptionField(targetType x.tag "Variant assertion '!'" x0.span.startOffset e)
                     let resultType =
@@ -672,8 +673,9 @@ export
                         case expectedLazy.form
                             when typeArray with a then expectedElement := maybe.some(a.element)
                             else
-                                early := maybe.some(checker.checkSubsumption(c x0 maybe.unwrap(expected)
-                                        e loopDepth maybe.some("Array")))
+                                early :=
+                                        maybe.some(checker.checkSubsumption(c x0 maybe.unwrap(expected)
+                                                maybe.some("Array")))
                         end
                     end
                     if maybe.isSome(early) then
@@ -699,7 +701,7 @@ export
                             if maybe.isSome(elemType) then
                                 for i = 0 upto {extent elements - 1} do
                                     vector.append(typed
-                                            checker.checkExpr(c elements[i] maybe.unwrap(elemType) e loopDepth))
+                                            checker.checkExpr(c elements[i] maybe.unwrap(elemType)))
                                 end
                                 maybe.unwrap(elemType)
                             else
@@ -709,7 +711,7 @@ export
                                 end
                                 let synthesized = vector.new(:typedAst.Expr)
                                 for i = 0 upto {extent elements - 1} do
-                                    vector.append(synthesized checker.synthExpr(c elements[i] e loopDepth))
+                                    vector.append(synthesized checker.synthExpr(c elements[i]))
                                 end
                                 let joined = checks.joinBranches(vector.toArray(synthesized) e offset
                                         maybe.some("Incompatible array element types '{t1}' and '{t2}'"))
@@ -735,14 +737,15 @@ export
                         case expectedLazy.form
                             when typeArray then expectedArray := maybe.some(expectedLazy)
                             else
-                                early := maybe.some(checker.checkSubsumption(c x0 maybe.unwrap(expected)
-                                        e loopDepth maybe.some("Array")))
+                                early :=
+                                        maybe.some(checker.checkSubsumption(c x0 maybe.unwrap(expected)
+                                                maybe.some("Array")))
                         end
                     end
                     if maybe.isSome(early) then
                         maybe.unwrap(early)
                     else
-                        let countTyped = checker.checkExpr(c x.count model.intType e loopDepth)
+                        let countTyped = checker.checkExpr(c x.count model.intType)
                         let element =
                             if maybe.isSome(expectedArray) then
                                 case maybe.unwrap(expectedArray).form
@@ -752,7 +755,7 @@ export
                             else
                                 maybe.none(:Type)
                             end
-                        let initTyped = checker.elaborateSubexpr(c x.initVal element e loopDepth)
+                        let initTyped = checker.elaborateSubexpr(c x.initVal element)
                         let t = maybe.unwrapOr(expectedArray model.arrayType(initTyped.type))
                         typedAst.expr(x0.span.startOffset t option exprArrayRep of typedAst.ExprForm with
                             let count = countTyped
@@ -774,12 +777,12 @@ export
             when exprIndex with x then
                 begin
                     let offset = x0.span.startOffset
-                    let targetTyped = checker.synthExpr(c x.target e loopDepth)
+                    let targetTyped = checker.synthExpr(c x.target)
                     let targetType = checks.evaluate(targetTyped.type)
                     let element =
                         arrayElement(targetType "Cannot index non-array type '" <> model.show(targetType) <> "'"
                                 offset)
-                    let idxTyped = checker.checkExpr(c x.index model.intType e loopDepth)
+                    let idxTyped = checker.checkExpr(c x.index model.intType)
                     typedAst.expr(offset element option exprIndex of typedAst.ExprForm with
                         let target = targetTyped
                         let index = idxTyped
@@ -793,12 +796,12 @@ export
             when exprIndexAssign with x then
                 begin
                     let offset = x0.span.startOffset
-                    let targetTyped = checker.synthExpr(c x.target e loopDepth)
+                    let targetTyped = checker.synthExpr(c x.target)
                     let targetType = checks.evaluate(targetTyped.type)
                     let element = arrayElement(targetType "Cannot assign to index of non-array type '"
                         <> model.show(targetType) <> "'" offset)
-                    let idxTyped = checker.checkExpr(c x.index model.intType e loopDepth)
-                    let valTyped = checker.checkExpr(c x.value element e loopDepth)
+                    let idxTyped = checker.checkExpr(c x.index model.intType)
+                    let valTyped = checker.checkExpr(c x.value element)
                     typedAst.expr(offset model.okType option exprIndexAssign of typedAst.ExprForm with
                         let target = targetTyped
                         let index = idxTyped
