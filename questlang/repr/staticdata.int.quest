@@ -48,20 +48,15 @@ export
         index: Int
     end
 
-    (* RecordNaming assigns C names to record types and their offset tables,
-     * using a type alias for the record when one is registered. Every name
-     * ends with a digest of the record's shape, so a name stands for one
-     * layout across every C unit. *)
+    (* RecordNaming assigns C names to record types and their offset tables.
+     * Every name ends with a digest of the record's shape, so a name stands
+     * for one layout across every C unit. *)
     Def RecordNaming = Tuple
-        (* The names after aliases, by the key of the record's layout *)
-        aliasByShape: maps.StringMap(String)
-        (* Every name given, after an alias or not, by the same key *)
+        (* Every name given, by the key of the record's layout *)
         canonicalNames: maps.StringMap(String)
     end
     newRecordNaming(): RecordNaming
-    registerAlias(ctx: RecordNaming aliasName: String t: model.Type): Ok
-    (* A record type's name (record_<digest>, or an alias's name with the
-     * digest) *)
+    (* A record type's name (record_<digest>) *)
     recordName(ctx: RecordNaming t: model.Type): String
     (* A record's struct name: QT_ and its name, or without a naming context,
      * its layout tag *)
@@ -111,7 +106,6 @@ export
      * and its address as a symbol and an index into it ("" when NULL) *)
     Def Ref = Tuple expr: String symbol: String index: Int end
     nullRef: Ref
-    refOf(f: DescriptorForm): Ref
     (* A size or an offset: its C spelling (sizeof, offsetof, or a number),
      * and its bytes as the layouts of docs/c-representation.md section 5 give
      * them, for backends that lay out data themselves *)

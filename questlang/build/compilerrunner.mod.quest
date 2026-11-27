@@ -43,6 +43,7 @@ export
             found
         end
 
+    (* The host C compiler: clang, else gcc, on PATH *)
     let findCCompiler(): String =
         begin
             let clang = which("clang")
@@ -79,6 +80,7 @@ export
             flags
         end
 
+    (* The runtime's directory: runtime/ in the project directory *)
     let runtimeDir(): String =
         begin
             let d = files.join(paths.projectDir() "runtime")
@@ -86,13 +88,17 @@ export
             d
         end
 
-    (* -fwrapv: Int arithmetic wraps (docs/type-system.md section 6.3.1) *)
+    (* The flags every C file is compiled with; -fwrapv: Int arithmetic wraps
+     * (docs/type-system.md section 6.3.1) *)
     let baseCFlags(compiler: String): Array(String) =
         strings(vector.concat(vector.fromArray(array of "-std=c99" "-pedantic-errors" "-Wno-overlength-strings" "-Wall"
             "-Wextra" "-O2" "-fwrapv"
         end)
                 tracebackFlags(compiler)))
 
+    (* The garbage collector flags: empty by default because the runtime uses
+     * its own collector (runtime/quest_gc.c), or -DQUEST_NOGC when nogc is
+     * true to disable collection *)
     let gcFlags(nogc: Bool): Array(String) = if nogc then array of "-DQUEST_NOGC" end else array of :String end end
 
     (* Whether the system's headers (on macOS, the SDK's) include header *)
@@ -112,6 +118,9 @@ export
             found
         end
 
+    (* Compiler and linker flags for quest_readline.c: GNU readline when
+     * installed, else libedit, else -DQUEST_NOREADLINE. The QUEST_READLINE
+     * environment variable (gnu, edit, or none) overrides auto-detection. *)
     let readlineFlags(): Array(String) =
         begin
             let choice = system.getEnv("QUEST_READLINE")
@@ -230,6 +239,11 @@ export
     let removeQuietly(file: String): Ok =
         if system.fileExists(file) then try system.removeFile(file) when system.error then ok end end
 
+    (* Returns the runtime's object files, compiling and caching them once for
+     * reuse across links (docs/testing.md section 5.2). Objects are stored
+     * under QUEST_RUNTIME_CACHE (or .build/runtime in the project directory),
+     * keyed by a hash of the runtime sources and headers, the compiler and its
+     * version, and the compilation flags. *)
     let runtimeObjects(compiler: String nogc: Bool extraFlags: Array(String)): Array(String) =
         begin
             let dir = runtimeDir()

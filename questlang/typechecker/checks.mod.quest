@@ -63,6 +63,13 @@ export
             end
         end
 
+    (* Returns the type in types that is a supertype of all the others (or Ok
+     * if types is empty), without constructing a new type. Scanning left to
+     * right, it keeps the widest type seen so far and fails at offset
+     * (diagnostics.fail) on the first type that is neither a subtype nor a
+     * supertype of it, even if a later type is a supertype of both.
+     * errorMessage, if given, supplies the error message with {t1} and {t2}
+     * replaced by those two types. *)
     let joinTypes(types: Array(model.Type) e: env.T offset: Int errorMessage: maybe.T(String)): model.Type =
         if extent types is 0 then
             model.okType
@@ -96,6 +103,10 @@ export
             vector.toArray(result)
         end
 
+    (* Whether an expression cannot finish normally, as its form shows: a
+     * raise or an exit, a block whose result is divergent, or a conditional,
+     * case, inspect, or try whose branches (and body) all are. A call of a
+     * function that always raises is not: its type says what it returns. *)
     let rec isDivergent(x: typedAst.Expr): Bool =
         case x.form
             when exprRaise, exprExit then true
@@ -131,6 +142,9 @@ export
     (* Whether an optional branch is absent or divergent *)
     and maybeDivergent(x: maybe.T(typedAst.Expr)): Bool = maybe.isNone(x) orif isDivergent(maybe.unwrap(x))
 
+    (* A divergent expression given type t, as checking it against t would
+     * have typed it: the raise or exit it ends in, and each block,
+     * conditional, case, inspect, and try on the way to it, have type t *)
     let rec retypeDivergent(x: typedAst.Expr t: model.Type): typedAst.Expr =
         begin
             let r(y: typedAst.Expr): typedAst.Expr = retypeDivergent(y t)

@@ -25,6 +25,9 @@ export
         f: machine.Function ops: vector.T(minst.Op) locs: vector.T(ssa.Loc) types: vector.T(ssa.Type)
         layout: vector.T(Int) prefix: String outgoing: Int slotAt: Array(Int) slotsEnd: Int entersTry: Bool
     end
+    (* Where an argument goes (AAPCS64, docs/arm64.md section 3.3): a
+     * register (x0-x7 or d0-d7), or with reg ~1, the stack at offset, of
+     * bytes 8, 4, or 1 *)
     Def ArgumentPlace = Tuple reg: Int offset: Int bytes: Int end
     Def Placed = Tuple places: Array(ArgumentPlace) stackBytes: Int end
 
@@ -32,7 +35,6 @@ export
     let none = array of :Int end
     let alignUp(n: Int a: Int): Int = {{{n + a} - 1} / a} * a
     let isReal(t: ssa.Type): Bool = case t when typeInt, typePtr, typeVal then false when typeReal then true end
-    let x0 = target.x(0)
     let x9 = target.x(9)
     let sp = target.sp
     let fp = target.fp

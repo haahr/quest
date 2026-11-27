@@ -37,6 +37,7 @@ export
     let ambiguous = option kindAmbiguous of Kind end
 
     let kindCode(k: Kind): Int = case k when kindScalar then 0 when kindPointer then 1 when kindAmbiguous then 2 end
+    (* A kind's letter, for a layout's tag *)
     let kindLetter(k: Kind): String =
         case k when kindScalar then "s" when kindPointer then "p" when kindAmbiguous then "a" end
     let sameKind(a: Kind b: Kind): Bool = kindCode(a) is kindCode(b)
@@ -58,7 +59,9 @@ export
             when repPointer then array of pointer end
         end
 
-    (* A box holds the value's representation: two words *)
+    (* The kinds of a QVariantVal or QRecordVal box embedded in an aggregate's
+     * allocation (docs/c-representation.md section 5.1): a box holds the
+     * value's representation, two words *)
     let boxKinds(s: shapes.Shape): Array(Kind) =
         case layout.shapeRepresentationKind(s)
             when repVariant then array of scalar ambiguous end

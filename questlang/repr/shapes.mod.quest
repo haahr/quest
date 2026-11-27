@@ -144,15 +144,6 @@ export
     let sameKind(a: ShapeKind b: ShapeKind): Bool = ordinal(a) is ordinal(b)
     let kindIs(s: Shape k: ShapeKind): Bool = sameKind(s.kind k)
 
-    let isScalar(s: Shape): Bool =
-        case s.kind
-            when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom then true
-            when shapeTuple, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut, shapeException,
-                    shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
-                    shapePending then
-                false
-        end
-
     let isRecursive(s: Shape): Bool = s.type.form?typeRec orif s.type.form?typeRecGroup
 
     let named(items: Array(Component) name: String): maybe.T(Component) =
@@ -189,24 +180,8 @@ export
             vector.toArray(found)
         end
 
-    let shapesReachable(s: Shape): Array(Shape) =
-        begin
-            let seen = maps.newIntSet()
-            let found = vector.new(:Shape)
-            let stack = vector.new(:Shape)
-            vector.append(stack s)
-            while not(vector.empty(stack)) do
-                let n = vector.pop(stack)
-                if not(hashSet.contains(seen n.id)) then
-                    hashSet.insert(seen n.id)
-                    vector.append(found n)
-                    let kids = children(n)
-                    for i = 0 upto {extent kids - 1} do vector.append(stack kids[i]) end
-                end
-            end
-            vector.toArray(found)
-        end
-
+    (* Whether t is the standard library's Word.T (or a type parameter bounded
+     * by it), held in a uint64_t *)
     let isWordType(t0: Type): Bool =
         begin
             let t = reduce.normalizeType(reduce.resolveTypeBound(t0))
@@ -268,6 +243,8 @@ export
             else false
         end
 
+    (* A variant or option type with its cases ordered by name: t itself if they
+     * are already *)
     let casesByName(t: Type): Type =
         case t.form
             when typeVariant with x then

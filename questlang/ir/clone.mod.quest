@@ -100,6 +100,7 @@ export
             created
         end
 
+    (* The variable the copy uses in v's place *)
     let var1(c: Cloner v: Variable): Variable = maybe.unwrapOr(hashMap.get(c.vars v.id) v)
     let optVar(c: Cloner v: maybe.T(Variable)): maybe.T(Variable) =
         if maybe.isSome(v) then maybe.some(var1(c maybe.unwrap(v))) else v end
@@ -268,6 +269,13 @@ export
     let rec optBody(c: Cloner b: maybe.T(Body)): maybe.T(Body) =
         if maybe.isSome(b) then maybe.some(copyBody(c maybe.unwrap(b))) else b end
 
+    (* Returns a copy of f using the variables bindAll made for f and its
+     * parameters and a copy of its body. Its type parameters are f's,
+     * unchanged, and fields set by closure conversion and later passes (env,
+     * descriptorParams, viewMaps, unboxedResult) are left unset, because only
+     * the inliner and specialize copy functions, before closure conversion
+     * runs; thunks, after it, copies bodies with a closed cloner, which keeps
+     * each closure's function. *)
     and copyFunction(c: Cloner f: nodes.Function): nodes.Function =
         begin
             let params = array of(extent f.params tuple let v = f.v let mode = "" end)

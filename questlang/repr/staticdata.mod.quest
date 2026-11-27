@@ -81,16 +81,9 @@ export
      * every record the bootstrap's name for it.
      * ====================================================================== *)
 
-    Def RecordNaming = Tuple
-        aliasByShape: maps.StringMap(String)
-        canonicalNames: maps.StringMap(String)
-    end
+    Def RecordNaming = Tuple canonicalNames: maps.StringMap(String) end
 
-    let newRecordNaming(): RecordNaming =
-        tuple
-            let aliasByShape = maps.newStringMap()
-            let canonicalNames = maps.newStringMap()
-        end
+    let newRecordNaming(): RecordNaming = tuple let canonicalNames = maps.newStringMap() end
 
     let recordFields(t: Type): Array(model.RecordField) =
         case t.form
@@ -129,17 +122,6 @@ export
                 vector.append(items pyRepr.tupleOf(parts))
             end
             pyRepr.tupleOf(items)
-        end
-
-    let registerAlias(ctx: RecordNaming aliasName: String t: Type): Ok =
-        begin
-            let key = shapeKey(t)
-            if not(hashMap.contains(ctx.aliasByShape key)) then
-                let name = aliasName <> "_" <> digests.textDigest(key)
-                hashMap.insert(ctx.aliasByShape key name)
-                hashMap.insert(ctx.canonicalNames key name)
-            end
-            ok
         end
 
     let recordName(ctx: RecordNaming t: Type): String =

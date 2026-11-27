@@ -17,11 +17,14 @@ import
     questlang/syntax/ast : questlang/syntax/AST
     questlang/types/env : questlang/types/Env
 export
+    (* The header beside an interface's .qi (util/path.qi and
+     * util/path.int.h) *)
     let interfaceHeaderFile(qi: String): String =
         begin
             let base = files.baseName(qi)
             files.join(files.parent(qi) stringOp.getSub(base 0 {stringOp.length(base) - 3}) <> ".int.h")
         end
+    (* Whether a header was written at or after its .qi *)
     let headerIsCurrent(qi: String header: String): Bool =
         begin
             let headerTime = files.fileTime(header)
@@ -31,6 +34,9 @@ export
         end
     let writeText(file: String text: String): Ok = files.writeAtomically(file text)
     Let Artifacts = Tuple header: String qi: String end
+    (* Writes a compiled interface's header beside its .qi, and returns it; with
+     * a build directory, the headers of the interfaces it imports are brought
+     * up to date there first *)
     let rec writeInterfaceHeader(compiled: interfaceCompiler.CompiledInterface buildDir: maybe.T(String)
             programDir: maybe.T(String) res: graph.Resolver): String =
         begin
@@ -51,6 +57,8 @@ export
             writeText(header headers.compileInterfaceToHeader(compiled.decl compiled.scope canonicalName))
             header
         end
+    (* Brings a resolved interface's .qi and C header under buildDir up to date,
+     * with the headers it includes *)
     and ensureResolvedInterfaceHeader(resolved: graph.Resolved buildDir: String res: graph.Resolver): Artifacts =
         begin
             let programDir = resolved.roots.programDir

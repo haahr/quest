@@ -32,9 +32,6 @@ export
         plan: All(p: nodes.Plan) Ok
         moduleRef: All(r: nodes.ModuleRef) Ok
     end
-    (* A visitor that does nothing, whose functions a walk takes for the kinds
-     * it skips *)
-    nothing: Visitor
     (* Calls v's functions on what o, or s, holds itself, in the order of its
      * fields (a let's or a do's operation's included, but not what the
      * bodies, functions, and plans it holds hold): the order in which
@@ -85,17 +82,15 @@ export
      * function. *)
     knownClosures(unit: nodes.Unit): maps.IntMap(nodes.OpMakeClosure)
 
-    (* Replaces, in place, each variable v that a statement or operation holds
-     * in its fields (directly, in arrays, and a let's or do's operation's) by
-     * f(v); not those in the bodies, functions, cases, or plans it contains,
-     * nor a closure's code *)
+    (* Replaces, in place, each variable v that a statement holds in its
+     * fields (directly, in arrays, and a let's or do's operation's) by f(v);
+     * not those in the bodies, functions, cases, or plans it contains, nor a
+     * closure's code *)
     replaceVarsInStmt(s: nodes.Stmt f: All(v: nodes.Variable) nodes.Variable): Ok
-    replaceVarsInOp(o: nodes.Op f: All(v: nodes.Variable) nodes.Variable): Ok
-    (* Replaces, in place, each atom a that a statement or operation holds in
-     * its fields by g(a), as replaceVarsInStmt replaces variables, but not the
-     * variables held as variables (binders, callees, addresses taken) *)
+    (* Replaces, in place, each atom a that a statement holds in its fields by
+     * g(a), as replaceVarsInStmt replaces variables, but not the variables
+     * held as variables (binders, callees, addresses taken) *)
     replaceAtomsInStmt(s: nodes.Stmt g: All(a: nodes.Atom) nodes.Atom): Ok
-    replaceAtomsInOp(o: nodes.Op g: All(a: nodes.Atom) nodes.Atom): Ok
 
     (* The view map through which an operation or a statement reads (or
      * stores into) a value of a bounded type parameter, at the parameter's

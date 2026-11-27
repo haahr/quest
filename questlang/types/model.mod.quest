@@ -1283,19 +1283,6 @@ export
             vector.toArray(result)
         end
 
-    let tupleElements(fields: Array(TupleComponent)): Array(Type) =
-        begin
-            let result = vector.new(:Type)
-            for i = 0 upto {extent fields - 1} do
-                case fields[i]
-                    when tupleField with f then vector.append(result f.type)
-                    when tupleTypeBinding with f then vector.append(result f.type)
-                    else ok
-                end
-            end
-            vector.toArray(result)
-        end
-
     let tupleTypeFormals(fields: Array(TupleComponent)): Array(TypeFormal) =
         begin
             let result = vector.new(:TypeFormal)
@@ -1975,8 +1962,6 @@ export
      * 10. Metavariables
      * ====================================================================== *)
 
-    let isSolved(m: Meta): Bool = maybe.isSome(m.instance)
-
     (* The unsolved metavariables in a type or a kind (looking through solved
      * ones), in order *)
     let metasIn(start: Part): Array(Type) =
@@ -2012,7 +1997,6 @@ export
         end
 
     let unsolvedMetas(t: Type): Array(Type) = metasIn(option partType of Part with let t = t end)
-    let unsolvedMetasInKind(k: Kind): Array(Type) = metasIn(option partKind of Part with let k = k end)
 
     (* Substitution prunes solved metavariables *)
     let resolveMetas(t: Type): Type = substitute(t newSubst())

@@ -204,8 +204,7 @@ def record_struct_name(t: QRecordType, ctx: Optional[RecordNamingContext] = None
 
 
 class RecordNamingContext:
-    """Names record types and evidence dictionaries in C, after a type alias for
-    the record where there is one.
+    """Names record types and evidence dictionaries in C.
 
     Every name ends with a digest of the record's shape, so a name stands for
     one layout in every C unit: the generated headers of interfaces define
@@ -214,7 +213,6 @@ class RecordNamingContext:
     """
 
     def __init__(self) -> None:
-        self.alias_by_shape: dict[tuple[tuple[str, str, str], ...], str] = {}
         self.shape_to_canonical_name: dict[tuple[tuple[str, str, str], ...], str] = {}
 
     def _shape_key(self, t: QRecordType) -> tuple[tuple[str, str, str], ...]:
@@ -231,13 +229,6 @@ class RecordNamingContext:
     @staticmethod
     def _shape_digest(key: tuple[tuple[str, str, str], ...]) -> str:
         return text_digest(repr(key))
-
-    def register_alias(self, alias_name: str, t: QRecordType) -> None:
-        key = self._shape_key(t)
-        if key not in self.alias_by_shape:
-            name = f"{alias_name}_{self._shape_digest(key)}"
-            self.alias_by_shape[key] = name
-            self.shape_to_canonical_name[key] = name
 
     def get_or_create_name(self, t: QRecordType) -> str:
         key = self._shape_key(t)

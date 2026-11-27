@@ -24,8 +24,8 @@ export
      *   recursion, and applications with no environment, cached by node id.
      * - betaReduceHead: reduces applications only, stopping at an arity
      *   mismatch; looks through neither aliases nor recursion.
-     * - unfoldRecursive and unfoldRecursiveAny: unfolds recursion and reduces
-     *   applications until neither is at the head.
+     * - unfolding: unfolds recursion and reduces applications at the head
+     *   until it is not a recursive type.
      * - resolveTypeBound: strips aliases, then follows POWER bounds of type
      *   variables, abstract types, and path types to the end
      *   (model.powerBoundOf takes one step).
@@ -64,17 +64,6 @@ export
      * unfolded, until its head is not a recursive type (it may be an
      * application that does not reduce) or maxBetaSteps is reached *)
     unfolding(t0: model.Type): model.Type
-    (* Unfolds recursive types and reduces type operator applications at the
-     * head of t until the outermost node is neither. Returns none if that does
-     * not happen (as for an application of an abstract type operator) or after
-     * maxBetaSteps steps. A type whose head is already neither is returned
-     * unchanged. *)
-    unfoldRecursiveAny(t: model.Type): maybe.T(model.Type)
-    (* That unfolding only when it is a type whose values are represented the
-     * same as the recursive type's (a tuple, record, variant, option, array,
-     * Var, Out, auto, function, All, or exception type); none for anything
-     * else, such as Int or a type variable *)
-    unfoldRecursive(t: model.Type): maybe.T(model.Type)
     (* t with its outermost constructor exposed: aliases stripped, a recursive
      * type unfolded, an application reduced *)
     normalizeType(t: model.Type): model.Type

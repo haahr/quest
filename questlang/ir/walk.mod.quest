@@ -27,6 +27,8 @@ export
         moduleRef: All(r: nodes.ModuleRef) Ok
     end
 
+    (* A visitor that does nothing, whose functions a walk takes for the kinds
+     * it skips *)
     let nothing: Visitor =
         tuple
             let atom = fun(a: Atom): Ok ok
@@ -435,9 +437,10 @@ export
 
     (* Replaces, in place, the variables o holds as variables (callees,
      * addresses taken, view maps, descriptor variables) by f, and the atoms
-     * it holds by g. replaceVarsInOp passes a g that renames by f, and
-     * replaceAtomsInOp an f that keeps each variable; mapInStmt does the same
-     * for statements, whose binders are variables. *)
+     * it holds by g, for a let's or do's operation. mapInStmt does the same
+     * for statements, whose binders are variables; replaceVarsInStmt passes
+     * it a g that renames by f, and replaceAtomsInStmt an f that keeps each
+     * variable. *)
     let mapInOp(o: Op f: Rename g: AtomMap): Ok =
         case o
             when opAtom with x then x.atom := g(x.atom)
@@ -658,7 +661,6 @@ export
             else ok
         end
 
-    let replaceVarsInOp(o: Op f: Rename): Ok = mapInOp(o f fun(a: Atom): Atom atom(a f))
     let replaceVarsInStmt(s: Stmt f: Rename): Ok = mapInStmt(s f fun(a: Atom): Atom atom(a f))
 
     let globalVariables(unit: nodes.Unit): maps.IntSet =
@@ -723,7 +725,6 @@ export
             end
             found
         end
-    let replaceAtomsInOp(o: Op g: AtomMap): Ok = mapInOp(o fun(v: Variable): Variable v g)
     let replaceAtomsInStmt(s: Stmt g: AtomMap): Ok = mapInStmt(s fun(v: Variable): Variable v g)
 
     let opViewMap(o: Op): maybe.T(Variable) =

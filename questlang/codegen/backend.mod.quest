@@ -107,12 +107,11 @@ export
      * custom section). Any backend failure is re-raised as unsupported so
      * callers handle one exception type. *)
     let unitWithDatum(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String
-            datum: maybe.T(Tuple symbol: String text: String end)): String =
+            datum: maybe.T(native.Datum)): String =
         if stringOp.equal(backend "wasm") then
             (* Append the runtime stamp and, for module units, the interface
              * fingerprint in custom sections so a host JIT can check
              * compatibility (docs/wasm.md section 5.3) *)
-            Let Datum = Tuple symbol: String text: String end
             encode.encode(wasmModule(unit)) <> encode.customSection("quest.runtime" runtimeStamp())
                 <> if maybe.isSome(datum) then
                     encode.customSection("quest.fingerprint" maybe.unwrap(datum).text)

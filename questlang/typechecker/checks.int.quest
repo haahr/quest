@@ -34,25 +34,6 @@ export
      * quantifier's bound *)
     checkTypeArgKind(what: String targ: model.Type bound: model.Kind e: env.T offset: Int): Ok
 
-    (* Returns the type in types that is a supertype of all the others (or Ok
-     * if types is empty), without constructing a new type. Scanning left to
-     * right, it keeps the widest type seen so far and fails at offset
-     * (diagnostics.fail) on the first type that is neither a subtype nor a
-     * supertype of it, even if a later type is a supertype of both.
-     * errorMessage, if given, supplies the error message with {t1} and {t2}
-     * replaced by those two types. *)
-    joinTypes(types: Array(model.Type) e: env.T offset: Int errorMessage: maybe.T(String)): model.Type
-
-    (* Whether an expression cannot finish normally, as its form shows: a
-     * raise or an exit, a block whose result is divergent, or a conditional,
-     * case, inspect, or try whose branches (and body) all are. A call of a
-     * function that always raises is not: its type says what it returns. *)
-    isDivergent(x: typedAst.Expr): Bool
-    (* A divergent expression given type t, as checking it against t would
-     * have typed it: the raise or exit it ends in, and each block,
-     * conditional, case, inspect, and try on the way to it, have type t *)
-    retypeDivergent(x: typedAst.Expr t: model.Type): typedAst.Expr
-
     (* A join's type, and the parts it joined *)
     Def Joined = Tuple type: model.Type parts: Array(typedAst.Expr) end
     (* Joins the types of a construct's parts (its branches, or an array's
