@@ -621,6 +621,15 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
         end
     end
 
+(* The arguments a program run here sees (system.args): its file's name, then
+ * its own *)
+let systemArgs =
+    begin
+        let args = array of({extent options.programArgs + 1} options.file)
+        for i = 0 upto {extent options.programArgs - 1} do args[i + 1] := options.programArgs[i] end
+        args
+    end
+
 (* The tree-walking interpreter's root frame for a program, with its
  * arguments *)
 let runFrame(e: env.T sm: location.SourceMap): model.Frame =
@@ -630,9 +639,7 @@ let runFrame(e: env.T sm: location.SourceMap): model.Frame =
         f.root.programDir := e.programDir
         f.currentDir := e.currentDir
         f.sourceMap := maybe.some(sm)
-        let args = array of({extent options.programArgs + 1} options.file)
-        for i = 0 upto {extent options.programArgs - 1} do args[i + 1] := options.programArgs[i] end
-        builtins.setSystemArgs(args)
+        builtins.setSystemArgs(systemArgs)
         f
     end
 
@@ -684,9 +691,7 @@ let interpret(program: typedAst.Program e: env.T sm: location.SourceMap bag: dia
 let interactive(e: env.T f: model.Frame bag: diagbag.T sm: location.SourceMap): Ok =
     begin
         flushDumps()
-        writer.flush(writer.output)
-        diagbag.renderAll(bag sm writer.err)
-        writer.flush(writer.err)
+        diagbag.report(bag sm)
         let r = repl.new(e f)
         (* A host's session (with --kernel or -i) returns to the host, which
          * calls kernel.request *)
@@ -701,17 +706,13 @@ let interactive(e: env.T f: model.Frame bag: diagbag.T sm: location.SourceMap): 
  * reads inputs, the program's bindings in scope. *)
 let jitRun(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
     begin
-        let args = array of({extent options.programArgs + 1} options.file)
-        for i = 0 upto {extent options.programArgs - 1} do args[i + 1] := options.programArgs[i] end
-        let r = repl.newJit(e runFrame(e sm) args)
+        let r = repl.newJit(e runFrame(e sm) systemArgs)
         (* The session's files for a debugger are removed as it ends *)
         let finished = fun(): Ok session.finish(maybe.unwrap(r.jit))
         if options.fromFile orif options.fromStdin orif maybe.isSome(options.code) then
             if not(repl.runInput(r program sm bag options.echo)) then
                 finished()
-                writer.flush(writer.output)
-                diagbag.renderAll(bag maybe.unwrapOr(r.errorSource sm) writer.err)
-                writer.flush(writer.err)
+                diagbag.report(bag maybe.unwrapOr(r.errorSource sm))
                 system.sysexit(1)
             end
         end
@@ -719,17 +720,13 @@ let jitRun(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagba
         if {options.kernel orif options.interactive} andif kernel.serving(r) then
             (* A host's session, which calls kernel.request (docs/wasm.md
              * section 6.1) *)
-            writer.flush(writer.output)
-            diagbag.renderAll(bag sm writer.err)
-            writer.flush(writer.err)
+            diagbag.report(bag sm)
         elsif options.kernel then
             let status = kernel.runKernel(r)
             finished()
             system.sysexit(status)
         elsif options.interactive then
-            writer.flush(writer.output)
-            diagbag.renderAll(bag sm writer.err)
-            writer.flush(writer.err)
+            diagbag.report(bag sm)
             let status = repl.run(r)
             finished()
             system.sysexit(status)

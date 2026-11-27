@@ -19,6 +19,7 @@ import
     questlang/common/diagbag : questlang/common/DiagBag
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/location : questlang/common/Location
+    questlang/common/strings : questlang/common/Strings
     questlang/driver/interrupts : questlang/driver/Interrupts
     questlang/driver/repl : questlang/driver/REPL
     questlang/interpreter/treewalk : questlang/interpreter/Treewalk
@@ -98,9 +99,7 @@ export
                 if maybe.isSome(results) then
                     (* A cell that succeeded may still have warnings; render
                      * them to standard error just as the REPL does *)
-                    writer.flush(writer.output)
-                    diagbag.renderAll(bag sm writer.err)
-                    writer.flush(writer.err)
+                    diagbag.report(bag sm)
                     let shown = maybe.unwrap(results)
                     for i = 0 upto {extent shown - 1} do
                         if stringOp.length(shown[i]) > 0 then
@@ -120,15 +119,8 @@ export
      * into a cell) against the session's environment
      * ---------------------------------------------------------------------- *)
 
-    let isNameChar(c: Char): Bool = strutil.isAlnum(c) orif {c is '_'}
-
-    (* Where the name that ends at offset begins *)
-    let nameStart(code: String offset: Int): Int =
-        begin
-            let var start = offset
-            while {start > 0} andif isNameChar(stringOp.getChar(code {start - 1})) do start := start - 1 end
-            start
-        end
+    let isNameChar = strings.isNameChar
+    let nameStart = strings.nameStart
 
     (* Looks up the module named before a '.' at start, if any. Checks modules
      * already imported or declared in the session first, then loads a matching
