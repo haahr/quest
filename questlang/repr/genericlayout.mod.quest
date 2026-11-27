@@ -64,9 +64,10 @@ export
         end
     (* Where a value is held: in an aggregate slot, in a register, or in a cell
      * a var or out parameter points to *)
-    let slotPlace = "slot"
-    let registerPlace = "register"
-    let cellPlace = "cell"
+    Def Place = Option inSlot inRegister inCell end
+    let slotPlace = option inSlot of Place end
+    let registerPlace = option inRegister of Place end
+    let cellPlace = option inCell of Place end
     (* Whether the type of shape s mentions one of the type parameters in
      * subst *)
     let mentions(s: Shape subst: model.Subst): Bool =
@@ -79,7 +80,7 @@ export
         end
     (* Whether a native value of arg agrees with a value of the type parameter
      * of shape v as generic code holds it in the place *)
-    let storedValueAgrees(v: Shape arg: Type place: String): Bool =
+    let storedValueAgrees(v: Shape arg: Type place: Place): Bool =
         begin
             let argShape = shapes.shape(arg)
             let argRep = layout.shapeRepresentation(argShape)
@@ -92,10 +93,10 @@ export
                 (* Held as a value of the bound, viewed at it, which agrees with
                  * one of arg only when both are the same scalar *)
                 layout.heldAlike(argShape maybe.unwrap(v.bound)) andif wordScalar(argRep)
-                    andif {not(eq(place registerPlace)) orif registerWord(argRep)}
-            elsif eq(place registerPlace) then
+                    andif {not(place?inRegister) orif registerWord(argRep)}
+            elsif place?inRegister then
                 registerWord(argRep) orif layout.isPointer(argShape)
-            elsif eq(place cellPlace) then
+            elsif place?inCell then
                 cellWord(argRep) orif layout.isPointer(argShape)
             else
                 true
@@ -113,7 +114,7 @@ export
      * storedValueAgrees; an aggregate agrees when each component does in a
      * slot. A recursive shape seen again is assumed to agree so the walk
      * terminates (coinductively). *)
-    let rec agrees(s: Shape subst: model.Subst place: String seen: Seen): Bool =
+    let rec agrees(s: Shape subst: model.Subst place: Place seen: Seen): Bool =
         begin
             let symbol = typeParameter(s)
             if not(mentions(s subst)) then
@@ -171,7 +172,7 @@ export
     let genericLayoutCopiesMutableData(t: Type subst: model.Subst): Bool =
         begin
             let seen = newSeen()
-            let disagrees = fun(component: Shape place: String): Bool not(agrees(component subst place newSeen()))
+            let disagrees = fun(component: Shape place: Place): Bool not(agrees(component subst place newSeen()))
             (* Return whether a value of shape s holds mutable data (an array
              * or cell element, or a var field or case) reachable without
              * passing through a closure whose generic and native layouts
