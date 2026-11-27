@@ -42,9 +42,7 @@ export
     Let ModuleUnit = Tuple unit: nodes.Unit sourceMap: location.SourceMap imports: Array(ModuleImport) end
     Let Settings = Tuple
         includePaths: Array(String)
-        compiler: maybe.T(String)
         nogc: Bool
-        extraFlags: Array(String)
         buildDir: maybe.T(String)
         programDir: maybe.T(String)
         backends: choice.T
@@ -241,7 +239,7 @@ export
         end
 
     let compileModule(decl: ast.ModuleDecl offset: Int e: env.T outputDir: String includePaths: Array(String)
-            compiler: maybe.T(String) nogc: Bool extraFlags: Array(String) sourceMap: location.SourceMap stem: String
+            nogc: Bool sourceMap: location.SourceMap stem: String
             canonicalName: String sourceFile: String buildDir: maybe.T(String)
             backends: choice.T): ModuleCompileResult =
         begin
@@ -293,9 +291,7 @@ export
                 writer.putString(o c)
                 writer.close(o)
             else
-                compilerRunner.compileCToObject(cFile oFile vector.toArray(unique) nogc compiler
-                        vector.toArray(vector.concat(vector.fromArray(extraFlags)
-                                vector.fromArray(cBackend.cFlags(backend)))))
+                compilerRunner.compileCToObject(cFile oFile vector.toArray(unique) nogc cBackend.cFlags(backend))
             end
 
             (* 7. Its manifest *)
@@ -395,7 +391,7 @@ export
                         files.absolute(maybe.unwrap(outputDir))
                     end
                 compilingApart(fun(): ModuleCompileResult
-                    compileModule(m.decl m.offset m.e outDir m.searchPaths s.compiler s.nogc s.extraFlags m.sm m.stem
+                    compileModule(m.decl m.offset m.e outDir m.searchPaths s.nogc m.sm m.stem
                             m.canon m.modPath s.buildDir s.backends))
             end)
 

@@ -230,8 +230,6 @@ class BuildEngine:
         verbose: bool = False,
         log_file: Optional[Path] = None,
         nogc: bool = False,
-        compiler_path: Optional[str] = None,
-        extra_c_flags: Optional[list[str]] = None,
         extra_objects: Optional[list[Path]] = None,
         resolver: Optional[Resolver] = None,
     ) -> None:
@@ -245,8 +243,6 @@ class BuildEngine:
         actual_log = log_file if log_file is not None else (self.build_dir / "build.log")
         self.logger = BuildLogger(log_file=actual_log, verbose=verbose)
         self.nogc = nogc
-        self.compiler_path = compiler_path
-        self.extra_c_flags = extra_c_flags or []
         self.build_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_search_paths(self) -> list[Path]:
@@ -377,8 +373,6 @@ class BuildEngine:
             o_path,
             include_paths=search_paths,
             nogc=self.nogc,
-            compiler_path=self.compiler_path,
-            extra_flags=self.extra_c_flags,
         )
 
         manifest = ModuleManifest(
@@ -467,8 +461,6 @@ class BuildEngine:
             linked_objects,
             output_binary=target_bin,
             nogc=self.nogc,
-            compiler_path=self.compiler_path,
-            extra_flags=self.extra_c_flags,
         )
         self.logger.log("BUILD COMPLETE", f"exit_code=0 binary={target_bin}")
 
@@ -637,8 +629,6 @@ class BuildEngine:
                     include_paths=search_paths,
                     build_dir=self.build_dir,
                     nogc=self.nogc,
-                    compiler_path=self.compiler_path,
-                    extra_c_flags=self.extra_c_flags,
                     program_dir=program_dir,
                     resolver=self.resolver,
                 )

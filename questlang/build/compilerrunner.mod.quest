@@ -161,10 +161,9 @@ export
             maybe.unwrapOr(found array of "-DQUEST_NOREADLINE" end)
         end
 
-    let compileCToObject(c: String o: String includePaths: Array(String) nogc: Bool compiler: maybe.T(String)
-            extraFlags: Array(String)): Ok =
+    let compileCToObject(c: String o: String includePaths: Array(String) nogc: Bool extraFlags: Array(String)): Ok =
         begin
-            let cc = if maybe.isSome(compiler) then maybe.unwrap(compiler) else findCCompiler() end
+            let cc = findCCompiler()
             let command = vector.new(:String)
             vector.append(command cc)
             let base = baseCFlags(cc)
@@ -368,14 +367,13 @@ export
             ok
         end
 
-    let linkObjects(objects: Array(String) output: String nogc: Bool compiler: maybe.T(String)
-            extraFlags: Array(String)): Ok =
+    let linkObjects(objects: Array(String) output: String nogc: Bool): Ok =
         begin
             system.makeDirectory(files.parent(files.absolute(output)))
-            let cc = if maybe.isSome(compiler) then maybe.unwrap(compiler) else findCCompiler() end
+            let cc = findCCompiler()
             let command = vector.new(:String)
             vector.append(command cc)
-            appendAll(command runtimeObjects(cc nogc extraFlags))
+            appendAll(command runtimeObjects(cc nogc array of :String end))
             appendAll(command objects)
             vector.append(command "-o")
             vector.append(command output)
@@ -384,7 +382,6 @@ export
             let rl = readlineFlags()
             for i = 0 upto {extent rl - 1} do if isLinkerFlag(rl[i]) then vector.append(command rl[i]) end end
             appendAll(command stackFlags())
-            appendAll(command extraFlags)
             let r = system.run(vector.toArray(command))
             if not(r.code is 0) then
                 raise failure with

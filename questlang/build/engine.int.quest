@@ -40,8 +40,6 @@ export
         extraObjects: Array(pathLib.T)
         logger: logger.T
         nogc: Bool
-        compiler: maybe.T(String)
-        extraCFlags: Array(String)
         (* Maximum number of modules to compile concurrently. When greater than
          * one, each batch runs in a child process of driver, the compiler
          * driver executable (docs/build-process.md section 7.4). *)
@@ -55,18 +53,28 @@ export
          * report inferable type arguments to standard error. *)
         reportInferable: String
     end
-    (* An engine building in buildDir (.build if none), which it makes *)
-    new(buildDir: maybe.T(String) includePaths: Array(String) verbose: Bool nogc: Bool extraObjects: Array(String)
-            resolver: maybe.T(graph.Resolver)): T
-
-    (* eng, compiling up to jobs modules at once, in child processes of
-     * driver *)
-    parallel(eng: T jobs: Int driver: String): T
-    (* Returns eng configured to compile units with backends *)
-    withBackends(eng: T backends: choice.T): T
-    (* The engine, reporting inferable type arguments in mode (env.T's
-     * reportInferable) *)
-    reportingInferable(eng: T mode: String): T
+    (* What an engine is made from: the driver's options for the build *)
+    Def Settings = Tuple
+        (* The build directory (.build if none), which new makes *)
+        buildDir: maybe.T(String)
+        includePaths: Array(String)
+        (* Each step is logged to standard error too, not only to build.log *)
+        verbose: Bool
+        nogc: Bool
+        extraObjects: Array(String)
+        (* The resolver of the units the build compiles (a new one if none) *)
+        resolver: maybe.T(graph.Resolver)
+        (* T's jobs and driver: up to jobs modules compiled at once, in child
+         * processes of driver *)
+        jobs: Int
+        driver: String
+        (* The backend of each unit, which also selects each module's variant
+         * (the resolver's variantOf is set from it) *)
+        backends: choice.T
+        reportInferable: String
+    end
+    (* An engine building with s, its paths made absolute *)
+    new(s: Settings): T
 
     (* A program's import item: its interface path and module paths, as written
      * or else its names and interface name, and its names *)

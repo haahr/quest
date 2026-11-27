@@ -91,8 +91,18 @@ export
         extraObjects: Array(pathLib.T)
         logger: logger.T
         nogc: Bool
-        compiler: maybe.T(String)
-        extraCFlags: Array(String)
+        jobs: Int
+        driver: String
+        backends: choice.T
+        reportInferable: String
+    end
+    Let Settings = Tuple
+        buildDir: maybe.T(String)
+        includePaths: Array(String)
+        verbose: Bool
+        nogc: Bool
+        extraObjects: Array(String)
+        resolver: maybe.T(graph.Resolver)
         jobs: Int
         driver: String
         backends: choice.T
@@ -129,57 +139,32 @@ export
             found
         end
 
-    let new(buildDir: maybe.T(String) includePaths: Array(String) verbose: Bool nogc: Bool extraObjects: Array(String)
-            resolver: maybe.T(graph.Resolver)): T =
+    let new(s: Settings): T =
         begin
-            let dir = absolutePath(maybe.unwrapOr(buildDir ".build"))
-            let includes = array of(extent includePaths dir)
-            for i = 0 upto {extent includePaths - 1} do includes[i] := absolutePath(includePaths[i]) end
-            let objects = array of(extent extraObjects dir)
-            for i = 0 upto {extent extraObjects - 1} do objects[i] := absolutePath(extraObjects[i]) end
-            let l = logger.new(maybe.some(str(pathLib.child(dir "build.log"))) verbose)
+            let dir = absolutePath(maybe.unwrapOr(s.buildDir ".build"))
+            let includes = array of(extent s.includePaths dir)
+            for i = 0 upto {extent s.includePaths - 1} do includes[i] := absolutePath(s.includePaths[i]) end
+            let objects = array of(extent s.extraObjects dir)
+            for i = 0 upto {extent s.extraObjects - 1} do objects[i] := absolutePath(s.extraObjects[i]) end
+            let l = logger.new(maybe.some(str(pathLib.child(dir "build.log"))) s.verbose)
             system.makeDirectory(str(dir))
+            let resolver = maybe.unwrapOr(s.resolver graph.newResolver())
+            (* Each module's variant is the one its backend selects *)
+            let backends = s.backends
+            resolver.variantOf := fun(unit: String): String choice.variantFor(backends unit)
             tuple
                 let buildDir = dir
-                let resolver = maybe.unwrapOr(resolver graph.newResolver())
+                let resolver = resolver
                 let includePaths = includes
                 let extraObjects = objects
                 let logger = l
-                let nogc = nogc
-                let compiler = maybe.none()
-                let extraCFlags = array of :String end
-                let jobs = 1
-                let driver = ""
-                let backends = choice.standard
-                let reportInferable = ""
+                let nogc = s.nogc
+                let jobs = s.jobs
+                let driver = s.driver
+                let backends = backends
+                let reportInferable = s.reportInferable
             end
         end
-
-    (* eng with the fields withBackends, parallel, and reportingInferable
-     * change replaced *)
-    let changed(eng: T jobs: Int driver: String backends: choice.T reportInferable: String): T =
-        tuple
-            let buildDir = eng.buildDir
-            let resolver = eng.resolver
-            let includePaths = eng.includePaths
-            let extraObjects = eng.extraObjects
-            let logger = eng.logger
-            let nogc = eng.nogc
-            let compiler = eng.compiler
-            let extraCFlags = eng.extraCFlags
-            let jobs = jobs
-            let driver = driver
-            let backends = backends
-            let reportInferable = reportInferable
-        end
-    (* Updates eng.resolver to select each module's variant from backends *)
-    let withBackends(eng: T backends: choice.T): T =
-        begin
-            eng.resolver.variantOf := fun(unit: String): String choice.variantFor(backends unit)
-            changed(eng eng.jobs eng.driver backends eng.reportInferable)
-        end
-    let parallel(eng: T jobs: Int driver: String): T = changed(eng jobs driver eng.backends eng.reportInferable)
-    let reportingInferable(eng: T mode: String): T = changed(eng eng.jobs eng.driver eng.backends mode)
 
     let log(eng: T tag: String message: String): Ok = logger.log(eng.logger tag message)
 
@@ -189,9 +174,7 @@ export
     let settings(eng: T search: Array(String) programDir: maybe.T(String)): moduleCompiler.Settings =
         tuple
             let includePaths = search
-            let compiler = eng.compiler
             let nogc = eng.nogc
-            let extraFlags = eng.extraCFlags
             let buildDir = maybe.some(str(eng.buildDir))
             let programDir = programDir
             let backends = eng.backends
@@ -454,9 +437,7 @@ export
                     writer.putString(w translated.c)
                     writer.close(w)
                     log(eng "HOST COMPILE" "clang -c " <> code <> " -o " <> a.o)
-                    compilerRunner.compileCToObject(code a.o search eng.nogc eng.compiler
-                            vector.toArray(vector.concat(vector.fromArray(eng.extraCFlags)
-                                    vector.fromArray(cBackend.cFlags(backend)))))
+                    compilerRunner.compileCToObject(code a.o search eng.nogc cBackend.cFlags(backend))
 
                     let direct = vector.toArray(interfaces)
                     let indirect = interfaceCompiler.indirectInterfaceRefs(direct vector.toArray(e.includePaths)
@@ -1081,7 +1062,7 @@ export
             vector.append(linked a.o)
             for i = n upto {extent objects - 1} do vector.append(linked objects[i]) end
             log(eng "HOST LINK" "linking " <> conv.int(vector.length(linked)) <> " objects into " <> target)
-            compilerRunner.linkObjects(vector.toArray(linked) target eng.nogc eng.compiler eng.extraCFlags)
+            compilerRunner.linkObjects(vector.toArray(linked) target eng.nogc)
             log(eng "BUILD COMPLETE" "exit_code=0 binary=" <> target)
         end
 

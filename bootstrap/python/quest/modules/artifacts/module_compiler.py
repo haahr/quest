@@ -102,9 +102,7 @@ def compile_module(
     env: Environment,
     output_dir: Optional[Path] = None,
     include_paths: Optional[list[Path]] = None,
-    compiler_path: Optional[str] = None,
     nogc: bool = False,
-    extra_c_flags: Optional[list[str]] = None,
     source_map: Optional[SourceMap] = None,
     stem_name: Optional[str] = None,
     canonical_name: Optional[str] = None,
@@ -226,8 +224,6 @@ def compile_module(
         o_file,
         include_paths=compile_dirs,
         nogc=nogc,
-        compiler_path=compiler_path,
-        extra_flags=extra_c_flags,
     )
 
     if emit_deps:
@@ -277,9 +273,7 @@ def compile_module_file(
     mod_path: Path,
     output_dir: Optional[Path] = None,
     include_paths: Optional[list[Path]] = None,
-    compiler_path: Optional[str] = None,
     nogc: bool = False,
-    extra_c_flags: Optional[list[str]] = None,
     emit_deps: bool = False,
     build_dir: Optional[Path] = None,
     program_dir: Optional[Path] = None,
@@ -339,9 +333,7 @@ def compile_module_file(
             env,
             output_dir=output_dir,
             include_paths=env.include_paths,
-            compiler_path=compiler_path,
             nogc=nogc,
-            extra_c_flags=extra_c_flags,
             source_map=source_map,
             stem_name=stem,
             canonical_name=canon_name,

@@ -391,12 +391,25 @@ let failWith(message: String): Ok =
         system.sysexit(1)
     end
 
+(* The build engine's settings, from the command line: each engine builds in
+ * dir with includes, resolving with resolver *)
+let engineSettings(dir: maybe.T(String) includes: Array(String) resolver: maybe.T(graph.Resolver)): engine.Settings =
+    tuple
+        let buildDir = dir
+        let includePaths = includes
+        let verbose = options.verbose
+        let nogc = options.nogc
+        let extraObjects = options.extraObjects
+        let resolver = resolver
+        let jobs = options.jobs
+        let driver = system.args[0]
+        let backends = options.backends
+        let reportInferable = options.reportInferable
+    end
+
 (* The engine that builds the modules a program's C imports *)
 let newEngine(e: env.T): engine.T =
-    engine.reportingInferable(engine.withBackends(engine.parallel(engine.new(maybe.some(buildDir)
-            options.includePaths options.verbose options.nogc options.extraObjects
-            maybe.some(e.units.resolver)) options.jobs system.args[0]) options.backends)
-            options.reportInferable)
+    engine.new(engineSettings(maybe.some(buildDir) options.includePaths maybe.some(e.units.resolver)))
 
 (* Whole-program compilation merges all modules into one unit compiled by
  * --backend (docs/arm64.md section 3.12), so per-unit --unit-backend overrides
@@ -533,10 +546,8 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         end
                     let engineIncludes = array of(extent options.includePaths + 1 runtimeRoot)
                     for k = 0 upto extent options.includePaths - 1 do engineIncludes[k] := options.includePaths[k] end
-                    let wasmEngine = engine.reportingInferable(engine.withBackends(engine.parallel(
-                            engine.new(maybe.some(buildDir) engineIncludes options.verbose options.nogc
-                                    options.extraObjects maybe.some(e.units.resolver))
-                            options.jobs system.args[0]) options.backends) options.reportInferable)
+                    let wasmEngine = engine.new(engineSettings(maybe.some(buildDir) engineIncludes
+                            maybe.some(e.units.resolver)))
                     let objects = engine.buildModules(wasmEngine modules importer e.programDir)
                     let units = wasmBundle.ordered(objects buildDir)
                     if writing then
@@ -762,9 +773,7 @@ let compileUnitFile(): Ok =
                     if maybe.isSome(outputDir) then system.makeDirectory(maybe.unwrap(outputDir)) end
                     let settings = tuple
                         let includePaths = includes
-                        let compiler = maybe.none(:String)
                         let nogc = options.nogc
-                        let extraFlags = array of :String end
                         let buildDir = options.buildDir
                         let programDir = maybe.none(:String)
                         let backends = options.backends
@@ -922,9 +931,7 @@ let buildProgram(): Ok =
         let sm = location.newSourceMap(options.file maybe.unwrapOr(files.readText(options.file) ""))
         stdlib.install()
         try
-            let eng = engine.reportingInferable(engine.withBackends(engine.parallel(engine.new(options.buildDir
-                    options.includePaths options.verbose options.nogc options.extraObjects maybe.none())
-                    options.jobs system.args[0]) options.backends) options.reportInferable)
+            let eng = engine.new(engineSettings(options.buildDir options.includePaths maybe.none()))
             if compileMode andif options.compileOnly then engine.compileMain(eng options.file)
             else engine.buildMain(eng options.file compileOutput)
             end

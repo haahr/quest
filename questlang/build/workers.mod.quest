@@ -182,15 +182,7 @@ export
                 add("--program-dir")
                 add(maybe.unwrap(job.programDir))
             end
-            if maybe.isSome(job.compiler) then
-                add("--cc")
-                add(maybe.unwrap(job.compiler))
-            end
             if job.nogc then add("--nogc") end
-            for i = 0 upto {extent job.extraFlags - 1} do
-                add("--cflag")
-                add(job.extraFlags[i])
-            end
             let backendArgs = choice.arguments(job.backends)
             for i = 0 upto {extent backendArgs - 1} do add(backendArgs[i]) end
             if stringOp.length(job.reportInferable) > 0 then
@@ -307,10 +299,8 @@ export
             let searchPaths = vector.new(:String)
             let var buildDir = maybe.none(:String)
             let var programDir = maybe.none(:String)
-            let var compiler = maybe.none(:String)
             let var nogc = false
             let var reportInferable = ""
-            let cflags = vector.new(:String)
             let var backend = "c"
             let overrides = vector.new(:choice.Override)
             let variants = vector.new(:choice.Alternative)
@@ -335,10 +325,6 @@ export
                     buildDir := maybe.some(value)
                 elsif eq(arg "--program-dir") then
                     programDir := maybe.some(value)
-                elsif eq(arg "--cc") then
-                    compiler := maybe.some(value)
-                elsif eq(arg "--cflag") then
-                    vector.append(cflags value)
                 elsif eq(arg "--backend") then
                     backend := value
                 elsif eq(arg "--report-inferable") then
@@ -365,9 +351,7 @@ export
                 let worker = worker
                 let settings = tuple
                     let includePaths = vector.toArray(searchPaths)
-                    let compiler = compiler
                     let nogc = nogc
-                    let extraFlags = vector.toArray(cflags)
                     let buildDir = buildDir
                     let programDir = programDir
                     let backends = tuple
