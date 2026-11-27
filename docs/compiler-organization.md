@@ -492,6 +492,25 @@ The layout above follows these conventions:
 - **A move renames the moved module's C symbols** (`mangleModuleName`: `questlang/repr/layout` is
   `questlang__repr__layout`) but not the scheme, so it needs no ABI bump; nor does moving text between the runtime's
   headers, whose digest in the ABI corpus covers `quest_runtime.h` and the two it includes.
+- **Tables keyed by an id or a name are `common/maps`' operators:** `maps.IntMap(V)` and `maps.StringMap(V)`, made by
+  `maps.newIntMap(:V)` (or `maps.newIntMap()` where the type is inferred), not `hashMap.T(Int V)` and a hashMap.new
+  that repeats the key's equality and hash. A table of true values only is a set, `maps.IntSet` or `maps.StringSet`;
+  a map to `Bool` whose `false` means something, a memo or a flag, stays a map. Made so on 2026-11-26, it cost the
+  compiler 0.34% more instructions (stage 2 compiling hamlet, mlyacc, model-elimination, and raytrace with
+  `QUEST_GC_NEVER=1`), under the 1% bar: a set is a tuple around a map, one more load per operation.
+- **A table by register class is `targets.PerClass(A)`,** read for a class with `targets.at(table targets.classInt)`;
+  the allocator's loops over classes index it by `targets.index`.
+
+Type operators were also weighed for these, and left out (2026-11-26):
+
+- **ir/walk's three traversals** (`visitOp`, `opUses`, `mapInOp`). A visitor parameterized by an operator, `F(A) = A`
+  to rewrite and `F(A) = Ok` to visit, could make visiting and rewriting one walk, but every visit would then store
+  each field back, adding stores and the collector's barriers to the compiler; `traversalProblems` checks that the
+  copies agree.
+- **The typed and untyped syntax trees.** Their forms differ too much for one operator over the subterms' type to
+  serve both; the untyped tree builds its components from such operators already (§3.1).
+- **Functions taking an operator** (`F::ALL(A::TYPE) TYPE`): nothing in the compiler is written twice for two kinds of
+  container that one would merge.
 
 Left whole, because no split of them moves code without changing it:
 
