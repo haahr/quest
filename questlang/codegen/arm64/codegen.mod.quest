@@ -22,6 +22,7 @@ import
     questlang/codegen/arm64/target : questlang/codegen/arm64/Target
     questlang/codegen/machine/machine : questlang/codegen/machine/Machine
     questlang/codegen/machine/regalloc : questlang/codegen/machine/Regalloc
+    targets = questlang/codegen/machine/target : questlang/codegen/machine/Target
     questlang/common/maps : questlang/common/Maps
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
@@ -91,18 +92,57 @@ export
         maps: Array(Array(CallMap))
     end
 
+    (* A word's bytes, and a pair's: what one stp stores, a pair of saved
+     * registers or the frame record (fp and lr) *)
+    let wordBytes = target.description.wordBytes
+    let pairBytes = 2 * wordBytes
+
     (* Callee-saved register pairs in the order they are pushed below the
-     * frame record. Each pair stores its higher-numbered register at the
-     * lower address (for example, stp x20, x19) to match Darwin's compact
-     * unwind encoding. The opposite order would force the assembler to fall
-     * back to DWARF unwind tables, which libunwind must interpret on every
-     * stack frame during an exception raise (docs/arm64.md section 3.10). *)
-    let savedFirsts = array of target.x(20) target.x(22) target.x(24) target.x(26) target.x(28) target.d(9)
-        target.d(11) target.d(13) target.d(15)
-    end
-    let savedSeconds = array of target.x(19) target.x(21) target.x(23) target.x(25) target.x(27) target.d(8)
-        target.d(10) target.d(12) target.d(14)
-    end
+     * frame record: each class's callee-saved registers
+     * (target.description.calleeSaved, x19-x28 then d8-d15) two at a time.
+     * Each pair stores its higher-numbered register at the lower address (for
+     * example, stp x20, x19) to match Darwin's compact unwind encoding. The
+     * opposite order would force the assembler to fall back to DWARF unwind
+     * tables, which libunwind must interpret on every stack frame during an
+     * exception raise (docs/arm64.md section 3.10). The frame table numbers
+     * the pairs in this order (Frame.saved), as the collector reads them
+     * (runtime/quest_gc.c). *)
+    Let SavedPairs = Tuple firsts: Array(Int) seconds: Array(Int) end
+    let savedPairs: SavedPairs =
+        begin
+            let firsts = vector.new(:Int)
+            let seconds = vector.new(:Int)
+            for c = 0 upto {targets.classes - 1} do
+                let cs = target.description.calleeSaved[c]
+                if {extent cs % 2} isnot 0 then
+                    raise unsupported with "the callee-saved " <> target.description.registers[cs[0]].name
+                        <> " and the rest are not in pairs"
+                    end
+                end
+                for k = 0 upto {{extent cs / 2} - 1} do
+                    vector.append(firsts cs[{2 * k} + 1])
+                    vector.append(seconds cs[2 * k])
+                end
+            end
+            tuple let firsts = vector.toArray(firsts) let seconds = vector.toArray(seconds) end
+        end
+    let savedFirsts = savedPairs.firsts
+    let savedSeconds = savedPairs.seconds
+
+    (* The callee-saved registers a call map describes, two bits each, in
+     * order: the integer class's (x19-x28), which the collector reads as x19
+     * and up (runtime/quest_gc.c) *)
+    let mapped: Array(Int) =
+        begin
+            let cs = targets.at(target.description.calleeSaved targets.classInt)
+            for k = 0 upto {extent cs - 1} do
+                if cs[k] isnot target.x(19 + k) then
+                    raise unsupported with "the collector's frame maps take the callee-saved registers to be x19 and up"
+                    end
+                end
+            end
+            cs
+        end
 
     (* Loads or stores the 8-byte frame slot at sp + off. Offsets up to 32760
      * (8 * 4095) fit in a scaled immediate; larger offsets compute the base
@@ -275,7 +315,7 @@ export
                         end
                         if machine.isKind(i machine.kindCall) then
                             let p = a.blockStart[b] + {2 * {j + 1}}
-                            let classes = array of(10 0)
+                            let classes = array of(extent mapped 0)
                             let slots = vector.new(:Int)
                             let vs = bitset.elements(cur)
                             for k = 0 upto {extent vs - 1} do
@@ -288,7 +328,7 @@ export
                                         let h = regalloc.home(a v p + 1)
                                         if h isnot regalloc.memory then
                                             let var r = ~1
-                                            for x = 0 upto 9 do if h is target.x(19 + x) then r := x end end
+                                            for x = 0 upto {extent mapped - 1} do if h is mapped[x] then r := x end end
                                             if r < 0 then
                                                 raise unsupported with "a value live across a call in "
                                                     <> target.description.registers[h].name
@@ -300,7 +340,7 @@ export
                                 end
                             end
                             let var registers = 0
-                            for x = 9 downto 0 do registers := {4 * registers} + classes[x] end
+                            for x = {extent mapped - 1} downto 0 do registers := {4 * registers} + classes[x] end
                             vector.append(found tuple
                                 let registers = registers
                                 let slots = vector.toArray(slots)
@@ -430,7 +470,7 @@ export
             end
             tuple
                 let selection = s
-                let size = alignUp(at 16)
+                let size = alignUp(at target.description.stackAlign)
                 let slots = vector.toArray(slots)
                 let saved = vector.toArray(savedList)
                 let liveAtCalls = liveAtCalls
@@ -453,16 +493,17 @@ export
     let emit(e: Emitter i: minst.Inst): Ok = vector.append(e.code i)
 
     (* Emits DWARF .cfi_offset directives for the saved callee-saved pairs:
-     * for pair k, the first register is at CFA - 16 * (k + 2) and the second
-     * is 8 bytes above it. Emitting the second register before the first,
+     * for pair k, the first register is at CFA - 16 * (k + 2) (the frame
+     * record's pair and k + 1 pairs below the CFA) and the second is a word
+     * above it. Emitting the second register before the first,
      * walking downward from the frame record, matches the order the Darwin
      * assembler requires to synthesize a compact unwind entry. *)
     let savedOffsets(e: Emitter): Ok =
         begin
             let saved = e.c.saved
             for k = 0 upto {extent saved - 1} do
-                emit(e minst.cfiOffset(savedSeconds[saved[k]] {0 - {16 * {k + 2}}} + 8))
-                emit(e minst.cfiOffset(savedFirsts[saved[k]] 0 - {16 * {k + 2}}))
+                emit(e minst.cfiOffset(savedSeconds[saved[k]] {0 - {pairBytes * {k + 2}}} + wordBytes))
+                emit(e minst.cfiOffset(savedFirsts[saved[k]] 0 - {pairBytes * {k + 2}}))
             end
         end
 
@@ -479,20 +520,21 @@ export
             let saved = e.c.saved
             let n = extent saved
             if n is 0 then
-                emit(e minst.stp(fp lr sp minst.pre(~16)))
+                emit(e minst.stp(fp lr sp minst.pre(0 - pairBytes)))
                 emit(e minst.mov(fp sp))
             else
                 let last = saved[n - 1]
-                emit(e minst.stp(savedFirsts[last] savedSeconds[last] sp minst.pre(0 - {16 * {n + 1}})))
+                emit(e minst.stp(savedFirsts[last] savedSeconds[last] sp minst.pre(0 - {pairBytes * {n + 1}})))
                 for k = {n - 2} downto 0 do
-                    emit(e minst.stp(savedFirsts[saved[k]] savedSeconds[saved[k]] sp minst.offset(16 * {{n - 1} - k})))
+                    emit(e minst.stp(savedFirsts[saved[k]] savedSeconds[saved[k]] sp
+                            minst.offset(pairBytes * {{n - 1} - k})))
                 end
-                emit(e minst.stp(fp lr sp minst.offset(16 * n)))
-                emit(e minst.addImm(fp sp 16 * n 0))
+                emit(e minst.stp(fp lr sp minst.offset(pairBytes * n)))
+                emit(e minst.addImm(fp sp pairBytes * n 0))
             end
-            emit(e minst.cfiDefCfa(fp 16))
-            emit(e minst.cfiOffset(lr ~8))
-            emit(e minst.cfiOffset(fp ~16))
+            emit(e minst.cfiDefCfa(fp pairBytes))
+            emit(e minst.cfiOffset(lr 0 - wordBytes))
+            emit(e minst.cfiOffset(fp 0 - pairBytes))
             savedOffsets(e)
             (* A frame of more than a page is probed a page at a time, as clang
              * does, so that a stack overflow faults in the guard page rather
@@ -515,14 +557,14 @@ export
         begin
             let saved = e.c.saved
             if extent saved > 0 then
-                emit(e minst.subImm(sp fp 16 * extent saved))
+                emit(e minst.subImm(sp fp pairBytes * extent saved))
                 for k = {extent saved - 1} downto 0 do
-                    emit(e minst.ldp(savedFirsts[saved[k]] savedSeconds[saved[k]] sp minst.post(16)))
+                    emit(e minst.ldp(savedFirsts[saved[k]] savedSeconds[saved[k]] sp minst.post(pairBytes)))
                 end
             else
                 emit(e minst.mov(sp fp))
             end
-            emit(e minst.ldp(fp lr sp minst.post(16)))
+            emit(e minst.ldp(fp lr sp minst.post(pairBytes)))
         end
 
     (* =========================================================================
@@ -844,9 +886,9 @@ export
             tuple
                 let code = code
                 let frame = if s.entersTry then maybe.none() else maybe.some(tuple
-                    let below = {{16 * extent c.saved} + c.size} / 8
+                    let below = {{pairBytes * extent c.saved} + c.size} / wordBytes
                     let saved = savedMask
-                    let undescribed = s.slotsEnd / 8
+                    let undescribed = s.slotsEnd / wordBytes
                     let calls = vector.toArray(sites)
                 end) end
             end
@@ -875,9 +917,10 @@ export
                     let site = frame.calls[c]
                     let parts = vector.new(:String)
                     let var registers = site.map.registers
-                    for x = 0 upto 9 do
+                    for x = 0 upto {extent mapped - 1} do
                         if {registers % 4} > 0 then
-                            vector.append(parts "x" <> conv.int(19 + x) <> " " <> className(registers % 4))
+                            vector.append(parts target.description.registers[mapped[x]].name <> " "
+                                <> className(registers % 4))
                         end
                         registers := registers / 4
                     end
