@@ -21,8 +21,8 @@ import
     questlang/types/symbols : questlang/types/Symbols
 export
     let evaluate(t: model.Type): model.Type = model.evaluateLazily(t symbols.lookup)
-    let isSubtype(a: model.Type b: model.Type e: env.T): Bool = subtyping.isSubtype(a b env.lookupOf(e))
-    let isTypeEqual(a: model.Type b: model.Type e: env.T): Bool = subtyping.isTypeEqual(a b env.lookupOf(e))
+    let isSubtype(a: model.Type b: model.Type): Bool = subtyping.isSubtype(a b env.symbolLookup)
+    let isTypeEqual(a: model.Type b: model.Type): Bool = subtyping.isTypeEqual(a b env.symbolLookup)
     let unexpected(A::TYPE what: String offset: Int): A = diagnostics.internal("not " <> what offset)
 
     Let Named = Tuple name: String offset: Int end
@@ -54,15 +54,15 @@ export
 
     let checkTypeArgKind(what: String targ: model.Type bound: model.Kind e: env.T offset: Int): Ok =
         begin
-            let b = model.evaluateKindLazily(bound maybe.unwrap(env.lookupOf(e)))
+            let b = model.evaluateKindLazily(bound maybe.unwrap(env.symbolLookup))
             if model.isPower(b) then
-                if not(subtyping.isSubtype(targ model.powerBound(b) env.lookupOf(e))) then
+                if not(subtyping.isSubtype(targ model.powerBound(b) env.symbolLookup)) then
                     diagnostics.fail(:Ok what <> " '" <> model.show(targ) <> "' is not a subtype of bound '"
                         <> model.show(model.powerBound(b)) <> "'" offset)
                 end
             else
                 let kind = kinds.synthKind(targ maybe.some(e))
-                if not(subtyping.isSubkind(kind b env.lookupOf(e))) then
+                if not(subtyping.isSubkind(kind b env.symbolLookup)) then
                     diagnostics.fail(:Ok what <> " '" <> model.show(targ) <> "' has kind '" <> model.showKind(kind)
                         <> "', which is not a subkind of '" <> model.showKind(b) <> "'" offset)
                 end
@@ -83,9 +83,9 @@ export
             let var join = types[0]
             for i = 1 upto {extent types - 1} do
                 let bt = types[i]
-                if subtyping.isSubtype(join bt env.lookupOf(e)) then
+                if subtyping.isSubtype(join bt env.symbolLookup) then
                     join := bt
-                elsif not(subtyping.isSubtype(bt join env.lookupOf(e))) then
+                elsif not(subtyping.isSubtype(bt join env.symbolLookup)) then
                     let message =
                         if maybe.isSome(errorMessage) then
                             strutil.replace(strutil.replace(maybe.unwrap(errorMessage) "{t1}" model.show(join))
@@ -236,7 +236,7 @@ export
 
     let requireSubtype(offset: Int typed: typedAst.Expr expected: model.Type e: env.T
             typeDesc: maybe.T(String)): typedAst.Expr =
-        if subtyping.isSubtype(typed.type expected env.lookupOf(e)) then
+        if subtyping.isSubtype(typed.type expected env.symbolLookup) then
             typed
         else
             let prefix = maybe.unwrapOr(typeDesc "Type mismatch: synthesized")

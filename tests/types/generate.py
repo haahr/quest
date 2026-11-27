@@ -528,7 +528,7 @@ def build_judgments(em: Emitter) -> list[tuple[str, str]]:
     em.stmt("symbols.declareKind(e.currentScope symbols.newKindSymbol(\"K\" 203 model.typeKind));")
 
     def env_of(use_env: bool) -> tuple[Any, str, str]:
-        return (E, "env.lookupOf(e)", "en") if use_env else (None, "maybe.none(:model.Lookup)", "noEnv")
+        return (E, "env.symbolLookup", "en") if use_env else (None, "maybe.none(:model.Lookup)", "noEnv")
 
     def subtype(label: str, a: Any, b: Any, use_env: bool = True) -> None:
         py_env, q_env, _ = env_of(use_env)
@@ -541,7 +541,7 @@ def build_judgments(em: Emitter) -> list[tuple[str, str]]:
               flag(is_type_equal(a, b, py_env)))
 
     def subkind(label: str, a: Any, b: Any) -> None:
-        check(label, f"conv.bool(subtyping.isSubkind({em.kind(a)} {em.kind(b)} env.lookupOf(e)))",
+        check(label, f"conv.bool(subtyping.isSubkind({em.kind(a)} {em.kind(b)} env.symbolLookup))",
               flag(is_subkind(a, b, E)))
 
     def synth(label: str, t: Any, use_env: bool = True) -> None:

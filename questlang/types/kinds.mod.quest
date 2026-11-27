@@ -17,28 +17,28 @@ import
     questlang/types/subtyping : questlang/types/Subtyping
     questlang/types/symbols : questlang/types/Symbols
 export
-    Let Env = maybe.T(env.T)
+    Let MaybeEnv = maybe.T(env.T)
     Let Type = model.Type
     Let Kind = model.Kind
 
     let kindError(A::TYPE message: String): A = diagnostics.fail(message 0)
 
-    let lookupOf(e: Env): model.Lookup = if maybe.isSome(e) then symbols.lookup else model.noLookup end
+    let lookupOf(e: MaybeEnv): model.Lookup = if maybe.isSome(e) then symbols.lookup else model.noLookup end
 
-    let subEnv(e: Env): subtyping.Env = if maybe.isSome(e) then env.lookupOf(maybe.unwrap(e)) else maybe.none() end
+    let subEnv(e: MaybeEnv): subtyping.MaybeLookup = if maybe.isSome(e) then env.symbolLookup else maybe.none() end
 
-    let evaluate(t: Type e: Env): Type = model.evaluateLazily(t lookupOf(e))
-    let evaluateKind(k: Kind e: Env): Kind = model.evaluateKindLazily(k lookupOf(e))
+    let evaluate(t: Type e: MaybeEnv): Type = model.evaluateLazily(t lookupOf(e))
+    let evaluateKind(k: Kind e: MaybeEnv): Kind = model.evaluateKindLazily(k lookupOf(e))
 
     (* body in a scope of e's, if there is an environment *)
-    let inScope(e: Env name: String body: All() Ok): Ok =
+    let inScope(e: MaybeEnv name: String body: All() Ok): Ok =
         if maybe.isSome(e) then
             env.scoped(maybe.unwrap(e) name fun(s: symbols.Scope): Ok body())
         else
             body()
         end
 
-    let declare(e: Env name: String symbolId: Int kind: Kind definition: maybe.T(Type)): Ok =
+    let declare(e: MaybeEnv name: String symbolId: Int kind: Kind definition: maybe.T(Type)): Ok =
         if maybe.isSome(e) then
             env.declareTypeVariable(maybe.unwrap(e) name symbolId kind definition)
             ok
@@ -50,13 +50,13 @@ export
      * 1. The kind memo
      * ====================================================================== *)
 
-    Let Memo = Tuple kinds: maps.IntMap(Kind) e: Env end
+    Let Memo = Tuple kinds: maps.IntMap(Kind) e: MaybeEnv end
     Let MemoState = Tuple var active: maybe.T(Memo) end
     let memo: MemoState = tuple let var active = maybe.none() end
 
     let newKinds(): maps.IntMap(Kind) = maps.newIntMap()
 
-    let sameEnv(a: Env b: Env): Bool =
+    let sameEnv(a: MaybeEnv b: MaybeEnv): Bool =
         if maybe.isSome(a) andif maybe.isSome(b) then
             hash.identityEqual(maybe.unwrap(a) maybe.unwrap(b))
         else
@@ -67,7 +67,7 @@ export
      * 2. Well-formed kinds, and kind checking
      * ====================================================================== *)
 
-    let rec checkKindWellFormed(kind: Kind e: Env): Ok =
+    let rec checkKindWellFormed(kind: Kind e: MaybeEnv): Ok =
         begin
             let k = evaluateKind(kind e)
             case k.form
@@ -106,7 +106,7 @@ export
      * Against POWER(B) the check is subtyping, t <: B, rather than a
      * comparison of kinds: a type's synthesized kind is TYPE (or its bound, for
      * a type variable), not the POWER of each of its supertypes. *)
-    and checkKind(t: Type expected: Kind e: Env): Ok =
+    and checkKind(t: Type expected: Kind e: MaybeEnv): Ok =
         begin
             let exp = evaluateKind(expected e)
             if model.isPower(exp) then
@@ -130,7 +130,7 @@ export
      * which have unique ids, so a shared node has one kind wherever it occurs.
      * Metavariables are not memoized, and a nested call with a different
      * environment bypasses the memo. *)
-    and synthKind(t: Type e: Env): Kind =
+    and synthKind(t: Type e: MaybeEnv): Kind =
         case t.form
             when typeMeta then synthUncached(t e)
             else
@@ -181,7 +181,7 @@ export
      * operator's arguments have its parameter kinds. A binder's variables are
      * declared in a scope pushed on e while its body is checked; without an
      * environment, a variable is known by the bound it carries. *)
-    and synthUncached(t: Type e: Env): Kind =
+    and synthUncached(t: Type e: MaybeEnv): Kind =
         case t.form
             when typeInt then model.typeKind
             when typeReal then model.typeKind
@@ -419,7 +419,7 @@ export
      * head (unfoldHead), or replaces a bounded variable by its bound
      * (boundedVariable). The walk stops when no step applies, or when it
      * revisits a head it already unfolded or a variable it already followed. *)
-    let resolveBound(t: Type e: Env wanted: All(u: Type) Bool): maybe.T(Type) =
+    let resolveBound(t: Type e: MaybeEnv wanted: All(u: Type) Bool): maybe.T(Type) =
         begin
             let visited = maps.newIntSet()
             let unfolded = maps.newIntSet()
@@ -474,9 +474,9 @@ export
     let isSum(u: Type): Bool = case u.form when typeVariant then true when typeOption then true else false end
     let isTuple(u: Type): Bool = case u.form when typeTuple then true else false end
 
-    let resolveRecordBound(t: Type e: Env): maybe.T(Type) = resolveBound(t e isRecord)
-    let resolveSumBound(t: Type e: Env): maybe.T(Type) = resolveBound(t e isSum)
-    let resolveTupleBound(t: Type e: Env): maybe.T(Type) = resolveBound(t e isTuple)
+    let resolveRecordBound(t: Type e: MaybeEnv): maybe.T(Type) = resolveBound(t e isRecord)
+    let resolveSumBound(t: Type e: MaybeEnv): maybe.T(Type) = resolveBound(t e isSum)
+    let resolveTupleBound(t: Type e: MaybeEnv): maybe.T(Type) = resolveBound(t e isTuple)
 
     (* The form's tag, as the bootstrap compares node classes *)
     let formTag(t: Type): Int = ordinal(t.form)
@@ -508,7 +508,7 @@ export
      * It differs from resolveBound, which walks bounds in the same way, in
      * reducing applications by substitution rather than by unfoldHead,
      * and in not unfolding mutually recursive groups. *)
-    let resolveOptionBound(t: Type e: Env): maybe.T(Type) =
+    let resolveOptionBound(t: Type e: MaybeEnv): maybe.T(Type) =
         begin
             let visited = maps.newIntSet()
             let var current = t

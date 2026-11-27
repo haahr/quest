@@ -49,7 +49,7 @@ export
                     when typeOut with x then x.element
                     else destRawType
                 end
-            let lookup = env.lookupOf(e)
+            let lookup = env.symbolLookup
             if isOut then
                 if not(subtyping.isSubtype(paramType destType lookup)) then
                     diagnostics.fail(:Ok "Type mismatch on out parameter: parameter type '" <> model.show(paramType)
@@ -509,7 +509,7 @@ export
                             for i = 0 upto {extent found - 1} do
                                 let alike = model.same(found[i] written[i])
                                     orif {not(exact)
-                                        andif subtyping.isTypeEqual(found[i] written[i] env.lookupOf(c.env))}
+                                        andif subtyping.isTypeEqual(found[i] written[i] env.symbolLookup)}
                                 if not(alike) then equal := false end
                             end
                         end
@@ -593,7 +593,7 @@ export
             if maybe.isSome(expected) andif anyUnsolved() then
                 (* Infer remaining metavariables from the expected type; a
                  * failed match is reported by the caller *)
-                subtyping.isSubtype(resultType maybe.unwrap(expected) env.lookupOf(c.env))
+                subtyping.isSubtype(resultType maybe.unwrap(expected) env.symbolLookup)
                 ok
             end
 

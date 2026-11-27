@@ -16,7 +16,7 @@ import
     questlang/types/model : questlang/types/Model
     questlang/types/symbols : questlang/types/Symbols
 export
-    Let Env = maybe.T(model.Lookup)
+    Let MaybeLookup = maybe.T(model.Lookup)
     Let Type = model.Type
     Let Kind = model.Kind
 
@@ -24,8 +24,8 @@ export
     (* The fuel a comparison of quantified types costs *)
     let quantifierFuel = 500
 
-    let lookupOf(env: Env): model.Lookup = maybe.unwrapOr(env model.noLookup)
-    let evaluate(t: Type env: Env): Type = model.evaluateLazily(t lookupOf(env))
+    let lookupOf(env: MaybeLookup): model.Lookup = maybe.unwrapOr(env model.noLookup)
+    let evaluate(t: Type env: MaybeLookup): Type = model.evaluateLazily(t lookupOf(env))
 
     (* =========================================================================
      * 1. The subtype cache
@@ -63,16 +63,16 @@ export
             end
         end
 
-    let cacheKey(sub: Type sup: Type env: Env): String =
+    let cacheKey(sub: Type sup: Type env: MaybeLookup): String =
         conv.int(sub.id) <> "," <> conv.int(sup.id) <> {if maybe.isNone(env) then ",n" else ",e" end}
 
-    let cacheLookup(sub: Type sup: Type env: Env): maybe.T(Bool) =
+    let cacheLookup(sub: Type sup: Type env: MaybeLookup): maybe.T(Bool) =
         begin
             checkGeneration()
             hashMap.get(cache cacheKey(sub sup env))
         end
 
-    let cacheStore(sub: Type sup: Type env: Env result: Bool): Ok =
+    let cacheStore(sub: Type sup: Type env: MaybeLookup result: Bool): Ok =
         if not(sub.hasMeta orif sup.hasMeta) then
             checkGeneration()
             if hashMap.size(cache) >= cacheLimit then hashMap.clear(cache) end
@@ -140,7 +140,7 @@ export
             vector.append(trail.pairs tuple let sub = sub let sup = sup end)
         end
 
-    let commitProof(trail: Trail result: Bool env: Env): Ok =
+    let commitProof(trail: Trail result: Bool env: MaybeLookup): Ok =
         if result then
             vector.forEach(trail.results fun(r: Result): Ok cacheStore(r.sub r.sup env r.result))
             vector.forEach(trail.pairs fun(p: Pair): Ok cacheStore(p.sub p.sup env true))
@@ -190,7 +190,7 @@ export
     let solve(meta: Type t: Type): Ok =
         case meta.form when typeMeta with x then x.meta.instance := maybe.some(t) else ok end
 
-    let rec prove(sub: Type sup: Type env: Env trail: Trail fuel: Int): Bool =
+    let rec prove(sub: Type sup: Type env: MaybeLookup trail: Trail fuel: Int): Bool =
         if model.same(sub sup) then
             true
         else
@@ -206,7 +206,7 @@ export
                 result
             end
         end
-    and both(a: Type b: Type env: Env trail: Trail fuel: Int): Bool =
+    and both(a: Type b: Type env: MaybeLookup trail: Trail fuel: Int): Bool =
         prove(a b env trail fuel) andif prove(b a env trail fuel)
     (* Decides one goal, sub <: sup, by the structure of the two types.
      *
@@ -251,7 +251,7 @@ export
      * bounded polymorphic types is undecidable, so a goal posed with no fuel
      * left raises a fatal diagnostic rather than looping; quantified, when
      * it cannot pay its cost, instead fails the comparison. *)
-    and step(sub0: Type sup0: Type env: Env trail: Trail fuel0: Int): Bool =
+    and step(sub0: Type sup0: Type env: MaybeLookup trail: Trail fuel0: Int): Bool =
         begin
             if fuel0 <= 0 then
                 let err = diagnostics.fatalAt("Fatal compiler error: Subtyping proof exceeded step limit of "
@@ -331,7 +331,7 @@ export
             end
         end
     (* 6. The rules for pairs of type constructors *)
-    and structural(sub: Type sup: Type env: Env trail: Trail fuel: Int): Bool =
+    and structural(sub: Type sup: Type env: MaybeLookup trail: Trail fuel: Int): Bool =
         case sub.form
             when typeTuple with s then
                 case sup.form when typeTuple with t then tuples(s.fields t.fields env trail fuel) else false end
@@ -581,7 +581,7 @@ export
      * may be matched by one that sub defines (A = T), and that definition is
      * substituted into sup's later components (rename). *)
     and tuples(
-            subFields: Array(model.TupleComponent) supFields0: Array(model.TupleComponent) env: Env trail: Trail
+            subFields: Array(model.TupleComponent) supFields0: Array(model.TupleComponent) env: MaybeLookup trail: Trail
             fuel: Int
             ): Bool =
         if extent subFields < extent supFields0 then
@@ -653,7 +653,9 @@ export
      * comparison costs quantifierFuel and returns false (with no diagnostic)
      * when fuel0 cannot pay it. *)
     and quantified(s: Tuple quantifiers: Array(model.Quantifier) body: Type end
-            t: Tuple quantifiers: Array(model.Quantifier) body: Type end env: Env trail: Trail fuel0: Int): Bool =
+            t: Tuple quantifiers: Array(model.Quantifier)
+                body: Type
+            end env: MaybeLookup trail: Trail fuel0: Int): Bool =
         if extent s.quantifiers isnot extent t.quantifiers then
             false
         elsif fuel0 <= quantifierFuel then
@@ -689,7 +691,7 @@ export
             end
             good andif prove(model.substitute(s.body subSubst) model.substitute(t.body supSubst) env trail fuel)
         end
-    and isSubtype(sub: Type sup: Type env: Env): Bool =
+    and isSubtype(sub: Type sup: Type env: MaybeLookup): Bool =
         if model.same(sub sup) then
             true
         else
@@ -698,7 +700,7 @@ export
             commitProof(trail result env)
             result
         end
-    and isTypeEqual(a: Type b: Type env: Env): Bool =
+    and isTypeEqual(a: Type b: Type env: MaybeLookup): Bool =
         if model.same(a b) then
             true
         else
@@ -707,8 +709,8 @@ export
             commitProof(trail result env)
             result
         end
-    and isKindEqual(a: Kind b: Kind env: Env): Bool = isSubkind(a b env) andif isSubkind(b a env)
-    and isSubkind(sub0: Kind sup0: Kind env: Env): Bool =
+    and isKindEqual(a: Kind b: Kind env: MaybeLookup): Bool = isSubkind(a b env) andif isSubkind(b a env)
+    and isSubkind(sub0: Kind sup0: Kind env: MaybeLookup): Bool =
         begin
             let sub = model.evaluateKindLazily(sub0 lookupOf(env))
             let sup = model.evaluateKindLazily(sup0 lookupOf(env))

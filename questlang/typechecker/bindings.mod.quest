@@ -84,7 +84,7 @@ export
      * in it *)
     let requireParamType(p: ast.FormalParam written: Type expected: model.Param e: env.T): Ok =
         begin
-            let lookup = env.lookupOf(e)
+            let lookup = env.symbolLookup
             let good =
                 if expected.isVar then
                     subtyping.isTypeEqual(written expected.type lookup)
@@ -317,7 +317,7 @@ export
                                         if nWritten > 0 then
                                             let w = vector.get(written idx)
                                             let writtenBound = elaborateTypes.elaborateKind(w.bound c.env)
-                                            if not(subtyping.isSubkind(bound writtenBound env.lookupOf(c.env))) then
+                                            if not(subtyping.isSubkind(bound writtenBound env.symbolLookup)) then
                                                 diagnostics.fail(:Ok "Type parameter '" <> name <> "' is declared '"
                                                     <> model.showQuantifier(tuple
                                                         let name = name
@@ -370,7 +370,7 @@ export
                                          * of the expected result type *)
                                         let rt = maybe.unwrap(x.returnType)
                                         bodyExp := elaborateTypes.elaborateType(rt c.env)
-                                        if not(subtyping.isSubtype(bodyExp innerExp env.lookupOf(c.env))) then
+                                        if not(subtyping.isSubtype(bodyExp innerExp env.symbolLookup)) then
                                             diagnostics.fail(:Ok "Function declared result type '"
                                                 <> model.show(bodyExp)
                                                 <> "' is not a subtype of expected result type '"
@@ -534,7 +534,7 @@ export
                                     let t = elaborateTypes.elaborateType(rt c.env)
                                     if maybe.isSome(fResult)
                                             andif not(subtyping.isSubtype(t maybe.unwrap(fResult)
-                                                    env.lookupOf(c.env))) then
+                                                    env.symbolLookup)) then
                                         diagnostics.fail(:Ok "Function declared result type '" <> model.show(t)
                                             <> "' is not a subtype of expected result type '"
                                             <> model.show(maybe.unwrap(fResult)) <> "'" rt.span.startOffset)
@@ -606,7 +606,7 @@ export
                 if maybe.isSome(earlier)
                         andif hashMap.contains(c.env.slots maybe.unwrap(earlier).symbolId) then
                     let old = maybe.unwrap(earlier)
-                    if {old.isVar is sym.isVar} andif subtyping.isTypeEqual(old.type sym.type env.lookupOf(c.env)) then
+                    if {old.isVar is sym.isVar} andif subtyping.isTypeEqual(old.type sym.type env.symbolLookup) then
                         slot := maybe.unwrap(hashMap.get(c.env.slots old.symbolId))
                     else
                         vector.append(c.warnings diagnostics.errorAt("'" <> sym.name

@@ -155,7 +155,7 @@ export
                                 let t = elaborateTypes.elaborateType(maybe.unwrap(branch.binderType) c.env)
                                 for j = 0 upto {tagCount - 1} do
                                     let payload = vector.get(payloads j)
-                                    if not(checks.isSubtype(payload t c.env)) then
+                                    if not(checks.isSubtype(payload t)) then
                                         diagnostics.fail(:Ok "Binder '" <> binder <> "' type '" <> model.show(t)
                                             <> "' is not compatible with payload '" <> model.show(payload)
                                             <> "'" branch.offset)
@@ -166,7 +166,7 @@ export
                                 let first = vector.get(payloads 0)
                                 for j = 1 upto {tagCount - 1} do
                                     let payload = vector.get(payloads j)
-                                    if not(subtyping.isTypeEqual(first payload env.lookupOf(c.env))) then
+                                    if not(subtyping.isTypeEqual(first payload env.symbolLookup)) then
                                         diagnostics.fail(:Ok "Binder '" <> binder <> "' would have payload type '"
                                             <> model.show(first)
                                             <> "' for tag '" <> vector.get(branch.tags 0) <> "' but '"
@@ -441,8 +441,8 @@ export
                     elsif stringOp.equal(op "is") orif stringOp.equal(op "isnot") then
                         let leftTyped = checker.synthExpr(c x.left)
                         let rightTyped = checker.synthExpr(c x.right)
-                        if checks.isSubtype(leftTyped.type rightTyped.type c.env)
-                                orif checks.isSubtype(rightTyped.type leftTyped.type c.env) then
+                        if checks.isSubtype(leftTyped.type rightTyped.type)
+                                orif checks.isSubtype(rightTyped.type leftTyped.type) then
                             typedAst.expr(offset model.boolType infixForm(leftTyped op rightTyped))
                         else
                             diagnostics.fail("Equality operator '" <> op
@@ -596,7 +596,7 @@ export
                         if state.failed then diagnostics.raiseError(:Ok diagnostics.silentError) end
                         if maybe.isNone(result) then
                             if maybe.isSome(expected)
-                                    andif not(checks.isSubtype(model.okType maybe.unwrap(expected) c.env)) then
+                                    andif not(checks.isSubtype(model.okType maybe.unwrap(expected))) then
                                 let what = if n > 0 then "Block ending with declaration" else "Empty block" end
                                 diagnostics.fail(:Ok what <> " has type Ok, not expected type '"
                                     <> model.show(maybe.unwrap(expected)) <> "'" offset)
