@@ -15,6 +15,43 @@ import
 
     questlang/ir/nodes : questlang/ir/Nodes
 export
+    (* What a node holds, by kind, for visitOp and visitStmt to call on each:
+     * the atoms it uses; the variables it uses as variables (a callee, a
+     * variable whose address it takes or that it assigns, an exception it
+     * raises again); the variables it binds; the bodies it contains; the
+     * functions it binds or makes a closure of; the types it names; its
+     * conversion plans; and the modules it refers to. A view map or a
+     * descriptor operand is none of these. *)
+    Def Visitor = Tuple
+        atom: All(a: nodes.Atom) Ok
+        used: All(v: nodes.Variable) Ok
+        binder: All(v: nodes.Variable) Ok
+        body: All(b: nodes.Body) Ok
+        function: All(f: nodes.Function) Ok
+        type: All(t: nodes.Type) Ok
+        plan: All(p: nodes.Plan) Ok
+        moduleRef: All(r: nodes.ModuleRef) Ok
+    end
+    (* A visitor that does nothing, whose functions a walk takes for the kinds
+     * it skips *)
+    nothing: Visitor
+    (* Calls v's functions on what o, or s, holds itself, in the order of its
+     * fields (a let's or a do's operation's included, but not what the
+     * bodies, functions, and plans it holds hold): the order in which
+     * questlang/ir/describe lists the types a unit uses. Each kind's order is
+     * that of opUses, statementUses, statementBinders, and statementBodies,
+     * which visitOp and visitStmt specify: those are written out case by case
+     * since the passes call them on every statement, where a visitor's
+     * closures retired 18% more of the compiler's instructions, and
+     * traversalProblems checks them against it. *)
+    visitOp(o: nodes.Op v: Visitor): Ok
+    visitStmt(s: nodes.Stmt v: Visitor): Ok
+    (* The traversals of opUses, statementUses, statementBinders, and
+     * statementBodies that find something other than visitStmt does in s (or
+     * visitOp in its let's or do's operation), by name; verify reports them
+     * under QUEST_CHECK_IR *)
+    traversalProblems(s: nodes.Stmt): Array(String)
+
     (* The bodies a statement contains (not those of the functions a funs
      * statement binds) *)
     statementBodies(s: nodes.Stmt): Array(nodes.Body)

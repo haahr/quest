@@ -17,6 +17,145 @@ export
 
     let intEqual(a: Int b: Int): Bool = a is b
 
+    Def Visitor = Tuple
+        atom: All(a: Atom) Ok
+        used: All(v: Variable) Ok
+        binder: All(v: Variable) Ok
+        body: All(b: Body) Ok
+        function: All(f: nodes.Function) Ok
+        type: All(t: nodes.Type) Ok
+        plan: All(p: nodes.Plan) Ok
+        moduleRef: All(r: nodes.ModuleRef) Ok
+    end
+
+    let nothing: Visitor =
+        tuple
+            let atom = fun(a: Atom): Ok ok
+            let used = fun(v: Variable): Ok ok
+            let binder = fun(v: Variable): Ok ok
+            let body = fun(b: Body): Ok ok
+            let function = fun(f: nodes.Function): Ok ok
+            let type = fun(t: nodes.Type): Ok ok
+            let plan = fun(p: nodes.Plan): Ok ok
+            let moduleRef = fun(r: nodes.ModuleRef): Ok ok
+        end
+
+    let eachAtom(items: Array(Atom) v: Visitor): Ok = for i = 0 upto {extent items - 1} do v.atom(items[i]) end
+    let someAtom(a: maybe.T(Atom) v: Visitor): Ok = if maybe.isSome(a) then v.atom(maybe.unwrap(a)) end
+    let someUsed(u: maybe.T(Variable) v: Visitor): Ok = if maybe.isSome(u) then v.used(maybe.unwrap(u)) end
+    let eachBinder(items: Array(Variable) v: Visitor): Ok = for i = 0 upto {extent items - 1} do v.binder(items[i]) end
+    let someBody(b: maybe.T(Body) v: Visitor): Ok = if maybe.isSome(b) then v.body(maybe.unwrap(b)) end
+    let eachType(items: Array(nodes.Type) v: Visitor): Ok = for i = 0 upto {extent items - 1} do v.type(items[i]) end
+    let someType(t: maybe.T(nodes.Type) v: Visitor): Ok = if maybe.isSome(t) then v.type(maybe.unwrap(t)) end
+    let somePlan(p: maybe.T(nodes.Plan) v: Visitor): Ok = if maybe.isSome(p) then v.plan(maybe.unwrap(p)) end
+    let someModuleRef(r: maybe.T(nodes.ModuleRef) v: Visitor): Ok =
+        if maybe.isSome(r) then v.moduleRef(maybe.unwrap(r)) end
+
+    let visitOp(o: Op v: Visitor): Ok =
+        case o
+            when opAtom with x then v.atom(x.atom)
+            when opPrim with x then eachAtom(x.args v)
+            when opCall with x then
+                begin
+                    someUsed(x.callee v)
+                    eachType(x.typeArgs v)
+                    eachAtom(x.args v)
+                    someModuleRef(x.moduleRef v)
+                    someType(x.calleeType v)
+                end
+            when opTypeApp with x then
+                begin
+                    someUsed(x.callee v)
+                    eachType(x.typeArgs v)
+                    someModuleRef(x.moduleRef v)
+                    someType(x.calleeType v)
+                    for i = 0 upto {extent x.plans - 1} do somePlan(x.plans[i] v) end
+                end
+            when opModuleMember with x then v.moduleRef(x.moduleRef)
+            when opBuiltin, opExternal then ok
+            when opCallExternal with x then begin eachType(x.typeArgs v) eachAtom(x.args v) end
+            when opMakeClosure with x then begin v.function(x.code) eachAtom(x.captures v) eachType(x.typeArgs v) end
+            when opEnvField with x then v.atom(x.env)
+            when opConvert with x then begin v.atom(x.value) v.plan(x.plan) end
+            when opMakeTuple with x then
+                begin
+                    eachAtom(x.args v)
+                    for i = 0 upto {extent x.typeComponents - 1} do v.type(x.typeComponents[i].type) end
+                end
+            when opTupleField with x then v.atom(x.tup)
+            when opMakeRecord with x then for i = 0 upto {extent x.fields - 1} do v.atom(x.fields[i].atom) end
+            when opRecordField with x then v.atom(x.recordAtom)
+            when opMakeVariant with x then someAtom(x.payload v)
+            when opMakeOption with x then begin someAtom(x.payload v) someAtom(x.ordinalAtom v) end
+            when opIsTag with x then v.atom(x.value)
+            when opPayload with x then v.atom(x.value)
+            when opOrdinal with x then v.atom(x.value)
+            when opMakeArray with x then eachAtom(x.args v)
+            when opArrayRep with x then begin v.atom(x.count) v.atom(x.init) end
+            when opIndex with x then begin v.atom(x.arr) v.atom(x.index) end
+            when opMakeAuto with x then begin v.type(x.autoType) v.atom(x.payload) end
+            when opMakeException with x then someType(x.payloadType v)
+            when opExceptionPayload with x then v.atom(x.exc)
+            when opCaughtException with x then v.atom(x.exc)
+            when opAddrVar with x then v.used(x.v)
+            when opIsSet with x then v.used(x.v)
+            when opAddrCell with x then v.atom(x.init)
+            when opAddrField with x then v.atom(x.base)
+            when opAddrComponent with x then v.atom(x.base)
+            when opAddrElement with x then begin v.atom(x.base) v.atom(x.index) end
+            when opLoad with x then v.atom(x.address)
+        end
+
+    let visitStmt(s: Stmt v: Visitor): Ok =
+        case s
+            when sLet with x then begin v.binder(x.v) visitOp(x.value v) end
+            when sVarDecl with x then begin v.binder(x.v) someAtom(x.init v) end
+            when sAssign with x then begin v.used(x.v) v.atom(x.value) end
+            when sStoreAt with x then begin v.atom(x.value) v.atom(x.address) end
+            when sStoreField with x then begin v.atom(x.value) v.atom(x.base) end
+            when sStoreComponent with x then begin v.atom(x.value) v.atom(x.base) end
+            when sStoreElement with x then begin v.atom(x.value) v.atom(x.base) v.atom(x.index) end
+            when sDo with x then visitOp(x.value v)
+            when sFuns with x then
+                for i = 0 upto {extent x.functions - 1} do
+                    v.binder(x.functions[i].v)
+                    v.function(x.functions[i])
+                end
+            when sLetRec with x then begin eachBinder(x.vars v) v.body(x.body) end
+            when sIf with x then begin v.atom(x.cond) v.body(x.thenBody) v.body(x.elseBody) end
+            when sSwitch with x then
+                begin
+                    v.atom(x.value)
+                    for i = 0 upto {extent x.cases - 1} do
+                        v.body(x.cases[i].body)
+                        if maybe.isSome(x.cases[i].binder) then v.binder(maybe.unwrap(x.cases[i].binder)) end
+                    end
+                    someBody(x.elseBody v)
+                end
+            when sInspect with x then
+                begin
+                    v.atom(x.value)
+                    for i = 0 upto {extent x.cases - 1} do
+                        let k = x.cases[i]
+                        v.type(k.matchType)
+                        eachBinder(k.binders v)
+                        v.body(k.body)
+                        if maybe.isSome(k.arm) then somePlan(maybe.unwrap(k.arm).plan v) end
+                    end
+                    someBody(x.elseBody v)
+                    someType(x.autoType v)
+                end
+            when sLoop with x then v.body(x.body)
+            when sTry with x then begin v.body(x.body) v.binder(x.exc) v.body(x.handler) eachAtom(x.catches v) end
+            when sJoin with x then begin eachBinder(x.params v) v.body(x.continuation) v.body(x.body) end
+            when sEcho with x then begin v.atom(x.value) v.type(x.type) end
+            when sEchoText, sBreak, sContinue, sUnreachable then ok
+            when sReturn with x then v.atom(x.value)
+            when sJump with x then eachAtom(x.args v)
+            when sRaise with x then begin v.atom(x.exc) someAtom(x.payload v) end
+            when sReraise with x then v.used(x.exc)
+        end
+
     let statementBodies(s: Stmt): Array(Body) =
         case s
             when sIf with x then array of x.thenBody x.elseBody end
@@ -138,6 +277,81 @@ export
             when sReraise with x then array of nodes.atomOfVar(x.exc) end
             when sTry with x then x.catches
             else array of :Atom end
+        end
+
+    (* A visitor that lists in found the atoms a node uses, and as atoms the
+     * variables it uses as variables *)
+    let usesInto(found: vector.T(Atom)): Visitor =
+        tuple
+            let atom = fun(a: Atom): Ok vector.append(found a)
+            let used = fun(u: Variable): Ok vector.append(found nodes.atomOfVar(u))
+            let binder = nothing.binder
+            let body = nothing.body
+            let function = nothing.function
+            let type = nothing.type
+            let plan = nothing.plan
+            let moduleRef = nothing.moduleRef
+        end
+
+    (* Whether two atoms are the same: the same variable, or the same
+     * constant node *)
+    let sameAtom(a: Atom b: Atom): Bool =
+        case a
+            when atomVar with x then case b when atomVar with y then x.v.id is y.v.id else false end
+            when atomConst with x then case b when atomConst with y then x.c is y.c else false end
+        end
+
+    let sameAtoms(a: Array(Atom) b: vector.T(Atom)): Bool =
+        begin
+            let var same = extent a is vector.length(b)
+            for i = 0 upto {extent a - 1} do
+                if same andif not(sameAtom(a[i] vector.get(b i))) then same := false end
+            end
+            same
+        end
+
+    let traversalProblems(s: Stmt): Array(String) =
+        begin
+            let problems = vector.new(:String)
+            let uses = vector.new(:Atom)
+            let binders = vector.new(:Variable)
+            let bodies = vector.new(:Body)
+            let inUses = usesInto(uses)
+            visitStmt(s tuple
+                let atom = inUses.atom
+                let used = inUses.used
+                let binder = fun(b: Variable): Ok vector.append(binders b)
+                let body = fun(b: Body): Ok vector.append(bodies b)
+                let function = nothing.function
+                let type = nothing.type
+                let plan = nothing.plan
+                let moduleRef = nothing.moduleRef
+            end)
+            if not(sameAtoms(statementUses(s) uses)) then vector.append(problems "statementUses") end
+            let found = statementBinders(s)
+            let var same = extent found is vector.length(binders)
+            for i = 0 upto {extent found - 1} do
+                if same andif {found[i].id isnot vector.get(binders i).id} then same := false end
+            end
+            if not(same) then vector.append(problems "statementBinders") end
+            let contained = statementBodies(s)
+            let var sameBodies = extent contained is vector.length(bodies)
+            for i = 0 upto {extent contained - 1} do
+                if sameBodies andif {contained[i].id isnot vector.get(bodies i).id} then sameBodies := false end
+            end
+            if not(sameBodies) then vector.append(problems "statementBodies") end
+            let op =
+                case s
+                    when sLet with x then maybe.some(x.value)
+                    when sDo with x then maybe.some(x.value)
+                    else maybe.none(:Op)
+                end
+            if maybe.isSome(op) then
+                let opFound = vector.new(:Atom)
+                visitOp(maybe.unwrap(op) usesInto(opFound))
+                if not(sameAtoms(opUses(maybe.unwrap(op)) opFound)) then vector.append(problems "opUses") end
+            end
+            vector.toArray(problems)
         end
 
     let walkStatements(body: Body intoFunctions: Bool): vector.T(Stmt) =

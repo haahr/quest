@@ -34,7 +34,6 @@ deleted.
 
 | Group | Step | What | Size |
 |---|---|---|---|
-| 3. IR structure | 7 | One visitor for IR nodes, with positions in one place | medium |
 
 Group 1 comes first because each of its steps fixes a copy that has already drifted. Group 2 makes the SSA's facts one
 table, after group 1 has removed the copies that would otherwise be converted twice. Group 3 is the largest step taken
@@ -43,26 +42,6 @@ different files. Steps are not renumbered as they are done. §4 lists the larger
 not taken.
 
 ## 3. Steps
-
-### Step 7: One visitor for IR nodes
-
-**Problem.** `Op` has 34 cases and `Stmt` 25. About twelve chains re-list their fields: `walk`'s `statementBodies`,
-`statementBinders`, `opUses`, `statementUses`, `mapInOp`, and `mapInStmt`; `clone`'s `copyOp` and `copyStmt`;
-`describe`'s `opTypes` and `stmtTypes`; `verifycore`, the printer, and `irinterp`. Each backend has its own
-chain too. Adding `opIsSet` touched 14 files. The renaming walk once missed descriptors that cloning copied (fixed in
-4a7cea93), the kind of mistake that comes from keeping copies in step. 18 `Stmt` cases carry `var pos`, so `stmtPos`
-and `positionAt` are 18 identical arms each.
-
-**Change.**
-- `visitOp` and `visitStmt` in `ir/walk`, taking one closure per kind of child (atom, variable, type, descriptor, plan,
-  function, body, binder), with in-place variants.
-- `opUses`, `statementUses`, `mapInOp`, `mapInStmt`, describe's collector, and most of `clone` follow from them.
-- The printer, `verifycore`, `irinterp`, and the backends keep their own exhaustive cases: they do different things
-  per case, not the same thing to each child.
-- Positions move out of the cases: `Stmt = Tuple var pos kind: StmtKind`. If that change is too wide for the backends
-  in one step, it is a step of its own after this one.
-
-**Tests.** IR goldens at every stage, unchanged, and `verify` at every stage as always.
 
 ## 4. Later
 
@@ -106,6 +85,17 @@ Worth doing, but larger or less urgent; each becomes a step when there is time f
   need to find an instruction's place), barriers' table of definitions (the same, for a checker), arm64 selection's
   use counts and definitions (made in its one sweep over the function with what else it collects, on a hot path), and
   the terminator cases of escape and scalars that give each kind of use its own reason.
+- **What step 7 left.** `ir/walk`'s `visitOp` and `visitStmt` hold each node's atoms, used variables, binders,
+  bodies, functions, types, plans, and modules, in the order describe lists a unit's types, which it now does through
+  them. `opUses`, `statementUses`, `statementBinders`, and `statementBodies` stay written out: made from the visitor,
+  the compiler retired 17.9% more instructions (159.3 to 187.8 billion, §1's four programs), since every pass calls
+  them on every statement and each call built a visitor and called a closure per child. `traversalProblems` checks
+  them against the visitor under `QUEST_CHECK_IR`, and `verify` reports a difference. Left as they were: `mapInOp`
+  and `mapInStmt` (the one in-place walk, which also renames descriptors and view maps), `clone` (which makes new nodes,
+  with their types substituted and their plans and tables copied), and the printer, `verifycore`, `irinterp`, and the
+  backends, which do something different in each case. Positions are still in 18 `Stmt` cases (`stmtPos` and
+  `positionAt` each have 18 identical arms): `Stmt = Tuple var pos kind: StmtKind` changes every statement's
+  construction and every backend's `case`, a step of its own.
 - **What step 8 left.** The IR's stages are `ir/stages.Stage`, and describe's use counts are in its `Describer`.
   Left as module state: `nodes`' id counter, which `newBody` and every variable's constructor take from, so moving it
   into the unit would pass the unit to every pass's every constructor; and represent's `typeVarsMemo`, a cache cleared

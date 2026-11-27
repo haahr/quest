@@ -190,8 +190,13 @@ linked symbol names) to emit what the described IR names.
   jumps only to enclosing join points, no `funs` after closure conversion, conversions only after represent, every
   descriptor bound where used). `runPasses` runs them after each pass when `QUEST_CHECK_IR=1`, which the test runners
   set.
-- [`walk`](walk.int.quest) holds the traversals the passes share. Quest has no reflection, so each traversal lists
-  each node's fields case by case.
+- [`walk`](walk.int.quest) holds the traversals the passes share. Quest has no reflection, so a traversal lists
+  each node's fields case by case, and two do it for the rest: `visitOp` and `visitStmt` call a `Visitor`'s function
+  for each atom, used variable, binder, body, function, type, plan, and module a node holds. Describe lists a unit's
+  types with it; `opUses`, `statementUses`, `statementBinders`, and `statementBodies`, which the passes call on every
+  statement, are written out for speed and checked against it under `QUEST_CHECK_IR` (`traversalProblems`).
+  `mapInOp` and `mapInStmt` replace a node's variables and atoms in place, descriptors and view maps included, and
+  `clone` keeps its own cases, since it makes new nodes with their types substituted.
 - The IR interpreter ([`../interpreter/irinterp`](../interpreter/irinterp.int.quest)) runs a unit at any stage
   (`--stop-after run_ir_described`, say). The tree-walking interpreter runs the typed AST without going through the
   IR at all, so comparing the two tests lowering and every pass against an independent oracle.

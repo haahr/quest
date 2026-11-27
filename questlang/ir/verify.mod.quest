@@ -612,6 +612,17 @@ export
                 verifyCore.body(v m.init verifyCore.newScope(verifyCore.newIds()) "module '" <> m.name <> "'")
             end
             verifyCore.body(v unit.main verifyCore.newScope(verifyCore.newIds()) "main")
+            (* Each statement's traversals agree with walk's visitor *)
+            let bodies = walk.unitBodies(unit)
+            for i = 0 upto {extent bodies - 1} do
+                let stmts = walk.walkStatements(bodies[i] true)
+                for k = 0 upto {vector.length(stmts) - 1} do
+                    let found = walk.traversalProblems(vector.get(stmts k))
+                    for j = 0 upto {extent found - 1} do
+                        vector.append(v.problems "walk." <> found[j] <> " disagrees with walk.visitStmt")
+                    end
+                end
+            end
             if nodes.atLeast(unit stages.closed) then
                 (* Lifted functions use their parameters, their environment, and
                  * the unit's globals *)

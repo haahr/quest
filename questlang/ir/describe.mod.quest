@@ -886,9 +886,6 @@ export
     let variable(c: Collector v: Variable): Ok = if first(c v.id) then add(c v.type) end
     let optVariable(c: Collector v: maybe.T(Variable)): Ok = if maybe.isSome(v) then variable(c maybe.unwrap(v)) end
     let atom(c: Collector a: Atom): Ok = case a when atomVar with x then variable(c x.v) else ok end
-    let optAtom(c: Collector a: maybe.T(Atom)): Ok = if maybe.isSome(a) then atom(c maybe.unwrap(a)) end
-    let atoms(c: Collector items: Array(Atom)): Ok = for i = 0 upto {extent items - 1} do atom(c items[i]) end
-    let types(c: Collector items: Array(Type)): Ok = for i = 0 upto {extent items - 1} do add(c items[i]) end
 
     let rec descriptorTypes(c: Collector d: Descriptor): Ok =
         case d
@@ -923,9 +920,6 @@ export
             when refImport with x then importTypes(c x.i)
         end
 
-    and optModuleRef(c: Collector r: maybe.T(nodes.ModuleRef)): Ok =
-        if maybe.isSome(r) then moduleRefTypes(c maybe.unwrap(r)) end
-
     and importTypes(c: Collector i: nodes.Import): Ok = if first(c i.id) then addOpt(c i.recordType) end
 
     and membersTypes(c: Collector m: nodes.Members): Ok =
@@ -957,39 +951,34 @@ export
             end
         end
 
+    (* The visitor that adds the types of what a node holds (ir/walk), in
+     * the order of its fields *)
+    and holdings(c: Collector): walk.Visitor =
+        begin
+            let onAtom = fun(a: Atom): Ok atom(c a)
+            let onVariable = fun(v: Variable): Ok variable(c v)
+            let onBody = fun(b: Body): Ok bodyTypes(c b)
+            let onFunction = fun(f: nodes.Function): Ok functionTypes(c f)
+            let onType = fun(t: Type): Ok add(c t)
+            let onPlan = fun(p: Plan): Ok planTypes(c maybe.some(p))
+            let onModuleRef = fun(r: nodes.ModuleRef): Ok moduleRefTypes(c r)
+            tuple
+                let atom = onAtom
+                let used = onVariable
+                let binder = onVariable
+                let body = onBody
+                let function = onFunction
+                let type = onType
+                let plan = onPlan
+                let moduleRef = onModuleRef
+            end
+        end
+
+    (* A record literal's type, which no field holds, comes first *)
     and opTypes(c: Collector o: Op): Ok =
-        case o
-            when opAtom with x then atom(c x.atom)
-            when opPrim with x then atoms(c x.args)
-            when opCall with x then
-                begin
-                    optVariable(c x.callee)
-                    types(c x.typeArgs)
-                    atoms(c x.args)
-                    optModuleRef(c x.moduleRef)
-                    addOpt(c x.calleeType)
-                end
-            when opTypeApp with x then
-                begin
-                    optVariable(c x.callee)
-                    types(c x.typeArgs)
-                    optModuleRef(c x.moduleRef)
-                    addOpt(c x.calleeType)
-                    for i = 0 upto {extent x.plans - 1} do planTypes(c x.plans[i]) end
-                end
-            when opModuleMember with x then moduleRefTypes(c x.moduleRef)
-            when opCallExternal with x then begin types(c x.typeArgs) atoms(c x.args) end
-            when opMakeClosure with x then begin functionTypes(c x.code) atoms(c x.captures) types(c x.typeArgs) end
-            when opEnvField with x then atom(c x.env)
-            when opConvert with x then begin atom(c x.value) planTypes(c maybe.some(x.plan)) end
-            when opMakeTuple with x then
-                begin
-                    atoms(c x.args)
-                    for i = 0 upto {extent x.typeComponents - 1} do add(c x.typeComponents[i].type) end
-                end
-            when opTupleField with x then atom(c x.tup)
-            when opMakeRecord with x then
-                begin
+        begin
+            case o
+                when opMakeRecord with x then
                     let fields =
                         array of(extent x.fields tuple let name = "" let type = model.okType let isVar = false end)
                     for i = 0 upto {extent x.fields - 1} do
@@ -1000,59 +989,19 @@ export
                         end
                     end
                     add(c model.recordType(fields maybe.none()))
-                    for i = 0 upto {extent x.fields - 1} do atom(c x.fields[i].atom) end
-                end
-            when opRecordField with x then atom(c x.recordAtom)
-            when opMakeVariant with x then optAtom(c x.payload)
-            when opMakeOption with x then begin optAtom(c x.payload) optAtom(c x.ordinalAtom) end
-            when opIsTag with x then atom(c x.value)
-            when opPayload with x then atom(c x.value)
-            when opOrdinal with x then atom(c x.value)
-            when opMakeArray with x then atoms(c x.args)
-            when opArrayRep with x then begin atom(c x.count) atom(c x.init) end
-            when opIndex with x then begin atom(c x.arr) atom(c x.index) end
-            when opMakeAuto with x then begin add(c x.autoType) atom(c x.payload) end
-            when opMakeException with x then addOpt(c x.payloadType)
-            when opExceptionPayload with x then atom(c x.exc)
-            when opCaughtException with x then atom(c x.exc)
-            when opAddrVar with x then variable(c x.v)
-            when opIsSet with x then variable(c x.v)
-            when opAddrCell with x then atom(c x.init)
-            when opAddrField with x then atom(c x.base)
-            when opAddrComponent with x then atom(c x.base)
-            when opAddrElement with x then begin atom(c x.base) atom(c x.index) end
-            when opLoad with x then atom(c x.address)
-            else ok
+                else ok
+            end
+            walk.visitOp(o holdings(c))
         end
 
-    and optBodyTypes(c: Collector b: maybe.T(Body)): Ok = if maybe.isSome(b) then bodyTypes(c maybe.unwrap(b)) end
-
+    (* As opTypes adds a record literal's type, an inspect of an auto value
+     * adds its cases' payload types first, and a raise its payload's type
+     * after the rest; a funs statement adds its functions' types alone *)
     and stmtTypes(c: Collector s: Stmt): Ok =
         case s
             when sLet with x then begin variable(c x.v) opTypes(c x.value) end
-            when sVarDecl with x then begin variable(c x.v) optAtom(c x.init) end
-            when sAssign with x then begin variable(c x.v) atom(c x.value) end
-            when sStoreAt with x then begin atom(c x.value) atom(c x.address) end
-            when sStoreField with x then begin atom(c x.value) atom(c x.base) end
-            when sStoreComponent with x then begin atom(c x.value) atom(c x.base) end
-            when sStoreElement with x then begin atom(c x.value) atom(c x.base) atom(c x.index) end
             when sDo with x then opTypes(c x.value)
             when sFuns with x then for i = 0 upto {extent x.functions - 1} do functionTypes(c x.functions[i]) end
-            when sLetRec with x then
-                begin
-                    for i = 0 upto {extent x.vars - 1} do variable(c x.vars[i]) end
-                    bodyTypes(c x.body)
-                end
-            when sIf with x then begin atom(c x.cond) bodyTypes(c x.thenBody) bodyTypes(c x.elseBody) end
-            when sSwitch with x then
-                begin
-                    atom(c x.value)
-                    for i = 0 upto {extent x.cases - 1} do
-                        bodyTypes(c x.cases[i].body)
-                        optVariable(c x.cases[i].binder)
-                    end
-                    optBodyTypes(c x.elseBody)
-                end
             when sInspect with x then
                 begin
                     if maybe.isSome(x.autoType) then
@@ -1062,38 +1011,16 @@ export
                             end
                         end
                     end
-                    atom(c x.value)
-                    for i = 0 upto {extent x.cases - 1} do
-                        let k = x.cases[i]
-                        add(c k.matchType)
-                        for j = 0 upto {extent k.binders - 1} do variable(c k.binders[j]) end
-                        bodyTypes(c k.body)
-                        if maybe.isSome(k.arm) then planTypes(c maybe.unwrap(k.arm).plan) end
-                    end
-                    optBodyTypes(c x.elseBody)
-                    addOpt(c x.autoType)
+                    walk.visitStmt(s holdings(c))
                 end
-            when sLoop with x then bodyTypes(c x.body)
-            when sTry with x then
-                begin bodyTypes(c x.body) variable(c x.exc) bodyTypes(c x.handler) atoms(c x.catches) end
-            when sJoin with x then
-                begin
-                    for i = 0 upto {extent x.params - 1} do variable(c x.params[i]) end
-                    bodyTypes(c x.continuation)
-                    bodyTypes(c x.body)
-                end
-            when sEcho with x then begin atom(c x.value) add(c x.type) end
-            when sReturn with x then atom(c x.value)
-            when sJump with x then atoms(c x.args)
             when sRaise with x then
                 begin
-                    atom(c x.exc) optAtom(c x.payload)
+                    walk.visitStmt(s holdings(c))
                     if maybe.isSome(x.payload) andif not(stringOp.isEmpty(x.payloadText)) then
                         add(c typeOf(maybe.unwrap(x.payload)))
                     end
                 end
-            when sReraise with x then variable(c x.exc)
-            else ok
+            else walk.visitStmt(s holdings(c))
         end
 
     and bodyTypes(c: Collector b: Body): Ok =
