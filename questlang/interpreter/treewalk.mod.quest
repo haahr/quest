@@ -521,112 +521,8 @@ export
                     (* Evaluated once: the target may have effects *)
                     let v = evalExpr(x.target f)
                     case v when vRef with r then model.deref(r.r) else v end
-                when exprSelectRef with x then
-                    case model.unwrapRefs(evalExpr(x.target f))
-                        when vRecord with r then
-                            let cell = hashMap.find(r.r.fields x.field)
-                            if cell?vRef then cell
-                            else model.internalError("Field '" <> x.field <> "' is not mutable" offset)
-                            end
-                        else model.internalError("Field selection target must be Record" offset)
-                    end
-                when exprIndexRef with x then
-                    let target = model.unwrapRefs(evalExpr(x.target f))
-                    case target
-                        when vArray with a then
-                            let i = indexOf(evalExpr(x.index f) offset)
-                            primitives.checkIndex(a.a i offset)
-                            option vRef of Value with
-                                let r = tuple
-                                    let form = option arrayElement of model.RefForm with
-                                        let arr = a.a
-                                        let index = i
-                                    end
-                                end
-                            end
-                        else model.internalError("Index target must be Array, got " <> model.typeName(target) offset)
-                    end
-                when exprTupleSelectRef with x then
-                    (* @o!tag.f is the option's own component f, which has no
-                     * ordinal before it *)
-                    let through = optionExtraction(x.target)
-                    let target =
-                        if maybe.isSome(through) then
-                            option vTuple of Value with
-                                let t = ownPayload(model.unwrapRefs(evalExpr(extracted(x.target) f)) x.target)
-                            end
-                        else
-                            model.unwrapRefs(evalExpr(x.target f))
-                        end
-                    case target
-                        when vTuple with t then
-                            let var idx =
-                                if maybe.isSome(through) andif {x.index >= 0} then x.index - 1 else x.index end
-                            if {idx < 0} andif maybe.isSome(x.field) then
-                                idx := maybe.unwrapOr(hashMap.get(t.t.nameToIndex maybe.unwrap(x.field)) ~1)
-                            end
-                            if {idx < 0} orif {idx >= extent t.t.elements} then
-                                model.internalError(:Ok "Tuple component out of bounds" offset)
-                            end
-                            let elem = t.t.elements[idx]
-                            if elem?vRef then
-                                elem
-                            else
-                                option vRef of Value with
-                                    let r = tuple
-                                        let form = option tupleElement of model.RefForm with
-                                            let tup = t.t
-                                            let index = idx
-                                        end
-                                    end
-                                end
-                            end
-                        else
-                            model.internalError("Tuple select target must be Tuple, got "
-                                <> model.typeName(target) offset)
-                    end
-                when exprAssign with x then
-                    let through =
-                        case x.target.form
-                            when exprSelect with s then optionExtraction(s.target)
-                            else maybe.none(:Expr)
-                        end
-                    if maybe.isSome(through) then
-                        (* For o!tag.f := v, write directly into the option's
-                         * own component f (matching a case binder). Evaluate o
-                         * and check its tag before evaluating v. *)
-                        let ex = maybe.unwrap(through)
-                        let payload = ownPayload(model.unwrapRefs(evalExpr(extracted(ex) f)) ex)
-                        let rhs = evalExpr(x.value f)
-                        case x.target.form
-                            when exprSelect with s then storeComponent(payload s.field rhs offset)
-                            else ok
-                        end
-                    else
-                        (* The target is evaluated before the value, as
-                         * compiled code does *)
-                        case x.target.form
-                            when exprVar with v then
-                                let rhs = evalExpr(x.value f)
-                                case lookup(f v.name offset)
-                                    when vRef with r then model.assign(r.r rhs)
-                                    else assignName(f v.name rhs offset)
-                                end
-                            when exprSelect with s then
-                                let target = model.unwrapRefs(evalExpr(s.target f))
-                                let rhs = evalExpr(x.value f)
-                                case target
-                                    when vRecord with r then model.fieldSet(r.r s.field rhs)
-                                    when vTuple with t then storeComponent(t.t s.field rhs offset)
-                                    else
-                                        model.internalError(:Ok "Field assignment target must be Record or Tuple"
-                                                offset)
-                                end
-                            else model.internalError(:Ok "Unsupported assignment target in interpreter" offset)
-                        end
-                    end
-                    model.okValue
-
+                when exprSelectRef, exprIndexRef, exprTupleSelectRef then reference(e f offset)
+                when exprAssign with x then assign(x.target x.value f offset)
                 (* Functions and application *)
                 when exprFun then makeClosure(e f maybe.none() maybe.none())
                 when exprTypeApp with x then
@@ -713,37 +609,7 @@ export
                         end
                     end
                     model.okValue
-                when exprFor with x then
-                    let startVal = evalExpr(x.start f)
-                    let stopVal = evalExpr(x.stop f)
-                    case startVal
-                        when vInt with s then
-                            case stopVal
-                                when vInt with t then
-                                    let var cur = s.n
-                                    let var going = true
-                                    while going andif {if x.isDownto then cur >= t.n else cur <= t.n end} do
-                                        checkInterrupt(offset)
-                                        (* Give each iteration its own scope so
-                                         * closures created in the body capture
-                                         * that iteration's loop variable, as
-                                         * lowering's let does *)
-                                        let loopEnv = pushScope(f)
-                                        define(loopEnv x.varName model.intValue(cur))
-                                        try begin evalExpr(x.body loopEnv) ok end when loopExit then going := false end
-                                        (* Stop at the bound: a step past
-                                         * maxInt or minInt would wrap *)
-                                        if cur is t.n then
-                                            going := false
-                                        else
-                                            cur := if x.isDownto then cur - 1 else cur + 1 end
-                                        end
-                                    end
-                                    model.okValue
-                                else model.internalError("For loop bounds must evaluate to Int" offset)
-                            end
-                        else model.internalError("For loop bounds must evaluate to Int" offset)
-                    end
+                when exprFor with x then evalFor(x.varName x.start x.isDownto x.stop x.body f offset)
                 when exprExit then raise loopExit end
 
                 (* Aggregates *)
@@ -914,90 +780,252 @@ export
                         else model.internalError("Target of raise must be Exception, got "
                             <> model.typeName(evalExpr(x.exc f)) offset)
                     end
-                when exprTry with x then
-                    try
-                        evalExpr(x.body f)
-                    when model.runError with err then
-                        case err.cause
-                            when raised with r then
-                                let var handled = maybe.none(:Value)
-                                let var i = 0
-                                while maybe.isNone(handled) andif {i < extent x.branches} do
-                                    let b = x.branches[i]
-                                    case evalExpr(b.excPattern f)
-                                        when vException with p then
-                                            if p.e is r.exc then
-                                                handled := maybe.some(if maybe.isSome(b.binder) then
-                                                    let child = pushScope(f)
-                                                    define(child maybe.unwrap(b.binder).name
-                                                            maybe.unwrapOr(r.payload model.okValue))
-                                                    evalExpr(b.body child)
-                                                else
-                                                    evalExpr(b.body f)
-                                                end)
-                                            end
-                                        else ok
-                                    end
-                                    i := i + 1
-                                end
-                                if maybe.isSome(handled) then
-                                    maybe.unwrap(handled)
-                                elsif maybe.isSome(x.elseBranch) then
-                                    if maybe.isSome(x.elseBinder) then
-                                        (* Bind the else branch's name to the
-                                         * RunError itself so raised.reraise
-                                         * can re-raise it (docs/raised.md
-                                         * section 5), recording its source
-                                         * location and active frames as if it
-                                         * had left this frame *)
-                                        leaving(err f)
-                                        let child = pushScope(f)
-                                        define(child maybe.unwrap(x.elseBinder).name
-                                                option vRaised of Value with let e = err end)
-                                        evalExpr(maybe.unwrap(x.elseBranch) child)
-                                    else
-                                        evalExpr(maybe.unwrap(x.elseBranch) f)
-                                    end
-                                else
-                                    rethrow(err)
-                                end
-                            else rethrow(err)
-                        end
-                    end
-
+                when exprTry with x then evalTry(x.body x.branches x.elseBranch x.elseBinder f)
                 (* Auto values' types *)
-                when exprInspect with x then
-                    case evalExpr(x.target f)
-                        when vAuto with a then
-                            let var result = maybe.none(:Value)
-                            let var i = 0
-                            while maybe.isNone(result) andif {i < extent x.branches} do
-                                let b = x.branches[i]
-                                let matchType = resolveType(f b.matchType)
-                                if primitives.inspectMatches(a.a.type matchType b.exact) then
-                                    result := maybe.some(if extent b.binders > 0 then
+                when exprInspect with x then evalInspect(x.target x.branches x.elseBranch f tail offset)
+            end
+        end
+
+    (* The reference a location expression makes: a record's var field
+     * (@r.f), an array's element (@a[i]), or a tuple's var component (@t.f
+     * or @t.1) *)
+    and reference(e: Expr f: Frame offset: maybe.T(Int)): Value =
+        case e.form
+            when exprSelectRef with x then
+                case model.unwrapRefs(evalExpr(x.target f))
+                    when vRecord with r then
+                        let cell = hashMap.find(r.r.fields x.field)
+                        if cell?vRef then cell
+                        else model.internalError("Field '" <> x.field <> "' is not mutable" offset)
+                        end
+                    else model.internalError("Field selection target must be Record" offset)
+                end
+            when exprIndexRef with x then
+                let target = model.unwrapRefs(evalExpr(x.target f))
+                case target
+                    when vArray with a then
+                        let i = indexOf(evalExpr(x.index f) offset)
+                        primitives.checkIndex(a.a i offset)
+                        option vRef of Value with
+                            let r = tuple
+                                let form = option arrayElement of model.RefForm with
+                                    let arr = a.a
+                                    let index = i
+                                end
+                            end
+                        end
+                    else model.internalError("Index target must be Array, got " <> model.typeName(target) offset)
+                end
+            when exprTupleSelectRef with x then
+                (* @o!tag.f is the option's own component f, which has no
+                 * ordinal before it *)
+                let through = optionExtraction(x.target)
+                let target =
+                    if maybe.isSome(through) then
+                        option vTuple of Value with
+                            let t = ownPayload(model.unwrapRefs(evalExpr(extracted(x.target) f)) x.target)
+                        end
+                    else
+                        model.unwrapRefs(evalExpr(x.target f))
+                    end
+                case target
+                    when vTuple with t then
+                        let var idx = if maybe.isSome(through) andif {x.index >= 0} then x.index - 1 else x.index end
+                        if {idx < 0} andif maybe.isSome(x.field) then
+                            idx := maybe.unwrapOr(hashMap.get(t.t.nameToIndex maybe.unwrap(x.field)) ~1)
+                        end
+                        if {idx < 0} orif {idx >= extent t.t.elements} then
+                            model.internalError(:Ok "Tuple component out of bounds" offset)
+                        end
+                        let elem = t.t.elements[idx]
+                        if elem?vRef then
+                            elem
+                        else
+                            option vRef of Value with
+                                let r = tuple
+                                    let form = option tupleElement of model.RefForm with
+                                        let tup = t.t
+                                        let index = idx
+                                    end
+                                end
+                            end
+                        end
+                    else
+                        model.internalError("Tuple select target must be Tuple, got "
+                            <> model.typeName(target) offset)
+                end
+            else model.internalError("not a location" offset)
+        end
+
+    (* target := value, the target evaluated before the value, as compiled
+     * code does *)
+    and assign(target: Expr value: Expr f: Frame offset: maybe.T(Int)): Value =
+        begin
+            let through =
+                case target.form
+                    when exprSelect with s then optionExtraction(s.target)
+                    else maybe.none(:Expr)
+                end
+            if maybe.isSome(through) then
+                (* For o!tag.f := v, write directly into the option's own
+                 * component f (matching a case binder). Evaluate o and check
+                 * its tag before evaluating v. *)
+                let ex = maybe.unwrap(through)
+                let payload = ownPayload(model.unwrapRefs(evalExpr(extracted(ex) f)) ex)
+                let rhs = evalExpr(value f)
+                case target.form
+                    when exprSelect with s then storeComponent(payload s.field rhs offset)
+                    else ok
+                end
+            else
+                case target.form
+                    when exprVar with v then
+                        let rhs = evalExpr(value f)
+                        case lookup(f v.name offset)
+                            when vRef with r then model.assign(r.r rhs)
+                            else assignName(f v.name rhs offset)
+                        end
+                    when exprSelect with s then
+                        let base = model.unwrapRefs(evalExpr(s.target f))
+                        let rhs = evalExpr(value f)
+                        case base
+                            when vRecord with r then model.fieldSet(r.r s.field rhs)
+                            when vTuple with t then storeComponent(t.t s.field rhs offset)
+                            else
+                                model.internalError(:Ok "Field assignment target must be Record or Tuple"
+                                        offset)
+                        end
+                    else model.internalError(:Ok "Unsupported assignment target in interpreter" offset)
+                end
+            end
+            model.okValue
+        end
+
+    (* A for loop, from start up to or down to stop, each iteration in a
+     * scope of its own that binds varName *)
+    and evalFor(varName: String start: Expr isDownto: Bool stop: Expr body: Expr f: Frame
+            offset: maybe.T(Int)): Value =
+        begin
+            let startVal = evalExpr(start f)
+            let stopVal = evalExpr(stop f)
+            case startVal
+                when vInt with s then
+                    case stopVal
+                        when vInt with t then
+                            let var cur = s.n
+                            let var going = true
+                            while going andif {if isDownto then cur >= t.n else cur <= t.n end} do
+                                checkInterrupt(offset)
+                                (* Give each iteration its own scope so
+                                 * closures created in the body capture
+                                 * that iteration's loop variable, as
+                                 * lowering's let does *)
+                                let loopEnv = pushScope(f)
+                                define(loopEnv varName model.intValue(cur))
+                                try begin evalExpr(body loopEnv) ok end when loopExit then going := false end
+                                (* Stop at the bound: a step past
+                                 * maxInt or minInt would wrap *)
+                                if cur is t.n then
+                                    going := false
+                                else
+                                    cur := if isDownto then cur - 1 else cur + 1 end
+                                end
+                            end
+                            model.okValue
+                        else model.internalError("For loop bounds must evaluate to Int" offset)
+                    end
+                else model.internalError("For loop bounds must evaluate to Int" offset)
+            end
+        end
+
+    (* A try: body, and if it raises an exception, the first of branches
+     * that names it, else the else branch, else the exception again *)
+    and evalTry(body: Expr branches: Array(typedAst.TryBranch) elseBranch: maybe.T(Expr)
+            elseBinder: maybe.T(symbols.ValueSymbol) f: Frame): Value =
+        try
+            evalExpr(body f)
+        when model.runError with err then
+            case err.cause
+                when raised with r then
+                    let var handled = maybe.none(:Value)
+                    let var i = 0
+                    while maybe.isNone(handled) andif {i < extent branches} do
+                        let b = branches[i]
+                        case evalExpr(b.excPattern f)
+                            when vException with p then
+                                if p.e is r.exc then
+                                    handled := maybe.some(if maybe.isSome(b.binder) then
                                         let child = pushScope(f)
-                                        for j = 0 upto {extent b.binders - 1} do
-                                            define(child b.binders[j].name a.a.value)
-                                        end
-                                        evalIn(b.body child tail)
+                                        define(child maybe.unwrap(b.binder).name
+                                                maybe.unwrapOr(r.payload model.okValue))
+                                        evalExpr(b.body child)
                                     else
-                                        evalIn(b.body f tail)
+                                        evalExpr(b.body f)
                                     end)
                                 end
-                                i := i + 1
-                            end
-                            if maybe.isSome(result) then
-                                maybe.unwrap(result)
-                            elsif maybe.isSome(x.elseBranch) then
-                                evalIn(maybe.unwrap(x.elseBranch) f tail)
-                            else
-                                model.raiseException(model.dynamicError offset)
-                            end
-                        else model.internalError("Inspect target must be an auto value, got "
-                            <> model.typeName(evalExpr(x.target f)) offset)
+                            else ok
+                        end
+                        i := i + 1
                     end
+                    if maybe.isSome(handled) then
+                        maybe.unwrap(handled)
+                    elsif maybe.isSome(elseBranch) then
+                        if maybe.isSome(elseBinder) then
+                            (* Bind the else branch's name to the
+                             * RunError itself so raised.reraise
+                             * can re-raise it (docs/raised.md
+                             * section 5), recording its source
+                             * location and active frames as if it
+                             * had left this frame *)
+                            leaving(err f)
+                            let child = pushScope(f)
+                            define(child maybe.unwrap(elseBinder).name
+                                    option vRaised of Value with let e = err end)
+                            evalExpr(maybe.unwrap(elseBranch) child)
+                        else
+                            evalExpr(maybe.unwrap(elseBranch) f)
+                        end
+                    else
+                        rethrow(err)
+                    end
+                else rethrow(err)
             end
+        end
+
+    (* An inspect of target's auto value: the first of branches whose type
+     * takes the value's, in tail position if tail, else the else branch,
+     * else dynamic.error *)
+    and evalInspect(target: Expr branches: Array(typedAst.InspectBranch) elseBranch: maybe.T(Expr)
+            f: Frame tail: Bool offset: maybe.T(Int)): Value =
+        case evalExpr(target f)
+            when vAuto with a then
+                let var result = maybe.none(:Value)
+                let var i = 0
+                while maybe.isNone(result) andif {i < extent branches} do
+                    let b = branches[i]
+                    let matchType = resolveType(f b.matchType)
+                    if primitives.inspectMatches(a.a.type matchType b.exact) then
+                        result := maybe.some(if extent b.binders > 0 then
+                            let child = pushScope(f)
+                            for j = 0 upto {extent b.binders - 1} do
+                                define(child b.binders[j].name a.a.value)
+                            end
+                            evalIn(b.body child tail)
+                        else
+                            evalIn(b.body f tail)
+                        end)
+                    end
+                    i := i + 1
+                end
+                if maybe.isSome(result) then
+                    maybe.unwrap(result)
+                elsif maybe.isSome(elseBranch) then
+                    evalIn(maybe.unwrap(elseBranch) f tail)
+                else
+                    model.raiseException(model.dynamicError offset)
+                end
+            else model.internalError("Inspect target must be an auto value, got "
+                <> model.typeName(evalExpr(target f)) offset)
         end
 
     and evalMaybe(e: maybe.T(Expr) f: Frame): maybe.T(Value) =
