@@ -96,7 +96,7 @@ export
      *   branch could be left out only because of the else. *)
     let elaborateCaseBranches(
             c: checker.T x0: ast.Expr target: ast.Expr branches: vector.T(ast.CaseBranch) elseBranch: maybe.T(ast.Expr)
-            targetType: Type expected: maybe.T(Type) e: env.T loopDepth: Int
+            targetType: Type expected: maybe.T(Type)
             ): Array(typedAst.CaseBranch) =
         begin
             let failed(): Array(Tag) =
@@ -108,7 +108,7 @@ export
                     when typeVariant with v then variantTags(v.variants)
                     else
                         begin
-                            let bound = kinds.resolveSumBound(targetType maybe.some(e))
+                            let bound = kinds.resolveSumBound(targetType maybe.some(c.env))
                             if maybe.isSome(bound) then
                                 case maybe.unwrap(bound).form
                                     when typeVariant with v then variantTags(v.variants)
@@ -152,10 +152,10 @@ export
                         end
                         let binderT =
                             if maybe.isSome(branch.binderType) then
-                                let t = elaborateTypes.elaborateType(maybe.unwrap(branch.binderType) e)
+                                let t = elaborateTypes.elaborateType(maybe.unwrap(branch.binderType) c.env)
                                 for j = 0 upto {tagCount - 1} do
                                     let payload = vector.get(payloads j)
-                                    if not(checks.isSubtype(payload t e)) then
+                                    if not(checks.isSubtype(payload t c.env)) then
                                         diagnostics.fail(:Ok "Binder '" <> binder <> "' type '" <> model.show(t)
                                             <> "' is not compatible with payload '" <> model.show(payload)
                                             <> "'" branch.offset)
@@ -166,7 +166,7 @@ export
                                 let first = vector.get(payloads 0)
                                 for j = 1 upto {tagCount - 1} do
                                     let payload = vector.get(payloads j)
-                                    if not(subtyping.isTypeEqual(first payload env.lookupOf(e))) then
+                                    if not(subtyping.isTypeEqual(first payload env.lookupOf(c.env))) then
                                         diagnostics.fail(:Ok "Binder '" <> binder <> "' would have payload type '"
                                             <> model.show(first)
                                             <> "' for tag '" <> vector.get(branch.tags 0) <> "' but '"
@@ -177,10 +177,10 @@ export
                                 end
                                 first
                             end
-                        env.localScoped(e "case_" <> binder fun(s: symbols.Scope): Arm
+                        env.localScoped(c.env "case_" <> binder fun(s: symbols.Scope): Arm
                             begin
                                 let sym = symbols.newValueSymbol(binder binderT false false false c.functionDepth 0)
-                                symbols.declareValue(e.currentScope sym)
+                                symbols.declareValue(c.env.currentScope sym)
                                 let body = checker.elaborateSubexpr(c branch.body expected)
                                 if maybe.isNone(expected) then
                                     let ids = newIds()
@@ -222,14 +222,13 @@ export
             vector.toArray(typed)
         end
 
-    let elaborateCase(c: checker.T x0: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
+    let elaborateCase(c: checker.T x0: ast.Expr expected: maybe.T(Type)): typedAst.Expr =
         case x0.form
             when exprCase with x then
                 begin
                     let targetTyped = checker.synthExpr(c x.target)
                     let targetType = checks.evaluate(targetTyped.type)
-                    let branches =
-                        elaborateCaseBranches(c x0 x.target x.branches x.elseBranch targetType expected e loopDepth)
+                    let branches = elaborateCaseBranches(c x0 x.target x.branches x.elseBranch targetType expected)
                     let elseTyped = checker.elaborateOptionalBranch(c x.elseBranch expected)
                     let bodies = vector.new(:typedAst.Expr)
                     for i = 0 upto {extent branches - 1} do vector.append(bodies branches[i].body) end
@@ -242,7 +241,7 @@ export
                                 let elseBranch = elseTyped
                             end
                         else
-                            checker.joinBodies(maybe.none() vector.toArray(bodies) elseTyped e x0.span.startOffset
+                            checker.joinBodies(maybe.none() vector.toArray(bodies) elseTyped c.env x0.span.startOffset
                                     "Cannot find common supertype join for case branch types '{t1}' and '{t2}'")
                         end
                     let joinedBranches = vector.new(:typedAst.CaseBranch)
@@ -301,8 +300,8 @@ export
      *
      * Assignments to array elements, a[i] := v, never reach here: desugaring
      * made them exprIndexAssign nodes. *)
-    let synthAssignment(c: checker.T x0: ast.Expr left: ast.Expr right: ast.Expr e: env.T
-            loopDepth: Int): typedAst.Expr =
+    let synthAssignment(c: checker.T x0: ast.Expr left: ast.Expr right: ast.Expr
+            ): typedAst.Expr =
         begin
             let offset = x0.span.startOffset
             case left.form
@@ -313,7 +312,7 @@ export
                         let found = checker.lookupValue(c id.name)
                         if maybe.isNone(found) then
                             diagnostics.failWithHelp(:Ok "Undefined variable '" <> id.name <> "'" idOff
-                                    nearMiss.valueHelp(e id.name))
+                                    nearMiss.valueHelp(c.env id.name))
                         end
                         let sym = maybe.unwrap(found)
                         checker.checkCapturable(c sym idOff)
@@ -337,10 +336,11 @@ export
                         let targetTyped = checker.synthExpr(c sel.target)
                         let var targetType = checks.evaluate(targetTyped.type)
                         let isTuple = case targetType.form when typeTuple then true else false end
-                        if not(isTuple) andif maybe.isNone(kinds.resolveRecordBound(targetType maybe.some(e))) then
+                        if not(isTuple) andif maybe.isNone(kinds.resolveRecordBound(targetType maybe.some(c.env))) then
                             (* A type parameter bounded by a tuple type is
                              * assigned through its bound *)
-                            targetType := maybe.unwrapOr(kinds.resolveTupleBound(targetType maybe.some(e)) targetType)
+                            targetType :=
+                                    maybe.unwrapOr(kinds.resolveTupleBound(targetType maybe.some(c.env)) targetType)
                         end
                         case targetType.form
                             when typeTuple with t then
@@ -384,7 +384,7 @@ export
                                 end
                             else
                                 begin
-                                    let recBound = kinds.resolveRecordBound(targetType maybe.some(e))
+                                    let recBound = kinds.resolveRecordBound(targetType maybe.some(c.env))
                                     if maybe.isNone(recBound) then
                                         diagnostics.fail(:Ok "Cannot mutate field of non-record type '"
                                             <> model.show(targetType)
@@ -422,7 +422,7 @@ export
             end
         end
 
-    let synthInfix(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
+    let synthInfix(c: checker.T x0: ast.Expr): typedAst.Expr =
         case x0.form
             when exprInfix with x then
                 begin
@@ -430,7 +430,7 @@ export
                     let op = x.op
                     let infix = env.infixOperator(op)
                     if stringOp.equal(op ":=") then
-                        synthAssignment(c x0 x.left x.right e loopDepth)
+                        synthAssignment(c x0 x.left x.right)
                     elsif stringOp.equal(op "andif") orif stringOp.equal(op "orif") then
                         checks.notDesugared("ExprInfix" x0.span.startOffset)
                     elsif maybe.isSome(infix) then
@@ -441,8 +441,8 @@ export
                     elsif stringOp.equal(op "is") orif stringOp.equal(op "isnot") then
                         let leftTyped = checker.synthExpr(c x.left)
                         let rightTyped = checker.synthExpr(c x.right)
-                        if checks.isSubtype(leftTyped.type rightTyped.type e)
-                                orif checks.isSubtype(rightTyped.type leftTyped.type e) then
+                        if checks.isSubtype(leftTyped.type rightTyped.type c.env)
+                                orif checks.isSubtype(rightTyped.type leftTyped.type c.env) then
                             typedAst.expr(offset model.boolType infixForm(leftTyped op rightTyped))
                         else
                             diagnostics.fail("Equality operator '" <> op
@@ -467,7 +467,7 @@ export
      * Conditionals and loops
      * ====================================================================== *)
 
-    let elaborateIf(c: checker.T x0: ast.Expr expected0: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
+    let elaborateIf(c: checker.T x0: ast.Expr expected0: maybe.T(Type)): typedAst.Expr =
         case x0.form
             when exprIf with x then
                 begin
@@ -498,7 +498,7 @@ export
                         if maybe.isSome(expected) then
                             typedAst.expr(offset maybe.unwrap(expected) ifForm(thenTyped elseTyped))
                         else
-                            let joined = checks.joinBranches(array of thenTyped elseTyped end e offset
+                            let joined = checks.joinBranches(array of thenTyped elseTyped end c.env offset
                                     maybe.some("Cannot find common supertype for conditional branches '{t1}' and '{t2}'"))
                             typedAst.expr(offset joined.type ifForm(joined.parts[0] joined.parts[1]))
                         end
@@ -507,19 +507,18 @@ export
             else checks.unexpected("a conditional" x0.span.startOffset)
         end
 
-    let synthFor(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
+    let synthFor(c: checker.T x0: ast.Expr): typedAst.Expr =
         case x0.form
             when exprFor with x then
                 begin
                     let startTyped = checker.checkExpr(c x.start model.intType)
                     let stopTyped = checker.checkExpr(c x.stop model.intType)
                     Let Loop = Tuple sym: symbols.ValueSymbol body: typedAst.Expr end
-                    let looped = env.localScoped(e "for_" <> x.varName fun(s: symbols.Scope): Loop
+                    let looped = env.localScoped(c.env "for_" <> x.varName fun(s: symbols.Scope): Loop
                         begin
                             let sym =
                                 symbols.newValueSymbol(x.varName model.intType false false false c.functionDepth 0)
-                            symbols.declareValue(e.currentScope sym)
-                            c.loopDepth := loopDepth
+                            symbols.declareValue(c.env.currentScope sym)
                             let body = checker.inLoop(c fun(): typedAst.Expr
                                 checker.synthExpr(c x.body))
                             tuple let sym = sym let body = body end
@@ -544,10 +543,10 @@ export
      * which is checked against the expected type if there is one; otherwise the
      * block's type is Ok, which must then be a subtype of the expected type. A
      * synthesized type may not mention the block's own bindings. *)
-    let elaborateBlock(c: checker.T x0: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
+    let elaborateBlock(c: checker.T x0: ast.Expr expected: maybe.T(Type)): typedAst.Expr =
         case x0.form
             when exprBlock with x then
-                env.localScoped(e "block" fun(blockScope: symbols.Scope): typedAst.Expr
+                env.localScoped(c.env "block" fun(blockScope: symbols.Scope): typedAst.Expr
                     begin
                         let offset = x0.span.startOffset
                         let n = vector.length(x.bindings)
@@ -597,7 +596,7 @@ export
                         if state.failed then diagnostics.raiseError(:Ok diagnostics.silentError) end
                         if maybe.isNone(result) then
                             if maybe.isSome(expected)
-                                    andif not(checks.isSubtype(model.okType maybe.unwrap(expected) e)) then
+                                    andif not(checks.isSubtype(model.okType maybe.unwrap(expected) c.env)) then
                                 let what = if n > 0 then "Block ending with declaration" else "Empty block" end
                                 diagnostics.fail(:Ok what <> " has type Ok, not expected type '"
                                     <> model.show(maybe.unwrap(expected)) <> "'" offset)
