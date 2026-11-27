@@ -26,6 +26,7 @@ import
 
     arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
     questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
+    questlang/codegen/ssaBackend : questlang/codegen/SSABackend
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
     questlang/common/maps : questlang/common/Maps
@@ -315,12 +316,7 @@ export
                     (* The passes hold a pointer and a QVal word alike, as
                      * arm64 does (choice.referencesAlike) *)
                     let optimized = passes.runPasses(unit true)
-                    let encoded = fun(): encode.Encoded
-                        begin
-                            let built = ssaPipeline.build(optimized arm64.ssaPolicy)
-                            ssaPipeline.lower(built)
-                            arm64.encodeUnit(built)
-                        end
+                    let encoded = fun(): encode.Encoded arm64.encodeUnit(ssaBackend.loweredSSA(optimized "arm64"))
                     ssaPipeline.attempt(encoded fun(x: String): encode.Encoded fail(x))
                 (* Convert IR, SSA, arm64, and encoding failures into
                  * unsupported *)

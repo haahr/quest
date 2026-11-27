@@ -1,0 +1,26 @@
+(* Quest Self-Hosted Compiler: The SSA's Backends Interface
+ *
+ * What the two backends that start from the SSA (docs/ssa.md), ssac and
+ * arm64, share: each one's policy for the SSA's passes, and a unit's SSA
+ * built, optimized, and lowered under it. codegen/native compiles with them,
+ * driver/ssaphases dumps the SSA under the policy of the backend chosen, and
+ * the JIT (jit/target) encodes arm64's. It is a module of its own, rather
+ * than part of codegen/native, so that native's and ssaphases' wasm variants
+ * (docs/build-process.md section 6.4), which leave the SSA out of a driver
+ * compiled to WebAssembly (docs/wasm.md section 5.1), need not import it. *)
+
+interface SSABackend
+import
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* The policy of backend's passes: arm64's (codegen/arm64/codegen's
+     * ssaPolicy) for any backend but ssac, which, through clang, rotates no
+     * loop itself and keeps arm64's opcodes block-local until narrowing them
+     * is measured (docs/ssa.md section 4.1) *)
+    policyFor(backend: String): ssa.Policy
+    (* unit's SSA, built and optimized under policyFor(backend)
+     * (ssa/pipeline.build), then lowered for the SSA's backends
+     * (ssa/pipeline.lower) *)
+    loweredSSA(unit: ir.Unit backend: String): ssa.Unit
+end

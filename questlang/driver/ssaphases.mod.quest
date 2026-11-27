@@ -4,18 +4,19 @@ module ssaPhases : SSAPhases
 import
     stringOp = string : StringOp
 
-    arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
+    questlang/codegen/ssaBackend : questlang/codegen/SSABackend
     questlang/ir/nodes : questlang/ir/Nodes
     ssaNodes = questlang/ssa/nodes : questlang/ssa/Nodes
     ssaParser = questlang/ssa/parser : questlang/ssa/Parser
     ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
     ssaPrinter = questlang/ssa/printer : questlang/ssa/Printer
 export
-    (* The SSA as the default backend's passes leave it, dumped as shows
-     * asks; a failure's message, or "" *)
-    let dumped(unit: nodes.Unit shows: All(name: String) Bool dump: All(text: String) Ok checks: Bool): String =
+    (* The SSA as backend's passes leave it, dumped as shows asks; a
+     * failure's message, or "" *)
+    let dumped(unit: nodes.Unit backend: String shows: All(name: String) Bool dump: All(text: String) Ok checks: Bool)
+            : String =
         begin
-            let built = ssaPipeline.run(unit arm64.ssaPolicy fun(name: String u: ssaNodes.Unit): Ok
+            let built = ssaPipeline.run(unit ssaBackend.policyFor(backend) fun(name: String u: ssaNodes.Unit): Ok
                 if shows("ssa_" <> name) then dump(ssaPrinter.formatUnit(u)) end)
             let var failure = ""
             if shows("ssa") then
@@ -29,8 +30,9 @@ export
             failure
         end
 
-    let run(unit: nodes.Unit shows: All(name: String) Bool dump: All(text: String) Ok checks: Bool): String =
-        try ssaPipeline.attempt(fun(): String dumped(unit shows dump checks) fun(m: String): String m)
+    let run(unit: nodes.Unit backend: String shows: All(name: String) Bool dump: All(text: String) Ok checks: Bool)
+            : String =
+        try ssaPipeline.attempt(fun(): String dumped(unit backend shows dump checks) fun(m: String): String m)
         when ssaParser.readError with m then "ssa: " <> m
         end
 end

@@ -209,8 +209,9 @@ internal error.
 
 `questlang/ssa/pipeline` builds a unit and then runs its passes, by name, in order, each on every function, under the
 backend's `Policy` (`nodes.Policy`): whether every loop is rotated (`rotateAll`, off for ssac), and which opcodes value
-numbering keeps block-local (`rematerializable`; arm64's is `codegen.ssaPolicy`, which the JIT and the driver's SSA
-dumps use too):
+numbering keeps block-local (`rematerializable`; arm64's is `codegen.ssaPolicy`). `codegen/ssaBackend.policyFor` gives
+each backend's, and `loweredSSA` builds and lowers a unit under it for `codegen/native` and the JIT; the driver's SSA
+dumps show the passes under the policy of the backend chosen (`--backend ssac` dumps ssac's):
 
 - **`ssa/passes/escape`** makes each allocation that does not leave its function a stack slot (§4.2), which promotion
   then makes values where it can.

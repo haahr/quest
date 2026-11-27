@@ -47,6 +47,10 @@ fallback: what the chosen backend cannot compile is an error, never silently com
 knows each backend's file names (an arm64 unit writes `.s` where the others write `.c`), and the build records a
 unit's backend in its manifest, so that changing it makes the unit stale.
 
+[`ssaBackend`](ssabackend.int.quest) holds what the two SSA backends share: each one's policy for the SSA's passes
+(`policyFor`), which the driver's SSA dumps follow too, and a unit's SSA built and lowered under it (`loweredSSA`),
+which `native` and the JIT compile.
+
 [`backend`](backend.int.quest) is the one entry point the driver, the build engine, and the module compiler call. It
 lowers a typed program or module file to the IR (`ir/lower`), runs the IR's passes (`ir/pipeline`), and dispatches on
 the backend's name. Each backend raises its own exception for what it cannot compile; `backend` raises each again as
