@@ -12,6 +12,7 @@ import
     questlang/common/maps : questlang/common/Maps
     questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/passNames : questlang/ssa/PassNames
     questlang/ssa/passes/valueNumbers : questlang/ssa/passes/ValueNumbers
 export
     Def Fact = Tuple value: Bool block: Int end
@@ -163,9 +164,11 @@ export
             decided
         end
 
+    let decideAgain(f: ssa.Function): Bool = not(passNames.skipped("conditions")) andif decideFunction(f)
+
     let decideUnit(u: ssa.Unit p: ssa.Policy): Ok =
         for i = 0 upto {vector.length(u.functions) - 1} do
             let f = vector.get(u.functions i)
-            if decideFunction(f) then valueNumbers.numberFunction(f p) end
+            if decideFunction(f) then valueNumbers.numberAgain(f p) end
         end
 end

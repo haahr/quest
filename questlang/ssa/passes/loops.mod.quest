@@ -375,7 +375,7 @@ export
                     end
                 end
             end
-            if kept then let ignored = promote.promoteFunction(f) end
+            if kept then promote.promoteAgain(f) end
             kept
         end
 
@@ -1361,17 +1361,17 @@ export
                 let kept = keepCells(f)
                 let hoisted = hoistLoops(f p.rotateAll)
                 if hoisted then
-                    let ignored = promote.promoteFunction(f)
+                    promote.promoteAgain(f)
                     begin let ignored = blockParams.dropDeadParams(f) end
                 end
                 if looped orif kept orif hoisted then
-                    valueNumbers.numberFunction(f p)
+                    valueNumbers.numberAgain(f p)
                     (* The comparisons of the checks conditions decides are
                      * left without uses, which numbering again removes *)
-                    if conditions.decideFunction(f) then valueNumbers.numberFunction(f p) end
+                    if conditions.decideAgain(f) then valueNumbers.numberAgain(f p) end
                 end
                 (* Bounds checks last, with equal values numbered alike *)
-                if decideBounds(f) then valueNumbers.numberFunction(f p) end
+                if decideBounds(f) then valueNumbers.numberAgain(f p) end
             end
         end
 
@@ -1382,7 +1382,7 @@ export
                 (* The header's parameters that nothing reads go, as the
                  * closure's, which the back edge passes as null *)
                 begin let ignored = blockParams.dropDeadParams(f) end
-                valueNumbers.numberFunction(f p)
+                valueNumbers.numberAgain(f p)
             end
         end
 end

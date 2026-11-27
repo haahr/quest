@@ -307,8 +307,8 @@ dumps show the passes under the policy of the backend chosen (`--backend ssac` d
   global); they move into the branch's block. A carry in a loop of arbitrary-precision arithmetic (`util/bignum`'s
   `bit(word.lt(sum operand))`) is such a branch, taken as often as not, half of which arm64 mispredicted as a branch; it
   makes each a `cset` of the comparison's flags, as C's compiler does ([benchmarks.md](benchmarks.md) §15).
-  A function the pass changed has, after the SSA's last pass (`straightenUnit`), its blocks that only jump to a block
-  whose sole predecessor they are merged with it, the successor's parameters taking the jump's arguments ; only a
+  A function the pass changed has, in the list's last pass, `straighten` (`selects.straightenUnit`), its blocks that
+  only jump to a block whose sole predecessor they are merged with it, the successor's parameters taking the jump's arguments ; only a
   block that ends in a conversion's selects is merged, since merging every chain in such a function changed arm64's
   layout of wc-scanStream's loop and others, and cost it 3.5% and the compiler 0.9% more instructions): one diamond after another was left a chain of blocks,
   and what is decided within a block stopped at each jump (arm64 makes a carry `adds` and `cset hs` only in its add's
@@ -403,9 +403,8 @@ dumps show the passes under the policy of the backend chosen (`--backend ssac` d
   member copied in jumps to its copy's first block; a tail call of the function itself is left, which arm64 makes a
   jump to its first block and clang a loop. even-odd's `even1` holds a copy of `odd1`, whose tail call of `even1` is
   then a self tail call: one loop, without pushing and popping a frame at each step. A call through a closure is
-  indirect and is left. The pass list's `tailJumps` also runs `loops.loopTailCalls` after it (`pipeline.jumpUnit`),
-  which makes a function's one self tail call, such as `even1`'s, a loop, as `loops` does before. `ssa_tailjumps` shows
-  each case.
+  indirect and is left. The pass after it, `loopTailCalls` (`loops.loopTailCalls`), makes a function's one self tail
+  call, such as `even1`'s, a loop, as `loops` does before. `ssa_tailjumps` shows each case.
 - **`ssa/passes/trampolines`**, after it, makes an export its function ([benchmarks.md](benchmarks.md) §22).
   Another unit calls a module's function through its export (`qv_`), which passes a null environment and tail-calls the
   function, often through an adapter that tail-calls it in turn ([ir.md](ir.md) §8.4.1): vector.get was three branches
@@ -467,7 +466,11 @@ finding the ones nothing needs (`deadParams`), and moving the entry's code into 
 (`splitEntry`). The driver dumps the SSA after the builder (`--dump-after ssa_built`), after each pass (`ssa_NAME`, for
 each name in `ssa/passNames`, the one list of the passes, from which the pipeline and the driver's phases and usage text
 are derived), and at the end (`ssa`); `QUEST_SKIP_PASSES`, a comma-separated list of passes' names, leaves passes out,
-for a test or a bisection.
+for a test or a bisection (`passNames.skipped`). A pass that runs another again on what it changed leaves the rerun out
+too when the list names that pass: `loops` numbers values (`valueNumbers.numberAgain`), decides conditions
+(`conditions.decideAgain`), and promotes slots (`promote.promoteAgain`) again, `conditions` and `loopTailCalls` number
+values again. The list also takes two names that are no pass of the list, `interrupts` and `inlineAllocation`; the
+unproxies' lowering cannot be left out, since no backend compiles an `unproxy`.
 
 ### 4.2. Escape Analysis
 

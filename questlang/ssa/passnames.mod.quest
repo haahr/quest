@@ -1,6 +1,12 @@
 (* Quest Self-Hosted Compiler: The SSA Passes' Names Implementation *)
 
 module passNames : PassNames
+import
+    stringOp = string : StringOp
+    system : System
+
+    collections/vector : collections/Vector
+    util/strutil : util/Strutil
 export
     let passes = array of
         "escape"
@@ -17,6 +23,18 @@ export
         "loops"
         "tailCalls"
         "tailJumps"
+        "loopTailCalls"
         "trampolines"
+        "straighten"
     end
+
+    let skipped(name: String): Bool =
+        begin
+            let names = strutil.split(system.getEnv("QUEST_SKIP_PASSES") ",")
+            let var found = false
+            for i = 0 upto {vector.length(names) - 1} do
+                if stringOp.equal(strutil.strip(vector.get(names i)) name) then found := true end
+            end
+            found
+        end
 end

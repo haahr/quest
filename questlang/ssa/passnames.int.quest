@@ -3,12 +3,24 @@
  * The SSA optimization passes' names, in the order ssa/pipeline runs them
  * (docs/ssa.md section 4.1). This is the one list of them: the pipeline
  * builds its table of passes from it, and the driver derives its ssa_NAME
- * phases and its usage text from it. It imports nothing, so that the driver
- * compiled to WebAssembly, which links no SSA module (docs/wasm.md section
- * 5.1), still knows the phases. *)
+ * phases and its usage text from it. It imports no SSA module, so that the
+ * driver compiled to WebAssembly, which links none (docs/wasm.md section 5.1),
+ * still knows the phases.
+ *
+ * QUEST_SKIP_PASSES, a comma-separated list of names, leaves out each pass it
+ * names, for a test or a bisection. A pass that runs another again on what it
+ * changed (loops and conditions number values again, and loops decides
+ * conditions and promotes slots again) leaves out the rerun too when the
+ * list names that pass. The list also takes names that are no pass of
+ * passes': interrupts (ssa/passes/interrupts, after the passes) and
+ * inlineAllocation (ssa/pipeline.inlineAllocation, as a backend lowers the
+ * SSA). The unproxies' lowering (ssa/passes/unproxies) cannot be left out,
+ * since no backend compiles an unproxy. *)
 
 interface PassNames
 export
     (* The passes' names, in order *)
     passes: Array(String)
+    (* Whether QUEST_SKIP_PASSES names name *)
+    skipped(name: String): Bool
 end

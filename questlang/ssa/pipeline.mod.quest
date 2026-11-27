@@ -6,7 +6,6 @@ import
     system : System
 
     collections/vector : collections/Vector
-    util/strutil : util/Strutil
 
     ir = questlang/ir/nodes : questlang/ir/Nodes
     questlang/ssa/barriers : questlang/ssa/Barriers
@@ -49,14 +48,6 @@ export
     let promoteUnit(u: ssa.Unit): Ok = begin let ignored = promote.promoteUnit(u) end
     let replaceUnit(u: ssa.Unit): Ok = begin let ignored = scalars.replaceUnit(u) end
 
-    (* Copying a mutually recursive function into its caller can leave a self
-     * tail call, which loops makes a loop as it does before *)
-    let jumpUnit(u: ssa.Unit p: ssa.Policy): Ok =
-        begin
-            tailJumps.jumpUnit(u)
-            loops.loopTailCalls(u p)
-        end
-
     (* The pass passNames calls name; raises unknownPass if there is none, which
      * the first compile through the SSA would show, since the table is built
      * from every name when this module starts *)
@@ -78,8 +69,12 @@ export
             elsif stringOp.equal(name "accumulate") then plain(accumulate.accumulateUnit)
             elsif stringOp.equal(name "loops") then pass(loops.loopUnit)
             elsif stringOp.equal(name "tailCalls") then plain(tailCalls.markUnit)
-            elsif stringOp.equal(name "tailJumps") then pass(jumpUnit)
+            elsif stringOp.equal(name "tailJumps") then plain(tailJumps.jumpUnit)
+            elsif stringOp.equal(name "loopTailCalls") then pass(loops.loopTailCalls)
             elsif stringOp.equal(name "trampolines") then plain(trampolines.trampolineUnit)
+            (* The chains the selects pass's conversions left, merged only
+             * last, so that the loops pass saw each loop's header apart *)
+            elsif stringOp.equal(name "straighten") then plain(selects.straightenUnit)
             else raise unknownPass with name end
             end
         end
@@ -92,15 +87,7 @@ export
             vector.toArray(t)
         end
 
-    let skipped(name: String): Bool =
-        begin
-            let names = strutil.split(system.getEnv("QUEST_SKIP_PASSES") ",")
-            let var found = false
-            for i = 0 upto {vector.length(names) - 1} do
-                if stringOp.equal(strutil.strip(vector.get(names i)) name) then found := true end
-            end
-            found
-        end
+    let skipped = passNames.skipped
 
     let run(unit: ir.Unit p: ssa.Policy after: All(name: String u: ssa.Unit) Ok): ssa.Unit =
         begin
@@ -122,9 +109,6 @@ export
                 end
                 after(pass.name u)
             end
-            (* The chains the selects pass's conversions left, merged only
-             * now, so that the loops pass saw each loop's header apart *)
-            selects.straightenUnit(u)
             if settings.interruptChecks andif not(skipped("interrupts")) then interrupts.checkUnit(u) end
             verify.checkUnit(u)
             barriers.checkUnit(u)
