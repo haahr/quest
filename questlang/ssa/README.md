@@ -116,9 +116,8 @@ phases:
    prefer to see whole: `unproxy`, and calls of `quest_alloc`, which become the collector's inline bump-pointer
    sequence.
 
-Scalar replacement lives here, in [`scalars.mod.quest`](scalars.mod.quest), rather than in `passes/`, but it runs as
-one of the passes, after promotion. It replaces objects that a block parameter merges (a tuple carried around a loop,
-say) by the values of their words.
+Scalar replacement ([`passes/scalars.mod.quest`](passes/scalars.mod.quest)) runs after promotion. It replaces objects
+that a block parameter merges (a tuple carried around a loop, say) by the values of their words.
 
 ## Shared analyses and tables
 

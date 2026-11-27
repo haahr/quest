@@ -18,7 +18,7 @@ together.
 |---|---|---|
 | 1 | [`escape`](escape.int.quest) | allocations that never leave their function become stack slots |
 | 2 | [`promote`](promote.int.quest) | stack slots become SSA values |
-| 3 | [`scalars`](../scalars.int.quest) | objects merged at block parameters become their words' values |
+| 3 | [`scalars`](scalars.int.quest) | objects merged at block parameters become their words' values |
 | 4 | [`constants`](constants.int.quest) | globals stored once with a constant become read-only constants |
 | 5 | [`concats`](concats.int.quest) | chains of string concatenations become one allocation |
 | 6 | [`nanChecks`](nanchecks.int.quest) | NaN checks that a later check finds the NaN of are removed, keeping each site |
@@ -30,17 +30,20 @@ together.
 | 12 | [`loops`](loops.int.quest) | self tail calls become loops; module cells stay in registers and invariants move out |
 | 13 | [`tailCalls`](tailcalls.int.quest) | calls in tail position are marked |
 | 14 | [`tailJumps`](tailjumps.int.quest) | mutually tail-recursive functions become loops |
-| 15 | [`trampolines`](trampolines.int.quest) | an exported entry point gets a copy of the function it forwards to |
+| 15 | [`loopTailCalls`](loops.int.quest) | a self tail call that tail jumps leave becomes a loop (`loops`) |
+| 16 | [`trampolines`](trampolines.int.quest) | an exported entry point gets a copy of the function it forwards to |
+| 17 | [`straighten`](selects.int.quest) | the selects pass's chains of blocks are merged (`selects`) |
 | | [`interrupts`](interrupts.int.quest) | Jupyter kernel only: interrupt-flag checks at entries and loop heads |
 | | [`unproxies`](unproxies.int.quest) | lowering: each `unproxy` becomes a test and a branch |
 | | [`allocations`](allocations.int.quest) | lowering: each `quest_alloc` becomes the collector's inline fast path |
 
 The numbered ones are `pipeline.passes`, named in [`../passnames.mod.quest`](../passnames.mod.quest), run by
 `pipeline.build`, and the driver can dump the SSA after each (phases `ssa_escape`, `ssa_promote`, and so on);
-`tests/self-hosted/compile_command.py` checks that this table numbers the same passes in the same order. Scalar
-replacement is a pass like the others, though its module is in the parent directory. The interrupt checks run at the end
-of `build`, and only when the kernel's driver turns them on. The last two are lowerings, run by `pipeline.lower` just
-before code generation, so they appear in no dump.
+`tests/self-hosted/compile_command.py` checks that this table numbers the same passes in the same order. A pass that
+runs another again on what it changed (`loops` numbering values again, say) leaves the rerun out too when
+`QUEST_SKIP_PASSES` names that pass ([`../passnames.int.quest`](../passnames.int.quest)). The four steps of `loops` are
+modules of [`loops/`](loops). The interrupt checks run at the end of `build`, and only when the kernel's driver turns
+them on. The last two are lowerings, run by `pipeline.lower` just before code generation, so they appear in no dump.
 
 ## From the heap to registers
 
@@ -65,7 +68,7 @@ a slot, and so does one accessed in a block that a `try`'s handler reaches, sinc
 body left it. A slot accessed only elsewhere (by the body, before the `try`, or in a function with no `try`) is
 promoted.
 
-**Scalar replacement** ([`../scalars.mod.quest`](../scalars.mod.quest)) handles what escape analysis cannot: an object
+**Scalar replacement** ([`scalars.mod.quest`](scalars.mod.quest)) handles what escape analysis cannot: an object
 that a block parameter merges with others, such as a tuple carried round a loop and rebuilt on every iteration, or an
 option that is sometimes freshly allocated and sometimes a constant from static data. It groups the objects whose
 pointers meet, and if every use of the group is a plain load, replaces each pointer parameter by the group's word
@@ -123,7 +126,7 @@ function with a `try`, has none, since a tail call ends the caller's frame.
 the unit's functions form a graph, whose strongly connected components (by Tarjan's algorithm) are the groups of
 mutually tail-recursive functions. Into each member of a group are copied the others it reaches, within a size limit,
 so that each tail call to another member becomes a jump to its copy: `even` and `odd` calling each other become one
-loop in each.
+loop in each, once the pass after it, `loopTailCalls`, makes the self tail call a copy leaves a loop.
 
 **Trampolines** ([`trampolines.mod.quest`](trampolines.mod.quest)): other units call a module's function through an
 exported entry point that does nothing but tail-call the function, often through an adapter that tail-calls it in
