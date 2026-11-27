@@ -105,11 +105,14 @@ A fundamental architectural distinction exists between **compiling an individual
 
 ### 2.1. The Unit Graph
 Every consumer of units (the type checker's loading, the interface and module compilers, the build engine, the
-interpreter, and the driver) works on one structure, the **unit graph** (`quest/modules/graph.py`), rather than
-resolving imports and placing artifacts in its own way:
+interpreter, and the driver) works on one structure, the **unit graph**, rather than resolving imports and placing
+artifacts in its own way. It is three modules in each compiler: the resolution (`quest/modules/resolution.py`,
+`questlang/modules/resolution`), the loaded units (`modules/graph`), and the artifacts' places
+(`modules/artifacts/placement`):
 
 - **Units.** A unit is a program (a main routine or inline code, never imported), a module file, or an interface
-  file, including the standard library's (`UnitKind`; `file_unit_kind` classifies a file by its suffix). A unit is
+  file, including the standard library's (`UnitKind`, in `modules/units`; `file_unit_kind` classifies a file by its
+  suffix). A unit is
   identified by its kind and its canonical name ([modules.md §2.3](modules.md)).
 - **Resolution, once.** An import is a path written in a unit, resolved from the unit's directory with the search
   paths and program directory (`Roots`). `Resolver` resolves each (path, directory, roots) once per compilation
@@ -139,7 +142,7 @@ resolving imports and placing artifacts in its own way:
   (`new_session`); units loaded by earlier inputs stay loaded. An input that fails is rolled back with `snapshot` and
   `restore`, which forget the units it loaded and change the graph in place, so the runtime environment, holding
   the same graph, sees the rollback; the runtime environment's own `restore` forgets the modules the input ran.
-- **Artifacts.** A unit's artifacts are named by its canonical name under a build directory (§3.2):
+- **Artifacts.** A unit's artifacts are named by its canonical name under a build directory (§3.2, `placement`):
   `unit_artifact_dir`, `interface_qi_file`, and `ModuleArtifacts` (`.qm`, `.mod.c`, `.o`). Their staleness rules
   are §5 (interfaces, `ensure_resolved_interface_artifacts`), §5.3 (headers), and §7.1 (modules and main routines,
   `unit_staleness` with `import_resolution_change`, which resolves a manifest's recorded imports again through the
@@ -838,7 +841,7 @@ build engine, so there is exactly one implementation of staleness checks, artifa
 
 | Responsibility | Implementation |
 | :--- | :--- |
-| Import resolution, unit names, typed units (§2.1) | `quest.modules.graph` (`Resolver`, `UnitGraph`) |
+| Import resolution, unit names, typed units (§2.1) | `quest.modules.resolution` (`Resolver`), `quest.modules.graph` (`UnitGraph`) |
 | Interface staleness & regeneration (§5) | `interface_compiler.ensure_resolved_interface_artifacts` |
 | Interface headers (§5.3) | `codegen.c.headers.ensure_interface_header` |
 | Module / main staleness (§7.1) | `BuildEngine._unit_staleness` |

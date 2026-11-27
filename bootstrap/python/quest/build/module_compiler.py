@@ -40,7 +40,9 @@ from quest.modules.elaboration import elaborate_module
 from quest.modules.artifacts.interface_compiler import indirect_interface_refs
 from quest.modules.units import parse_unit, unit_declaration
 from quest.modules.loader import load_interface
-from quest.modules.graph import Resolver, Roots, UnitGraph, resolve_interface, resolve_module, unit_artifact_dir
+from quest.modules.resolution import Resolver, Roots, resolve_interface, resolve_module
+from quest.modules.graph import UnitGraph
+from quest.modules.artifacts.placement import unit_artifact_dir
 from quest.modules.paths import DEFAULT_LIB_DIR, DEFAULT_PROJECT_DIR, resolve_object_file
 from quest.common.location import SourceMap, display_file_name, read_source
 

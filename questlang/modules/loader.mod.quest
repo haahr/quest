@@ -21,6 +21,7 @@ import
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/inlined : questlang/modules/Inlined
     questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/resolution : questlang/modules/Resolution
     questlang/modules/units : questlang/modules/Units
     questlang/syntax/ast : questlang/syntax/AST
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
@@ -83,7 +84,7 @@ export
      * search root that gives it its canonical name (adding the source's own
      * directory as a root would change that name); else none, and the
      * interface is elaborated from source *)
-    let resolvedArtifactRoot(e: env.T resolved: graph.Resolved): maybe.T(String) =
+    let resolvedArtifactRoot(e: env.T resolved: resolution.Resolved): maybe.T(String) =
         begin
             let ancestor(path: String levels: Int): String =
                 begin
@@ -97,7 +98,7 @@ export
                 maybe.none()
             elsif maybe.isSome(resolved.source) then
                 maybe.some(ancestor(maybe.unwrap(resolved.source)
-                        extent files.parts(graph.canonicalName(resolved))))
+                        extent files.parts(resolution.canonicalName(resolved))))
             elsif maybe.isSome(resolved.prebuilt) andif strutil.contains(resolved.path "/") then
                 maybe.some(ancestor(maybe.unwrap(resolved.prebuilt)
                         extent files.parts(paths.lower(resolved.path))))
@@ -130,7 +131,7 @@ export
      *      C compilation), its .qi there, which
      *      ensureResolvedInterfaceArtifacts rebuilds first if stale; the
      *      scope is cached in loadedQis until the file changes;
-     *   3. a fresh .qi on the search path (graph.freshInterfaceQi: current
+     *   3. a fresh .qi on the search path (resolution.freshInterfaceQi: current
      *      ABI, newer than its source, and built from it);
      *   4. its .int.quest source, parsed and elaborated, whose declared name
      *      must match the file name.
@@ -151,7 +152,7 @@ export
             let intSource = resolved.source
             (* Its source, else its prebuilt .qi *)
             let unitFile = if maybe.isSome(resolved.source) then resolved.source else resolved.prebuilt end
-            let canon = graph.canonicalName(resolved)
+            let canon = resolution.canonicalName(resolved)
             let register(scope: Scope): Scope =
                 begin
                     env.registerInterface(e name scope)
@@ -227,7 +228,7 @@ export
                     if maybe.isSome(fromArtifacts) then
                         maybe.none(:String)
                     else
-                        graph.freshInterfaceQi(resolved)
+                        resolution.freshInterfaceQi(resolved)
                     end
                 if maybe.isSome(fromArtifacts) then
                     maybe.unwrap(fromArtifacts)
@@ -275,7 +276,7 @@ export
         begin
             let resolved = env.resolveModule(e name)
             let filePath = resolved.source
-            let canon = graph.canonicalName(resolved)
+            let canon = resolution.canonicalName(resolved)
             let u = graph.unit(e.units option moduleUnit of units.UnitKind end canon)
             if maybe.isSome(u.typedModule) then
                 maybe.unwrap(u.typedModule)

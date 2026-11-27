@@ -28,18 +28,10 @@ from quest.build.compiler_runner import link_objects
 from quest.ir.pipeline import implicit_imports
 from quest.codegen.backend import program_to_c
 from quest.types.env import Environment
-from quest.modules.graph import (
-    ModuleArtifacts,
-    Resolver,
-    Roots,
-    UnitGraph,
-    UnitKind,
-    artifact_stem,
-    file_unit_kind,
-    import_resolution_change,
-    resolve_interface,
-    unit_artifact_dir,
-)
+from quest.modules.artifacts.placement import ModuleArtifacts, artifact_stem, unit_artifact_dir
+from quest.modules.resolution import Resolver, Roots, import_resolution_change, resolve_interface
+from quest.modules.graph import UnitGraph
+from quest.modules.units import UnitKind, file_unit_kind
 from quest.modules.loader import load_interface
 from quest.build.headers import compile_interface_with_header
 from quest.build.module_compiler import UnitCode, compile_module_file, write_unit

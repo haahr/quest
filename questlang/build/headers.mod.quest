@@ -11,9 +11,9 @@ import
     questlang/codegen/c/headers : questlang/codegen/c/Headers
     questlang/common/files : questlang/common/Files
     questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
-    questlang/modules/graph : questlang/modules/Graph
     questlang/modules/loader : questlang/modules/Loader
     questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/resolution : questlang/modules/Resolution
     questlang/types/env : questlang/types/Env
 export
     (* The header beside an interface's .qi (util/path.qi and
@@ -37,14 +37,14 @@ export
      * a build directory, the headers of the interfaces it imports are brought
      * up to date there first *)
     let rec writeInterfaceHeader(compiled: interfaceCompiler.CompiledInterface buildDir: maybe.T(String)
-            programDir: maybe.T(String) res: graph.Resolver): String =
+            programDir: maybe.T(String) res: resolution.Resolver): String =
         begin
             if maybe.isSome(buildDir) then
                 let buildRoot = files.absolute(maybe.unwrap(buildDir))
-                let roots = graph.rootsOf(compiled.includePaths programDir)
+                let roots = resolution.rootsOf(compiled.includePaths programDir)
                 for i = 0 upto {vector.length(compiled.decl.imports) - 1} do
                     let imp = vector.get(compiled.decl.imports i)
-                    ensureResolvedInterfaceHeader(graph.resolveInterface(res
+                    ensureResolvedInterfaceHeader(resolution.resolveInterface(res
                             maybe.unwrapOr(imp.interfacePath imp.interfaceName)
                             maybe.some(files.parent(compiled.source)) roots) buildRoot res)
                 end
@@ -58,7 +58,8 @@ export
         end
     (* Brings a resolved interface's .qi and C header under buildDir up to date,
      * with the headers it includes *)
-    and ensureResolvedInterfaceHeader(resolved: graph.Resolved buildDir: String res: graph.Resolver): Artifacts =
+    and ensureResolvedInterfaceHeader(resolved: resolution.Resolved buildDir: String
+            res: resolution.Resolver): Artifacts =
         begin
             let programDir = resolved.roots.programDir
             let write = fun(c: interfaceCompiler.CompiledInterface): Ok
@@ -107,7 +108,7 @@ export
     let compileInterfaceWithHeader(file: String outputDir: maybe.T(String) includePaths: Array(String)
             buildDir: maybe.T(String) programDir: maybe.T(String)): Artifacts =
         begin
-            let res = graph.newResolver()
+            let res = resolution.newResolver()
             let write = fun(c: interfaceCompiler.CompiledInterface): Ok
                 begin
                     writeInterfaceHeader(c buildDir programDir res)

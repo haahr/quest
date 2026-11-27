@@ -21,10 +21,12 @@ import
     questlang/common/strings : questlang/common/Strings
     questlang/config/abi : questlang/config/ABI
     questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
+    questlang/modules/artifacts/placement : questlang/modules/artifacts/Placement
     questlang/modules/elaboration : questlang/modules/Elaboration
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/inlined : questlang/modules/Inlined
     questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/resolution : questlang/modules/Resolution
     questlang/modules/units : questlang/modules/Units
     questlang/syntax/ast : questlang/syntax/AST
     questlang/syntax/parser : questlang/syntax/Parser
@@ -549,10 +551,11 @@ export
 
     let rec compileInterfaceFile(file: String outputDir: maybe.T(String) includePaths: Array(String)
             buildDir: maybe.T(String) programDir: maybe.T(String) writeQi: Bool onCompiled: maybe.T(OnCompiled)
-            res: graph.Resolver): CompiledInterface =
+            res: resolution.Resolver): CompiledInterface =
         begin
             let key = files.absolute(file)
-            let canon = graph.canonicalName(graph.resolveFile(res key graph.rootsOf(includePaths programDir)))
+            let canon =
+                resolution.canonicalName(resolution.resolveFile(res key resolution.rootsOf(includePaths programDir)))
             for i = 0 upto {vector.length(compiling) - 1} do
                 if eq(vector.get(compiling i).file key) then
                     let chain = vector.new(:String)
@@ -581,7 +584,7 @@ export
         end
 
     and compileFile(file: String outputDir: maybe.T(String) includePaths: Array(String) buildDir: maybe.T(String)
-            programDir: maybe.T(String) writeQi: Bool onCompiled: maybe.T(OnCompiled) res: graph.Resolver)
+            programDir: maybe.T(String) writeQi: Bool onCompiled: maybe.T(OnCompiled) res: resolution.Resolver)
             : CompiledInterface =
         begin
             let text = files.readText(file)
@@ -629,12 +632,12 @@ export
                          * the build directory, including builtin interfaces
                          * that are never loaded from source, so that their
                          * artifacts exist beside its own *)
-                        let roots = graph.rootsOf(searchPaths programDir)
+                        let roots = resolution.rootsOf(searchPaths programDir)
                         for i = 0 upto {vector.length(found.decl.imports) - 1} do
                             let imp = vector.get(found.decl.imports i)
                             env.atImport(e imp.offset 1 fun(): Ok
                                 begin
-                                    ensureResolvedInterfaceArtifacts(graph.resolveInterface(res
+                                    ensureResolvedInterfaceArtifacts(resolution.resolveInterface(res
                                             ast.effectiveInterfacePath(imp)
                                             maybe.some(files.parent(file)) roots) maybe.unwrap(build)
                                             onCompiled res)
@@ -653,9 +656,9 @@ export
             let targetDir =
                 if maybe.isSome(build) andif maybe.isNone(outputDir) then
                     let canon =
-                        graph.canonicalName(graph.resolveFile(res files.absolute(file)
-                                graph.rootsOf(searchPaths programDir)))
-                    graph.unitArtifactDir(maybe.unwrap(build) canon)
+                        resolution.canonicalName(resolution.resolveFile(res files.absolute(file)
+                                resolution.rootsOf(searchPaths programDir)))
+                    placement.unitArtifactDir(maybe.unwrap(build) canon)
                 elsif maybe.isSome(outputDir) then
                     maybe.unwrap(outputDir)
                 else
@@ -667,9 +670,9 @@ export
                 end
             let qiFile = files.join(targetDir paths.lower(stem) <> ".qi")
             if writeQi then
-                let deps = graph.interfaceDependencies(res file searchPaths)
-                let canon = graph.canonicalName(graph.resolveFile(res files.absolute(file)
-                        graph.rootsOf(searchPaths programDir)))
+                let deps = resolution.interfaceDependencies(res file searchPaths)
+                let canon = resolution.canonicalName(resolution.resolveFile(res files.absolute(file)
+                        resolution.rootsOf(searchPaths programDir)))
                 writeFile(qiFile compileInterfaceToQi(elaborated.decl elaborated.scope maybe.some(file) deps
                         inlined.isInlined(canon)))
             end
@@ -683,16 +686,16 @@ export
             end
         end
 
-    and ensureResolvedInterfaceArtifacts(resolved: graph.Resolved buildDir: String onCompiled: maybe.T(OnCompiled)
-            res: graph.Resolver): InterfaceArtifacts =
+    and ensureResolvedInterfaceArtifacts(resolved: resolution.Resolved buildDir: String onCompiled: maybe.T(OnCompiled)
+            res: resolution.Resolver): InterfaceArtifacts =
         begin
             let includePaths = resolved.roots.searchPaths
             let programDir = resolved.roots.programDir
             let src = resolved.source
             let hasSource = maybe.isSome(src) andif files.isSourceFile(maybe.unwrap(src))
-            let canon = graph.artifactName(resolved)
-            let targetDir = graph.unitArtifactDir(buildDir canon)
-            let var qiFile = graph.interfaceQiFile(buildDir canon)
+            let canon = resolution.artifactName(resolved)
+            let targetDir = placement.unitArtifactDir(buildDir canon)
+            let var qiFile = placement.interfaceQiFile(buildDir canon)
             let searchPaths = if strings.isOneOf(buildDir includePaths) then includePaths
                 else vector.toArray(vector.concat(vector.fromArray(array of buildDir end)
                         vector.fromArray(includePaths)))
@@ -720,7 +723,7 @@ export
                     let deps = paths.recordedDependencies(qi)
                     let resolveSource = fun(path: String fromDir: maybe.T(String) searchPaths: Array(String)):
                             maybe.T(String)
-                        graph.interfaceSource(res path fromDir searchPaths)
+                        resolution.interfaceSource(res path fromDir searchPaths)
                     {files.modifiedNs(source) <= qiTime} andif abi.builtFrom(qi source)
                         andif {abi.recordedInlined(qi) is inlined.isInlined(canon)}
                         andif maybe.isSome(deps)
@@ -731,7 +734,7 @@ export
              * source, from a standalone compilation) is used like one in the
              * build directory *)
             if not(current(qiFile)) then
-                let fresh = graph.freshInterfaceQi(resolved)
+                let fresh = resolution.freshInterfaceQi(resolved)
                 if maybe.isSome(fresh) andif strutil.endsWith(maybe.unwrap(fresh) ".qi") then
                     if current(maybe.unwrap(fresh)) orif {not(hasSource) andif not(files.isFile(qiFile))} then
                         qiFile := maybe.unwrap(fresh)
@@ -756,9 +759,9 @@ export
         end
 
     let indirectInterfaceRefs(direct: Array(manifest.ImportedInterfaceRef) includePaths: Array(String)
-            programDir: maybe.T(String) res: graph.Resolver): Array(manifest.ImportedInterfaceRef) =
+            programDir: maybe.T(String) res: resolution.Resolver): Array(manifest.ImportedInterfaceRef) =
         begin
-            let roots = graph.rootsOf(includePaths programDir)
+            let roots = resolution.rootsOf(includePaths programDir)
             let refs = vector.new(:manifest.ImportedInterfaceRef)
             let seen = maps.newStringSet()
             for i = 0 upto {extent direct - 1} do
@@ -768,7 +771,7 @@ export
             end
             for i = 0 upto {extent direct - 1} do
                 if stringOp.length(direct[i].source) > 0 then
-                    let deps = graph.interfaceDependencies(res direct[i].source includePaths)
+                    let deps = resolution.interfaceDependencies(res direct[i].source includePaths)
                     for j = 0 upto {extent deps - 1} do
                         let dep = deps[j]
                         let known = {stringOp.length(dep.source) > 0}
@@ -778,7 +781,7 @@ export
                                 hashSet.insert(seen dep.source)
                             end
                             let name =
-                                graph.interfaceName(graph.resolveInterface(res dep.path maybe.some(dep.dir)
+                                resolution.interfaceName(resolution.resolveInterface(res dep.path maybe.some(dep.dir)
                                         roots))
                             let stats = if stringOp.length(dep.source) > 0 then fileStats.find(dep.source)
                                 else maybe.none(:fileStats.T) end

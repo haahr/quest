@@ -14,11 +14,13 @@ what differs.
   `lib/` for a unit's file, and names each unit by its path relative to its search root
   ([docs/modules.md](../../../../docs/modules.md) §2.2, §2.3). It also answers which options compile C
   (`is_c_compilation_mode`), which decides whether interfaces are loaded from `.qi` artifacts.
-- **The unit graph.** [`graph.py`](graph.py) memoizes import resolution (`Resolver`, `Resolved`) and records the
-  units an environment has loaded with their typed forms (`UnitGraph`), which the REPL snapshots and restores. Its
-  docstring is the best overview of why every consumer must share one resolution. The checks of whether a unit's
-  recorded imports would now resolve differently (`import_resolution_change`) live here; the self-hosted compiler
-  keeps them in its build engine.
+- **Resolution and the unit graph.** [`resolution.py`](resolution.py) memoizes import resolution (`Resolver`,
+  `Resolved`); its docstring is the best overview of why every consumer must share one resolution. The check of
+  whether a unit's recorded imports would now resolve differently (`import_resolution_change`) lives there too; the
+  self-hosted compiler keeps it in its build engine. [`graph.py`](graph.py) records the units an environment has
+  loaded with their typed forms (`UnitGraph`), which the REPL snapshots and restores, and
+  [`artifacts/placement.py`](artifacts/placement.py) says where a unit's artifacts are under a build directory.
+  `UnitKind` is [`units.py`](units.py)'s, as in questlang.
 - **Loading.** [`loader.py`](loader.py) loads an interface from a scope already loaded, a current `.qi`, or its
   source, and elaborates each module once per canonical name. The interpreter evaluates the modules it loads through
   its own entry point, `load_module_for_interpreter` in `quest/interpreter/treewalk.py`.

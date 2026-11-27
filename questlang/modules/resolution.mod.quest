@@ -1,0 +1,238 @@
+(* Quest Self-Hosted Compiler: Import Resolution Implementation *)
+
+module resolution : Resolution
+import
+    conv : Conv
+    system : System
+
+    collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/files : questlang/common/Files
+    questlang/common/location : questlang/common/Location
+    questlang/common/maps : questlang/common/Maps
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/units : questlang/modules/Units
+export
+    Let Roots = Tuple searchPaths: Array(String) programDir: maybe.T(String) questLib: String end
+
+    let rootsOf(searchPaths: Array(String) programDir: maybe.T(String)): Roots =
+        tuple let searchPaths = searchPaths let programDir = programDir let questLib = system.getEnv("QUEST_LIB") end
+
+    Let Resolved = Tuple
+        kind: units.UnitKind
+        path: String
+        fromDir: maybe.T(String)
+        roots: Roots
+        source: maybe.T(String)
+        prebuilt: maybe.T(String)
+        var canonical: maybe.T(String)
+        var ifaceName: maybe.T(String)
+    end
+
+    let isInterface(k: units.UnitKind): Bool = case k when interfaceUnit then true else false end
+
+    let canonicalName(r: Resolved): String =
+        if maybe.isSome(r.canonical) then
+            maybe.unwrap(r.canonical)
+        else
+            let name =
+                if isInterface(r.kind) then
+                    (* Its unit file: its source, else its prebuilt .qi *)
+                    let file = if maybe.isSome(r.source) then r.source else r.prebuilt end
+                    if maybe.isSome(file) then
+                        paths.canonicalizeModulePath(maybe.unwrap(file) r.roots.searchPaths r.roots.programDir)
+                    else
+                        paths.lower(r.path)
+                    end
+                else
+                    paths.canonicalizeModuleName(r.source r.roots.searchPaths r.path r.roots.programDir)
+                end
+            r.canonical := maybe.some(name)
+            name
+        end
+
+    let interfaceName(r: Resolved): String =
+        if maybe.isSome(r.ifaceName) then
+            maybe.unwrap(r.ifaceName)
+        else
+            let name = paths.canonicalizeInterfaceName(r.source r.roots.searchPaths r.path r.roots.programDir)
+            r.ifaceName := maybe.some(name)
+            name
+        end
+
+    Let Resolver = Tuple memo: maps.StringMap(Resolved) var variantOf: All(unit: String) String end
+
+    let newResolver(): Resolver =
+        tuple
+            let memo = maps.newStringMap()
+            let var variantOf = fun(unit: String): String ""
+        end
+
+    (* The memo's key of a resolution *)
+    let keyOf(kind: String path: String fromDir: maybe.T(String) roots: Roots): String =
+        begin
+            kind <> "\n" <> path <> "\n" <> maybe.unwrapOr(fromDir "") <> "\n"
+                <> maybe.unwrapOr(roots.programDir "") <> "\n" <> roots.questLib
+                <> if extent roots.searchPaths > 0 then "\n" <> strutil.joinArray("\n" roots.searchPaths) else "" end
+        end
+
+    let resolved(kind: units.UnitKind path: String fromDir: maybe.T(String) roots: Roots source: maybe.T(String)
+            prebuilt: maybe.T(String)): Resolved =
+        tuple
+            let kind = kind
+            let path = path
+            let fromDir = fromDir
+            let roots = roots
+            let source = source
+            let prebuilt = prebuilt
+            let var canonical = maybe.none()
+            let var ifaceName = maybe.none()
+        end
+
+    let memoized(res: Resolver key: String make: All() Resolved): Resolved =
+        begin
+            let found = hashMap.get(res.memo key)
+            if maybe.isSome(found) then
+                maybe.unwrap(found)
+            else
+                let r = make()
+                hashMap.insert(res.memo key r)
+                r
+            end
+        end
+
+    let resolveInterface(res: Resolver path: String fromDir: maybe.T(String) roots: Roots): Resolved =
+        memoized(res keyOf("interface" path fromDir roots) fun(): Resolved
+            begin
+                let source = paths.resolveInterfaceSourceFile(path fromDir roots.searchPaths)
+                (* Without a source, the first .qi on the search path, whatever
+                 * its ABI version (loading it reports an incompatible one) *)
+                let prebuilt =
+                    if maybe.isNone(source) then
+                        paths.resolveInterfaceFile(path fromDir roots.searchPaths)
+                    else
+                        maybe.none(:String)
+                    end
+                resolved(option interfaceUnit of units.UnitKind end path fromDir roots source prebuilt)
+            end)
+
+    let resolveModule(res: Resolver path: String fromDir: maybe.T(String) roots: Roots): Resolved =
+        memoized(res keyOf("module" path fromDir roots) fun(): Resolved
+            begin
+                let own = paths.resolveModuleFile(path fromDir roots.searchPaths)
+                let r = resolved(option moduleUnit of units.UnitKind end path fromDir roots own maybe.none())
+                (* Its variant's file has its canonical name *)
+                if maybe.isSome(own) then
+                    let chosen = paths.chooseVariant(maybe.unwrap(own) res.variantOf(canonicalName(r)))
+                    resolved(option moduleUnit of units.UnitKind end path fromDir roots maybe.some(chosen)
+                            maybe.none())
+                else
+                    r
+                end
+            end)
+
+    let resolveFile(res: Resolver file: String roots: Roots): Resolved =
+        memoized(res keyOf("file" file maybe.none() roots) fun(): Resolved
+            resolved(units.unitKind(file) paths.stripUnitSuffix(files.baseName(file))
+                    maybe.some(files.parent(file)) roots maybe.some(file) maybe.none()))
+
+    let artifactName(r: Resolved): String =
+        if maybe.isNone(r.source) then paths.lower(r.path)
+        else paths.canonicalizeModulePath(maybe.unwrap(r.source) r.roots.searchPaths r.roots.programDir)
+        end
+
+    let freshInterfaceQi(r: Resolved): maybe.T(String) =
+        if maybe.isNone(r.source) then r.prebuilt
+        else paths.resolveInterfaceFile(r.path r.fromDir r.roots.searchPaths)
+        end
+
+    let interfaceSource(res: Resolver path: String fromDir: maybe.T(String) searchPaths: Array(String)):
+            maybe.T(String) = resolveInterface(res path fromDir rootsOf(searchPaths maybe.none())).source
+
+    (* The interface paths each interface source imports, by path and
+     * modification time *)
+    let importPathsMemo = maps.newStringMap(:Array(String))
+
+    (* The import paths of the interface in source, which was modified at time
+     * if it is a regular file *)
+    let importPathsAt(source: String time: maybe.T(Int)): Array(String) =
+        if maybe.isNone(time) then
+            vector.toArray(vector.new(:String))
+        else
+            let key = files.absolute(source) <> "\n" <> conv.int(maybe.unwrap(time))
+            let found = hashMap.get(importPathsMemo key)
+            if maybe.isSome(found) then
+                maybe.unwrap(found)
+            else
+                let result = vector.new(:String)
+                (* A file that cannot be read or parsed imports nothing here;
+                 * compiling it reports why *)
+                try
+                    let text = files.readText(source)
+                    if maybe.isSome(text) then
+                        let prog = units.parseUnit(location.newSourceMap(source maybe.unwrap(text)))
+                        if vector.length(prog.form.phrases) is 1 then
+                            case vector.get(prog.form.phrases 0).form
+                                when phraseInterface with x then
+                                    for i = 0 upto {vector.length(x.iface.imports) - 1} do
+                                        let imp = vector.get(x.iface.imports i)
+                                        vector.append(result
+                                                maybe.unwrapOr(imp.interfacePath imp.interfaceName))
+                                    end
+                                else ok
+                            end
+                        end
+                    end
+                when diagnostics.compilerError then
+                    ok
+                end
+                let imports = vector.toArray(result)
+                hashMap.insert(importPathsMemo key imports)
+                imports
+            end
+        end
+
+    (* The interface paths an interface source file imports, as written *)
+    let interfaceImportPaths(source: String): Array(String) = importPathsAt(source files.fileTime(source))
+
+    let interfaceDependencies(res: Resolver source: String searchPaths: Array(String)):
+            Array(paths.InterfaceDependency) =
+        begin
+            let roots = rootsOf(searchPaths maybe.none())
+            let deps = vector.new(:paths.InterfaceDependency)
+            let seen = maps.newStringSet()
+            let visited = maps.newStringSet()
+            hashSet.insert(visited files.absolute(source))
+            let rec visit(importer: String): Ok =
+                begin
+                    let importerDir = files.absolute(files.parent(importer))
+                    let imported = interfaceImportPaths(importer)
+                    for i = 0 upto {extent imported - 1} do
+                        let path = imported[i]
+                        let key = importerDir <> "\n" <> path
+                        if not(hashSet.contains(seen key)) then
+                            hashSet.insert(seen key)
+                            let depSource = resolveInterface(res path maybe.some(files.parent(importer)) roots).source
+                            vector.append(deps tuple
+                                let path = path
+                                let dir = importerDir
+                                let source = maybe.unwrapOr(depSource "")
+                            end)
+                            if maybe.isSome(depSource)
+                                    andif not(hashSet.contains(visited files.absolute(maybe.unwrap(depSource)))) then
+                                hashSet.insert(visited files.absolute(maybe.unwrap(depSource)))
+                                visit(maybe.unwrap(depSource))
+                            end
+                        end
+                    end
+                    ok
+                end
+            visit(source)
+            vector.toArray(deps)
+        end
+end

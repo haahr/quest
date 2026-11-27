@@ -41,11 +41,13 @@ same canonical name, and the compiler identifies units by that name everywhere a
 generated code, in the build directory's layout, and in the type tables. Paths are handled as strings, normalized
 lexically, over [`common/files`](../common/files.int.quest).
 
-[`graph.int.quest`](graph.int.quest) memoizes resolution. A `Resolver` maps (kind, path, importing directory, roots)
-to a `Resolved`, the unit's source file (or, for an interface distributed without one, a prebuilt `.qi`) and its
-names, so each import is searched for on disk once, and every consumer (the loader, the interface and module
-compilers, the build engine's queue and staleness checks) sees the same answer. A `UnitGraph` holds the units an
-environment has loaded, by kind and canonical name, with their type-checked forms: an interface's scope, a module's
+[`resolution.int.quest`](resolution.int.quest) memoizes resolution. A `Resolver` maps (kind, path, importing
+directory, roots) to a `Resolved`, the unit's source file (or, for an interface distributed without one, a prebuilt
+`.qi`) and its names, so each import is searched for on disk once, and every consumer (the loader, the interface and
+module compilers, the build engine's queue and staleness checks) sees the same answer. Where a unit's artifacts go
+under a build directory, by its canonical name, is
+[`artifacts/placement.int.quest`](artifacts/placement.int.quest)'s. In [`graph.int.quest`](graph.int.quest), a
+`UnitGraph` holds the resolver and the units an environment has loaded, by kind and canonical name, with their type-checked forms: an interface's scope, a module's
 typed module, or, for a module known only through its interface, its export scope. A unit is *precompiled* when its
 object is built apart, so importers are typed against its interface and its source is never elaborated.
 

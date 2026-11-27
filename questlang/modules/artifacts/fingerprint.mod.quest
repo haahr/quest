@@ -18,8 +18,8 @@ import
     questlang/common/sha256 : questlang/common/SHA256
     questlang/config/abi : questlang/config/ABI
     questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
-    questlang/modules/graph : questlang/modules/Graph
     questlang/modules/loader : questlang/modules/Loader
+    questlang/modules/resolution : questlang/modules/Resolution
     questlang/types/env : questlang/types/Env
     values = questlang/values/model : questlang/values/Model
 export
@@ -109,14 +109,14 @@ export
     let rec ofInterface(name: String e: env.T): String =
         begin
             let resolved = env.resolveInterface(e name)
-            let canonical = graph.interfaceName(resolved)
+            let canonical = resolution.interfaceName(resolved)
             let root = loader.resolvedArtifactRoot(e resolved)
             let qi =
                 if maybe.isSome(root) then
                     maybe.some(interfaceCompiler.ensureResolvedInterfaceArtifacts(resolved
                             maybe.unwrap(root) maybe.none(:interfaceCompiler.OnCompiled) e.units.resolver).qiFile)
                 else
-                    graph.freshInterfaceQi(resolved)
+                    resolution.freshInterfaceQi(resolved)
                 end
             if maybe.isNone(qi) orif not(strutil.endsWith(maybe.unwrap(qi) ".qi"))
                     orif not(files.isFile(maybe.unwrap(qi))) then

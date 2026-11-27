@@ -7,6 +7,7 @@ The self-hosted counterpart is questlang/modules/units."""
 
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import Path
 from typing import Optional
 
@@ -29,6 +30,25 @@ def unit_kind(path: Path) -> Optional[str]:
     if path.name.endswith(MODULE_SUFFIX):
         return "module"
     return None
+
+
+class UnitKind(Enum):
+    """What a unit is: the program (never imported), a module, or an
+    interface."""
+    PROGRAM = "program"
+    MODULE = "module"
+    INTERFACE = "interface"
+
+
+def file_unit_kind(path: Path) -> UnitKind:
+    """The kind of the unit in a file, by its name: a .int.quest holds an
+    interface, a .mod.quest a module, and any other file a program."""
+    kind = unit_kind(path)
+    if kind == "interface":
+        return UnitKind.INTERFACE
+    if kind == "module":
+        return UnitKind.MODULE
+    return UnitKind.PROGRAM
 
 
 def parse_unit(source_text: str, path: Path | str, source_map: SourceMap) -> ast.ASTNode:

@@ -1,6 +1,7 @@
-"""The graph of program units (quest/modules/graph.py, docs/build-process.md
-§2.1): resolving each import once per compilation, the names a resolved unit
-has, sharing loaded units by canonical name, and rolling them back.
+"""The graph of program units (quest/modules/resolution.py and graph.py,
+docs/build-process.md §2.1): resolving each import once per compilation, the
+names a resolved unit has, sharing loaded units by canonical name, and rolling
+them back.
 
 The tree used throughout: a program directory prog/ beside an include root lib/,
 holding
@@ -18,18 +19,10 @@ import unittest
 from pathlib import Path
 
 from quest.interpreter.treewalk import RuntimeEnvironment
-from quest.modules.graph import (
-    ModuleArtifacts,
-    Resolver,
-    Roots,
-    UnitGraph,
-    UnitKind,
-    file_unit_kind,
-    interface_qi_file,
-    resolve_interface,
-    resolve_module,
-    unit_artifact_dir,
-)
+from quest.modules.artifacts.placement import ModuleArtifacts, interface_qi_file, unit_artifact_dir
+from quest.modules.resolution import Resolver, Roots, resolve_interface, resolve_module
+from quest.modules.graph import UnitGraph
+from quest.modules.units import UnitKind, file_unit_kind
 from quest.modules.loader import load_interface, load_module
 from quest.types.env import Environment
 from quest.values.model import QRecord

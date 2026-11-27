@@ -22,6 +22,7 @@ import
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/inlined : questlang/modules/Inlined
     questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/resolution : questlang/modules/Resolution
     questlang/modules/units : questlang/modules/Units
     questlang/repr/externals : questlang/repr/Externals
     questlang/syntax/ast : questlang/syntax/AST
@@ -290,7 +291,7 @@ export
     let separatelyCompiledModuleScope(modPath: String interfaceScope: Scope e: env.T): Scope =
         begin
             let resolved = env.resolveModule(e modPath)
-            let canon = graph.canonicalName(resolved)
+            let canon = resolution.canonicalName(resolved)
             let u = graph.unit(e.units option moduleUnit of units.UnitKind end canon)
             let existing =
                 if maybe.isSome(u.typedModule) then
@@ -531,7 +532,7 @@ export
             let result = vector.new(:String)
             let modPaths = ast.effectiveModulePaths(imp)
             for i = 0 upto {vector.length(modPaths) - 1} do
-                vector.append(result graph.canonicalName(env.resolveModule(e vector.get(modPaths i))))
+                vector.append(result resolution.canonicalName(env.resolveModule(e vector.get(modPaths i))))
             end
             vector.toArray(result)
         end
@@ -768,7 +769,7 @@ export
 
             (* 4. The exported scope, opaque for the interface's abstract
              *    types *)
-            let canon = graph.canonicalName(env.resolveModule(e decl.name))
+            let canon = resolution.canonicalName(env.resolveModule(e decl.name))
             let u = graph.unit(e.units option moduleUnit of units.UnitKind end canon)
             let exportScope =
                 if maybe.isNone(u.exportScope) then

@@ -33,7 +33,8 @@ from quest.types.env import (
     TypeSymbol,
     ValueSymbol,
 )
-from quest.modules.graph import UnitKind, resolve_module
+from quest.modules.units import UnitKind
+from quest.modules.resolution import resolve_module
 from quest.modules.paths import (
     declared_module_name,
     is_c_compilation_mode,

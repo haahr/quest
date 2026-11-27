@@ -29,9 +29,11 @@ import
     questlang/ir/nodes : questlang/ir/Nodes
     passes = questlang/ir/pipeline : questlang/ir/Pipeline
     questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
+    questlang/modules/artifacts/placement : questlang/modules/artifacts/Placement
     questlang/modules/elaboration : questlang/modules/Elaboration
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/resolution : questlang/modules/Resolution
     questlang/modules/stdlib : questlang/modules/Stdlib
     questlang/modules/units : questlang/modules/Units
     questlang/syntax/ast : questlang/syntax/AST
@@ -83,7 +85,7 @@ export
      * queued. *)
     Let T = Tuple
         buildDir: pathLib.T
-        resolver: graph.Resolver
+        resolver: resolution.Resolver
         includePaths: Array(pathLib.T)
         extraObjects: Array(pathLib.T)
         logger: logger.T
@@ -99,7 +101,7 @@ export
         verbose: Bool
         nogc: Bool
         extraObjects: Array(String)
-        resolver: maybe.T(graph.Resolver)
+        resolver: maybe.T(resolution.Resolver)
         jobs: Int
         driver: String
         backends: choice.T
@@ -145,7 +147,7 @@ export
             for i = 0 upto {extent s.extraObjects - 1} do objects[i] := absolutePath(s.extraObjects[i]) end
             let l = logger.new(maybe.some(str(pathLib.child(dir "build.log"))) s.verbose)
             system.makeDirectory(str(dir))
-            let resolver = maybe.unwrapOr(s.resolver graph.newResolver())
+            let resolver = maybe.unwrapOr(s.resolver resolution.newResolver())
             (* Each module's variant is the one its backend selects *)
             let backends = s.backends
             resolver.variantOf := fun(unit: String): String choice.variantFor(backends unit)
@@ -213,17 +215,17 @@ export
 
     (* A main routine's .main.qm, .main.c, and .main.o: the .main suffix keeps
      * them apart from a module's with the same canonical name *)
-    let mainArtifacts(eng: T mainFile: String): graph.ModuleArtifacts =
+    let mainArtifacts(eng: T mainFile: String): placement.ModuleArtifacts =
         begin
             let base = mainArtifactBase(eng mainFile)
             tuple let qm = base <> ".main.qm" let c = base <> ".main.c" let o = base <> ".main.o" end
         end
 
     let unitModuleRefs(imports: Array(ImportRef) implicit: Array(passes.ImplicitImport) currentDir: maybe.T(String)
-            includePaths: Array(String) programDir: maybe.T(String) res: graph.Resolver):
+            includePaths: Array(String) programDir: maybe.T(String) res: resolution.Resolver):
             Array(manifest.ImportedModuleRef) =
         begin
-            let roots = graph.rootsOf(includePaths programDir)
+            let roots = resolution.rootsOf(includePaths programDir)
             let refs = vector.new(:manifest.ImportedModuleRef)
             let seen = vector.new(:String)
             let add = fun(name: String interfaceName: String source: maybe.T(String) path: String): Ok
@@ -238,23 +240,24 @@ export
                 end
             for i = 0 upto {extent imports - 1} do
                 let it = imports[i]
-                let iface = graph.interfaceName(graph.resolveInterface(res it.interfacePath currentDir roots))
+                let iface = resolution.interfaceName(resolution.resolveInterface(res it.interfacePath currentDir roots))
                 let n = if extent it.names < extent it.modulePaths then extent it.names else extent it.modulePaths end
                 for j = 0 upto {n - 1} do
                     let modRef = if stringOp.length(it.modulePaths[j]) > 0 then it.modulePaths[j] else it.names[j] end
-                    let m = graph.resolveModule(res modRef currentDir roots)
-                    add(graph.canonicalName(m) iface m.source modRef)
+                    let m = resolution.resolveModule(res modRef currentDir roots)
+                    add(resolution.canonicalName(m) iface m.source modRef)
                 end
             end
             for i = 0 upto {extent implicit - 1} do
-                let m = graph.resolveModule(res implicit[i].canonicalPath currentDir roots)
+                let m = resolution.resolveModule(res implicit[i].canonicalPath currentDir roots)
                 let iface =
                     if stringOp.length(implicit[i].interfacePath) > 0 then
-                        graph.interfaceName(graph.resolveInterface(res implicit[i].interfacePath currentDir roots))
+                        resolution.interfaceName(resolution.resolveInterface(res implicit[i].interfacePath currentDir
+                                roots))
                     else
                         ""
                     end
-                add(graph.canonicalName(m) iface m.source implicit[i].canonicalPath)
+                add(resolution.canonicalName(m) iface m.source implicit[i].canonicalPath)
             end
             vector.toArray(refs)
         end
@@ -266,36 +269,36 @@ export
      * still match. Transitive interface imports are re-resolved from the
      * importing interface's recorded directory. *)
     let importResolutionChange(m: manifest.ModuleManifest currentDir: maybe.T(String) includePaths: Array(String)
-            programDir: maybe.T(String) res: graph.Resolver): maybe.T(String) =
+            programDir: maybe.T(String) res: resolution.Resolver): maybe.T(String) =
         begin
-            let roots = graph.rootsOf(includePaths programDir)
+            let roots = resolution.rootsOf(includePaths programDir)
             let var change = maybe.none(:String)
             for i = 0 upto {extent m.importedInterfaces - 1} do
                 let iface = m.importedInterfaces[i]
                 if maybe.isNone(change) andif {stringOp.length(iface.path) > 0} then
                     let from = if stringOp.length(iface.dir) > 0 then maybe.some(iface.dir) else currentDir end
-                    let found = graph.resolveInterface(res iface.path from roots)
+                    let found = resolution.resolveInterface(res iface.path from roots)
                     if not(paths.sameSource(found.source iface.source)) then
                         change := maybe.some("interface " <> quoted(iface.path) <> " now resolves to "
                             <> orNoSource(maybe.unwrapOr(found.source "")) <> ", not "
                             <> orNoSource(iface.source))
-                    elsif not(eq(graph.interfaceName(found) iface.name)) then
+                    elsif not(eq(resolution.interfaceName(found) iface.name)) then
                         change := maybe.some("interface " <> quoted(iface.path) <> " is now named "
-                            <> quoted(graph.interfaceName(found)) <> ", not " <> quoted(iface.name))
+                            <> quoted(resolution.interfaceName(found)) <> ", not " <> quoted(iface.name))
                     end
                 end
             end
             for i = 0 upto {extent m.importedModules - 1} do
                 let mod = m.importedModules[i]
                 if maybe.isNone(change) andif {stringOp.length(mod.path) > 0} then
-                    let found = graph.resolveModule(res mod.path currentDir roots)
+                    let found = resolution.resolveModule(res mod.path currentDir roots)
                     if not(paths.sameSource(found.source mod.source)) then
                         change := maybe.some("module " <> quoted(mod.path) <> " now resolves to "
                             <> orNoSource(maybe.unwrapOr(found.source "")) <> ", not "
                             <> orNoSource(mod.source))
-                    elsif not(eq(graph.canonicalName(found) mod.name)) then
+                    elsif not(eq(resolution.canonicalName(found) mod.name)) then
                         change := maybe.some("module " <> quoted(mod.path) <> " is now named "
-                            <> quoted(graph.canonicalName(found)) <> ", not " <> quoted(mod.name))
+                            <> quoted(resolution.canonicalName(found)) <> ", not " <> quoted(mod.name))
                     end
                 end
             end
@@ -306,7 +309,8 @@ export
      * (docs/build-process.md section 7.1). Checks artifact freshness, backend
      * match, WebAssembly runtime compatibility, and whether imports still
      * resolve to the same files. *)
-    let artifactStaleness(eng: T source: String a: graph.ModuleArtifacts programDir: maybe.T(String)): maybe.T(String) =
+    let artifactStaleness(eng: T source: String a: placement.ModuleArtifacts
+            programDir: maybe.T(String)): maybe.T(String) =
         begin
             let search = searchPaths(eng)
             (* Checks for backend, WebAssembly runtime, or import-resolution
@@ -346,7 +350,7 @@ export
     (* Why a unit is stale: artifactStaleness's reason, or, when the build
      * reports inferable type arguments, which only checking the unit finds,
      * that *)
-    let unitStaleness(eng: T source: String a: graph.ModuleArtifacts programDir: maybe.T(String)): maybe.T(String) =
+    let unitStaleness(eng: T source: String a: placement.ModuleArtifacts programDir: maybe.T(String)): maybe.T(String) =
         if stringOp.length(eng.reportInferable) > 0 then maybe.some("reporting inferable type arguments")
         else artifactStaleness(eng source a programDir)
         end
@@ -521,7 +525,7 @@ export
         item: String
         src: maybe.T(String)
         targetDir: String
-        a: graph.ModuleArtifacts
+        a: placement.ModuleArtifacts
         stale: Bool
         notes: vector.T(Note)
         failure: maybe.T(All() Ok)
@@ -706,8 +710,8 @@ export
                         end
                     let canon =
                         if maybe.isSome(found) then
-                            graph.canonicalName(graph.resolveFile(eng.resolver maybe.unwrap(found)
-                                    graph.rootsOf(search programDir)))
+                            resolution.canonicalName(resolution.resolveFile(eng.resolver maybe.unwrap(found)
+                                    resolution.rootsOf(search programDir)))
                         else
                             paths.lower(item)
                         end
@@ -720,10 +724,10 @@ export
                         else
                             found
                         end
-                    let targetDir = graph.unitArtifactDir(str(eng.buildDir) canon)
+                    let targetDir = placement.unitArtifactDir(str(eng.buildDir) canon)
                     system.makeDirectory(targetDir)
-                    let artifactStem = graph.artifactStem(canon)
-                    let var a = graph.moduleArtifacts(str(eng.buildDir) canon)
+                    let artifactStem = placement.artifactStem(canon)
+                    let var a = placement.moduleArtifacts(str(eng.buildDir) canon)
                     let var reason = maybe.none(:String)
                     if maybe.isNone(src) then
                         (* A binary distribution: a prebuilt object (and .qm)
@@ -763,7 +767,7 @@ export
                              * standalone compilation) are used like those in
                              * the build directory (docs/build-process.md
                              * section 5.2) *)
-                            let beside = graph.artifactsIn(files.parent(maybe.unwrap(src)) artifactStem)
+                            let beside = placement.artifactsIn(files.parent(maybe.unwrap(src)) artifactStem)
                             if not(eq(beside.qm a.qm))
                                     andif maybe.isNone(unitStaleness(eng maybe.unwrap(src) beside programDir))
                                     andif eq(maybe.unwrapOr(manifestName(beside.qm) "") canon)
@@ -836,7 +840,7 @@ export
                 end
             let outcomeOf = fun(item: String): maybe.T(workers.Outcome)
                 vector.get(outcomes preparedIndex(item))
-            let roots = graph.rootsOf(search programDir)
+            let roots = resolution.rootsOf(search programDir)
             (* Predicts the modules a popped module's manifest will list before
              * it is compiled, using its existing manifest if up to date or
              * parsing its top-level imports if stale. Implicit imports added
@@ -872,10 +876,10 @@ export
                                                 else
                                                     vector.get(it.names j)
                                                 end
-                                            let m = graph.resolveModule(eng.resolver path
+                                            let m = resolution.resolveModule(eng.resolver path
                                                     maybe.some(files.parent(src)) roots)
                                             vector.append(found tuple
-                                                let name = graph.canonicalName(m)
+                                                let name = resolution.canonicalName(m)
                                                 let interfaceName = ""
                                                 let source = maybe.unwrapOr(m.source "")
                                                 let path = path

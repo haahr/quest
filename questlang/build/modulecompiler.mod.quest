@@ -26,10 +26,12 @@ import
     questlang/modules/artifacts/fingerprint : questlang/modules/artifacts/Fingerprint
     questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
     questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
+    questlang/modules/artifacts/placement : questlang/modules/artifacts/Placement
     questlang/modules/elaboration : questlang/modules/Elaboration
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/inlined : questlang/modules/Inlined
     questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/resolution : questlang/modules/Resolution
     questlang/modules/units : questlang/modules/Units
     questlang/repr/shapes : questlang/repr/Shapes
     questlang/syntax/ast : questlang/syntax/AST
@@ -102,14 +104,14 @@ export
             found
         end
 
-    let interfaceRef(resolved: graph.Resolved path: String): manifest.ImportedInterfaceRef =
+    let interfaceRef(resolved: resolution.Resolved path: String): manifest.ImportedInterfaceRef =
         begin
             let src = resolved.source
             let stats = if maybe.isSome(src) then fileStats.find(maybe.unwrap(src))
                 else maybe.none(:fileStats.T) end
             let hasSource = maybe.isSome(stats) andif {maybe.unwrap(stats).kind?file}
             tuple
-                let name = graph.interfaceName(resolved)
+                let name = resolution.interfaceName(resolved)
                 let source = if maybe.isSome(src) then files.absolute(maybe.unwrap(src)) else "" end
                 let mtime = if hasSource then maybe.unwrap(stats).modifiedTime else 0.0 end
                 let path = path
@@ -174,7 +176,7 @@ export
             (* The manifest records each import as the unit graph resolved it
              * (docs/build-process.md sections 2.1 and 4.3) *)
             let target = env.resolveInterface(e decl.interfaceName)
-            let targetName = graph.interfaceName(target)
+            let targetName = resolution.interfaceName(target)
             vector.append(interfaces interfaceRef(target decl.interfaceName))
 
             (* 2. The interfaces and modules it imports *)
@@ -184,7 +186,7 @@ export
                 (* Report any missing or unloadable interface at the import's
                  * offset, as elaboration does, rather than at the module's
                  * first line *)
-                let imported = env.atImport(e imp.offset 1 fun(): graph.Resolved
+                let imported = env.atImport(e imp.offset 1 fun(): resolution.Resolved
                     begin
                         if maybe.isNone(env.lookupInterface(e ifacePath))
                                 andif maybe.isNone(env.lookupInterface(e imp.interfaceName)) then
@@ -211,7 +213,7 @@ export
                         end
                     let m = env.resolveModule(e modRef)
                     vector.append(modules tuple
-                        let name = graph.canonicalName(m)
+                        let name = resolution.canonicalName(m)
                         let interfaceName = ref.name
                         let source = maybe.unwrapOr(m.source "")
                         let path = modRef
@@ -355,7 +357,7 @@ export
     (* Parses file, prepares its ModuleFile environment as compileModuleFile
      * expects, and runs body on it *)
     let withModuleFile(A::TYPE file: String includePaths: Array(String) buildDir: maybe.T(String)
-            programDir: maybe.T(String) res: maybe.T(graph.Resolver) body: All(m: ModuleFile) A): A =
+            programDir: maybe.T(String) res: maybe.T(resolution.Resolver) body: All(m: ModuleFile) A): A =
         begin
             let modPath = files.absolute(file)
             if not(system.isFile(modPath)) then diagnostics.fail(:Ok "Module file not found: '" <> modPath <> "'" 0) end
@@ -379,7 +381,7 @@ export
                         else paths.stripUnitSuffix(base)
                         end
                     let resolver = if maybe.isSome(res) then maybe.unwrap(res)
-                        else graph.newResolver()
+                        else resolution.newResolver()
                         end
                     e.units := graph.newGraphWith(resolver)
                     e.currentDir := maybe.some(files.parent(modPath))
@@ -392,7 +394,8 @@ export
                     end
                     let searchPaths = vector.toArray(e.includePaths)
                     let canon =
-                        graph.canonicalName(graph.resolveFile(resolver modPath graph.rootsOf(searchPaths programDir)))
+                        resolution.canonicalName(resolution.resolveFile(resolver modPath
+                                resolution.rootsOf(searchPaths programDir)))
                     body(tuple
                         let decl = found.decl
                         let offset = found.offset
@@ -406,7 +409,7 @@ export
                 end)
         end
 
-    let compileModuleFile(file: String outputDir: maybe.T(String) s: Settings res: maybe.T(graph.Resolver))
+    let compileModuleFile(file: String outputDir: maybe.T(String) s: Settings res: maybe.T(resolution.Resolver))
             : ModuleCompileResult =
         withModuleFile(file s.includePaths s.buildDir s.programDir res fun(m: ModuleFile):
                 ModuleCompileResult
@@ -414,7 +417,7 @@ export
                 m.e.reportInferable := s.reportInferable
                 let outDir =
                     if maybe.isSome(s.buildDir) andif maybe.isNone(outputDir) then
-                        graph.unitArtifactDir(files.absolute(maybe.unwrap(s.buildDir)) m.canon)
+                        placement.unitArtifactDir(files.absolute(maybe.unwrap(s.buildDir)) m.canon)
                     elsif maybe.isNone(outputDir) then
                         files.parent(m.modPath)
                     else
@@ -426,7 +429,7 @@ export
             end)
 
     let moduleFileUnit(file: String includePaths: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
-            res: maybe.T(graph.Resolver)): ModuleUnit =
+            res: maybe.T(resolution.Resolver)): ModuleUnit =
         withModuleFile(file includePaths buildDir programDir res fun(m: ModuleFile): ModuleUnit
             begin
                 let lowered = compilingApart(fun(): Lowered

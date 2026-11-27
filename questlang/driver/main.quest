@@ -96,6 +96,7 @@ import
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/inlined : questlang/modules/Inlined
     questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/resolution : questlang/modules/Resolution
     questlang/modules/stdlib : questlang/modules/Stdlib
     questlang/modules/units : questlang/modules/Units
     questlang/repr/shapes : questlang/repr/Shapes
@@ -393,7 +394,8 @@ let failWith(message: String): Ok =
 
 (* The build engine's settings, from the command line: each engine builds in
  * dir with includes, resolving with resolver *)
-let engineSettings(dir: maybe.T(String) includes: Array(String) resolver: maybe.T(graph.Resolver)): engine.Settings =
+let engineSettings(dir: maybe.T(String) includes: Array(String)
+        resolver: maybe.T(resolution.Resolver)): engine.Settings =
     tuple
         let buildDir = dir
         let includePaths = includes
@@ -886,7 +888,7 @@ let run(): Ok =
                         let named = vector.new(:String)
                         for i = 0 upto {extent options.inlineModules - 1} do
                             let path = options.inlineModules[i]
-                            vector.append(named try graph.canonicalName(env.resolveModule(e path))
+                            vector.append(named try resolution.canonicalName(env.resolveModule(e path))
                             when diagnostics.compilerError then path end)
                         end
                         inlined.setInlined(options.inlineLibrary vector.toArray(named))

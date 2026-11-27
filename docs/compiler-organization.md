@@ -90,13 +90,14 @@ questlang/
 ├── modules/                 # Units, imports, interfaces, modules, and their artifacts
 │   ├── paths                # Finding units: search paths, canonical names (over common/files)
 │   ├── units                # Unit files
-│   ├── graph                # The unit graph: resolution, loaded units
+│   ├── resolution           # Imports resolved once, and the interfaces an interface depends on
+│   ├── graph                # The unit graph: loaded units and their typed forms
 │   ├── abstracttypes        # Modules' abstract types by global name
 │   ├── loader               # Loading interfaces and modules
 │   ├── elaboration          # Elaborating interfaces, modules, and imports
 │   ├── stdlib               # The standard library's interfaces and module scopes
 │   └── artifacts/           # interfacecompiler, manifest, fingerprint: .qi and .qm artifacts, interfaces'
-│                            # fingerprints
+│                            # fingerprints; placement, where units' artifacts are in a build directory
 │
 ├── values/                  # Runtime values
 │   ├── model                # Values, and the interpreter's frames
@@ -420,7 +421,7 @@ between parts of the type checker:
 Layer 0: common/*
 Layer 1: syntax/* (tokens, tokenizer, ast, astprint, parser, parser/*, desugar)
 Layer 2: types/model → symbols, dump → subtyping; typechecker/typedast
-Layer 3: modules/paths, units, graph; format/*
+Layer 3: modules/paths, units → resolution, artifacts/placement → graph; format/*
 Layer 4: types/env → kinds, contractiveness
 Layer 5: typechecker/typedastprint, elaboratetypes, checks, escape
 Layer 6: modules/abstracttypes → types/reduce; modules/loader, elaboration, stdlib

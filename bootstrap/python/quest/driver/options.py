@@ -8,7 +8,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from quest.modules.graph import UnitKind, file_unit_kind
+from quest.modules.units import UnitKind, file_unit_kind
 from quest.pipeline import IR_DUMP_PHASES, IR_RUN_PHASES
 
 

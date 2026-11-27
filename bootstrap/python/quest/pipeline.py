@@ -23,7 +23,8 @@ from typing import Any, Optional
 
 from quest.build.engine import BuildEngine, unit_module_refs
 from quest.build.module_compiler import find_interface_header, header_search_dirs
-from quest.modules.graph import Roots, unit_artifact_dir
+from quest.modules.resolution import Roots
+from quest.modules.artifacts.placement import unit_artifact_dir
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.modules.units import unit_declaration
 from quest.ir.pipeline import IR_PASSES

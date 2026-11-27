@@ -31,7 +31,7 @@ from quest.pipeline import (
 )
 from quest.build.engine import BuildEngine, compile_unit_file
 from quest.build.compiler_runner import compile_c_source
-from quest.modules.graph import UnitKind, file_unit_kind
+from quest.modules.units import UnitKind, file_unit_kind
 from quest.driver.options import OBJECT_SUFFIXES, compile_parser, driver_parser, split_program_args
 from quest.driver.repl import run_repl
 from quest.common.location import SourceMap, os_text, read_source

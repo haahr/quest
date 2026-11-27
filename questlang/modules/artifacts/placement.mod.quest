@@ -1,0 +1,29 @@
+(* Quest Self-Hosted Compiler: Artifact Placement Implementation *)
+
+module placement : Placement
+import
+    util/strutil : util/Strutil
+
+    questlang/common/files : questlang/common/Files
+    questlang/modules/paths : questlang/modules/Paths
+export
+    let unitArtifactDir(buildDir: String canonicalName: String): String =
+        if strutil.contains(canonicalName "/") then files.join(buildDir files.parent(canonicalName)) else buildDir end
+
+    let artifactStem(canonicalName: String): String = paths.lower(files.baseName(canonicalName))
+
+    let interfaceQiFile(buildDir: String canonicalName: String): String =
+        files.join(unitArtifactDir(buildDir canonicalName) artifactStem(canonicalName) <> ".qi")
+
+    Let ModuleArtifacts = Tuple qm: String c: String o: String end
+
+    let artifactsIn(directory: String stem: String): ModuleArtifacts =
+        tuple
+            let qm = files.join(directory stem <> ".qm")
+            let c = files.join(directory stem <> ".mod.c")
+            let o = files.join(directory stem <> ".o")
+        end
+
+    let moduleArtifacts(buildDir: String canonicalName: String): ModuleArtifacts =
+        artifactsIn(unitArtifactDir(buildDir canonicalName) artifactStem(canonicalName))
+end

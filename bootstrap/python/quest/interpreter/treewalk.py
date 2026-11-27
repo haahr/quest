@@ -36,7 +36,9 @@ from quest.interpreter.primitives import (
     real_arithmetic,
     real_relational,
 )
-from quest.modules.graph import Roots, UnitGraph, UnitKind
+from quest.modules.resolution import Roots
+from quest.modules.graph import UnitGraph
+from quest.modules.units import UnitKind
 from quest.common.location import SourceMap, display_file_name, read_source
 from quest.values.model import (
     DYNAMIC_ERROR_EXC,

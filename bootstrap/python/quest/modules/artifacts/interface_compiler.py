@@ -32,15 +32,9 @@ from quest.config.abi import (
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.config import CompilerOptions
 from quest.modules.artifacts.manifest import ImportedInterfaceRef
-from quest.modules.graph import (
-    Resolved,
-    Resolver,
-    Roots,
-    UnitGraph,
-    fresh_interface_qi,
-    interface_qi_file,
-    unit_artifact_dir,
-)
+from quest.modules.resolution import Resolved, Resolver, Roots, fresh_interface_qi
+from quest.modules.graph import UnitGraph
+from quest.modules.artifacts.placement import interface_qi_file, unit_artifact_dir
 from quest.modules.paths import (
     InterfaceDependency,
     dependency_change,

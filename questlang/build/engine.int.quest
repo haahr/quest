@@ -23,7 +23,7 @@ import
     questlang/codegen/choice : questlang/codegen/Choice
     passes = questlang/ir/pipeline : questlang/ir/Pipeline
     questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
-    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/resolution : questlang/modules/Resolution
 export
     (* A build that failed: a cycle, an interface that does not conform, a
      * missing module, or a file that is not a program, with the bootstrap's
@@ -35,7 +35,7 @@ export
         buildDir: pathLib.T
         (* Resolves the imports of every unit the build compiles or checks,
          * each once (docs/build-process.md section 2.1) *)
-        resolver: graph.Resolver
+        resolver: resolution.Resolver
         includePaths: Array(pathLib.T)
         extraObjects: Array(pathLib.T)
         logger: logger.T
@@ -63,7 +63,7 @@ export
         nogc: Bool
         extraObjects: Array(String)
         (* The resolver of the units the build compiles (a new one if none) *)
-        resolver: maybe.T(graph.Resolver)
+        resolver: maybe.T(resolution.Resolver)
         (* T's jobs and driver: up to jobs modules compiled at once, in child
          * processes of driver *)
         jobs: Int
@@ -84,7 +84,8 @@ export
      * importing them (implicit, by canonical name and interface name), each
      * resolved from currentDir by the resolver *)
     unitModuleRefs(imports: Array(ImportRef) implicit: Array(passes.ImplicitImport)
-            currentDir: maybe.T(String) includePaths: Array(String) programDir: maybe.T(String) res: graph.Resolver)
+            currentDir: maybe.T(String) includePaths: Array(String) programDir: maybe.T(String)
+            res: resolution.Resolver)
             : Array(manifest.ImportedModuleRef)
 
     (* The objects that link the modules importer imports (roots, with the

@@ -37,7 +37,7 @@ README introduces the concepts; this one says where they are here and what diffe
 The bootstrap builds serially: there is no `-j` and no counterpart of `questlang/build/workers`. It has only the C
 backend, so every unit is compiled from C and no manifest needs to record a backend. The check of whether a unit's
 imports would now resolve elsewhere is `import_resolution_change` in
-[`quest/modules/graph.py`](../modules/graph.py); questlang keeps it in its engine. The two engines otherwise follow
+[`quest/modules/resolution.py`](../modules/resolution.py); questlang keeps it in its engine. The two engines otherwise follow
 the same algorithm and write the same kinds of artifacts and log entries. Each treats a unit whose manifest the other
 compiler wrote as stale, so the two never link each other's objects.
 

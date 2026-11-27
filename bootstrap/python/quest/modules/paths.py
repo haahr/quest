@@ -81,8 +81,9 @@ def dependency_change(
 
     A dependency changed if its path would now resolve to a different source
     (from the directory recorded with it, then include_paths), or if its source
-    is newer than the artifact. resolver (a quest.modules.graph.Resolver), if
-    given, resolves the paths, so that each is resolved once in a compilation.
+    is newer than the artifact. resolver (a quest.modules.resolution.Resolver),
+    if given, resolves the paths, so that each is resolved once in a
+    compilation.
     """
     for dep in deps:
         from_dir = Path(dep.dir) if dep.dir else None

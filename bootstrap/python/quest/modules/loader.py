@@ -28,14 +28,9 @@ from quest.modules.elaboration import (
     elaborate_module,
     register_unit_loader,
 )
-from quest.modules.graph import (
-    Resolved,
-    UnitKind,
-    fresh_interface_qi,
-    has_fresh_module_artifacts,
-    resolve_interface,
-    resolve_module,
-)
+from quest.modules.resolution import Resolved, fresh_interface_qi, resolve_interface, resolve_module
+from quest.modules.units import UnitKind
+from quest.modules.artifacts.placement import has_fresh_module_artifacts
 from quest.modules.artifacts.interface_compiler import (
     ensure_resolved_interface_artifacts,
     load_interface_from_qi_file,
