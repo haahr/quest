@@ -30,8 +30,8 @@ export
         errors: vector.T(diagnostics.CompilerError)
         warnings: vector.T(diagnostics.CompilerError)
         checksState: Bool
-        var checkHook: All(c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int) typedAst.Expr
-        var synthHook: All(c: T expr: ast.Expr e: env.T loopDepth: Int isCallee: Bool) typedAst.Expr
+        var checkHook: All(c: T expr: ast.Expr expected: model.Type) typedAst.Expr
+        var synthHook: All(c: T expr: ast.Expr isCallee: Bool) typedAst.Expr
     end
 
     let new(e: env.T loopDepth: Int): T =
@@ -43,9 +43,9 @@ export
             let errors = vector.new()
             let warnings = vector.new()
             let checksState = stringOp.equal(system.getEnv("QUEST_CHECK_SCOPES") "1")
-            let var checkHook = fun(c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int): typedAst.Expr
+            let var checkHook = fun(c: T expr: ast.Expr expected: model.Type): typedAst.Expr
                 diagnostics.internal("the checker has no dispatch" expr.span.startOffset)
-            let var synthHook = fun(c: T expr: ast.Expr e: env.T loopDepth: Int isCallee: Bool): typedAst.Expr
+            let var synthHook = fun(c: T expr: ast.Expr isCallee: Bool): typedAst.Expr
                 diagnostics.internal("the checker has no dispatch" expr.span.startOffset)
         end
 
@@ -85,21 +85,9 @@ export
             end)
         end
 
-    let checkExpr(c: T expr: ast.Expr expected: model.Type): typedAst.Expr =
-        begin
-            agree(c c.env c.loopDepth)
-            c.checkHook(c expr expected c.env c.loopDepth)
-        end
-    let synthExpr(c: T expr: ast.Expr): typedAst.Expr =
-        begin
-            agree(c c.env c.loopDepth)
-            c.synthHook(c expr c.env c.loopDepth false)
-        end
-    let synthCallee(c: T expr: ast.Expr): typedAst.Expr =
-        begin
-            agree(c c.env c.loopDepth)
-            c.synthHook(c expr c.env c.loopDepth true)
-        end
+    let checkExpr(c: T expr: ast.Expr expected: model.Type): typedAst.Expr = c.checkHook(c expr expected)
+    let synthExpr(c: T expr: ast.Expr): typedAst.Expr = c.synthHook(c expr false)
+    let synthCallee(c: T expr: ast.Expr): typedAst.Expr = c.synthHook(c expr true)
 
     let inLoop(A::TYPE c: T body: All() A): A =
         begin
@@ -245,7 +233,6 @@ export
 
     let lookupValue(c: T name: String): maybe.T(symbols.ValueSymbol) =
         begin
-            agree(c c.env c.loopDepth)
             let sym = env.lookupValue(c.env name)
             if maybe.isSome(sym) then checkPoisoned(maybe.unwrap(sym)) end
             sym

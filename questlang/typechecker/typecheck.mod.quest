@@ -113,9 +113,8 @@ export
         partial: typedAst.Program
     end
 
-    let rec checkExpr(c: checker.T x0: ast.Expr expected: Type e: env.T loopDepth: Int): typedAst.Expr =
+    let rec checkExpr(c: checker.T x0: ast.Expr expected: Type): typedAst.Expr =
         begin
-            checker.agree(c e loopDepth)
             let exp = maybe.some(expected)
             case x0.form
                 (* Conditionals with an else branch: both branches are checked
@@ -123,34 +122,34 @@ export
                  * and is checked by subsumption) *)
                 when exprIf with x then
                     if maybe.isSome(x.elseBranch) andif not(x.shortCircuit) then
-                        control.elaborateIf(c x0 exp e loopDepth)
+                        control.elaborateIf(c x0 exp c.env c.loopDepth)
                     else
                         checker.checkSubsumption(c x0 expected maybe.none())
                     end
-                when exprBlock then control.elaborateBlock(c x0 exp e loopDepth)
-                when exprFun then bindings.elaborateFun(c x0 exp e loopDepth)
-                when exprRecord then aggregates.elaborateRecord(c x0 exp e loopDepth)
-                when exprTuple then tuples.elaborateTuple(c x0 exp e loopDepth)
-                when exprCase then control.elaborateCase(c x0 exp e loopDepth)
-                when exprArray then aggregates.elaborateArray(c x0 exp e loopDepth)
-                when exprArrayRep then aggregates.elaborateArrayRep(c x0 exp e loopDepth)
-                when exprRaise then exceptions.elaborateRaise(c x0 exp e loopDepth)
+                when exprBlock then control.elaborateBlock(c x0 exp c.env c.loopDepth)
+                when exprFun then bindings.elaborateFun(c x0 exp c.env c.loopDepth)
+                when exprRecord then aggregates.elaborateRecord(c x0 exp c.env c.loopDepth)
+                when exprTuple then tuples.elaborateTuple(c x0 exp c.env c.loopDepth)
+                when exprCase then control.elaborateCase(c x0 exp c.env c.loopDepth)
+                when exprArray then aggregates.elaborateArray(c x0 exp c.env c.loopDepth)
+                when exprArrayRep then aggregates.elaborateArrayRep(c x0 exp c.env c.loopDepth)
+                when exprRaise then exceptions.elaborateRaise(c x0 exp c.env c.loopDepth)
                 (* An exit diverges too: it has the expected type, as a raise
                  * does *)
                 when exprExit then
                     begin
-                        if loopDepth <= 0 then
+                        if c.loopDepth <= 0 then
                             diagnostics.fail(:Ok "Exit statement outside of any loop" x0.span.startOffset)
                         end
                         typedAst.expr(x0.span.startOffset expected option exprExit of typedAst.ExprForm end)
                     end
-                when exprTry then exceptions.elaborateTry(c x0 exp e loopDepth)
-                when exprInspect then autoValues.elaborateInspect(c x0 exp e loopDepth)
-                when exprAuto then autoValues.elaborateAuto(c x0 exp e loopDepth)
+                when exprTry then exceptions.elaborateTry(c x0 exp c.env c.loopDepth)
+                when exprInspect then autoValues.elaborateInspect(c x0 exp c.env c.loopDepth)
+                when exprAuto then autoValues.elaborateAuto(c x0 exp c.env c.loopDepth)
                 (* An external C symbol's binding *)
                 when exprExternal with x then
                     begin
-                        elaborateTypes.requireUnsoundModule(e x0.span.startOffset)
+                        elaborateTypes.requireUnsoundModule(c.env x0.span.startOffset)
                         typedAst.expr(x0.span.startOffset expected
                                 option exprExternal of typedAst.ExprForm with let symbol = x.symbol end)
                     end
@@ -158,7 +157,8 @@ export
                  * determine implicit type arguments (Cardelli, The Quest
                  * Language and System section 4: cons(3 nil())) *)
                 when exprApp then
-                    checks.requireSubtype(x0.span.startOffset application.elaborateApp(c x0 exp e loopDepth) expected e
+                    checks.requireSubtype(x0.span.startOffset application.elaborateApp(c x0 exp c.env c.loopDepth)
+                            expected c.env
                             maybe.none())
                 (* Subsumption: the minimal type is synthesized and must be a
                  * subtype *)
@@ -190,9 +190,8 @@ export
      * typedAst, with its dump (typedAstPrint); and its evaluation
      * (interpreter/treewalk) and lowering (ir/lower), since those read only
      * the typed AST. *)
-    and synthExpr(c: checker.T x0: ast.Expr e: env.T loopDepth: Int isCallee: Bool): typedAst.Expr =
+    and synthExpr(c: checker.T x0: ast.Expr isCallee: Bool): typedAst.Expr =
         begin
-            checker.agree(c e loopDepth)
             let offset = x0.span.startOffset
             let none = maybe.none(:Type)
             case x0.form
@@ -218,7 +217,7 @@ export
                 when exprOk then typedAst.expr(offset model.okType option exprOk of typedAst.ExprForm end)
                 when exprExit then
                     begin
-                        if loopDepth <= 0 then diagnostics.fail(:Ok "Exit statement outside of any loop" offset) end
+                        if c.loopDepth <= 0 then diagnostics.fail(:Ok "Exit statement outside of any loop" offset) end
                         typedAst.expr(offset model.okType option exprExit of typedAst.ExprForm end)
                     end
                 when exprExternal with x then
@@ -238,7 +237,7 @@ export
                         let found = checker.lookupValue(c name)
                         if maybe.isNone(found) then
                             diagnostics.failWithHelp(:Ok "Undefined variable '" <> name <> "'" offset
-                                    nearMiss.valueHelp(e name))
+                                    nearMiss.valueHelp(c.env name))
                         end
                         let sym = maybe.unwrap(found)
                         (* Closures may not capture var or out parameters, nor
@@ -271,7 +270,7 @@ export
                                 let found = checker.lookupValue(c id.name)
                                 if maybe.isNone(found) then
                                     diagnostics.failWithHelp(:Ok "Undefined variable '" <> id.name <> "'" targetOffset
-                                            nearMiss.valueHelp(e id.name))
+                                            nearMiss.valueHelp(c.env id.name))
                                 end
                                 let sym = maybe.unwrap(found)
                                 (* The same rules as a plain use: a closure may
@@ -297,7 +296,7 @@ export
                             end
                         else
                             begin
-                                let targetTyped = synthExpr(c x.target e loopDepth false)
+                                let targetTyped = synthExpr(c x.target false)
                                 case targetTyped.type.form
                                     when typeVar with v then
                                         typedAst.expr(offset v.element option exprDerefCell of typedAst.ExprForm with
@@ -313,22 +312,21 @@ export
                 (* Reference cell allocation (var e) *)
                 when exprVarCell with x then
                     begin
-                        let valTyped = synthExpr(c x.value e loopDepth false)
+                        let valTyped = synthExpr(c x.value false)
                         typedAst.expr(offset model.varType(valTyped.type) option exprVarCell of typedAst.ExprForm with
                             let value = valTyped
                         end)
                     end
 
-                when exprInfix then control.synthInfix(c x0 e loopDepth)
-                when exprIf then control.elaborateIf(c x0 none e loopDepth)
+                when exprInfix then control.synthInfix(c x0 c.env c.loopDepth)
+                when exprIf then control.elaborateIf(c x0 none c.env c.loopDepth)
 
                 (* Loops *)
                 when exprWhile with x then
                     begin
-                        let condTyped = checkExpr(c x.cond model.boolType e loopDepth)
-                        c.loopDepth := loopDepth
+                        let condTyped = checkExpr(c x.cond model.boolType)
                         let bodyTyped = checker.inLoop(c fun(): typedAst.Expr
-                            synthExpr(c x.body e c.loopDepth false))
+                            synthExpr(c x.body false))
                         typedAst.expr(offset model.okType option exprWhile of typedAst.ExprForm with
                             let cond = condTyped
                             let body = bodyTyped
@@ -336,39 +334,38 @@ export
                     end
                 when exprLoop with x then
                     begin
-                        c.loopDepth := loopDepth
                         let bodyTyped = checker.inLoop(c fun(): typedAst.Expr
-                            synthExpr(c x.body e c.loopDepth false))
+                            synthExpr(c x.body false))
                         typedAst.expr(offset model.okType option exprLoop of typedAst.ExprForm with
                             let body = bodyTyped
                         end)
                     end
-                when exprFor then control.synthFor(c x0 e loopDepth)
+                when exprFor then control.synthFor(c x0 c.env c.loopDepth)
 
-                when exprBlock then control.elaborateBlock(c x0 none e loopDepth)
-                when exprFun then bindings.elaborateFun(c x0 none e loopDepth)
-                when exprApp then application.elaborateApp(c x0 none e loopDepth)
+                when exprBlock then control.elaborateBlock(c x0 none c.env c.loopDepth)
+                when exprFun then bindings.elaborateFun(c x0 none c.env c.loopDepth)
+                when exprApp then application.elaborateApp(c x0 none c.env c.loopDepth)
 
                 (* Aggregates *)
-                when exprRecord then aggregates.elaborateRecord(c x0 none e loopDepth)
-                when exprTuple then tuples.elaborateTuple(c x0 none e loopDepth)
-                when exprSelect then aggregates.synthSelect(c x0 e loopDepth)
-                when exprOption then aggregates.synthOption(c x0 e loopDepth)
-                when exprVariant then aggregates.synthVariant(c x0 e loopDepth)
-                when exprVariantCheck then aggregates.synthVariantCheck(c x0 e loopDepth)
-                when exprVariantAssert then aggregates.synthVariantAssert(c x0 e loopDepth)
-                when exprCase then control.elaborateCase(c x0 none e loopDepth)
-                when exprArray then aggregates.elaborateArray(c x0 none e loopDepth)
-                when exprArrayRep then aggregates.elaborateArrayRep(c x0 none e loopDepth)
-                when exprIndex then aggregates.synthIndex(c x0 e loopDepth)
-                when exprIndexAssign then aggregates.synthIndexAssign(c x0 e loopDepth)
+                when exprRecord then aggregates.elaborateRecord(c x0 none c.env c.loopDepth)
+                when exprTuple then tuples.elaborateTuple(c x0 none c.env c.loopDepth)
+                when exprSelect then aggregates.synthSelect(c x0 c.env c.loopDepth)
+                when exprOption then aggregates.synthOption(c x0 c.env c.loopDepth)
+                when exprVariant then aggregates.synthVariant(c x0 c.env c.loopDepth)
+                when exprVariantCheck then aggregates.synthVariantCheck(c x0 c.env c.loopDepth)
+                when exprVariantAssert then aggregates.synthVariantAssert(c x0 c.env c.loopDepth)
+                when exprCase then control.elaborateCase(c x0 none c.env c.loopDepth)
+                when exprArray then aggregates.elaborateArray(c x0 none c.env c.loopDepth)
+                when exprArrayRep then aggregates.elaborateArrayRep(c x0 none c.env c.loopDepth)
+                when exprIndex then aggregates.synthIndex(c x0 c.env c.loopDepth)
+                when exprIndexAssign then aggregates.synthIndexAssign(c x0 c.env c.loopDepth)
 
                 (* Exceptions and auto values *)
-                when exprException then exceptions.synthException(c x0 e loopDepth false)
-                when exprRaise then exceptions.elaborateRaise(c x0 none e loopDepth)
-                when exprTry then exceptions.elaborateTry(c x0 none e loopDepth)
-                when exprInspect then autoValues.elaborateInspect(c x0 none e loopDepth)
-                when exprAuto then autoValues.elaborateAuto(c x0 none e loopDepth)
+                when exprException then exceptions.synthException(c x0 c.env c.loopDepth false)
+                when exprRaise then exceptions.elaborateRaise(c x0 none c.env c.loopDepth)
+                when exprTry then exceptions.elaborateTry(c x0 none c.env c.loopDepth)
+                when exprInspect then autoValues.elaborateInspect(c x0 none c.env c.loopDepth)
+                when exprAuto then autoValues.elaborateAuto(c x0 none c.env c.loopDepth)
 
                 else diagnostics.fail("Unsupported AST expression" offset)
             end
@@ -384,21 +381,21 @@ export
 
     (* Binds a name a failed import or module declaration would have bound to a
      * poisoned value *)
-    let poisonValue(c: checker.T name: String e: env.T): Ok =
+    let poisonValue(c: checker.T name: String): Ok =
         begin
             let sym = symbols.newValueSymbol(name model.okType false false false c.functionDepth 0)
             symbols.poisonValue(sym.symbolId)
-            symbols.declareValue(e.currentScope sym)
+            symbols.declareValue(c.env.currentScope sym)
             ok
         end
 
     (* Runs body and returns its result, or returns none and poisons names if
      * body fails *)
-    let recovering(c: checker.T names: Array(String) e: env.T body: All() typedAst.Binding): maybe.T(typedAst.Binding) =
+    let recovering(c: checker.T names: Array(String) body: All() typedAst.Binding): maybe.T(typedAst.Binding) =
         begin
             let result = checker.attempt(c body)
             if maybe.isNone(result) then
-                for i = 0 upto {extent names - 1} do poisonValue(c names[i] e) end
+                for i = 0 upto {extent names - 1} do poisonValue(c names[i]) end
             end
             result
         end
@@ -416,22 +413,22 @@ export
 
     (* A top-level phrase (an import, interface, module, binding, or
      * expression), or none if it fails *)
-    let elaboratePhrase(c: checker.T p: ast.Phrase e: env.T): maybe.T(typedAst.Binding) =
+    let elaboratePhrase(c: checker.T p: ast.Phrase): maybe.T(typedAst.Binding) =
         case p.form
-            when phraseDecl with x then bindings.elaborateRecovering(c x.decl e 0)
+            when phraseDecl with x then bindings.elaborateRecovering(c x.decl c.env c.loopDepth)
             when phraseImport with x then
-                recovering(c importedNames(x.phrase) e fun(): typedAst.Binding
-                    elaboration.elaborateImport(x.phrase p.span.startOffset e))
+                recovering(c importedNames(x.phrase) fun(): typedAst.Binding
+                    elaboration.elaborateImport(x.phrase p.span.startOffset c.env))
             when phraseInterface with x then
-                recovering(c array of :String end e fun(): typedAst.Binding
-                    elaboration.elaborateInterface(x.iface p.span.startOffset e))
+                recovering(c array of :String end fun(): typedAst.Binding
+                    elaboration.elaborateInterface(x.iface p.span.startOffset c.env))
             when phraseModule with x then
-                recovering(c array of x.modDecl.name end e fun(): typedAst.Binding
-                    elaboration.elaborateModule(x.modDecl p.span.startOffset e))
+                recovering(c array of x.modDecl.name end fun(): typedAst.Binding
+                    elaboration.elaborateModule(x.modDecl p.span.startOffset c.env))
             when phraseExpr with x then
                 checker.attempt(c fun(): typedAst.Binding
                     typedAst.binding(p.span.startOffset option bindExprStmt of typedAst.BindingForm with
-                        let expr = synthExpr(c x.expr e 0 false)
+                        let expr = synthExpr(c x.expr false)
                     end))
         end
 
@@ -485,7 +482,7 @@ export
             let phrases = vector.new(:typedAst.Binding)
             try
                 for i = 0 upto {vector.length(program.form.phrases) - 1} do
-                    let typed = elaboratePhrase(c vector.get(program.form.phrases i) e)
+                    let typed = elaboratePhrase(c vector.get(program.form.phrases i))
                     if maybe.isSome(typed) then
                         vector.append(phrases maybe.unwrap(typed))
                     end
