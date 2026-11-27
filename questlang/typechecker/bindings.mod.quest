@@ -976,19 +976,13 @@ export
         end
 
     let poisonValue(c: checker.T name: String b: ast.Decl): Ok =
-        begin
-            let t = declaredType(b c.env)
-            let isVar = case b.form when declLetVal with x then x.isVar else false end
-            let sym = symbols.newValueSymbol(name maybe.unwrapOr(t model.okType) isVar false false c.functionDepth 0)
-            if maybe.isNone(t) then symbols.poisonValue(sym.symbolId) end
-            symbols.declareValue(c.env.currentScope sym)
-            ok
-        end
+        checker.poisonValue(c name declaredType(b c.env)
+                case b.form when declLetVal with x then x.isVar else false end)
 
     let poisonType(name: String e: env.T): Ok =
         begin
             let sym = symbols.newTypeSymbol(name env.freshSymbolId(e) model.typeKind maybe.none())
-            symbols.poison(sym.symbolId)
+            symbols.poisonTypeOrKind(sym.symbolId)
             symbols.declareType(e.currentScope sym)
             ok
         end
@@ -1013,7 +1007,7 @@ export
             when declDefKind with x then
                 begin
                     let sym = symbols.newKindSymbol(x.name env.freshSymbolId(c.env) model.typeKind)
-                    symbols.poison(sym.symbolId)
+                    symbols.poisonTypeOrKind(sym.symbolId)
                     symbols.declareKind(c.env.currentScope sym)
                     ok
                 end
@@ -1024,9 +1018,5 @@ export
         end
 
     let elaborateRecovering(c: checker.T b: ast.Decl): maybe.T(typedAst.Binding) =
-        begin
-            let result = checker.attempt(c fun(): typedAst.Binding elaborateBinding(c b))
-            if maybe.isNone(result) then poisonDeclared(c b) end
-            result
-        end
+        checker.recovering(c fun(): typedAst.Binding elaborateBinding(c b) fun(): Ok poisonDeclared(c b))
 end

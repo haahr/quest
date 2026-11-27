@@ -373,26 +373,12 @@ export
 
     let newChecker(e: env.T loopDepth: Int): checker.T = checker.new(e loopDepth checkExpr synthExpr)
 
-    (* Binds a name a failed import or module declaration would have bound to a
-     * poisoned value *)
-    let poisonValue(c: checker.T name: String): Ok =
-        begin
-            let sym = symbols.newValueSymbol(name model.okType false false false c.functionDepth 0)
-            symbols.poisonValue(sym.symbolId)
-            symbols.declareValue(c.env.currentScope sym)
-            ok
-        end
-
-    (* Runs body and returns its result, or returns none and poisons names if
+    (* Runs body and returns its result, or returns none and poisons names, the
+     * module names a failed import or module declaration would have bound, if
      * body fails *)
     let recovering(c: checker.T names: Array(String) body: All() typedAst.Binding): maybe.T(typedAst.Binding) =
-        begin
-            let result = checker.attempt(c body)
-            if maybe.isNone(result) then
-                for i = 0 upto {extent names - 1} do poisonValue(c names[i]) end
-            end
-            result
-        end
+        checker.recovering(c body fun(): Ok
+            for i = 0 upto {extent names - 1} do checker.poisonValue(c names[i] maybe.none() false) end)
 
     (* The module names an import binds *)
     let importedNames(phrase: ast.ImportPhrase): Array(String) =

@@ -101,11 +101,12 @@ recursive type groups (calling `types/contractiveness` and `types/kinds`).
 ## Errors and recovery
 
 An error is raised with `diagnostics.fail` at the offending syntax's offset and ends the elaboration of the binding it
-is in. Bindings and blocks are recovery points: the failing binding is reported, the names it declares are bound to
-*poisoned* symbols (or to symbols of the type it declared, if it declared one), and checking continues with the next
-binding. A later use of a poisoned name fails silently, so one mistake does not produce a cascade of errors. The
+is in. Bindings and blocks are recovery points (`checker.recovering`): the failing binding is reported, the names it
+declares are bound to *poisoned* symbols (or to symbols of the type it declared, if it declared one;
+`checker.poisonValue`), and checking continues with the next binding. A later use of a poisoned name fails silently, so one mistake does not produce a cascade of errors. The
 check stops after 20 errors or a fatal one; `typecheck.elaborateProgram` returns the typed program only if there were
-none.
+none. A broken invariant of the checker is not the program's error: it is raised with `diagnostics.internal`
+(`checks.unexpected` for a form a family's function was not meant to be given), and is fatal.
 
 ## Connections
 

@@ -244,4 +244,20 @@ export
             if not(err.silent) then report(c err) end
             maybe.none()
         end
+
+    let recovering(A::TYPE c: T body: All() A poison: All() Ok): maybe.T(A) =
+        begin
+            let result = attempt(c body)
+            if maybe.isNone(result) then poison() end
+            result
+        end
+
+    let poisonValue(c: T name: String declared: maybe.T(model.Type) isVar: Bool): Ok =
+        begin
+            let sym =
+                symbols.newValueSymbol(name maybe.unwrapOr(declared model.okType) isVar false false c.functionDepth 0)
+            if maybe.isNone(declared) then symbols.poisonValue(sym.symbolId) end
+            symbols.declareValue(c.env.currentScope sym)
+            ok
+        end
 end

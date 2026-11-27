@@ -121,4 +121,13 @@ export
     (* Runs body and returns its result, or none if it raises a non-fatal error;
      * non-silent errors are reported, and fatal errors propagate *)
     attempt(A::TYPE c: T body: All() A): maybe.T(A)
+    (* attempt(c body), which, if body fails, runs poison to bind the names
+     * body would have declared: each recovery point (a phrase of a program,
+     * a binding of a block or module) *)
+    recovering(A::TYPE c: T body: All() A poison: All() Ok): maybe.T(A)
+    (* Declares name in the current scope for a value that a failed
+     * declaration would have bound: of its declared type, if the
+     * declaration's annotations give one, so that later uses still check;
+     * else poisoned (of type Ok), so that a use fails silently *)
+    poisonValue(c: T name: String declared: maybe.T(model.Type) isVar: Bool): Ok
 end
