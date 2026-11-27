@@ -43,94 +43,29 @@ export
     let add(m: Table s: String k: K): Ok = begin hashmap.insert(m s k) ok end
     let lookup(m: Table s: String): maybe.T(K) = hashmap.get(m s)
 
-    let initKeywords(): Table =
+    let isSymbolicChar(c: Char): Bool = strutil.contains("!#$%&*+-/:<=>?@\\^_`|~" stringOp.new(1 c))
+
+    (* The spelled kinds of tokens.kindTable that pass test, by spelling *)
+    let tableOf(test: All(row: tokens.KindInfo) Bool): Table =
         begin
             let m = newTable()
-            (* Kind level *)
-            add(m "TYPE" option kwType of K end) add(m "POWER" option kwPower of K end)
-            add(m "ALL" option kwAllKind of K end) add(m "DEF" option kwDefKind of K end)
-            (* Type level *)
-            add(m "All" option kwAll of K end) add(m "Array" option kwArrayType of K end)
-            add(m "Auto" option kwAutoType of K end) add(m "Def" option kwDef of K end)
-            add(m "Exception" option kwExceptionType of K end) add(m "Fun" option kwFunType of K end)
-            add(m "Let" option kwLetType of K end) add(m "Option" option kwOptionType of K end)
-            add(m "Out" option kwOutType of K end) add(m "Rec" option kwRecType of K end)
-            add(m "Record" option kwRecordType of K end) add(m "Tuple" option kwTupleType of K end)
-            add(m "Var" option kwVarType of K end) add(m "Variant" option kwVariantType of K end)
-            (* Value level *)
-            add(m "and" option kwAnd of K end) add(m "andif" option kwAndif of K end)
-            add(m "array" option kwArray of K end) add(m "as" option kwAs of K end)
-            add(m "auto" option kwAuto of K end) add(m "begin" option kwBegin of K end)
-            add(m "case" option kwCase of K end) add(m "do" option kwDo of K end)
-            add(m "downto" option kwDownto of K end) add(m "else" option kwElse of K end)
-            add(m "elsif" option kwElsif of K end) add(m "end" option kwEnd of K end)
-            add(m "exception" option kwException of K end) add(m "exit" option kwExit of K end)
-            add(m "export" option kwExport of K end) add(m "extent" option kwExtent of K end)
-            add(m "external" option kwExternal of K end) add(m "false" option kwFalse of K end)
-            add(m "for" option kwFor of K end) add(m "fun" option kwFun of K end)
-            add(m "if" option kwIf of K end) add(m "import" option kwImport of K end)
-            add(m "inspect" option kwInspect of K end) add(m "interface" option kwInterface of K end)
-            add(m "is" option kwIs of K end) add(m "isnot" option kwIsnot of K end)
-            add(m "let" option kwLet of K end) add(m "loop" option kwLoop of K end)
-            add(m "module" option kwModule of K end) add(m "not" option kwNot of K end)
-            add(m "of" option kwOf of K end) add(m "ok" option kwOk of K end)
-            add(m "option" option kwOption of K end) add(m "ordinal" option kwOrdinal of K end)
-            add(m "orif" option kwOrif of K end) add(m "out" option kwOut of K end)
-            add(m "raise" option kwRaise of K end) add(m "rec" option kwRec of K end)
-            add(m "record" option kwRecord of K end) add(m "then" option kwThen of K end)
-            add(m "true" option kwTrue of K end) add(m "try" option kwTry of K end)
-            add(m "tuple" option kwTuple of K end) add(m "unsound" option kwUnsound of K end)
-            add(m "upto" option kwUpto of K end) add(m "var" option kwVar of K end)
-            add(m "variant" option kwVariant of K end) add(m "when" option kwWhen of K end)
-            add(m "while" option kwWhile of K end) add(m "with" option kwWith of K end)
-            m
-        end
-
-    (* Symbolic operators that are reserved punctuation *)
-    let initReservedPunctuation(): Table =
-        begin
-            let m = newTable()
-            add(m ":=" option assign of K end) add(m "::" option colonColon of K end)
-            add(m "<:" option subtype of K end) add(m "=" option equal of K end)
-            add(m ":" option colon of K end) add(m "?" option question of K end)
-            add(m "!" option bang of K end) add(m "@" option at of K end)
-            add(m "_" option underscore of K end)
-            m
-        end
-
-    (* Single-character tokens, which are never part of a symbolic operator *)
-    let initDelimiters(): Table =
-        begin
-            let m = newTable()
-            add(m "(" option lparen of K end) add(m ")" option rparen of K end)
-            add(m "[" option lbracket of K end) add(m "]" option rbracket of K end)
-            add(m "{" option lbrace of K end) add(m "}" option rbrace of K end)
-            add(m "," option comma of K end) add(m ";" option semicolon of K end)
-            add(m "." option dot of K end)
-            m
-        end
-
-    (* The tables are never changed, so every tokenizer shares them *)
-    let keywordTable = initKeywords()
-    let keywordNames(): Array(String) = vector.toArray(hashmap.keys(keywordTable))
-    let reservedPunctuationTable = initReservedPunctuation()
-    let delimiterTable = initDelimiters()
-
-    (* Each kind's name to its spelling, from the three tables *)
-    let spellingTable =
-        begin
-            let m = hashmap.new(:String :String stringOp.equal hash.string)
-            let tables = array of keywordTable reservedPunctuationTable delimiterTable end
-            for t = 0 upto {extent tables - 1} do
-                let names = hashmap.keys(tables[t])
-                for i = 0 upto {vector.length(names) - 1} do
-                    let s = vector.get(names i)
-                    hashmap.insert(m tokens.tokenKindName(maybe.unwrap(lookup(tables[t] s))) s)
-                end
+            for i = 0 upto {extent tokens.kindTable - 1} do
+                let row = tokens.kindTable[i]
+                if maybe.isSome(row.spelling) andif test(row) then add(m maybe.unwrap(row.spelling) row.kind) end
             end
             m
         end
-    let spellingOf(kindName: String): maybe.T(String) = hashmap.get(spellingTable kindName)
+
+    (* The keywords; the reserved punctuation, the runs of symbolic
+     * characters that are not operators; and the delimiters and dot, single
+     * characters that are never part of an operator. The tables are never
+     * changed, so every tokenizer shares them. *)
+    let keywordTable = tableOf(fun(row: tokens.KindInfo): Bool row.class?keyword)
+    let keywordNames(): Array(String) = vector.toArray(hashmap.keys(keywordTable))
+    let reservedPunctuationTable = tableOf(fun(row: tokens.KindInfo): Bool
+        not(row.class?keyword) andif isSymbolicChar(stringOp.getChar(maybe.unwrap(row.spelling) 0)))
+    let delimiterTable = tableOf(fun(row: tokens.KindInfo): Bool
+        not(row.class?keyword) andif not(isSymbolicChar(stringOp.getChar(maybe.unwrap(row.spelling) 0))))
 
     let new(sm: location.SourceMap bag: diagbag.T): T =
         begin
@@ -150,8 +85,6 @@ export
     (* ======================================================================
      * Characters
      * ====================================================================== *)
-
-    let isSymbolicChar(c: Char): Bool = strutil.contains("!#$%&*+-/:<=>?@\\^_`|~" stringOp.new(1 c))
 
     (* The value of a hexadecimal digit, or ~1 *)
     let hexVal(c: Char): Int =

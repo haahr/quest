@@ -59,11 +59,9 @@ export
 
     Let Range = Tuple start: Int stop: Int end
 
-    (* The walk's state: the tokens, their kinds' names, and the tables being
-     * filled *)
+    (* The walk's state: the tokens and the tables being filled *)
     Let St = Tuple
         toks: vector.T(tokens.Token)
-        kinds: Array(String)
         (* The source line of each token *)
         lineNumbers: Array(Int)
         byStart: maps.IntMap(Int)
@@ -93,8 +91,10 @@ export
     let count(st: St): Int = vector.length(st.toks)
     let offset(st: St i: Int): Int = vector.get(st.toks i).span.startOffset
     let stopOf(st: St i: Int): Int = vector.get(st.toks i).span.endOffset
-    let isKind(st: St i: Int name: String): Bool =
-        {i >= 0} andif {i < extent(st.kinds)} andif stringOp.equal(st.kinds[i] name)
+    (* The kind of token i; eof outside the tokens, as for the EOF token at
+     * their end, which no test here looks for *)
+    let kind(st: St i: Int): tokens.TokenKind =
+        if {i >= 0} andif {i < count(st)} then vector.get(st.toks i).kind else option eof of tokens.TokenKind end end
 
     (* Whether token i is the first on its source line *)
     let startsLine(st: St i: Int): Bool = {i <= 0} orif {st.lineNumbers[i - 1] < st.lineNumbers[i]}
@@ -112,17 +112,18 @@ export
             ~1
         else
             let var j = i + 1
-            while isKind(st j "RBRACE") do j := j + 1 end
+            while kind(st j)?rbrace do j := j + 1 end
             if j < count(st) then j else ~1 end
         end
 
-    (* The first token of kind name at or after i, before limit; ~1 if none *)
-    let find(st: St i: Int limit: Int name: String): Int =
+    (* The first token whose kind passes test at or after i, before limit; ~1
+     * if none *)
+    let find(st: St i: Int limit: Int test: All(k: tokens.TokenKind) Bool): Int =
         begin
             let var j = i
             let var found = ~1
             while {found < 0} andif {j >= 0} andif {j < limit} do
-                if isKind(st j name) then found := j end
+                if test(kind(st j)) then found := j end
                 j := j + 1
             end
             found
@@ -139,7 +140,7 @@ export
         begin
             let var j = i
             hashMap.insert(st.rules offset(st j) r)
-            while isKind(st j - 1 "LBRACE") do
+            while kind(st j - 1)?lbrace do
                 j := j - 1
                 hashMap.insert(st.rules offset(st j) r)
             end
@@ -192,7 +193,7 @@ export
     let closer(st: St sp: location.Span): Ok =
         begin
             let j = last(st sp)
-            if isKind(st j "KW_END") then rule(st j first(st sp) 0) end
+            if kind(st j)?kwEnd then rule(st j first(st sp) 0) end
         end
 
     (* ======================================================================
@@ -208,22 +209,22 @@ export
             let var lastTok = i
             let var done = false
             while not(done) do
-                while {j < limit} andif not(isKind(st j "COLON")) do j := j + 1 end
+                while {j < limit} andif not(kind(st j)?colon) do j := j + 1 end
                 if j >= limit then
                     lastTok := limit - 1
                     done := true
                 else
                     hashSet.insert(st.spacedColons offset(st j))
                     j := j + 1
-                    if isKind(st j "IDENT") then
+                    if kind(st j)?ident then
                         j := j + 1
-                        while {{j + 1} < limit} andif isKind(st j "SYMBOLIC_INFIX")
-                                andif stringOp.equal(vector.get(st.toks j).lexeme "/") andif isKind(st j + 1 "IDENT") do
+                        while {{j + 1} < limit} andif kind(st j)?symbolicInfix
+                                andif stringOp.equal(vector.get(st.toks j).lexeme "/") andif kind(st j + 1)?ident do
                             j := j + 2
                         end
                     end
                     lastTok := j - 1
-                    if {j < limit} andif isKind(st j "EQUAL") then j := j + 1 else done := true end
+                    if {j < limit} andif kind(st j)?equal then j := j + 1 else done := true end
                 end
             end
             lastTok
@@ -261,7 +262,7 @@ export
             while {j < limit} andif {k < vector.length(items)} do
                 let e = importItemEnd(st j limit)
                 for s = j upto e do
-                    if isKind(st s "SYMBOLIC_INFIX") andif stringOp.equal(vector.get(st.toks s).lexeme "/") then
+                    if kind(st s)?symbolicInfix andif stringOp.equal(vector.get(st.toks s).lexeme "/") then
                         hashSet.insert(st.pathSlashes offset(st s))
                     end
                 end
@@ -289,11 +290,11 @@ export
      * items are indented and recorded. Returns the export's index *)
     let header(st: St f: Int limit: Int items: vector.T(ast.ImportItem)): Int =
         begin
-            let imp = find(st f limit "KW_IMPORT")
-            let exp = find(st f limit "KW_EXPORT")
+            let imp = find(st f limit fun(k: tokens.TokenKind): Bool k?kwImport)
+            let exp = find(st f limit fun(k: tokens.TokenKind): Bool k?kwExport)
             let headerEnd = if {imp >= 0} andif {{exp < 0} orif {imp < exp}} then imp else exp end
             for j = f upto {headerEnd - 1} do
-                if isKind(st j "COLON") then hashSet.insert(st.spacedColons offset(st j)) end
+                if kind(st j)?colon then hashSet.insert(st.spacedColons offset(st j)) end
             end
             if {imp >= 0} andif {exp > imp} then
                 rule(st imp f 0)
@@ -308,7 +309,7 @@ export
      * ====================================================================== *)
 
     let isBlock(st: St e: ast.Expr): Bool =
-        case e.form when exprBlock then isKind(st first(st e.span) "KW_BEGIN") else false end
+        case e.form when exprBlock then kind(st first(st e.span))?kwBegin else false end
 
     (* The index of a body's last token: a block of phrases the parser made
      * from a then, when, or else (not a begin) has the span of the construct
@@ -348,12 +349,12 @@ export
      * e ends with (let x = if c then a else b end) *)
     let ownsEnd(st: St e: ast.Expr): Bool =
         case e.form
-            when exprBlock then isKind(st first(st e.span) "KW_BEGIN")
+            when exprBlock then kind(st first(st e.span))?kwBegin
             when exprIf then true
             when exprWhile then true
             when exprLoop then true
             when exprFor then true
-            when exprTuple then isKind(st first(st e.span) "KW_TUPLE")
+            when exprTuple then kind(st first(st e.span))?kwTuple
             when exprRecord then true
             when exprArray then true
             when exprCase then true
@@ -372,11 +373,11 @@ export
         begin
             let var a = first(st e.span)
             let var b = last(st e.span)
-            while {a > 0} andif isKind(st a - 1 "LBRACE") andif isKind(st b + 1 "RBRACE") do
+            while {a > 0} andif kind(st a - 1)?lbrace andif kind(st b + 1)?rbrace do
                 a := a - 1
                 b := b + 1
             end
-            if {a > 0} andif {b >= a} andif isKind(st a - 1 "EQUAL") then
+            if {a > 0} andif {b >= a} andif kind(st a - 1)?equal then
                 vector.append(st.joins tuple
                     let equal = offset(st a - 1)
                     let first = offset(st a)
@@ -389,7 +390,7 @@ export
     let armEnd(st: St f: Int e: ast.Expr ks: vector.T(Int)): Ok =
         begin
             let l = last(st e.span)
-            let var known = {f >= 0} andif isKind(st l "KW_END") andif not(vector.empty(ks))
+            let var known = {f >= 0} andif kind(st l)?kwEnd andif not(vector.empty(ks))
             for i = 0 upto {vector.length(ks) - 1} do if vector.get(ks i) < 0 then known := false end end
             if known then
                 let parts = array of(vector.length(ks) 0)
@@ -448,7 +449,7 @@ export
             let f = first(st e.span)
             let l = last(st e.span)
             let arm = case e.form when exprIf with x then firstOf(st x.thenBranch) else ~1 end
-            if {f >= 0} andif {l > f} andif isKind(st l "KW_END") then
+            if {f >= 0} andif {l > f} andif kind(st l)?kwEnd then
                 vector.append(st.lifts tuple
                     let ifToken = offset(st f)
                     let arm = if arm >= 0 then offset(st arm) else ~1 end
@@ -467,8 +468,8 @@ export
                 let f = first(st e.span)
                 let l = last(st e.span)
                 let var op = f - 1
-                while isKind(st op "LBRACE") do op := op - 1 end
-                if {op > 0} andif {l > f} andif isKind(st l "KW_END") then
+                while kind(st op)?lbrace do op := op - 1 end
+                if {op > 0} andif {l > f} andif kind(st l)?kwEnd then
                     vector.append(st.lifts tuple
                         let ifToken = offset(st op)
                         let arm = ~1
@@ -484,10 +485,10 @@ export
             closer(st e.span)
             let f = first(st e.span)
             let saved = st.closing
-            st.closing := if isKind(st last(st e.span) "KW_END") andif ownsEnd(st e) then last(st e.span) else ~1 end
+            st.closing := if kind(st last(st e.span))?kwEnd andif ownsEnd(st e) then last(st e.span) else ~1 end
             case e.form
                 when exprBlock with x then
-                    if isKind(st f "KW_BEGIN") then
+                    if kind(st f)?kwBegin then
                         for i = 0 upto {vector.length(x.bindings) - 1} do item(st f vector.get(x.bindings i)) end
                     else
                         for i = 0 upto {vector.length(x.bindings) - 1} do expr(st vector.get(x.bindings i)) end
@@ -502,7 +503,7 @@ export
                     let arm = firstOf(st x.thenBranch)
                     let arms = vector.new(:Int)
                     vector.append(arms arm)
-                    if isKind(st last(st e.span) "KW_END") then ifRule(st last(st e.span) f arm f 0 f 4) end
+                    if kind(st last(st e.span))?kwEnd then ifRule(st last(st e.span) f arm f 0 f 4) end
                     condition(st f x.cond)
                     expr(st x.cond)
                     body(st f x.thenBranch)
@@ -568,7 +569,7 @@ export
                     expr(st x.right)
                 when exprTuple with x then
                     let closing =
-                        if isKind(st f "KW_TUPLE") andif isKind(st last(st e.span) "KW_END") then
+                        if kind(st f)?kwTuple andif kind(st last(st e.span))?kwEnd then
                             last(st e.span)
                         else
                             ~1
@@ -732,7 +733,7 @@ export
     and payload(st: St anchor: Int closing: Int e: ast.Expr): Ok =
         case e.form
             when exprTuple with x then
-                if isKind(st first(st e.span) "KW_TUPLE") then
+                if kind(st first(st e.span))?kwTuple then
                     item(st anchor e)
                 else
                     tupleFields(st anchor closing x.fields)
@@ -825,7 +826,7 @@ export
                 let b = vector.get(bindings i)
                 let k = first(st b.span)
                 if i > 0 then
-                    let a = if isKind(st k "KW_AND") then k elsif isKind(st k - 1 "KW_AND") then k - 1 else ~1 end
+                    let a = if kind(st k)?kwAnd then k elsif kind(st k - 1)?kwAnd then k - 1 else ~1 end
                     rule(st a f 0)
                 end
                 expr(st b)
@@ -888,7 +889,7 @@ export
             when sigTypeBindingGroup with x then
                 for k = 1 upto {vector.length(x.val) - 1} do
                     let b = maybe.unwrapOr(hashMap.get(st.byStart vector.get(x.val k).offset) ~1)
-                    let a = if isKind(st b "KW_AND") then b elsif isKind(st b - 1 "KW_AND") then b - 1 else ~1 end
+                    let a = if kind(st b)?kwAnd then b elsif kind(st b - 1)?kwAnd then b - 1 else ~1 end
                     rule(st a i 0)
                 end
             else ok
@@ -966,9 +967,9 @@ export
                         let v = vector.get(x.variants i)
                         if j >= 0 then
                             rule(st j f 4)
-                            if isKind(st j + 1 "KW_WITH") then
+                            if kind(st j + 1)?kwWith then
                                 let e = signature(st j j + 2 v.payloadSig)
-                                if isKind(st e "KW_END") then
+                                if kind(st e)?kwEnd then
                                     rule(st e j 0)
                                     phrase(st j e)
                                     j := e + 1
@@ -997,7 +998,7 @@ export
                             type(st maybe.unwrap(s.typeSig))
                         end
                     end
-                    let w = find(st f last(st t.span) "KW_WITH")
+                    let w = find(st f last(st t.span) fun(k: tokens.TokenKind): Bool k?kwWith)
                     if w >= 0 then fields(st f w + 1 lasts) end
                 when typeFun with x then
                     for i = 0 upto {vector.length(x.params) - 1} do type(st vector.get(x.params i).bound) end
@@ -1031,7 +1032,7 @@ export
             phrase(st f l)
             case p.form
                 when phraseImport with x then
-                    let limit = if isKind(st l "SEMICOLON") then l else l + 1 end
+                    let limit = if kind(st l)?semicolon then l else l + 1 end
                     sortable(st importItems(st f + 1 limit f x.phrase.items))
                 when phraseInterface with x then
                     let exp = header(st f l x.iface.imports)
@@ -1124,22 +1125,19 @@ export
     let read(toks: vector.T(tokens.Token) program: ast.Program sm: location.SourceMap): T =
         begin
             let n = vector.length(toks)
-            let kinds = array of(n "")
             let lineNumbers = array of(n 0)
             let byStart = maps.newIntMap(:Int)
             let byEnd = maps.newIntMap(:Int)
             for i = 0 upto {n - 1} do
                 let t = vector.get(toks i)
-                kinds[i] := tokens.tokenKindName(t.kind)
                 lineNumbers[i] := location.locate(sm t.span.startOffset).line
-                if not(stringOp.equal(kinds[i] "EOF")) then
+                if not(t.kind?eof) then
                     hashMap.insert(byStart t.span.startOffset i)
                     hashMap.insert(byEnd t.span.endOffset i)
                 end
             end
             let st = tuple
                 let toks = toks
-                let kinds = kinds
                 let lineNumbers = lineNumbers
                 let byStart = byStart
                 let byEnd = byEnd

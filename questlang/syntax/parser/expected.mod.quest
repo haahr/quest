@@ -11,15 +11,25 @@ import
     util/sort : util/Sort
     util/strutil : util/Strutil
 
+    questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/maps : questlang/common/Maps
     questlang/common/strings : questlang/common/Strings
-    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
     questlang/syntax/tokens : questlang/syntax/Tokens
 export
     Let Group = Tuple words: String names: Array(String) end
 
+    (* A group of the tokens named (tokens.tokenKindName) in names, which
+     * are the parser's record of what it expected; each must name a kind *)
     let group(words: String names: String): Group =
-        tuple let words = words let names = vector.toArray(strutil.split(names " ")) end
+        begin
+            let v = vector.toArray(strutil.split(names " "))
+            for i = 0 upto {extent v - 1} do
+                if maybe.isNone(tokens.kindNamed(v[i])) then
+                    diagnostics.internal(:Ok "expected: no token kind is named " <> v[i] 0)
+                end
+            end
+            tuple let words = words let names = v end
+        end
 
     (* The tokens that start an expression, a type, a declaration (in a block
      * or at the top level), and the operators that continue an expression,
@@ -38,15 +48,16 @@ export
     end
 
     (* The tokens without a fixed spelling, by what they are *)
-    let word(name: String): maybe.T(String) =
-        if stringOp.equal(name "IDENT") then maybe.some("a name")
-        elsif stringOp.equal(name "INT_LIT") then maybe.some("an integer")
-        elsif stringOp.equal(name "REAL_LIT") then maybe.some("a real number")
-        elsif stringOp.equal(name "CHAR_LIT") then maybe.some("a character")
-        elsif stringOp.equal(name "STRING_LIT") then maybe.some("a string")
-        elsif stringOp.equal(name "SYMBOLIC_INFIX") then maybe.some("an operator")
-        elsif stringOp.equal(name "EOF") then maybe.some("the end of the file")
-        else maybe.none()
+    let word(kind: tokens.TokenKind): maybe.T(String) =
+        case kind
+            when ident then maybe.some("a name")
+            when intLit then maybe.some("an integer")
+            when realLit then maybe.some("a real number")
+            when charLit then maybe.some("a character")
+            when stringLit then maybe.some("a string")
+            when symbolicInfix then maybe.some("an operator")
+            when eof then maybe.some("the end of the file")
+            else maybe.none()
         end
 
     (* Whether name is a token's (KW_END, IDENT('foo')) rather than a
@@ -102,8 +113,10 @@ export
                 let name = vector.get(toksSorted i)
                 if not(has(covered name)) then
                     let open = strutil.find(name "('")
-                    let w = word(name)
-                    let spelling = tokenizer.spellingOf(name)
+                    let kind = tokens.kindNamed(name)
+                    let w = if maybe.isSome(kind) then word(maybe.unwrap(kind)) else maybe.none(:String) end
+                    let spelling =
+                        if maybe.isSome(kind) then tokens.spelling(maybe.unwrap(kind)) else maybe.none(:String) end
                     if {open >= 0} andif strutil.endsWith(name "')") then
                         add(quotes quoted(stringOp.getSub(name {open + 2} {stringOp.length(name) - {open + 4}})))
                     elsif maybe.isSome(w) then

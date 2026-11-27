@@ -11,6 +11,8 @@
 
 interface Tokens
 import
+    util/maybe : util/Maybe
+
     questlang/common/location : questlang/common/Location
 export
     (* Exhaustive enumeration of all lexical token kinds in Quest *)
@@ -156,17 +158,77 @@ export
     (* The end-of-input token: an empty lexeme at offset in file *)
     eofToken(file: String offset: Int): Token
 
-    (* The kind's name as the bootstrap's TokenKind spells it (KW_LET for
-     * kwLet), for golden output and the parser's record of what it
-     * expected *)
-    tokenKindName(kind: TokenKind): String
+    (* ======================================================================
+     * What each kind is
+     *
+     * One table, kindTable, says of every kind its name, its spelling, its
+     * class, a bracket's partner, and whether a keyword opens a construct that
+     * end closes or starts a declaration. The functions below read it, and so
+     * do the tokenizer's tables of keywords and punctuation, a syntax error's
+     * account of what was expected and of what was left open
+     * (questlang/syntax/parser/expected and unclosed), and the formatter, so
+     * that each kind is spelled and classified in one place. Code that asks
+     * about a particular kind tests its tag (kind?kwEnd), not its name.
+     * ====================================================================== *)
 
-    (* These predicates test the token groups named in TokenKind. isDelimiter
-     * matches brackets, comma, and semicolon; dot counts as punctuation,
-     * though like delimiters the tokenizer never lexes it as part of an
-     * operator. *)
+    (* The groups named in TokenKind. A delimiter is a bracket, comma, or
+     * semicolon; dot is punctuation, though like the delimiters the tokenizer
+     * never lexes it as part of an operator. A word is a name or a symbolic
+     * operator, whose text is its own. *)
+    Def TokenClass = Option
+        endOfInput
+        literal
+        word
+        delimiter
+        punctuation
+        keyword
+    end
+
+    (* Whether a kind is a bracket, which side, and the kind of the other *)
+    Def Bracket = Option
+        notBracket
+        opening with partner: TokenKind end
+        closing with partner: TokenKind end
+    end
+
+    Def KindInfo = Tuple
+        kind: TokenKind
+        (* As the bootstrap's TokenKind spells it (KW_LET for kwLet) *)
+        name: String
+        (* How a token of the kind is written, for the kinds with one way:
+         * the keywords, the delimiters, and the punctuation *)
+        spelling: maybe.T(String)
+        class: TokenClass
+        bracket: Bracket
+        (* A keyword whose construct end closes (if, begin, Tuple, ...). Of
+         * and with, which open such a construct only in context, are not. *)
+        closedByEnd: Bool
+        (* A keyword that starts a declaration (let, Let, Def, DEF, unsound,
+         * interface, module) *)
+        startsDeclaration: Bool
+    end
+
+    (* Every kind's row, at the kind's ordinal *)
+    kindTable: Array(KindInfo)
+    info(kind: TokenKind): KindInfo
+
+    (* The kind's name (info(kind).name), for golden output and the parser's
+     * record of what it expected *)
+    tokenKindName(kind: TokenKind): String
+    (* The kind with this name, if any *)
+    kindNamed(name: String): maybe.T(TokenKind)
+    spelling(kind: TokenKind): maybe.T(String)
+    sameKind(a: TokenKind b: TokenKind): Bool
+
+    (* The kind's class and bracket, and its flags *)
     isKeyword(kind: TokenKind): Bool
     isLiteral(kind: TokenKind): Bool
     isDelimiter(kind: TokenKind): Bool
     isPunctuation(kind: TokenKind): Bool
+    isOpening(kind: TokenKind): Bool
+    isClosing(kind: TokenKind): Bool
+    (* A bracket's partner; none for other kinds *)
+    partner(kind: TokenKind): maybe.T(TokenKind)
+    closedByEnd(kind: TokenKind): Bool
+    startsDeclaration(kind: TokenKind): Bool
 end

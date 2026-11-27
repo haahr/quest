@@ -22,6 +22,14 @@ output and error messages. The token kinds' printed names (`KW_LET`, `SYMBOLIC_I
 those of the bootstrap compiler, because the tokenize phase's output and the parser's error messages show them and both
 compilers must print the same text.
 
+One table, `tokens.kindTable`, describes every kind: its name, its spelling, its class (literal, word, delimiter,
+punctuation, keyword), a bracket's partner, and whether a keyword opens a construct that `end` closes or starts a
+declaration. The tokenizer's keyword and punctuation tables, `isKeyword` and the other predicates, a syntax error's
+account of what was expected and of what was left open, and the formatter all read it; code that asks about a
+particular kind tests its tag (`kind?kwEnd`) rather than comparing its printed name. The grammar names the kinds it
+matches in `let kwEnd = option kwEnd of K end` lines of its own, which are checked like any other code and read as
+the grammar's vocabulary.
+
 The tokenizer ([`tokenizer.mod.quest`](tokenizer.mod.quest)) reflects a few distinctive features of Quest's lexical
 syntax:
 

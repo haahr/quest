@@ -3,65 +3,29 @@
 module unclosed : Unclosed
 import
     conv : Conv
-    stringOp = string : StringOp
 
-    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
-    util/strutil : util/Strutil
 
     questlang/common/location : questlang/common/Location
-    questlang/common/maps : questlang/common/Maps
     questlang/syntax/tokens : questlang/syntax/Tokens
 export
     Let Finding = Tuple tok: tokens.Token message: String note: maybe.T(String) closesNothing: Bool end
 
-    Let Set = maps.StringSet
-
-    let setOf(names: String): Set =
-        begin
-            let s = maps.newStringSet()
-            let v = strutil.split(names " ")
-            for i = 0 upto {vector.length(v) - 1} do hashSet.insert(s vector.get(v i)) end
-            s
+    (* An opening bracket's closer, or end for a keyword *)
+    let closer(tok: tokens.Token): String =
+        if tokens.isOpening(tok.kind) then
+            maybe.unwrap(tokens.spelling(maybe.unwrap(tokens.partner(tok.kind))))
+        else
+            "end"
         end
 
-    (* The keywords whose construct end closes *)
-    let openers = setOf("KW_INTERFACE KW_MODULE KW_TUPLE_TYPE KW_OPTION_TYPE KW_AUTO_TYPE KW_RECORD_TYPE"
-        <> " KW_VARIANT_TYPE KW_IF KW_BEGIN KW_LOOP KW_WHILE KW_FOR KW_TUPLE KW_AUTO KW_OPTION KW_RECORD KW_VARIANT"
-        <> " KW_CASE KW_INSPECT KW_EXCEPTION KW_RAISE KW_TRY")
-
-    (* The keywords that start a declaration, which cannot continue a
-     * construct begun on a line no further left *)
-    let declarations = setOf("KW_LET KW_LET_TYPE KW_DEF KW_DEF_KIND KW_INTERFACE KW_MODULE KW_UNSOUND")
-
-    let nameOf(tok: tokens.Token): String = tokens.tokenKindName(tok.kind)
-    let isKind(tok: tokens.Token name: String): Bool = stringOp.equal(nameOf(tok) name)
-
-    (* The closing bracket of an opening one, or none for other tokens *)
-    let closingOf(name: String): maybe.T(String) =
-        if stringOp.equal(name "LPAREN") then maybe.some(")")
-        elsif stringOp.equal(name "LBRACKET") then maybe.some("]")
-        elsif stringOp.equal(name "LBRACE") then maybe.some("}")
-        else maybe.none()
-        end
-
-    (* The opening bracket's kind name of a closing one, or none *)
-    let openingOf(name: String): maybe.T(String) =
-        if stringOp.equal(name "RPAREN") then maybe.some("LPAREN")
-        elsif stringOp.equal(name "RBRACKET") then maybe.some("LBRACKET")
-        elsif stringOp.equal(name "RBRACE") then maybe.some("LBRACE")
-        else maybe.none()
-        end
-
-    let isBracket(tok: tokens.Token): Bool = maybe.isSome(closingOf(nameOf(tok)))
+    let isBracket(tok: tokens.Token): Bool = tokens.isOpening(tok.kind)
 
     (* An open construct: its opener, the column of the first token of the
      * opener's line, and for option and variant, whether their of is still to
      * come *)
     Let Open = Tuple tok: tokens.Token indent: Int var awaitingOf: Bool end
-
-    let closer(tok: tokens.Token): String = maybe.unwrapOr(closingOf(nameOf(tok)) "end")
 
     let notClosed(e: Open note: maybe.T(String)): maybe.T(Finding) =
         maybe.some(tuple
@@ -90,7 +54,7 @@ export
             let stack = vector.new(:Open)
             let top = fun(): Open vector.last(stack)
             (* The innermost open keyword (not bracket), or the innermost open
-             * bracket of kind name, if there is one *)
+             * bracket of a kind, if there is one *)
             let innermost = fun(pred: All(e: Open) Bool): maybe.T(Open)
                 begin
                     let var found = maybe.none(:Open)
@@ -106,20 +70,19 @@ export
             let var indent = 1
             let var previousLine = 0
             (* The tokens walked: all but an EOF token at the end *)
-            let n =
-                if {extent toks > 0} andif isKind(toks[extent toks - 1] "EOF") then extent toks - 1 else extent toks end
+            let n = if {extent toks > 0} andif toks[extent toks - 1].kind?eof then extent toks - 1 else extent toks end
             let var i = 0
             while maybe.isNone(result) andif {i < n} do
                 let tok = toks[i]
-                let name = nameOf(tok)
+                let k = tok.kind
                 let p = location.locate(sm tok.span.startOffset)
                 let startsLine = p.line > previousLine
                 previousLine := p.line
                 if startsLine then indent := p.col end
-                if startsLine andif hashSet.contains(declarations name) andif not(vector.empty(stack))
+                if startsLine andif tokens.startsDeclaration(k) andif not(vector.empty(stack))
                         andif {p.col <= top().indent} then
                     result := notClosed(top() maybe.some(described(tok) <> " starts another declaration"))
-                elsif stringOp.equal(name "KW_END") then
+                elsif k?kwEnd then
                     let opener = innermost(isKeyword)
                     if maybe.isNone(opener) then
                         result := nothingToClose(tok)
@@ -143,12 +106,12 @@ export
                             ok
                         end
                     end
-                elsif maybe.isSome(openingOf(name)) then
-                    let opening = maybe.unwrap(openingOf(name))
-                    let opener = innermost(fun(e: Open): Bool isKind(e.tok opening))
+                elsif tokens.isClosing(k) then
+                    let opening = maybe.unwrap(tokens.partner(k))
+                    let opener = innermost(fun(e: Open): Bool tokens.sameKind(e.tok.kind opening))
                     if maybe.isNone(opener) then
                         result := nothingToClose(tok)
-                    elsif not(isKind(top().tok opening)) then
+                    elsif not(tokens.sameKind(top().tok.kind opening)) then
                         result := notClosed(top()
                                 maybe.some(described(tok) <> " closes " <> described(maybe.unwrap(opener).tok)))
                     else
@@ -157,18 +120,18 @@ export
                     end
                 elsif isBracket(tok) then
                     vector.append(stack tuple let tok = tok let indent = indent var awaitingOf = false end)
-                elsif stringOp.equal(name "KW_OF") then
+                elsif k?kwOf then
                     if not(vector.empty(stack)) andif top().awaitingOf then
                         top().awaitingOf := false
-                    elsif {{i + 1} >= n} orif not(isKind(toks[i + 1] "LPAREN")) then
+                    elsif {{i + 1} >= n} orif not(toks[i + 1].kind?lparen) then
                         vector.append(stack tuple let tok = tok let indent = indent var awaitingOf = false end)
                     end
-                elsif stringOp.equal(name "KW_WITH") then
-                    if not(vector.empty(stack)) andif isKind(top().tok "KW_OPTION_TYPE") then
+                elsif k?kwWith then
+                    if not(vector.empty(stack)) andif top().tok.kind?kwOptionType then
                         vector.append(stack tuple let tok = tok let indent = indent var awaitingOf = false end)
                     end
-                elsif hashSet.contains(openers name) then
-                    let awaiting = stringOp.equal(name "KW_OPTION") orif stringOp.equal(name "KW_VARIANT")
+                elsif tokens.closedByEnd(k) then
+                    let awaiting = k?kwOption orif k?kwVariant
                     vector.append(stack tuple let tok = tok let indent = indent var awaitingOf = awaiting end)
                 end
                 i := i + 1

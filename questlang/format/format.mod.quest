@@ -28,7 +28,6 @@ import
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
     questlang/common/maps : questlang/common/Maps
-    questlang/common/strings : questlang/common/Strings
     questlang/format/structure : questlang/format/Structure
     questlang/syntax/ast : questlang/syntax/AST
     questlang/syntax/astprint : questlang/syntax/ASTPrint
@@ -77,9 +76,9 @@ export
      * 1, or 2 for a blank line *)
     Let Elem = Tuple
         comment: Bool
-        (* The token's kind's name (tokens.tokenKindName); COMMENT for a
-         * comment *)
-        kind: String
+        (* The token's kind; eof for a comment, since no element is the EOF
+         * token *)
+        kind: tokens.TokenKind
         text: String
         start: Int
         stop: Int
@@ -116,7 +115,7 @@ export
                     end
                 let stop =
                     if isComment then vector.get(p.comments j).endOffset else vector.get(p.toks i).span.endOffset end
-                let kind = if isComment then "COMMENT" else tokens.tokenKindName(vector.get(p.toks i).kind) end
+                let kind = if isComment then option eof of tokens.TokenKind end else vector.get(p.toks i).kind end
                 let b = newlines(text prevStop start)
                 vector.append(result tuple
                     let comment = isComment
@@ -133,12 +132,16 @@ export
             result
         end
 
-    let isA(e: Elem kind: String): Bool = not(e.comment) andif stringOp.equal(e.kind kind)
-    let isOneOf = strings.isOneOf
-
     (* Whether e is an infix operator *)
     let isOperator(e: Elem): Bool =
-        isOneOf(e.kind array of "SYMBOLIC_INFIX" "KW_ANDIF" "KW_ORIF" "KW_IS" "KW_ISNOT" end)
+        begin
+            let k = e.kind
+            k?symbolicInfix orif k?kwAndif orif k?kwOrif orif k?kwIs orif k?kwIsnot
+        end
+
+    (* Whether a token of kind k ends what a type annotation's colon is
+     * written against: a name, a closing parenthesis or bracket, or _ *)
+    let endsAnnotated(k: tokens.TokenKind): Bool = k?ident orif k?rparen orif k?rbracket orif k?underscore
 
     (* ======================================================================
      * 2. Rearranging
@@ -166,7 +169,7 @@ export
             let var carried = 0
             for i = 0 upto {vector.length(elems) - 1} do
                 let e = vector.get(elems i)
-                if isA(e "SEMICOLON") then
+                if e.kind?semicolon then
                     if e.breaks > carried then carried := e.breaks end
                 else
                     if {carried > 0} andif {e.breaks is 0} andif not(e.comment) then e.breaks := carried end
@@ -220,7 +223,7 @@ export
                         let n = vector.length(current)
                         while {{b + 1} < n} andif {vector.get(current b + 1).breaks is 0}
                                 andif {vector.get(current b + 1).comment
-                                        orif isA(vector.get(current b + 1) "SEMICOLON")} do
+                                        orif vector.get(current b + 1).kind?semicolon} do
                             b := b + 1
                         end
                         let floor = if i is 0 then ~1 else ranges[i - 1].last end
@@ -289,7 +292,7 @@ export
             let n = vector.length(result)
             for i = 1 upto {n - 1} do
                 let e = vector.get(result i)
-                if {isA(e "KW_THEN") orif isA(e "KW_DO")} andif {e.breaks > 0} then
+                if {e.kind?kwThen orif e.kind?kwDo} andif {e.breaks > 0} then
                     let p = vector.get(result i - 1)
                     let var moved = false
                     if not(p.comment) then
@@ -419,14 +422,13 @@ export
      * start of a body nor before an end *)
     let blankAllowed(a: Line b: Line): Bool =
         begin
-            let var lastKind = ""
+            let var k = option eof of tokens.TokenKind end
             for i = 0 upto {vector.length(a.elems) - 1} do
                 let e = vector.get(a.elems i)
-                if not(e.comment) then lastKind := e.kind end
+                if not(e.comment) then k := e.kind end
             end
-            let firstElem = vector.get(b.elems 0)
-            not(isOneOf(lastKind array of "KW_BEGIN" "KW_THEN" "KW_DO" "KW_ELSE" "KW_EXPORT" "KW_IMPORT" end))
-                andif not(isA(firstElem "KW_END"))
+            not(k?kwBegin orif k?kwThen orif k?kwDo orif k?kwElse orif k?kwExport orif k?kwImport)
+                andif not(vector.get(b.elems 0).kind?kwEnd)
         end
 
     let lines(elems: vector.T(Elem)): vector.T(Line) =
@@ -490,10 +492,9 @@ export
                             hashMap.insert(openAt e.start vector.last(stack))
                         end
                         firstToken := false
-                        if isOneOf(e.kind array of "LPAREN" "LBRACKET" "LBRACE" end) then
+                        if tokens.isOpening(e.kind) then
                             vector.append(stack e.start)
-                        elsif isOneOf(e.kind array of "RPAREN" "RBRACKET" "RBRACE" end)
-                                andif not(vector.empty(stack)) then
+                        elsif tokens.isClosing(e.kind) andif not(vector.empty(stack)) then
                             let ignored = vector.pop(stack)
                             ok
                         end
@@ -607,7 +608,7 @@ export
                             let t = maybe.unwrap(found)
                             let n = tokenIndent(t i)
                             let r = hashMap.get(st.rules t.start)
-                            if isA(t "KW_END") andif maybe.isSome(r) andif {maybe.unwrap(r).delta is 0} then
+                            if t.kind?kwEnd andif maybe.isSome(r) andif {maybe.unwrap(r).delta is 0} then
                                 n + 4
                             else
                                 n
@@ -629,8 +630,8 @@ export
             let x = stringOp.getChar(a.text stringOp.length(a.text) - 1)
             let y = stringOp.getChar(b.text 0)
             {strutil.isAlnum(x) andif strutil.isAlnum(y)} orif {isSymbolicChar(x) andif isSymbolicChar(y)}
-                orif {{x is '('} andif {y is '*'}} orif {isA(a "INT_LIT") andif {y is '.'}}
-                orif {{x is '.'} andif isA(b "INT_LIT")}
+                orif {{x is '('} andif {y is '*'}} orif {a.kind?intLit andif {y is '.'}}
+                orif {{x is '.'} andif b.kind?intLit}
         end
 
     let marked(m: maps.IntSet e: Elem): Bool = not(e.comment) andif hashSet.contains(m e.start)
@@ -640,48 +641,55 @@ export
      * it is written against the type after it and not against what it
      * follows (f(x :Int), a type argument) *)
     let annotation(a: Elem colon: Elem next: maybe.T(Elem)): Bool =
-        isOneOf(a.kind array of "IDENT" "RPAREN" "RBRACKET" "UNDERSCORE" end)
+        endsAnnotated(a.kind)
             andif {{colon.start is a.stop} orif maybe.isNone(next) orif {maybe.unwrap(next).start isnot colon.stop}}
 
     (* Whether a space comes between a and b; before is the kind of the
-     * element before a, if any, and after the element after b; annotationColon
-     * is whether a, if a colon, is an annotation's *)
-    let spaced(a: Elem b: Elem before: String after: maybe.T(Elem) annotationColon: Bool st: structure.T): Bool =
+     * element before a (eof if there is none or it is a comment), and after
+     * the element after b; annotationColon is whether a, if a colon, is an
+     * annotation's *)
+    let spaced(a: Elem b: Elem before: tokens.TokenKind after: maybe.T(Elem) annotationColon: Bool
+            st: structure.T): Bool =
         begin
             let glued = b.start is a.stop
-            let names = array of "IDENT" "RPAREN" "RBRACKET" "UNDERSCORE" end
             let wanted =
                 if a.comment orif b.comment then
                     true
                 elsif marked(st.pathSlashes a) orif marked(st.pathSlashes b) then
                     false
-                elsif isOneOf(b.kind array of "RPAREN" "RBRACKET" "RBRACE" "COMMA" "SEMICOLON" end) then
+                elsif tokens.isClosing(b.kind) orif b.kind?comma orif b.kind?semicolon then
                     false
-                elsif isOneOf(a.kind array of "LPAREN" "LBRACKET" "LBRACE" end) then
+                elsif tokens.isOpening(a.kind) then
                     false
-                elsif isA(a "DOT") orif isA(b "DOT") then
+                elsif a.kind?dot orif b.kind?dot then
                     false
-                elsif isA(a "COMMA") then
+                elsif a.kind?comma then
                     not(glued)
-                elsif isA(b "LPAREN") then
-                    if isOneOf(a.kind array of "IDENT" "RPAREN" "RBRACKET" "RBRACE" "UNDERSCORE" end)
-                            orif strutil.startsWith(a.kind "KW_") then false else not(glued) end
-                elsif isA(b "LBRACKET") then
-                    if isOneOf(a.kind array of "IDENT" "RPAREN" "RBRACKET" "RBRACE" end) then false else not(glued) end
-                elsif isA(b "COLON") then
+                elsif b.kind?lparen then
+                    if endsAnnotated(a.kind) orif a.kind?rbrace orif tokens.isKeyword(a.kind) then
+                        false
+                    else
+                        not(glued)
+                    end
+                elsif b.kind?lbracket then
+                    if a.kind?ident orif a.kind?rparen orif a.kind?rbracket orif a.kind?rbrace then
+                        false
+                    else
+                        not(glued)
+                    end
+                elsif b.kind?colon then
                     if marked(st.spacedColons b) then true elsif annotation(a b after) then false else not(glued) end
-                elsif isA(a "COLON") then
-                    if marked(st.spacedColons a) orif {isOneOf(before names) andif annotationColon} then
+                elsif a.kind?colon then
+                    if marked(st.spacedColons a) orif {endsAnnotated(before) andif annotationColon} then
                         true
                     else
                         not(glued)
                     end
-                elsif isA(b "COLON_COLON") then
-                    if isOneOf(a.kind array of "IDENT" "UNDERSCORE" end) then false else not(glued) end
-                elsif isA(a "COLON_COLON") then
+                elsif b.kind?colonColon then
+                    if a.kind?ident orif a.kind?underscore then false else not(glued) end
+                elsif a.kind?colonColon then
                     false
-                elsif isOneOf(a.kind array of "QUESTION" "BANG" "AT" end)
-                        orif isOneOf(b.kind array of "QUESTION" "BANG" end) then
+                elsif a.kind?question orif a.kind?bang orif a.kind?at orif b.kind?question orif b.kind?bang then
                     false
                 else
                     true
@@ -736,7 +744,7 @@ export
             let lastElem = vector.get(l.elems n - 1)
             let trailing = {n > 1} andif lastElem.comment andif not(strutil.contains(lastElem.text "\n"))
             let lastCode = if trailing then n - 2 else n - 1 end
-            let var before = ""
+            let var before = option eof of tokens.TokenKind end
             let var colonIsAnnotation = false
             for i = 0 upto lastCode do
                 let e = vector.get(l.elems i)
@@ -748,7 +756,7 @@ export
                         col := col + 1
                     end
                     before := p.kind
-                    colonIsAnnotation := isA(e "COLON") andif annotation(p e after)
+                    colonIsAnnotation := e.kind?colon andif annotation(p e after)
                 end
                 let s = if e.comment then reindent(e.text col - e.col) else e.text end
                 sb.str(b s)
@@ -815,7 +823,7 @@ export
             let n = vector.length(l.elems)
             let result = array of(n + 1 0)
             let var col = l.indent
-            let var before = ""
+            let var before = option eof of tokens.TokenKind end
             let var colonIsAnnotation = false
             let var multiline = false
             for i = 0 upto {n - 1} do
@@ -826,7 +834,7 @@ export
                     let p = vector.get(l.elems i - 1)
                     if spaced(p e before after colonIsAnnotation st) then col := col + 1 end
                     before := p.kind
-                    colonIsAnnotation := isA(e "COLON") andif annotation(p e after)
+                    colonIsAnnotation := e.kind?colon andif annotation(p e after)
                 end
                 result[i] := col
                 col := col + stringOp.length(e.text)
@@ -900,24 +908,25 @@ export
                 for k = 0 upto {n - 1} do
                     depth[k] := d
                     let e = vector.get(l.elems k)
-                    if isOneOf(e.kind array of "LPAREN" "LBRACKET" "LBRACE" end) then d := d + 1 end
-                    if isOneOf(e.kind array of "RPAREN" "RBRACKET" "RBRACE" end) then d := d - 1 end
+                    if tokens.isOpening(e.kind) then d := d + 1 end
+                    if tokens.isClosing(e.kind) then d := d - 1 end
                 end
-                let never = array of
-                    "LPAREN" "LBRACKET" "RPAREN" "RBRACKET" "RBRACE" "COMMA" "DOT" "COLON" "COLON_COLON" "SEMICOLON"
-                    "EQUAL" "ASSIGN" "KW_THEN" "KW_DO" "KW_END" "KW_OF" "KW_WITH"
-                end
-                let neverAfter =
-                    array of "LPAREN" "LBRACKET" "LBRACE" "DOT" "COLON" "COLON_COLON" "AT" "QUESTION" "BANG" end
+                let never = fun(k: tokens.TokenKind): Bool
+                    k?lparen orif k?lbracket orif k?rparen orif k?rbracket orif k?rbrace orif k?comma orif k?dot
+                        orif k?colon orif k?colonColon orif k?semicolon orif k?equal orif k?assign orif k?kwThen
+                        orif k?kwDo orif k?kwEnd orif k?kwOf orif k?kwWith
+                let neverAfter = fun(k: tokens.TokenKind): Bool
+                    tokens.isOpening(k) orif k?dot orif k?colon orif k?colonColon orif k?at orif k?question orif k?bang
                 (* After a keyword only where a body follows *)
-                let keywordsBefore = array of "KW_THEN" "KW_DO" "KW_ELSE" "KW_BEGIN" "KW_WITH" end
+                let keywordBefore = fun(k: tokens.TokenKind): Bool
+                    k?kwThen orif k?kwDo orif k?kwElse orif k?kwBegin orif k?kwWith
                 let allowed = fun(k: Int): Bool
                     begin
                         let e = vector.get(l.elems k)
                         let p = vector.get(l.elems k - 1)
-                        not(e.comment) andif not(p.comment) andif not(isOneOf(e.kind never))
-                            andif not(isOneOf(p.kind neverAfter)) andif not(isOperator(p))
-                            andif {not(strutil.startsWith(p.kind "KW_")) orif isOneOf(p.kind keywordsBefore)}
+                        not(e.comment) andif not(p.comment) andif not(never(e.kind))
+                            andif not(neverAfter(p.kind)) andif not(isOperator(p))
+                            andif {not(tokens.isKeyword(p.kind)) orif keywordBefore(p.kind)}
                             andif not(marked(st.pathSlashes e)) andif not(marked(st.pathSlashes p))
                             andif {cols[k] > l.indent}
                     end
