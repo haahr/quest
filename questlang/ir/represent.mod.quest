@@ -300,7 +300,10 @@ export
 
     (* The pairs of shapes being planned (with their layouts), and of function
      * types being adapted, for recursive types, which are compared
-     * coinductively *)
+     * coinductively. A plan that raises leaves its key behind, so
+     * representUnit empties both before each unit: else a module the REPL or
+     * the JIT rejected would, imported again, find its pair "being planned"
+     * and be compiled without the conversion it needs. *)
     let planning = maps.newStringSet()
     let adapting = maps.newStringSet()
 
@@ -1482,6 +1485,8 @@ export
 
     let representUnit(unit: nodes.Unit): nodes.Unit =
         begin
+            hashSet.clear(planning)
+            hashSet.clear(adapting)
             let r = tuple
                 let unit = unit
                 let joins = maps.newStringMap(:Array(Variable))

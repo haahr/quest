@@ -11,7 +11,8 @@
   and an exception raised in one is located in its file;
 - a module of the user's own with a conversion the represent pass rejects is
   reported as the program's error, located in the module, not with the
-  compiler's traceback, and the session goes on;
+  compiler's traceback, and the session goes on; imported again, it is
+  rejected again, not compiled without the conversion;
 - the REPL's transcripts run through --jit in a driver whose units the arm64
   backend compiled, as they do in one the C backend compiled (run_tests.py
   --backend jit), against their goldens, but for those the jit mode skips.
@@ -137,6 +138,10 @@ REJECTED_INPUTS = """import layouts: Layouts
 layouts.first(:Bool layouts.bools)
 1 + 2
 """
+REJECTED_TWICE_INPUTS = """import layouts: Layouts
+import layouts: Layouts
+layouts.first(:Bool layouts.bools)
+"""
 
 
 def check_rejected_conversion(driver: str, scratch: Path) -> list[str]:
@@ -151,6 +156,12 @@ def check_rejected_conversion(driver: str, scratch: Path) -> list[str]:
     if ("layouts.mod.quest:4:" not in shown or "would copy mutable data" not in shown or "3 : Int" not in shown
             or "questlang/" in shown):
         return [f"a conversion the represent pass rejects, through the JIT:\n{shown}"]
+    again = subprocess.run([driver, "-i"], input=REJECTED_TWICE_INPUTS, capture_output=True, text=True, cwd=rejected,
+                           env=environment, timeout=120)
+    shown = again.stdout + again.stderr
+    if (shown.count("would copy mutable data") != 2 or "true : Bool" in shown
+            or "Undefined variable 'layouts'" not in shown):
+        return [f"a conversion the represent pass rejects, imported twice through the JIT:\n{shown}"]
     return []
 
 
