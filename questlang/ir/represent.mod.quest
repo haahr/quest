@@ -312,6 +312,12 @@ export
     let planning = maps.newStringSet()
     let adapting = maps.newStringSet()
 
+    (* Whether the backend holds a pointer and a QVal word alike (such as
+     * WebAssembly's eqref, docs/wasm.md section 3.2), so that boxing or
+     * unboxing a pointer changes no function's signature: representUnit's
+     * argument, for the unit it represents *)
+    let alikeness = tuple let var referencesAlike = false end
+
     (* Returns lay's contribution to a planning key: "-" for none, or its
      * substitution's object identity and direction. Identity suffices because
      * the key only distinguishes layouts of plans currently in progress, whose
@@ -462,7 +468,7 @@ export
                         andif eq(genericLayout.signatureRepresentation(source)
                                 genericLayout.signatureRepresentation(target)) then
                     none
-                elsif shapes.referencesAlike() andif referencesOnly(fields)
+                elsif alikeness.referencesAlike andif referencesOnly(fields)
                         andif {extent written.quantified(source).quantifiers
                                 is extent written.quantified(target).quantifiers} then
                     (* Where a reference and a QVal are held alike, a closure
@@ -1495,10 +1501,11 @@ export
             b.statements := statements
         end
 
-    let representUnit(unit: nodes.Unit): nodes.Unit =
+    let representUnit(unit: nodes.Unit referencesAlike: Bool): nodes.Unit =
         begin
             hashSet.clear(planning)
             hashSet.clear(adapting)
+            alikeness.referencesAlike := referencesAlike
             let r = tuple
                 let unit = unit
                 let joins = maps.newStringMap(:Array(Variable))

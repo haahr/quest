@@ -8,15 +8,23 @@
 interface Pipeline
 import
     questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/stages : questlang/ir/Stages
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
 export
-    (* Runs all post-lowering IR passes on unit, advancing it to the described
-     * stage, and returns it. When QUEST_CHECK_IR=1, verifies the IR after
-     * simplify, specialize, closure conversion, represent, and thunks. The
-     * unbox pass is checked together with represent, and describe together
-     * with thunks, because the described stage's invariants require the
-     * adapter functions that the thunks pass creates (docs/ir.md section 9). *)
-    runPasses(unit: nodes.Unit): nodes.Unit
+    (* Takes a lowered unit (the core stage) through the passes of docs/ir.md
+     * section 8, in order, to stage last, and returns it. after(u s) is called
+     * on the unit at each stage s from core on: the driver verifies and dumps
+     * there. Each stage's pass is simplify, specialize, closure conversion,
+     * unbox and represent, or describe and thunks: unbox is taken with
+     * represent, and describe with thunks, because the described stage's
+     * invariants need the adapter functions that thunks makes (section 9).
+     * referencesAlike says whether the backend holds a pointer and a QVal word
+     * alike (codegen/choice.referencesAlike), which the represent pass needs. *)
+    runThrough(unit: nodes.Unit last: stages.Stage referencesAlike: Bool after: All(u: nodes.Unit s: stages.Stage) Ok)
+            : nodes.Unit
+    (* runThrough to the described stage, verifying the unit at each stage when
+     * QUEST_CHECK_IR=1: what the backends compile *)
+    runPasses(unit: nodes.Unit referencesAlike: Bool): nodes.Unit
     (* The simplifier's unit, the first of the passes, without the copies of
      * inlined modules' members (ir/opened) that nothing calls once it is
      * done *)

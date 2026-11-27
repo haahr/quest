@@ -95,14 +95,9 @@ export
      * the build directory, which is searched first *)
     let newEnv(path: String settings: Settings): env.T =
         begin
-            let e = env.new()
-            let dir = files.parent(path)
-            e.currentDir := maybe.some(dir)
-            e.programDir := maybe.some(dir)
-            e.sourceFile := path
+            let e = env.forProgram(path files.parent(path))
             e.compilingC := true
-            e.buildDir := maybe.some(settings.buildDir)
-            vector.append(e.includePaths settings.buildDir)
+            env.useArtifacts(e settings.buildDir)
             for i = 0 upto {extent settings.includePaths - 1} do
                 vector.append(e.includePaths settings.includePaths[i])
             end
@@ -293,12 +288,7 @@ export
                     let result = typecheck.elaborateProgram(desugar.program(program) e)
                     let made = typedAst.stopRecording()
                     if extent result.errors > 0 then state.loose := made end
-                    for i = 0 upto {extent result.errors - 1} do
-                        diagbag.add(bag diagnostics.errorDiagnostic(result.errors[i] path))
-                    end
-                    for i = 0 upto {extent result.warnings - 1} do
-                        diagbag.add(bag diagnostics.warningDiagnostic(result.warnings[i] path))
-                    end
+                    diagbag.addChecked(bag result.errors result.warnings path)
                     let phrases = result.partial.phrases
                     let var moduleChecked = false
                     for i = 0 upto {extent phrases - 1} do

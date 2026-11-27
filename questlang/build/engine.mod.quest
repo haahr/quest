@@ -383,7 +383,7 @@ export
              * program's interfaces *)
             stdlib.install()
             typecheck.install()
-            let e = env.new()
+            let e = env.forProgram(location.file(sm) files.parent(mainFile))
             e.reportInferable := eng.reportInferable
             env.withUnitSource(e location.file(sm) fun():
                     Array(manifest.ImportedModuleRef)
@@ -397,12 +397,8 @@ export
                         end
                     end
                     let search = searchPaths(eng)
-                    let dir = files.parent(mainFile)
                     e.units := graph.newGraphWith(eng.resolver)
-                    e.currentDir := maybe.some(dir)
-                    e.programDir := maybe.some(dir)
                     for i = 0 upto {extent search - 1} do vector.append(e.includePaths search[i]) end
-                    e.sourceFile := location.file(sm)
                     (* Compiled to C, with the build directory's artifacts *)
                     e.compilingC := true
                     e.buildDir := maybe.some(str(eng.buildDir))

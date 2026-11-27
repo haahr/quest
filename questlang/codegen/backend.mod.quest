@@ -22,8 +22,6 @@ import
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/opened : questlang/ir/Opened
     passes = questlang/ir/pipeline : questlang/ir/Pipeline
-    questlang/ir/verify : questlang/ir/Verify
-    questlang/repr/shapes : questlang/repr/Shapes
     questlang/repr/symbols : questlang/repr/Symbols
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
     questlang/types/env : questlang/types/Env
@@ -138,9 +136,7 @@ export
             (* A separately compiled unit, with copies of the inlined modules
              * it imports (ir/opened) *)
             let lowered = opened.openImports(lower.lowerProgram(program e sourceMap echo printResult) e)
-            if verify.irChecksEnabled() then verify.checkUnit(lowered) end
-            shapes.setReferencesAlike(choice.referencesAlike(backend))
-            let unit = passes.runPasses(lowered)
+            let unit = passes.runPasses(lowered choice.referencesAlike(backend))
             tuple let c = unitToC(unit maybe.none() backend) let unit = unit end
         end
 
@@ -148,7 +144,6 @@ export
             interfaceHeader: maybe.T(String) backend: String fingerprint: String): String =
         begin
             let unit = opened.openImports(lower.lowerModuleFile(m e sourceMap 0) e)
-            if verify.irChecksEnabled() then verify.checkUnit(unit) end
             (* The unit's module is the one that exports *)
             let var symbol = ""
             for i = 0 upto {vector.length(unit.modules) - 1} do
@@ -157,8 +152,7 @@ export
                     symbol := symbols.fingerprintIdent(symbols.mangleModuleName(md.name))
                 end
             end
-            shapes.setReferencesAlike(choice.referencesAlike(backend))
-            unitWithDatum(passes.runPasses(unit) interfaceHeader backend
+            unitWithDatum(passes.runPasses(unit choice.referencesAlike(backend)) interfaceHeader backend
                     maybe.some(tuple let symbol = symbol let text = fingerprint end))
         end
 end

@@ -182,47 +182,37 @@ export
             let failed = maybe.none(:Array(String))
             r.failure := "syntax"
             try
-                let toks = tokenizer.tokenizeAll(tokenizer.new(sm bag))
-                if diagbag.hasErrors(bag) then
+                let program = parser.parseSource(sm bag)
+                r.failure := "type"
+                let result = typecheck.elaborateProgram(desugar.program(program) r.e)
+                diagbag.addChecked(bag result.errors result.warnings inputName)
+                if diagbag.hasErrors(bag) orif maybe.isNone(result.program) then
                     failed
+                elsif maybe.isSome(r.jit) then
+                    runJit(r maybe.unwrap(r.jit) maybe.unwrap(result.program) sm bag
+                            true false true)
                 else
-                    let program = parser.parseProgram(toks sm bag)
-                    r.failure := "type"
-                    let result = typecheck.elaborateProgram(desugar.program(program) r.e)
-                    for i = 0 upto {extent result.errors - 1} do
-                        diagbag.add(bag diagnostics.errorDiagnostic(result.errors[i] inputName))
-                    end
-                    for i = 0 upto {extent result.warnings - 1} do
-                        diagbag.add(bag diagnostics.warningDiagnostic(result.warnings[i] inputName))
-                    end
-                    if diagbag.hasErrors(bag) orif maybe.isNone(result.program) then
-                        failed
-                    elsif maybe.isSome(r.jit) then
-                        runJit(r maybe.unwrap(r.jit) maybe.unwrap(result.program) sm bag
-                                true false true)
-                    else
-                        (* The input runs in a scope of its own, which holds its
-                         * source, so that the functions earlier inputs made go
-                         * on locating errors in theirs *)
-                        let f = treewalk.pushScope(r.frame)
-                        f.sourceMap := maybe.some(sm)
-                        try
-                            let ran = treewalk.evalProgramPhrasesIn(maybe.unwrap(result.program) f
-                                    fun(p: treewalk.PhraseResult): Ok ok)
-                            r.frame := ran.frame
-                            let shown = array of(extent ran.results "")
-                            for i = 0 upto {extent shown - 1} do
-                                let p = ran.results[i]
-                                shown[i] := formatting.formatInteractiveResult(p.phrase p.value)
-                            end
-                            maybe.some(shown)
-                        when model.runError with err then
-                            treewalk.noteFrames(err f)
-                            r.errorSource := err.sourceMap
-                            r.failure := exceptionName(model.runErrorMessage(err))
-                            diagbag.add(bag runErrorDiagnostic(err inputName))
-                            failed
+                    (* The input runs in a scope of its own, which holds its
+                     * source, so that the functions earlier inputs made go
+                     * on locating errors in theirs *)
+                    let f = treewalk.pushScope(r.frame)
+                    f.sourceMap := maybe.some(sm)
+                    try
+                        let ran = treewalk.evalProgramPhrasesIn(maybe.unwrap(result.program) f
+                                fun(p: treewalk.PhraseResult): Ok ok)
+                        r.frame := ran.frame
+                        let shown = array of(extent ran.results "")
+                        for i = 0 upto {extent shown - 1} do
+                            let p = ran.results[i]
+                            shown[i] := formatting.formatInteractiveResult(p.phrase p.value)
                         end
+                        maybe.some(shown)
+                    when model.runError with err then
+                        treewalk.noteFrames(err f)
+                        r.errorSource := err.sourceMap
+                        r.failure := exceptionName(model.runErrorMessage(err))
+                        diagbag.add(bag runErrorDiagnostic(err inputName))
+                        failed
                     end
                 end
             when diagbag.fatalError then

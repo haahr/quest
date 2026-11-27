@@ -10,6 +10,7 @@ import
     questlang/syntax/ast : questlang/syntax/AST
     questlang/syntax/parser/engine : questlang/syntax/parser/Engine
     questlang/syntax/parser/grammar : questlang/syntax/parser/Grammar
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
     questlang/syntax/tokens : questlang/syntax/Tokens
 export
     let quest = grammar.new()
@@ -23,6 +24,16 @@ export
 
     let parseProgram(toks: vector.T(tokens.Token) sm: location.SourceMap bag: diagbag.T): ast.Program =
         case parse(quest.program toks sm bag) when program with x then x.val else wrong("a program") end
+
+    let parseSource(sm: location.SourceMap bag: diagbag.T): ast.Program =
+        begin
+            let errors = diagbag.errorCount(bag)
+            let toks = tokenizer.tokenizeAll(tokenizer.new(sm bag))
+            if diagbag.errorCount(bag) > errors then
+                raise diagbag.fatalError with diagbag.get(bag diagbag.count(bag) - 1) end
+            end
+            parseProgram(toks sm bag)
+        end
 
     let parseType(toks: vector.T(tokens.Token) sm: location.SourceMap bag: diagbag.T): ast.TypeExpr =
         case parse(quest.type toks sm bag) when typeExpr with x then x.val else wrong("a type") end

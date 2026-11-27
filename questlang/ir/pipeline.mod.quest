@@ -13,6 +13,7 @@ import
     questlang/ir/represent : questlang/ir/Represent
     questlang/ir/simplify : questlang/ir/Simplify
     questlang/ir/specialize : questlang/ir/Specialize
+    questlang/ir/stages : questlang/ir/Stages
     questlang/ir/thunks : questlang/ir/Thunks
     questlang/ir/unbox : questlang/ir/Unbox
     questlang/ir/verify : questlang/ir/Verify
@@ -20,27 +21,37 @@ import
 export
     Let ImplicitImport = Tuple canonicalPath: String interfacePath: String end
 
-    let checked(unit: nodes.Unit): nodes.Unit =
-        begin
-            if verify.irChecksEnabled() then verify.checkUnit(unit) end
-            unit
-        end
-
     (* The simplifier's unit, without what it left of the copies of inlined
      * modules that nothing calls now (ir/opened): their members are pinned,
      * as named from outside the unit's bodies, which a copy's are not *)
     let simplified(unit: nodes.Unit): nodes.Unit =
         opened.dropUnreachable(simplify.simplifyUnit(unit) fun(m: nodes.Module): Bool opened.isOpened(m))
 
-    (* The passes of docs/ir.md section 8, in order: simplify, specialize,
-     * closure conversion, unbox, represent, describe, and thunks *)
-    let runPasses(unit: nodes.Unit): nodes.Unit =
+    let runThrough(unit: nodes.Unit last: stages.Stage referencesAlike: Bool
+            after: All(u: nodes.Unit s: stages.Stage) Ok): nodes.Unit =
         begin
-            let specialized = checked(specialize.specializeUnit(checked(simplified(unit))))
-            let represented =
-                checked(represent.representUnit(unbox.unboxUnit(checked(closure.closureConvertUnit(specialized)))))
-            checked(thunks.thunkUnit(describe.describeUnit(represented)))
+            (* The pass that makes each stage after core, in stages.all's order *)
+            let passes = array of
+                fun(u: nodes.Unit): nodes.Unit simplified(u)
+                fun(u: nodes.Unit): nodes.Unit specialize.specializeUnit(u)
+                fun(u: nodes.Unit): nodes.Unit closure.closureConvertUnit(u)
+                fun(u: nodes.Unit): nodes.Unit represent.representUnit(unbox.unboxUnit(u) referencesAlike)
+                fun(u: nodes.Unit): nodes.Unit thunks.thunkUnit(describe.describeUnit(u))
+            end
+            let var u = unit
+            after(u stages.all[0])
+            let var i = 1
+            while {i < extent stages.all} andif not(stages.atLeast(stages.all[i - 1] last)) do
+                u := passes[i - 1](u)
+                after(u stages.all[i])
+                i := i + 1
+            end
+            u
         end
+
+    let runPasses(unit: nodes.Unit referencesAlike: Bool): nodes.Unit =
+        runThrough(unit stages.described referencesAlike fun(u: nodes.Unit s: stages.Stage): Ok
+            if verify.irChecksEnabled() then verify.checkUnit(u) end)
 
     (* The unit's imports that none of the program's import phrases name *)
     let implicitImports(unit: nodes.Unit program: typedAst.Program): Array(ImplicitImport) =

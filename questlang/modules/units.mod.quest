@@ -16,7 +16,6 @@ import
     questlang/syntax/ast : questlang/syntax/AST
     questlang/syntax/desugar : questlang/syntax/Desugar
     questlang/syntax/parser : questlang/syntax/Parser
-    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
 export
     Let UnitKind = Option interfaceUnit moduleUnit programUnit end
 
@@ -53,11 +52,7 @@ export
         begin
             let bag = diagbag.new()
             try
-                let toks = tokenizer.tokenizeAll(tokenizer.new(sm bag))
-                if diagbag.hasErrors(bag) then
-                    diagbag.addStoppingError(:Ok bag location.span(location.file(sm) 0 1) "")
-                end
-                desugar.program(parser.parseProgram(toks sm bag))
+                desugar.program(parser.parseSource(sm bag))
             when diagbag.fatalError with d then
                 (* The first error, as the bootstrap raises it *)
                 let first = if diagbag.count(bag) > 0 then diagbag.get(bag 0) else d end

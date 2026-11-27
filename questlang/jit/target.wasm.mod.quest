@@ -29,7 +29,6 @@ import
     questlang/ir/nodes : questlang/ir/Nodes
     passes = questlang/ir/pipeline : questlang/ir/Pipeline
     questlang/modules/elaboration : questlang/modules/Elaboration
-    questlang/repr/shapes : questlang/repr/Shapes
     questlang/types/env : questlang/types/Env
     questlang/types/symbols : questlang/types/Symbols
     wasm = questlang/wasm/codegen : questlang/wasm/Codegen
@@ -141,12 +140,9 @@ export
         begin
             let bytes =
                 try
-                    begin
-                        (* Tell the IR passes that pointers and boxed values share
-                         * the same representation (WebAssembly eqref) *)
-                        shapes.setReferencesAlike(true)
-                        encode.encode(wasm.unitModule(passes.runPasses(unit)))
-                    end
+                    (* Pointers and boxed values share one representation
+                     * (WebAssembly's eqref) *)
+                    encode.encode(wasm.unitModule(passes.runPasses(unit true)))
                 (* Convert IR and WebAssembly backend failures into
                  * unsupported *)
                 when nodes.irError with x then fail(:String x)

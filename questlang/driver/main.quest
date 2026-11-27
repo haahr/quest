@@ -82,17 +82,12 @@ import
     questlang/interpreter/formatting : questlang/interpreter/Formatting
     questlang/interpreter/irInterp : questlang/interpreter/IRInterp
     questlang/interpreter/treewalk : questlang/interpreter/Treewalk
-    questlang/ir/closure : questlang/ir/Closure
-    questlang/ir/describe : questlang/ir/Describe
     questlang/ir/lower : questlang/ir/Lower
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/opened : questlang/ir/Opened
     passes = questlang/ir/pipeline : questlang/ir/Pipeline
     questlang/ir/printer : questlang/ir/Printer
-    questlang/ir/represent : questlang/ir/Represent
-    questlang/ir/specialize : questlang/ir/Specialize
-    questlang/ir/thunks : questlang/ir/Thunks
-    questlang/ir/unbox : questlang/ir/Unbox
+    questlang/ir/stages : questlang/ir/Stages
     questlang/ir/verify : questlang/ir/Verify
     questlang/jit/session : questlang/jit/Session
     questlang/lsp/server : questlang/lsp/Server
@@ -311,7 +306,6 @@ let finish(bag: diagbag.T sm: location.SourceMap): Ok =
  * shown *)
 let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResult: Bool stage: String): nodes.Unit =
     begin
-        shapes.setReferencesAlike(choice.referencesAlike(programBackend))
         let var unit = lower.lowerProgram(program e maybe.some(sm) options.echo printResult)
         (* A whole program is one unit, its modules merged into it, with only
          * the members it can reach *)
@@ -322,26 +316,15 @@ let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResul
              * imports (ir/opened) *)
             unit := opened.openImports(unit e)
         end
-        let check = fun(u: nodes.Unit at: String): Ok
+        let var last = stages.core
+        for i = 0 upto {extent stages.all - 1} do
+            if stringOp.equal(stages.name(stages.all[i]) stage) then last := stages.all[i] end
+        end
+        passes.runThrough(unit last choice.referencesAlike(programBackend) fun(u: nodes.Unit s: stages.Stage): Ok
             begin
                 if verify.irChecksEnabled() then verify.checkUnit(u) end
-                if shows("ir_" <> at) then dump(printer.formatUnit(u)) end
-            end
-        check(unit irStages[0])
-        let passes = array of
-            fun(u: nodes.Unit): nodes.Unit passes.simplified(u)
-            fun(u: nodes.Unit): nodes.Unit specialize.specializeUnit(u)
-            fun(u: nodes.Unit): nodes.Unit closure.closureConvertUnit(u)
-            fun(u: nodes.Unit): nodes.Unit represent.representUnit(unbox.unboxUnit(u))
-            fun(u: nodes.Unit): nodes.Unit thunks.thunkUnit(describe.describeUnit(u))
-        end
-        let var i = 1
-        while {i < extent irStages} andif not(stringOp.equal(irStages[i - 1] stage)) do
-            unit := passes[i - 1](unit)
-            check(unit irStages[i])
-            i := i + 1
-        end
-        unit
+                if shows("ir_" <> stages.name(s)) then dump(printer.formatUnit(u)) end
+            end)
     end
 
 (* An internal error: the compiler's own failure, not the program's, which has
@@ -1099,15 +1082,12 @@ let run(): Ok =
                 if shows("desugar") then dump(show(desugared)) end
                 if reaches("typecheck") then
                     stdlib.install()
-                    let e = env.new()
+                    let dir = if options.fromFile then files.parent(files.absolute(options.file))
+                        else files.absolute(".") end
+                    let e = env.forProgram(options.file dir)
                     (* Install the variant selector before any module is
                      * resolved (docs/build-process.md section 6.4) *)
                     e.units.resolver.variantOf := fun(unit: String): String choice.variantFor(options.backends unit)
-                    let dir = if options.fromFile then files.parent(files.absolute(options.file))
-                        else files.absolute(".") end
-                    e.currentDir := maybe.some(dir)
-                    e.programDir := maybe.some(dir)
-                    e.sourceFile := options.file
                     e.reportInferable := options.reportInferable
                     (* The file -i runs, and the REPL's inputs, are interactive
                      * (docs/repl.md section 6) *)
@@ -1124,8 +1104,7 @@ let run(): Ok =
                         (* The JIT's units copy no inlined module (ir/opened),
                          * so their sources are not elaborated *)
                         e.openInlined := not(options.jit)
-                        e.buildDir := maybe.some(artifacts)
-                        vector.append(e.includePaths artifacts)
+                        env.useArtifacts(e artifacts)
                     end
                     for i = 0 upto {extent options.includePaths - 1} do
                         vector.append(e.includePaths options.includePaths[i])
@@ -1163,12 +1142,7 @@ let run(): Ok =
                     end
                     let result = typecheck.elaborateProgram(desugared e)
                     application.reportInferable(e sm)
-                    for i = 0 upto {extent result.errors - 1} do
-                        diagbag.add(bag diagnostics.errorDiagnostic(result.errors[i] options.file))
-                    end
-                    for i = 0 upto {extent result.warnings - 1} do
-                        diagbag.add(bag diagnostics.warningDiagnostic(result.warnings[i] options.file))
-                    end
+                    diagbag.addChecked(bag result.errors result.warnings options.file)
                     if maybe.isSome(result.program) then
                         let typed = maybe.unwrap(result.program)
                         if shows("typecheck") then dump(typedAstPrint.dumpProgram(typed)) end
