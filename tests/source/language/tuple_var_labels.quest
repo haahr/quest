@@ -1,0 +1,49 @@
+(* A tuple's var component named by a later component: the later one reads
+ * the earlier one's value, as it reads an immutable component's. Lowering
+ * once bound the var's label as an immutable variable but read it through a
+ * load, as a var parameter's address is read, which the C compiler rejected
+ * and arm64 code crashed on. *)
+import conv : Conv
+import stringOp = string : StringOp
+import writer : Writer
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+
+(* In a function, as a local tuple *)
+let lengths(s: String): Int =
+    begin
+        let t = tuple
+            let var text = s
+            let var n = stringOp.length(text)
+        end
+        t.n
+    end
+print(conv.int(lengths("abc")))
+
+(* A var read by two later components, one of them a var too, and assigned
+ * after the tuple is made *)
+let summary(base: Int): String =
+    begin
+        let t = tuple
+            let var count = base
+            let doubled = count * 2
+            let var label = "n=" <> conv.int(count)
+        end
+        t.count := t.count + 1
+        t.label <> " doubled=" <> conv.int(t.doubled) <> " count=" <> conv.int(t.count)
+    end
+print(summary(4))
+
+(* At the top level *)
+let top = tuple
+    let var word = "quest"
+    let shout = word <> "!"
+end
+print(top.shout)
+
+(* A var captured by a later component's function *)
+let captured = tuple
+    let var k = 2
+    let get = fun(): Int k
+end
+print(conv.int(captured.get()))

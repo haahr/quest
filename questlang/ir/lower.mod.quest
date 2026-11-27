@@ -203,6 +203,10 @@ export
          * component, which the frame and the closures share *)
         captured: maps.IntSet
         boxes: maps.IntMap(Variable)
+        (* The var labels of tuples' components, by symbol: each is bound to
+         * a variable holding its component's value, which the later
+         * components read through a dereference, as they would a var *)
+        valueLabels: maps.IntSet
         (* In a phrase unit, the earlier inputs' bindings it may name, by
          * symbol, and the imports of those inputs' records, by number *)
         earlier: maps.IntMap(Earlier)
@@ -241,6 +245,7 @@ export
                 let moduleRefs = maps.newIntMap()
                 let captured = maps.newIntSet()
                 let boxes = maps.newIntMap()
+                let valueLabels = maps.newIntSet()
                 let earlier = maps.newIntMap()
                 let earlierImports = maps.newStringMap()
                 let var modulePrefix = ""
@@ -554,6 +559,13 @@ export
                     letOp(l nodes.tupleField(va(maybe.unwrap(box)) 0) e.type into)
                 elsif maybe.isSome(target) andif maybe.unwrap(target).isMutable then
                     (* Reading a mutable variable *)
+                    copyInto(l va(maybe.unwrap(target)) into)
+                elsif maybe.isSome(target)
+                        andif case x.target.form
+                            when exprVar with v then hashSet.contains(l.valueLabels v.symbol.symbolId)
+                            else false
+                        end then
+                    (* A tuple's var label holds its component's value *)
                     copyInto(l va(maybe.unwrap(target)) into)
                 else
                     letOp(l option opLoad of Op with let var address = value(l x.target none) end e.type into)
@@ -1108,8 +1120,11 @@ export
                                     setValue(i value(l element none))
                                 else
                                     (* A label names its component's value for
-                                     * the later components *)
-                                    let v = bindSymbol(l maybe.unwrap(lbl) maybe.some(element.type) false)
+                                     * the later components (valueLabels, for
+                                     * a var's) *)
+                                    let sym = maybe.unwrap(lbl)
+                                    if sym.isVar then hashSet.insert(l.valueLabels sym.symbolId) end
+                                    let v = bindSymbol(l sym maybe.some(element.type) false)
                                     setValue(i value(l element some(v)))
                                 end
                             end

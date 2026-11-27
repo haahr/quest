@@ -1,0 +1,66 @@
+import conv = "conv" : Conv
+import stringOp = "string" : StringOp
+import writer = "writer" : Writer
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @10:45
+      let %2: String = prim <>(s, "\n") @10:59
+      let %3: Ok = call writer.putString(%1, %2) @10:28
+      return %3
+    }
+  }
+  funs {
+    fun lengths(s.1: String): Int {
+      let text: String = s.1 @16:28
+      let n: Int = call stringOp.length(text) @17:25
+      let t: Tuple var text: String var n: Int end = tuple(text, n) @15:17
+      let %4: Int = tuple_field(t, 1) @19:9
+      return %4
+    }
+  }
+  let %5: Int = call lengths("abc") @21:16
+  let %6: String = call conv.int(%5) @21:7
+  do call print(%6) @21:1
+  funs {
+    fun summary(base: Int): String {
+      let count: Int = base @28:29
+      let doubled: Int = prim *(count, 2) @29:27
+      let %7: String = call conv.int(count) @30:37
+      let label: String = prim <>("n=", %7) @30:29
+      let t.1: Tuple var count: Int doubled: Int var label: String end = tuple(count, doubled, label) @27:17
+      let %8: Int = tuple_field(t.1, 0) @32:20
+      let %9: Int = prim +(%8, 1) @32:20
+      store t.1.#0 := %9 @32:9
+      let %10: String = tuple_field(t.1, 2) @33:9
+      let %11: Int = tuple_field(t.1, 1) @33:44
+      let %12: String = call conv.int(%11) @33:35
+      let %13: Int = tuple_field(t.1, 0) @33:80
+      let %14: String = call conv.int(%13) @33:71
+      let %15: String = prim <>(" count=", %14) @33:58
+      let %16: String = prim <>(%12, %15) @33:35
+      let %17: String = prim <>(" doubled=", %16) @33:20
+      let %18: String = prim <>(%10, %17) @33:9
+      return %18
+    }
+  }
+  let %19: String = call summary(4) @35:7
+  do call print(%19) @35:1
+  let word: String = "quest" @39:20
+  let shout: String = prim <>(word, "!") @40:17
+  let top: Tuple var word: String shout: String end = tuple(word, shout) @38:11
+  let %20: String = tuple_field(top, 1) @42:7
+  do call print(%20) @42:1
+  let k: Int = 2 @46:17
+  funs {
+    fun get(): Int {
+      return k
+    }
+  }
+  let captured: Tuple var k: Int get: Fun(): Int end = tuple(k, get) @45:16
+  let %21: Fun(): Int = tuple_field(captured, 1) @49:16
+  let %22: Int = call %21() @49:16
+  let %23: String = call conv.int(%22) @49:7
+  do call print(%23) @49:1
+}
+

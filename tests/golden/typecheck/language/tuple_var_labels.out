@@ -1,0 +1,162 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('stringOp') : 'StringOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'lengths' :type Fun(s: String): Int
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 't' :type Tuple var text: String var n: Int end
+              :value (TypedTuple :type Tuple var text: String var n: Int end
+                :elements (
+                  (TypedVar 's' :type String)
+                  (TypedApp :type Int
+                    :func (TypedSelect 'length' :type Fun(string: String): Int
+                      :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                    :args (
+                      (TypedDerefCell :type String
+                        :target (TypedVar 'text' :type Var(String)))
+                    ))
+                )))
+          )
+          :result (TypedSelect 'n' :type Int
+            :target (TypedVar 't' :type Tuple var text: String var n: Int end)))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedVar 'lengths' :type Fun(s: String): Int)
+                :args (
+                  (TypedString 'abc' :type String)
+                ))
+            ))
+        )))
+    (TypedLetValue 'summary' :type Fun(base: Int): String
+      :value (TypedFun :params (('base' : Int)) :type Fun(base: Int): String
+        :body (TypedBlock :type String
+          :bindings (
+            (TypedLetValue 't' :type Tuple var count: Int doubled: Int var label: String end
+              :value (TypedTuple :type Tuple var count: Int doubled: Int var label: String end
+                :elements (
+                  (TypedVar 'base' :type Int)
+                  (TypedInfix '*' :type Int
+                    :left (TypedDerefCell :type Int
+                      :target (TypedVar 'count' :type Var(Int)))
+                    :right (TypedInt 2 :type Int))
+                  (TypedInfix '<>' :type String
+                    :left (TypedString 'n=' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedDerefCell :type Int
+                          :target (TypedVar 'count' :type Var(Int)))
+                      )))
+                )))
+            (TypedExprStmt
+              :expr (TypedAssign
+                :target (TypedSelect 'count' :type Int
+                  :target (TypedVar 't' :type Tuple var count: Int doubled: Int var label: String end))
+                :value (TypedInfix '+' :type Int
+                  :left (TypedSelect 'count' :type Int
+                    :target (TypedVar 't' :type Tuple var count: Int doubled: Int var label: String end))
+                  :right (TypedInt 1 :type Int))))
+          )
+          :result (TypedInfix '<>' :type String
+            :left (TypedSelect 'label' :type String
+              :target (TypedVar 't' :type Tuple var count: Int doubled: Int var label: String end))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' doubled=' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedSelect 'doubled' :type Int
+                      :target (TypedVar 't' :type Tuple var count: Int doubled: Int var label: String end))
+                  ))
+                :right (TypedInfix '<>' :type String
+                  :left (TypedString ' count=' :type String)
+                  :right (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedSelect 'count' :type Int
+                        :target (TypedVar 't' :type Tuple var count: Int doubled: Int var label: String end))
+                    )))))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'summary' :type Fun(base: Int): String)
+            :args (
+              (TypedInt 4 :type Int)
+            ))
+        )))
+    (TypedLetValue 'top' :type Tuple var word: String shout: String end
+      :value (TypedTuple :type Tuple var word: String shout: String end
+        :elements (
+          (TypedString 'quest' :type String)
+          (TypedInfix '<>' :type String
+            :left (TypedDerefCell :type String
+              :target (TypedVar 'word' :type Var(String)))
+            :right (TypedString '!' :type String))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedSelect 'shout' :type String
+            :target (TypedVar 'top' :type Tuple var word: String shout: String end))
+        )))
+    (TypedLetValue 'captured' :type Tuple var k: Int get: Fun(): Int end
+      :value (TypedTuple :type Tuple var k: Int get: Fun(): Int end
+        :elements (
+          (TypedInt 2 :type Int)
+          (TypedFun :params () :type Fun(): Int
+            :body (TypedDerefCell :type Int
+              :target (TypedVar 'k' :type Var(Int))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedSelect 'get' :type Fun(): Int
+                  :target (TypedVar 'captured' :type Tuple var k: Int get: Fun(): Int end))
+                :args ())
+            ))
+        )))
+  ))

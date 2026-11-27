@@ -222,6 +222,10 @@ class _Lowerer:
         # component, which the frame and the closures share
         self.captured: set[int] = set()
         self.boxes: dict[int, ir.Var] = {}
+        # The var labels of tuples' components, by symbol: each is bound to a
+        # variable holding its component's value, which the later components
+        # read through a dereference, as they would a var
+        self.value_labels: set[int] = set()
         # The source offset of the expression or binding being lowered, which
         # the statements it emits keep as their position (pos), where a pass
         # reports an error of the program's (a rejected conversion), or -1
@@ -330,6 +334,9 @@ class _Lowerer:
                 if isinstance(target, TypedVar) and (var := self.vars.get(target.symbol.symbol_id)) and var.mutable:
                     # Reading a mutable variable
                     return self.copy_into(var, into)
+                if isinstance(target, TypedVar) and target.symbol.symbol_id in self.value_labels:
+                    # A tuple's var label holds its component's value
+                    return self.copy_into(self.vars[target.symbol.symbol_id], into)
                 return self.let(ir.Load(self.value(target)), e.type_val, into)
             case TypedExternal(symbol=symbol):
                 return self.let(ir.External(symbol), e.type_val, into)
@@ -635,6 +642,9 @@ class _Lowerer:
             # members of a simultaneous group refer to the bindings their labels
             # shadow by other symbols, so binding each label as its value is
             # computed is the same as binding them all after the group
+            # (value_labels, for a var's)
+            if label.is_var:
+                self.value_labels.add(label.symbol_id)
             var = self.bind_symbol(label, element.type_val)
             values[i] = self.value(element, var)
         atoms = []
