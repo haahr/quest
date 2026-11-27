@@ -483,75 +483,139 @@ export
      * gains one, and only those are merged.
      * ====================================================================== *)
 
-    (* Coalesces f, given its blocks' order, their loop depths, and its
-     * liveness, which allocate needs too, and returns its liveness after: the
-     * same sets, each value named by its group. Where a group's value is live,
-     * one of its members is, and no member is live into a block whose
-     * parameter is another, since a parameter interferes with what is live
-     * into its block. *)
-    let coalesceWith(f: Function t: targets.Target kind: All(r: Int) Int order: Array(Int) depths: Array(Int)
-            live: machine.Live): machine.Live =
+    (* What coalescing a function knows. Of each value: its class, the
+     * allocatable registers it is moved to or from (prefers), which
+     * allocate's hints follow, and the values it is moved to or from or
+     * passed to or from on a jump (partners), through which it follows
+     * theirs; its reads, since a value never read gains nothing from sharing
+     * a register. The candidates, as pairs of values (by index) with the loop
+     * depth of each one's block, the values in any (inS, listed in sList);
+     * the union-find's parents and each candidate's component; and, from the
+     * walk, the candidates each interferes with, whether each is live where
+     * its class is short of registers (crowded), and whether each is live
+     * across a call (across; at a group's root, whether any member is).
+     * Two groups that would follow different registers are not joined: their
+     * moves would remain, and the joined value, live where either is, could
+     * take neither register. *)
+    Let Coalescing = Tuple
+        f: Function
+        t: targets.Target
+        nValues: Int
+        classOf: Array(Int)
+        callerSaved: Array(Bool)
+        prefers: Array(vector.T(Int))
+        partners: Array(vector.T(Int))
+        reads: Array(Int)
+        var raised: Bool
+        pairs: vector.T(Int)
+        firsts: vector.T(Int)
+        seconds: vector.T(Int)
+        depthOf: vector.T(Int)
+        inS: Array(Bool)
+        sList: vector.T(Int)
+        parent: Array(Int)
+        component: Array(Int)
+        neighbours: Array(vector.T(Int))
+        crowded: Array(Bool)
+        across: Array(Bool)
+        var merged: Bool
+    end
+
+    let noValues = vector.new(:Int)
+
+    (* The root of v's group, compressing the path to it *)
+    let find(parent: Array(Int) v: Int): Int =
+        begin
+            let var x = v
+            while parent[x] isnot x do
+                parent[x] := parent[parent[x]]
+                x := parent[x]
+            end
+            x
+        end
+
+    (* What coalescing f knows before any pass over it *)
+    let newCoalescing(f: Function t: targets.Target): Coalescing =
         begin
             let nValues = machine.virtuals(f)
-            let nBlocks = vector.length(f.blocks)
-            let virtual(r: Int): Bool = machine.isVirtual(f r)
-            let classOf(v: Int): Int = targets.index(machine.virtualClass(f f.firstVirtual + v))
-            (* The allocatable registers each value is moved to or from, which
-             * allocate's hints follow, and the values each is moved to or from
-             * or passed to or from on a jump, through which it follows theirs.
-             * Two groups that would follow different registers are not joined
-             * (below): their moves would remain, and the joined value, live
-             * where either is, could take neither register. *)
-            let allocatable = array of(extent t.registers false)
+            let classOf = array of(nValues 0)
+            for v = 0 upto {nValues - 1} do classOf[v] := targets.index(machine.virtualClass(f f.firstVirtual + v)) end
             let callerSaved = array of(extent t.registers false)
             for c = 0 upto {targets.classes - 1} do
-                for j = 0 upto {extent t.callerSaved[c] - 1} do
-                    allocatable[t.callerSaved[c][j]] := true
-                    callerSaved[t.callerSaved[c][j]] := true
-                end
-                for j = 0 upto {extent t.calleeSaved[c] - 1} do allocatable[t.calleeSaved[c][j]] := true end
+                for j = 0 upto {extent t.callerSaved[c] - 1} do callerSaved[t.callerSaved[c][j]] := true end
             end
-            let nothing = vector.new(:Int)
-            let prefers = array of(nValues nothing)
-            let partners = array of(nValues nothing)
+            let parent = array of(nValues 0)
+            for v = 0 upto {nValues - 1} do parent[v] := v end
+            tuple
+                let f = f
+                let t = t
+                let nValues = nValues
+                let classOf = classOf
+                let callerSaved = callerSaved
+                let prefers = array of(nValues noValues)
+                let partners = array of(nValues noValues)
+                let reads = array of(nValues 0)
+                let var raised = false
+                let pairs = vector.new(:Int)
+                let firsts = vector.new(:Int)
+                let seconds = vector.new(:Int)
+                let depthOf = vector.new(:Int)
+                let inS = array of(nValues false)
+                let sList = vector.new(:Int)
+                let parent = parent
+                let component = array of(nValues ~1)
+                let neighbours = array of(nValues noValues)
+                let crowded = array of(nValues false)
+                let across = array of(nValues false)
+                let var merged = false
+            end
+        end
+
+    (* One pass finds: each value's reads; whether a raise enters any block;
+     * the registers and partners each value follows; and the pairs that may
+     * be candidates, a jump's argument and its target's parameter, with the
+     * loop depth of each one's block *)
+    let survey(c: Coalescing order: Array(Int) depths: Array(Int)): Ok =
+        begin
+            let f = c.f
+            let t = c.t
+            let virtual(r: Int): Bool = machine.isVirtual(f r)
+            let allocatable = array of(extent t.registers false)
+            for k = 0 upto {targets.classes - 1} do
+                for j = 0 upto {extent t.callerSaved[k] - 1} do allocatable[t.callerSaved[k][j]] := true end
+                for j = 0 upto {extent t.calleeSaved[k] - 1} do allocatable[t.calleeSaved[k][j]] := true end
+            end
             let prefer(v: Int r: Int): Ok =
                 begin
-                    if vector.length(prefers[v]) is 0 then prefers[v] := vector.new() end
-                    vector.append(prefers[v] r)
+                    if vector.length(c.prefers[v]) is 0 then c.prefers[v] := vector.new() end
+                    vector.append(c.prefers[v] r)
                 end
             let partner(x: Int y: Int): Ok =
                 if virtual(x) andif virtual(y) andif {x isnot y} then
                     let p = machine.index(f x)
                     let q = machine.index(f y)
-                    if vector.length(partners[p]) is 0 then partners[p] := vector.new() end
-                    if vector.length(partners[q]) is 0 then partners[q] := vector.new() end
-                    vector.append(partners[p] q)
-                    vector.append(partners[q] p)
+                    if vector.length(c.partners[p]) is 0 then c.partners[p] := vector.new() end
+                    if vector.length(c.partners[q]) is 0 then c.partners[q] := vector.new() end
+                    vector.append(c.partners[p] q)
+                    vector.append(c.partners[q] p)
                 end
-            (* One pass finds: each value's reads, since a value never read
-             * gains nothing from sharing a register; whether a raise enters
-             * any block; the registers and partners above; and the pairs that
-             * may be candidates, with the loop depth of each one's block *)
-            let reads = array of(nValues 0)
-            let var raised = false
-            let pairs = vector.new(:Int)
             let pair(x: Int y: Int b: Int): Ok =
                 if virtual(x) andif virtual(y) andif {x isnot y} then
-                    vector.append(pairs machine.index(f x))
-                    vector.append(pairs machine.index(f y))
-                    vector.append(pairs depths[b])
+                    vector.append(c.pairs machine.index(f x))
+                    vector.append(c.pairs machine.index(f y))
+                    vector.append(c.pairs depths[b])
                 end
             for k = 0 upto {extent order - 1} do
                 let b = order[k]
                 let blk = machine.block(f b)
-                if blk.raised then raised := true end
+                if blk.raised then c.raised := true end
                 for j = 0 upto {vector.length(blk.insts) - 1} do
                     let i = vector.get(blk.insts j)
                     for a = 0 upto {extent i.operands - 1} do
                         let o = i.operands[a]
                         if virtual(o.reg) andif not(o.defines) then
                             let v = machine.index(f o.reg)
-                            reads[v] := reads[v] + 1
+                            c.reads[v] := c.reads[v] + 1
                         end
                     end
                     if machine.isKind(i machine.kindMove) then
@@ -574,372 +638,392 @@ export
                     end
                 end
             end
-            (* The candidates, as pairs of values (by index), and the loop
-             * depth of each one's block; and the values in any, listed *)
-            let firsts = vector.new(:Int)
-            let seconds = vector.new(:Int)
-            let depthOf = vector.new(:Int)
-            let inS = array of(nValues false)
-            let sList = vector.new(:Int)
-            if not(raised) then
-                for k = 0 upto {{vector.length(pairs) / 3} - 1} do
-                    let p = vector.get(pairs 3 * k)
-                    let q = vector.get(pairs {3 * k} + 1)
-                    if {reads[p] > 0} andif {reads[q] > 0} andif {classOf(p) is classOf(q)}
-                            andif {kind(f.firstVirtual + p) is kind(f.firstVirtual + q)} then
-                        vector.append(firsts p)
-                        vector.append(seconds q)
-                        vector.append(depthOf vector.get(pairs {3 * k} + 2))
-                        if not(inS[p]) then
-                            inS[p] := true
-                            vector.append(sList p)
-                        end
-                        if not(inS[q]) then
-                            inS[q] := true
-                            vector.append(sList q)
-                        end
+        end
+
+    (* The candidates among the pairs, when no raise enters any block: both
+     * read, of one class and one kind *)
+    let candidates(c: Coalescing kind: All(r: Int) Int): Ok =
+        if not(c.raised) then
+            let f = c.f
+            for k = 0 upto {{vector.length(c.pairs) / 3} - 1} do
+                let p = vector.get(c.pairs 3 * k)
+                let q = vector.get(c.pairs {3 * k} + 1)
+                if {c.reads[p] > 0} andif {c.reads[q] > 0} andif {c.classOf[p] is c.classOf[q]}
+                        andif {kind(f.firstVirtual + p) is kind(f.firstVirtual + q)} then
+                    vector.append(c.firsts p)
+                    vector.append(c.seconds q)
+                    vector.append(c.depthOf vector.get(c.pairs {3 * k} + 2))
+                    if not(c.inS[p]) then
+                        c.inS[p] := true
+                        vector.append(c.sList p)
+                    end
+                    if not(c.inS[q]) then
+                        c.inS[q] := true
+                        vector.append(c.sList q)
                     end
                 end
             end
-            let nCandidates = vector.length(firsts)
-            (* Union-find over the values: first the components that chains
-             * of candidates join, outside which nothing can be joined, so
-             * that interference is recorded only within them; then the
-             * groups joined *)
-            let parent = array of(nValues 0)
-            for v = 0 upto {nValues - 1} do parent[v] := v end
-            let find(v: Int): Int =
-                begin
-                    let var x = v
-                    while parent[x] isnot x do
-                        parent[x] := parent[parent[x]]
-                        x := parent[x]
-                    end
-                    x
+        end
+
+    (* The components that chains of candidates join, outside which nothing
+     * can be joined, so that interference is recorded only within them; the
+     * union-find is then reset for the groups joined *)
+    let components(c: Coalescing): Ok =
+        begin
+            for k = 0 upto {vector.length(c.firsts) - 1} do
+                let rp = find(c.parent vector.get(c.firsts k))
+                let rq = find(c.parent vector.get(c.seconds k))
+                if rp isnot rq then c.parent[rp] := rq end
+            end
+            for e = 0 upto {vector.length(c.sList) - 1} do
+                let v = vector.get(c.sList e)
+                c.component[v] := find(c.parent v)
+            end
+            for e = 0 upto {vector.length(c.sList) - 1} do c.parent[vector.get(c.sList e)] := vector.get(c.sList e) end
+        end
+
+    (* The walk, backwards through each block, that finds which candidates
+     * interfere, which are crowded, and which are live across a call. A value
+     * is live while its mark is the current block's number (k + 1, below), so
+     * that nothing is cleared between blocks; counts holds how many of each
+     * class are live; and the candidates live are listed densely in liveS,
+     * each at its place in at, so that the walk visits only them. dirty says,
+     * for each class, whether a candidate of it has become live since its
+     * candidates were last marked crowded, so that a long stretch short of
+     * registers marks each once. *)
+    let interferences(c: Coalescing order: Array(Int) live: machine.Live): Ok =
+        begin
+            let f = c.f
+            let t = c.t
+            let nValues = c.nValues
+            let virtual(r: Int): Bool = machine.isVirtual(f r)
+            let classOf = c.classOf
+            let inS = c.inS
+            let pools = array of(targets.classes 0)
+            let callee = array of(targets.classes 0)
+            for k = 0 upto {targets.classes - 1} do
+                pools[k] := extent t.callerSaved[k] + extent t.calleeSaved[k]
+                callee[k] := extent t.calleeSaved[k]
+            end
+            for e = 0 upto {vector.length(c.sList) - 1} do c.neighbours[vector.get(c.sList e)] := vector.new() end
+            let mark = array of(nValues 0)
+            let var block = 0
+            let liveS = array of(nValues 0)
+            let at = array of(nValues ~1)
+            let var nLive = 0
+            let counts = array of(targets.classes 0)
+            let dirty = array of(targets.classes false)
+            let crowd(k: Int): Ok =
+                if dirty[k] then
+                    for e = 0 upto {nLive - 1} do if classOf[liveS[e]] is k then c.crowded[liveS[e]] := true end end
+                    dirty[k] := false
                 end
-            let component = array of(nValues ~1)
-            let var merged = false
-            if nCandidates > 0 then
-                for k = 0 upto {nCandidates - 1} do
-                    let rp = find(vector.get(firsts k))
-                    let rq = find(vector.get(seconds k))
-                    if rp isnot rq then parent[rp] := rq end
+            let check(limits: Array(Int)): Ok =
+                for k = 0 upto {targets.classes - 1} do if counts[k] >= limits[k] then crowd(k) end end
+            let enter(v: Int): Ok =
+                if mark[v] isnot block then
+                    mark[v] := block
+                    let k = classOf[v]
+                    counts[k] := counts[k] + 1
+                    if inS[v] then
+                        liveS[nLive] := v
+                        at[v] := nLive
+                        nLive := nLive + 1
+                        dirty[k] := true
+                    end
                 end
-                for e = 0 upto {vector.length(sList) - 1} do
-                    let v = vector.get(sList e)
-                    component[v] := find(v)
+            let leave(v: Int): Ok =
+                if mark[v] is block then
+                    mark[v] := 0
+                    counts[classOf[v]] := counts[classOf[v]] - 1
+                    if at[v] >= 0 then
+                        let last = liveS[nLive - 1]
+                        liveS[at[v]] := last
+                        at[last] := at[v]
+                        at[v] := ~1
+                        nLive := nLive - 1
+                    end
                 end
-                for e = 0 upto {vector.length(sList) - 1} do parent[vector.get(sList e)] := vector.get(sList e) end
-                let pools = array of(targets.classes 0)
-                let callee = array of(targets.classes 0)
-                for c = 0 upto {targets.classes - 1} do
-                    pools[c] := extent t.callerSaved[c] + extent t.calleeSaved[c]
-                    callee[c] := extent t.calleeSaved[c]
+            (* d, a candidate defined now, interferes with every candidate of
+             * its component live but itself and except *)
+            let interfere(d: Int except: Int): Ok =
+                for e = 0 upto {nLive - 1} do
+                    let x = liveS[e]
+                    if {x isnot d} andif {x isnot except} andif {c.component[x] is c.component[d]} then
+                        vector.append(c.neighbours[d] x)
+                        vector.append(c.neighbours[x] d)
+                    end
                 end
-                let neighbours = array of(nValues nothing)
-                for e = 0 upto {vector.length(sList) - 1} do neighbours[vector.get(sList e)] := vector.new() end
-                let crowded = array of(nValues false)
-                (* Whether each candidate is live across a call; at a group's
-                 * root, whether any member is *)
-                let across = array of(nValues false)
-                (* The walk. A value is live while its mark is the current
-                 * block's number (k + 1, below), so that nothing is cleared
-                 * between blocks; counts holds how many of each class are
-                 * live; and the candidates live are listed densely in liveS,
-                 * each at its place in at, so that the walk visits only them.
-                 * dirty says, for each class, whether a candidate of it has
-                 * become live since its candidates were last marked crowded,
-                 * so that a long stretch short of registers marks each once. *)
-                let mark = array of(nValues 0)
-                let var block = 0
-                let liveS = array of(nValues 0)
-                let at = array of(nValues ~1)
-                let var nLive = 0
-                let counts = array of(targets.classes 0)
-                let dirty = array of(targets.classes false)
-                let crowd(c: Int): Ok =
-                    if dirty[c] then
-                        for e = 0 upto {nLive - 1} do if classOf(liveS[e]) is c then crowded[liveS[e]] := true end end
-                        dirty[c] := false
-                    end
-                let check(limits: Array(Int)): Ok =
-                    for c = 0 upto {targets.classes - 1} do if counts[c] >= limits[c] then crowd(c) end end
-                let enter(v: Int): Ok =
-                    if mark[v] isnot block then
-                        mark[v] := block
-                        let c = classOf(v)
-                        counts[c] := counts[c] + 1
-                        if inS[v] then
-                            liveS[nLive] := v
-                            at[v] := nLive
-                            nLive := nLive + 1
-                            dirty[c] := true
-                        end
-                    end
-                let leave(v: Int): Ok =
-                    if mark[v] is block then
-                        mark[v] := 0
-                        counts[classOf(v)] := counts[classOf(v)] - 1
-                        if at[v] >= 0 then
-                            let last = liveS[nLive - 1]
-                            liveS[at[v]] := last
-                            at[last] := at[v]
-                            at[v] := ~1
-                            nLive := nLive - 1
-                        end
-                    end
-                (* d, a candidate defined now, interferes with every candidate
-                 * of its component live but itself and except *)
-                let interfere(d: Int except: Int): Ok =
-                    for e = 0 upto {nLive - 1} do
-                        let x = liveS[e]
-                        if {x isnot d} andif {x isnot except} andif {component[x] is component[d]} then
-                            vector.append(neighbours[d] x)
-                            vector.append(neighbours[x] d)
-                        end
-                    end
-                for k = 0 upto {extent order - 1} do
-                    let b = order[k]
-                    let blk = machine.block(f b)
-                    block := k + 1
-                    for e = 0 upto {nLive - 1} do at[liveS[e]] := ~1 end
-                    nLive := 0
-                    for c = 0 upto {targets.classes - 1} do
-                        counts[c] := 0
-                        dirty[c] := false
-                    end
-                    let var x = bitset.next(live.liveOut[b] 0)
-                    while x >= 0 do
-                        enter(x)
-                        x := bitset.next(live.liveOut[b] x + 1)
-                    end
-                    for j = {vector.length(blk.insts) - 1} downto 0 do
-                        let i = vector.get(blk.insts j)
-                        (* Its results are live where it writes them, even
-                         * those never read *)
-                        for a = 0 upto {extent i.operands - 1} do
-                            let o = i.operands[a]
-                            if virtual(o.reg) andif o.defines then enter(machine.index(f o.reg)) end
-                        end
-                        check(pools)
-                        let except =
-                            if machine.isKind(i machine.kindMove) andif virtual(i.operands[1].reg) then
-                                machine.index(f i.operands[1].reg)
-                            else
-                                ~1
-                            end
-                        for a = 0 upto {extent i.operands - 1} do
-                            let o = i.operands[a]
-                            if virtual(o.reg) andif o.defines andif inS[machine.index(f o.reg)] then
-                                interfere(machine.index(f o.reg) except)
-                            end
-                        end
-                        for a = 0 upto {extent i.operands - 1} do
-                            let o = i.operands[a]
-                            if virtual(o.reg) andif o.defines then leave(machine.index(f o.reg)) end
-                        end
-                        (* What is live now is what is live across it *)
-                        if machine.isKind(i machine.kindCall) then
-                            check(callee)
-                            for e = 0 upto {nLive - 1} do across[liveS[e]] := true end
-                        end
-                        for a = 0 upto {extent i.operands - 1} do
-                            let o = i.operands[a]
-                            if virtual(o.reg) andif not(o.defines) then enter(machine.index(f o.reg)) end
-                        end
-                        check(pools)
-                    end
-                    for p = 0 upto {vector.length(blk.params) - 1} do
-                        enter(machine.index(f vector.get(blk.params p)))
+            for k = 0 upto {extent order - 1} do
+                let b = order[k]
+                let blk = machine.block(f b)
+                block := k + 1
+                for e = 0 upto {nLive - 1} do at[liveS[e]] := ~1 end
+                nLive := 0
+                for j = 0 upto {targets.classes - 1} do
+                    counts[j] := 0
+                    dirty[j] := false
+                end
+                let var x = bitset.next(live.liveOut[b] 0)
+                while x >= 0 do
+                    enter(x)
+                    x := bitset.next(live.liveOut[b] x + 1)
+                end
+                for j = {vector.length(blk.insts) - 1} downto 0 do
+                    let i = vector.get(blk.insts j)
+                    (* Its results are live where it writes them, even those
+                     * never read *)
+                    for a = 0 upto {extent i.operands - 1} do
+                        let o = i.operands[a]
+                        if virtual(o.reg) andif o.defines then enter(machine.index(f o.reg)) end
                     end
                     check(pools)
-                    for p = 0 upto {vector.length(blk.params) - 1} do
-                        let v = machine.index(f vector.get(blk.params p))
-                        if inS[v] then interfere(v ~1) end
-                    end
-                end
-                (* Each group's members, listed at its root *)
-                let members = array of(nValues nothing)
-                for e = 0 upto {vector.length(sList) - 1} do
-                    let v = vector.get(sList e)
-                    members[v] := vector.new()
-                    vector.append(members[v] v)
-                end
-                let byDepth = array of(nCandidates 0)
-                for k = 0 upto {nCandidates - 1} do byDepth[k] := k end
-                sort.sort(byDepth fun(x: Int y: Int): Int
-                    if vector.get(depthOf x) isnot vector.get(depthOf y) then
-                        sort.intCompare(vector.get(depthOf y) vector.get(depthOf x))
-                    else
-                        sort.intCompare(x y)
-                    end)
-                let followsP = vector.new(:Int)
-                let followsQ = vector.new(:Int)
-                for k = 0 upto {nCandidates - 1} do
-                    let p = vector.get(firsts byDepth[k])
-                    let q = vector.get(seconds byDepth[k])
-                    let rp = find(p)
-                    let rq = find(q)
-                    (* The registers a group follows: its members' own, or, if
-                     * they have none, those of the values they are moved to or
-                     * from outside both groups. Its own come first: a value's
-                     * partners may follow several registers, one of which
-                     * would seem to agree with anything. *)
-                    let follows(r: Int regs: vector.T(Int)): Ok =
-                        begin
-                            vector.clear(regs)
-                            let ms = members[r]
-                            for e = 0 upto {vector.length(ms) - 1} do
-                                let m = vector.get(ms e)
-                                for g = 0 upto {vector.length(prefers[m]) - 1} do
-                                    vector.append(regs vector.get(prefers[m] g))
-                                end
-                            end
-                            if vector.length(regs) is 0 then
-                                for e = 0 upto {vector.length(ms) - 1} do
-                                    let ps = partners[vector.get(ms e)]
-                                    for g = 0 upto {vector.length(ps) - 1} do
-                                        let x = vector.get(ps g)
-                                        let rx = find(x)
-                                        if {rx isnot rp} andif {rx isnot rq} then
-                                            for h = 0 upto {vector.length(prefers[x]) - 1} do
-                                                vector.append(regs vector.get(prefers[x] h))
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    (* Whether they follow no different registers: either none,
-                     * or one in common *)
-                    let compatible(): Bool =
-                        begin
-                            follows(rp followsP)
-                            follows(rq followsQ)
-                            let a = followsP
-                            let b = followsQ
-                            let var shared = {vector.length(a) is 0} orif {vector.length(b) is 0}
-                            for e = 0 upto {vector.length(a) - 1} do
-                                for g = 0 upto {vector.length(b) - 1} do
-                                    if vector.get(a e) is vector.get(b g) then shared := true end
-                                end
-                            end
-                            (* A group live across a call needs a callee-saved
-                             * register, so one that follows only caller-saved
-                             * ones would keep its moves, made where it is
-                             * rather than on the edge: a function's arguments,
-                             * say, moved before its base case's test rather
-                             * than only on the path that calls *)
-                            let onlyCaller(regs: vector.T(Int)): Bool =
-                                begin
-                                    let var only = vector.length(regs) > 0
-                                    for e = 0 upto {vector.length(regs) - 1} do
-                                        if not(callerSaved[vector.get(regs e)]) then only := false end
-                                    end
-                                    only
-                                end
-                            shared andif not({across[rp] andif onlyCaller(b)} orif {across[rq] andif onlyCaller(a)})
-                        end
-                    if {rp isnot rq} andif not(crowded[p]) andif not(crowded[q]) andif compatible() then
-                        let small = if vector.length(members[rp]) <= vector.length(members[rq]) then rp else rq end
-                        let big = if small is rp then rq else rp end
-                        let ms = members[small]
-                        let var clash = false
-                        let var m = 0
-                        while not(clash) andif {m < vector.length(ms)} do
-                            let ns = neighbours[vector.get(ms m)]
-                            for e = 0 upto {vector.length(ns) - 1} do
-                                if find(vector.get(ns e)) is big then clash := true end
-                            end
-                            m := m + 1
-                        end
-                        if not(clash) then
-                            parent[small] := big
-                            if across[small] then across[big] := true end
-                            for e = 0 upto {vector.length(ms) - 1} do vector.append(members[big] vector.get(ms e)) end
-                            merged := true
-                        end
-                    end
-                end
-                (* Each group renamed to its root, and the moves that leaves
-                 * from a register to itself dropped *)
-                if merged then
-                    let rename(r: Int): Int = if virtual(r) then f.firstVirtual + find(machine.index(f r)) else r end
-                    for b = 0 upto {nBlocks - 1} do
-                        let blk = machine.block(f b)
-                        for p = 0 upto {vector.length(blk.params) - 1} do
-                            vector.set(blk.params p rename(vector.get(blk.params p)))
-                        end
-                        let kept = vector.new(:machine.Inst)
-                        for j = 0 upto {vector.length(blk.insts) - 1} do
-                            let i = vector.get(blk.insts j)
-                            for a = 0 upto {extent i.operands - 1} do
-                                let o = i.operands[a]
-                                o.reg := rename(o.reg)
-                            end
-                            let self = machine.isKind(i machine.kindMove) andif {i.operands[0].reg is i.operands[1].reg}
-                            if not(self) then vector.append(kept i) end
-                        end
-                        if vector.length(kept) < vector.length(blk.insts) then
-                            vector.clear(blk.insts)
-                            for j = 0 upto {vector.length(kept) - 1} do vector.append(blk.insts vector.get(kept j)) end
-                        end
-                    end
-                end
-            end
-            (* The liveness renamed in place: each value joined into another
-             * group's root taken out of each set, and the root put in *)
-            if merged then
-                let joined = vector.new(:Int)
-                for e = 0 upto {vector.length(sList) - 1} do
-                    let v = vector.get(sList e)
-                    if find(v) isnot v then vector.append(joined v) end
-                end
-                (* Each set is either tested for each value joined, when they
-                 * are fewer than its words, or walked *)
-                let few = vector.length(joined) <= {nValues / 64} + 1
-                let rename(sets: Array(bitset.T)): Ok =
-                    for b = 0 upto {extent sets - 1} do
-                        if few then
-                            for e = 0 upto {vector.length(joined) - 1} do
-                                let v = vector.get(joined e)
-                                if bitset.remove(sets[b] v) then add(sets[b] find(v)) end
-                            end
+                    let except =
+                        if machine.isKind(i machine.kindMove) andif virtual(i.operands[1].reg) then
+                            machine.index(f i.operands[1].reg)
                         else
-                            let var x = bitset.next(sets[b] 0)
-                            while x >= 0 do
-                                let r = find(x)
-                                if r isnot x then
-                                    if bitset.remove(sets[b] x) then add(sets[b] r) end
-                                end
-                                x := bitset.next(sets[b] x + 1)
+                            ~1
+                        end
+                    for a = 0 upto {extent i.operands - 1} do
+                        let o = i.operands[a]
+                        if virtual(o.reg) andif o.defines andif inS[machine.index(f o.reg)] then
+                            interfere(machine.index(f o.reg) except)
+                        end
+                    end
+                    for a = 0 upto {extent i.operands - 1} do
+                        let o = i.operands[a]
+                        if virtual(o.reg) andif o.defines then leave(machine.index(f o.reg)) end
+                    end
+                    (* What is live now is what is live across it *)
+                    if machine.isKind(i machine.kindCall) then
+                        check(callee)
+                        for e = 0 upto {nLive - 1} do c.across[liveS[e]] := true end
+                    end
+                    for a = 0 upto {extent i.operands - 1} do
+                        let o = i.operands[a]
+                        if virtual(o.reg) andif not(o.defines) then enter(machine.index(f o.reg)) end
+                    end
+                    check(pools)
+                end
+                for p = 0 upto {vector.length(blk.params) - 1} do enter(machine.index(f vector.get(blk.params p))) end
+                check(pools)
+                for p = 0 upto {vector.length(blk.params) - 1} do
+                    let v = machine.index(f vector.get(blk.params p))
+                    if inS[v] then interfere(v ~1) end
+                end
+            end
+        end
+
+    (* The registers the group of root r follows, into regs: its members' own,
+     * or, if they have none, those of the values they are moved to or from
+     * outside both groups being joined (of roots rp and rq). Its own come
+     * first: a value's partners may follow several registers, one of which
+     * would seem to agree with anything. *)
+    let follows(c: Coalescing members: Array(vector.T(Int)) r: Int rp: Int rq: Int regs: vector.T(Int)): Ok =
+        begin
+            vector.clear(regs)
+            let ms = members[r]
+            for e = 0 upto {vector.length(ms) - 1} do
+                let m = vector.get(ms e)
+                for g = 0 upto {vector.length(c.prefers[m]) - 1} do vector.append(regs vector.get(c.prefers[m] g)) end
+            end
+            if vector.length(regs) is 0 then
+                for e = 0 upto {vector.length(ms) - 1} do
+                    let ps = c.partners[vector.get(ms e)]
+                    for g = 0 upto {vector.length(ps) - 1} do
+                        let x = vector.get(ps g)
+                        let rx = find(c.parent x)
+                        if {rx isnot rp} andif {rx isnot rq} then
+                            for h = 0 upto {vector.length(c.prefers[x]) - 1} do
+                                vector.append(regs vector.get(c.prefers[x] h))
                             end
                         end
                     end
-                rename(live.liveIn)
-                rename(live.liveOut)
+                end
             end
+        end
+
+    (* Joins the candidates' groups, deepest loops first, where they do not
+     * interfere, are not crowded, and follow no different registers: either
+     * none, or one in common *)
+    let join(c: Coalescing): Ok =
+        begin
+            let nCandidates = vector.length(c.firsts)
+            (* Each group's members, listed at its root *)
+            let members = array of(c.nValues noValues)
+            for e = 0 upto {vector.length(c.sList) - 1} do
+                let v = vector.get(c.sList e)
+                members[v] := vector.new()
+                vector.append(members[v] v)
+            end
+            let byDepth = array of(nCandidates 0)
+            for k = 0 upto {nCandidates - 1} do byDepth[k] := k end
+            sort.sort(byDepth fun(x: Int y: Int): Int
+                if vector.get(c.depthOf x) isnot vector.get(c.depthOf y) then
+                    sort.intCompare(vector.get(c.depthOf y) vector.get(c.depthOf x))
+                else
+                    sort.intCompare(x y)
+                end)
+            let followsP = vector.new(:Int)
+            let followsQ = vector.new(:Int)
+            for k = 0 upto {nCandidates - 1} do
+                let p = vector.get(c.firsts byDepth[k])
+                let q = vector.get(c.seconds byDepth[k])
+                let rp = find(c.parent p)
+                let rq = find(c.parent q)
+                let compatible(): Bool =
+                    begin
+                        follows(c members rp rp rq followsP)
+                        follows(c members rq rp rq followsQ)
+                        let a = followsP
+                        let b = followsQ
+                        let var shared = {vector.length(a) is 0} orif {vector.length(b) is 0}
+                        for e = 0 upto {vector.length(a) - 1} do
+                            for g = 0 upto {vector.length(b) - 1} do
+                                if vector.get(a e) is vector.get(b g) then shared := true end
+                            end
+                        end
+                        (* A group live across a call needs a callee-saved
+                         * register, so one that follows only caller-saved ones
+                         * would keep its moves, made where it is rather than
+                         * on the edge: a function's arguments, say, moved
+                         * before its base case's test rather than only on the
+                         * path that calls *)
+                        let onlyCaller(regs: vector.T(Int)): Bool =
+                            begin
+                                let var only = vector.length(regs) > 0
+                                for e = 0 upto {vector.length(regs) - 1} do
+                                    if not(c.callerSaved[vector.get(regs e)]) then only := false end
+                                end
+                                only
+                            end
+                        shared andif not({c.across[rp] andif onlyCaller(b)} orif {c.across[rq] andif onlyCaller(a)})
+                    end
+                if {rp isnot rq} andif not(c.crowded[p]) andif not(c.crowded[q]) andif compatible() then
+                    let small = if vector.length(members[rp]) <= vector.length(members[rq]) then rp else rq end
+                    let big = if small is rp then rq else rp end
+                    let ms = members[small]
+                    let var clash = false
+                    let var m = 0
+                    while not(clash) andif {m < vector.length(ms)} do
+                        let ns = c.neighbours[vector.get(ms m)]
+                        for e = 0 upto {vector.length(ns) - 1} do
+                            if find(c.parent vector.get(ns e)) is big then clash := true end
+                        end
+                        m := m + 1
+                    end
+                    if not(clash) then
+                        c.parent[small] := big
+                        if c.across[small] then c.across[big] := true end
+                        for e = 0 upto {vector.length(ms) - 1} do vector.append(members[big] vector.get(ms e)) end
+                        c.merged := true
+                    end
+                end
+            end
+        end
+
+    (* Each group renamed to its root, and the moves that leaves from a
+     * register to itself dropped *)
+    let renameGroups(c: Coalescing): Ok =
+        begin
+            let f = c.f
+            let rename(r: Int): Int =
+                if machine.isVirtual(f r) then f.firstVirtual + find(c.parent machine.index(f r)) else r end
+            for b = 0 upto {vector.length(f.blocks) - 1} do
+                let blk = machine.block(f b)
+                for p = 0 upto {vector.length(blk.params) - 1} do
+                    vector.set(blk.params p rename(vector.get(blk.params p)))
+                end
+                let kept = vector.new(:machine.Inst)
+                for j = 0 upto {vector.length(blk.insts) - 1} do
+                    let i = vector.get(blk.insts j)
+                    for a = 0 upto {extent i.operands - 1} do
+                        let o = i.operands[a]
+                        o.reg := rename(o.reg)
+                    end
+                    let self = machine.isKind(i machine.kindMove) andif {i.operands[0].reg is i.operands[1].reg}
+                    if not(self) then vector.append(kept i) end
+                end
+                if vector.length(kept) < vector.length(blk.insts) then
+                    vector.clear(blk.insts)
+                    for j = 0 upto {vector.length(kept) - 1} do vector.append(blk.insts vector.get(kept j)) end
+                end
+            end
+        end
+
+    (* The liveness renamed in place: each value joined into another group's
+     * root taken out of each set, and the root put in. Each set is either
+     * tested for each value joined, when they are fewer than its words, or
+     * walked. *)
+    let renameLiveness(c: Coalescing live: machine.Live): Ok =
+        begin
+            let joined = vector.new(:Int)
+            for e = 0 upto {vector.length(c.sList) - 1} do
+                let v = vector.get(c.sList e)
+                if find(c.parent v) isnot v then vector.append(joined v) end
+            end
+            let few = vector.length(joined) <= {c.nValues / 64} + 1
+            let rename(sets: Array(bitset.T)): Ok =
+                for b = 0 upto {extent sets - 1} do
+                    if few then
+                        for e = 0 upto {vector.length(joined) - 1} do
+                            let v = vector.get(joined e)
+                            if bitset.remove(sets[b] v) then add(sets[b] find(c.parent v)) end
+                        end
+                    else
+                        let var x = bitset.next(sets[b] 0)
+                        while x >= 0 do
+                            let r = find(c.parent x)
+                            if r isnot x then
+                                if bitset.remove(sets[b] x) then add(sets[b] r) end
+                            end
+                            x := bitset.next(sets[b] x + 1)
+                        end
+                    end
+                end
+            rename(live.liveIn)
+            rename(live.liveOut)
+        end
+
+    (* Coalesces f, given its blocks' order, their loop depths, and its
+     * liveness, which allocate needs too, and returns its liveness after: the
+     * same sets, each value named by its group. Where a group's value is live,
+     * one of its members is, and no member is live into a block whose
+     * parameter is another, since a parameter interferes with what is live
+     * into its block. *)
+    let coalesceWith(f: Function t: targets.Target kind: All(r: Int) Int order: Array(Int) depths: Array(Int)
+            live: machine.Live): machine.Live =
+        begin
+            let c = newCoalescing(f t)
+            survey(c order depths)
+            candidates(c kind)
+            if vector.length(c.firsts) > 0 then
+                components(c)
+                interferences(c order live)
+                join(c)
+                if c.merged then renameGroups(c) end
+            end
+            if c.merged then renameLiveness(c live) end
             live
         end
 
-    (* allocate, given f's blocks' order, their loop depths, and its
-     * liveness *)
-    let allocateWith(f: Function t: targets.Target rematerializable: All(i: machine.Inst) Bool cold: All(b: Int) Bool
-            order: Array(Int) depths: Array(Int) live: machine.Live): Allocation =
+    (* Where each block starts, and how often each block and position runs.
+     * Two positions go to each block's start and to each instruction: a block
+     * of n instructions starting at bs has its start at bs, its jth
+     * instruction at bs + 2(j + 1), and its last position at bs + 2n + 1,
+     * where its last instruction writes. Block parameters are defined at bs.
+     * A block's estimated frequency grows by 8 with each loop it is in (up to
+     * four), and a cold block's is 1. isStart holds the blocks' starts. *)
+    Let Positions = Tuple
+        blockStart: Array(Int)
+        positions: Int
+        frequency: Array(Int)
+        freqAt: Array(Int)
+        isStart: bitset.T
+    end
+    let positionsOf(f: Function order: Array(Int) depths: Array(Int) cold: All(b: Int) Bool): Positions =
         begin
-            let nValues = machine.virtuals(f)
             let nBlocks = vector.length(f.blocks)
-            let nRegisters = extent t.registers
-            let liveIn = live.liveIn
-            let liveOut = live.liveOut
-            let virtual(r: Int): Bool = machine.isVirtual(f r)
-            let classes = array of(nValues 0)
-            for v = 0 upto {nValues - 1} do classes[v] := targets.index(machine.virtualClass(f f.firstVirtual + v)) end
-            (* Assign two positions to each block's start and to each
-             * instruction. A block of n instructions starting at bs has its
-             * start at bs, its jth instruction at bs + 2(j + 1), and its last
-             * position at bs + 2n + 1, where its last instruction writes.
-             * Block parameters are defined at bs. *)
             let blockStart = array of(nBlocks 0 - never)
             let var pos = 0
             for k = 0 upto {extent order - 1} do
@@ -948,7 +1032,6 @@ export
                 pos := pos + {2 * {vector.length(blk.insts) + 1}}
             end
             let positions = pos
-            (* Each block's estimated frequency, and each position's *)
             let frequency = array of(nBlocks 0)
             let freqAt = array of(positions + 1 0)
             for k = 0 upto {extent order - 1} do
@@ -961,25 +1044,44 @@ export
             end
             let isStart = bitset.new(positions + 1)
             for k = 0 upto {extent order - 1} do add(isStart blockStart[order[k]]) end
-            (* Each class's registers, the caller-saved first *)
+            tuple
+                let blockStart = blockStart
+                let positions = positions
+                let frequency = frequency
+                let freqAt = freqAt
+                let isStart = isStart
+            end
+        end
+
+    (* Each class's registers, the caller-saved first, where its callee-saved
+     * ones start, and which registers are allocatable *)
+    Let Pools = Tuple pools: Array(Array(Int)) firstCallee: Array(Int) allocatable: Array(Bool) end
+    let poolsOf(t: targets.Target): Pools =
+        begin
             let pools = array of(targets.classes array of :Int end)
             let firstCallee = array of(targets.classes 0)
             for c = 0 upto {targets.classes - 1} do
                 pools[c] := concat(t.callerSaved[c] t.calleeSaved[c])
                 firstCallee[c] := extent t.callerSaved[c]
             end
-            let allocatable = array of(nRegisters false)
+            let allocatable = array of(extent t.registers false)
             for c = 0 upto {targets.classes - 1} do
                 for j = 0 upto {extent pools[c] - 1} do allocatable[pools[c][j]] := true end
             end
-            (* Record fixed physical-register ranges, from each instruction
-             * that writes a physical register to the last that reads it (or
-             * from the block start). Because physical registers are live only
-             * within a block, visiting blocks in layout order produces sorted
-             * ranges. For each instruction, reads are processed before writes:
-             * a read extends the register's latest range if it began in this
-             * block, or starts a new range at the block start (for entry
-             * parameters); a write starts a range at p + 1. *)
+            tuple let pools = pools let firstCallee = firstCallee let allocatable = allocatable end
+        end
+
+    (* The fixed physical-register ranges, an interval for each register of
+     * each class's pool, from each instruction that writes a physical
+     * register to the last that reads it (or from the block start). Because
+     * physical registers are live only within a block, visiting blocks in
+     * layout order produces sorted ranges. For each instruction, reads are
+     * processed before writes: a read extends the register's latest range if
+     * it began in this block, or starts a new range at the block start (for
+     * entry parameters); a write starts a range at p + 1. *)
+    let fixedIntervals(f: Function order: Array(Int) blockStart: Array(Int) pl: Pools nRegisters: Int)
+            : Array(Array(Interval)) =
+        begin
             let fixedFroms = array of(nRegisters vector.new(:Int))
             let fixedTos = array of(nRegisters vector.new(:Int))
             for r = 0 upto {nRegisters - 1} do
@@ -995,7 +1097,7 @@ export
                     let p = bs + {2 * {j + 1}}
                     for a = 0 upto {extent i.operands - 1} do
                         let o = i.operands[a]
-                        if not(virtual(o.reg)) andif allocatable[o.reg] andif not(o.defines) then
+                        if not(machine.isVirtual(f o.reg)) andif pl.allocatable[o.reg] andif not(o.defines) then
                             let n = vector.length(fixedFroms[o.reg])
                             if {n > 0} andif {vector.get(fixedFroms[o.reg] n - 1) >= bs} then
                                 vector.set(fixedTos[o.reg] n - 1 p)
@@ -1007,13 +1109,14 @@ export
                     end
                     for a = 0 upto {extent i.operands - 1} do
                         let o = i.operands[a]
-                        if not(virtual(o.reg)) andif allocatable[o.reg] andif o.defines then
+                        if not(machine.isVirtual(f o.reg)) andif pl.allocatable[o.reg] andif o.defines then
                             vector.append(fixedFroms[o.reg] p + 1)
                             vector.append(fixedTos[o.reg] p + 1)
                         end
                     end
                 end
             end
+            let pools = pl.pools
             let fixed = array of(targets.classes array of :Interval end)
             for c = 0 upto {targets.classes - 1} do
                 fixed[c] := array of(extent pools[c] tuple
@@ -1035,13 +1138,28 @@ export
                     end
                 end
             end
-            (* Build lifetime intervals backwards (Wimmer and Franz's
-             * BuildIntervals), recording each virtual register's ranges and
-             * uses latest-first. Walking blocks and instructions in reverse, a
-             * value live out of a block starts as live across the whole block;
-             * a definition at p + 1 trims its range to start at p + 1, and a
-             * use at p adds a range from the block start to p until an earlier
-             * definition trims it. *)
+            fixed
+        end
+
+    (* Each virtual register's ranges and uses, latest first, and the
+     * positions of the calls and of the blocks a raise enters, for blocked *)
+    Let Ranges = Tuple
+        rangeFroms: Array(vector.T(Int))
+        rangeTos: Array(vector.T(Int))
+        usesAt: Array(vector.T(Int))
+        callAt: Array(Int)
+        handlerAt: Array(Int)
+    end
+
+    (* Builds lifetime intervals backwards (Wimmer and Franz's
+     * BuildIntervals), recording each virtual register's ranges and uses
+     * latest-first. Walking blocks and instructions in reverse, a value live
+     * out of a block starts as live across the whole block; a definition at
+     * p + 1 trims its range to start at p + 1, and a use at p adds a range
+     * from the block start to p until an earlier definition trims it. *)
+    let rangesOf(f: Function order: Array(Int) blockStart: Array(Int) liveOut: Array(bitset.T)): Ranges =
+        begin
+            let nValues = machine.virtuals(f)
             let rangeFroms = array of(nValues vector.new(:Int))
             let rangeTos = array of(nValues vector.new(:Int))
             let usesAt = array of(nValues vector.new(:Int))
@@ -1079,8 +1197,6 @@ export
                         vector.append(rangeTos[v] p)
                     end
                 end
-            (* The same walk finds the calls and the blocks a raise enters, for
-             * blocked *)
             let calls = vector.new(:Int)
             let handlers = vector.new(:Int)
             for k = {extent order - 1} downto 0 do
@@ -1095,11 +1211,11 @@ export
                     let p = bs + {2 * {j + 1}}
                     for a = 0 upto {extent i.operands - 1} do
                         let o = i.operands[a]
-                        if virtual(o.reg) andif o.defines then setFrom(machine.index(f o.reg) p + 1) end
+                        if machine.isVirtual(f o.reg) andif o.defines then setFrom(machine.index(f o.reg) p + 1) end
                     end
                     for a = 0 upto {extent i.operands - 1} do
                         let o = i.operands[a]
-                        if virtual(o.reg) andif not(o.defines) then
+                        if machine.isVirtual(f o.reg) andif not(o.defines) then
                             addRange(machine.index(f o.reg) bs p)
                             vector.append(usesAt[machine.index(f o.reg)] p)
                         end
@@ -1111,14 +1227,34 @@ export
                 end
                 if blk.raised then vector.append(handlers bs) end
             end
-            let callAt = reversed(calls)
             let handlerAt = vector.toArray(handlers)
             sort.sort(handlerAt sort.intCompare)
-            (* Collect register-coalescing hints between a move's operands and
-             * between each jump argument and its target block parameter. A
-             * virtual register may be hinted to an allocatable physical
-             * register (such as an argument register), but not the reverse,
-             * since only virtual registers are allocated. *)
+            tuple
+                let rangeFroms = rangeFroms
+                let rangeTos = rangeTos
+                let usesAt = usesAt
+                let callAt = reversed(calls)
+                let handlerAt = handlerAt
+            end
+        end
+
+    (* Each value's register-coalescing hints, and whether it is
+     * rematerialized *)
+    Let Hints = Tuple hints: Array(vector.T(Int)) remat: Array(Bool) end
+
+    (* Collects register-coalescing hints between a move's operands and
+     * between each jump argument and its target block parameter. A virtual
+     * register may be hinted to an allocatable physical register (such as an
+     * argument register), but not the reverse, since only virtual registers
+     * are allocated. Finds too what is rematerialized: the result of an
+     * instruction with one result, computed from no virtual register, that
+     * the target says can be made again (so it gives the same value
+     * anywhere), and defined nowhere else. *)
+    let hintsOf(f: Function allocatable: Array(Bool) rematerializable: All(i: machine.Inst) Bool cold: All(b: Int) Bool)
+            : Hints =
+        begin
+            let nValues = machine.virtuals(f)
+            let virtual(r: Int): Bool = machine.isVirtual(f r)
             let hints = array of(nValues vector.new(:Int))
             for v = 0 upto {nValues - 1} do hints[v] := vector.new() end
             let hint(a: Int b: Int): Ok =
@@ -1132,7 +1268,7 @@ export
             let remat = array of(nValues false)
             (* How many times each value is defined: once, unless coalesced *)
             let defined = array of(nValues 0)
-            for b = 0 upto {nBlocks - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let params = machine.block(f b).params
                 for p = 0 upto {vector.length(params) - 1} do
                     let v = machine.index(f vector.get(params p))
@@ -1162,10 +1298,6 @@ export
                             hint(i.operands[a].reg vector.get(params a))
                         end
                     end
-                    (* What is rematerialized: the result of an instruction with
-                     * one result, computed from no virtual register, that the
-                     * target says can be made again (so it gives the same
-                     * value anywhere), and defined nowhere else (below) *)
                     let var results = 0
                     let var reads = 0
                     for a = 0 upto {extent i.operands - 1} do
@@ -1184,34 +1316,30 @@ export
             for k = 0 upto {{vector.length(coldHints) / 2} - 1} do
                 hint(vector.get(coldHints 2 * k) vector.get(coldHints {2 * k} + 1))
             end
-            let sc = tuple
-                let classes = classes
-                let intervals = vector.new(:Interval)
-                let unhandled = heap.new(:Interval startOrder)
-                let var active = vector.new(:Interval)
-                let var inactive = vector.new(:Interval)
-                let pools = pools
-                let firstCallee = firstCallee
-                let calls = callAt
-                let handlers = handlerAt
-                let fixed = fixed
-                let firstVirtual = f.firstVirtual
-                let hints = hints
-                let given = array of(nValues ~1)
-                let freqAt = freqAt
-            end
-            (* Every value defined or used has an interval; the lists were
-             * built latest first, so each is reversed. Its first and last
-             * positions are kept before the scan splits it. *)
+            tuple let hints = hints let remat = remat end
+        end
+
+    (* Each value's first and last positions, as its interval had them before
+     * the scan split it *)
+    Let Extents = Tuple first: Array(Int) last: Array(Int) end
+
+    (* Makes every value's interval (each value defined or used has one; the
+     * lists were built latest first, so each is reversed), then runs the
+     * linear scan. For each interval in order of start position, it drops
+     * intervals that have already ended, classifies the rest as active or
+     * inactive at the current position, and allocates a register or
+     * spills. *)
+    let scan(sc: Scan rs: Ranges nValues: Int): Extents =
+        begin
             let first = array of(nValues never)
             let last = array of(nValues ~1)
             for v = 0 upto {nValues - 1} do
-                if vector.length(rangeFroms[v]) > 0 then
+                if vector.length(rs.rangeFroms[v]) > 0 then
                     let it = tuple
                         let value = v
-                        let var froms = reversed(rangeFroms[v])
-                        let var tos = reversed(rangeTos[v])
-                        let var uses = reversed(usesAt[v])
+                        let var froms = reversed(rs.rangeFroms[v])
+                        let var tos = reversed(rs.rangeTos[v])
+                        let var uses = reversed(rs.usesAt[v])
                         let var reg = ~2
                     end
                     first[v] := firstPos(it)
@@ -1220,10 +1348,6 @@ export
                     heap.push(sc.unhandled it)
                 end
             end
-            (* Run the linear scan. For each interval in order of start
-             * position, drop intervals that have already ended, classify the
-             * rest as active or inactive at the current position, and allocate
-             * a register or spill. *)
             while not(heap.empty(sc.unhandled)) do
                 let cur = heap.pop(sc.unhandled)
                 let s = firstPos(cur)
@@ -1235,21 +1359,24 @@ export
                         else vector.append(stillInactive it)
                         end
                     end
-                for k = 0 upto {vector.length(sc.active) - 1} do
-                    classify(vector.get(sc.active k))
-                end
-                for k = 0 upto {vector.length(sc.inactive) - 1} do
-                    classify(vector.get(sc.inactive k))
-                end
+                for k = 0 upto {vector.length(sc.active) - 1} do classify(vector.get(sc.active k)) end
+                for k = 0 upto {vector.length(sc.inactive) - 1} do classify(vector.get(sc.inactive k)) end
                 sc.active := stillActive
                 sc.inactive := stillInactive
                 if not(tryFree(sc cur)) then allocateBlocked(sc cur) end
                 if cur.reg >= 0 then
                     vector.append(sc.active cur)
-                    sc.given[cur.value] := pools[classes[cur.value]][cur.reg]
+                    sc.given[cur.value] := sc.pools[sc.classes[cur.value]][cur.reg]
                 end
             end
-            (* Each register's pieces, in order *)
+            tuple let first = first let last = last end
+        end
+
+    (* Where each value's pieces start and where each lives, whether it is
+     * stored to a slot, and the moves between pieces inside blocks, sorted *)
+    Let Homes = Tuple starts: Array(Array(Int)) homes: Array(Array(Int)) spilled: Array(Bool) moves: Array(Move) end
+    let homesOf(sc: Scan rs: Ranges isStart: bitset.T nValues: Int): Homes =
+        begin
             let pieces = array of(nValues vector.new(:Interval))
             for v = 0 upto {nValues - 1} do pieces[v] := vector.new() end
             for k = 0 upto {vector.length(sc.intervals) - 1} do
@@ -1263,12 +1390,12 @@ export
             for v = 0 upto {nValues - 1} do
                 let ps = vector.toArray(pieces[v])
                 sort.sort(ps fun(a: Interval b: Interval): Int sort.intCompare(firstPos(a) firstPos(b)))
-                let c = classes[v]
+                let c = sc.classes[v]
                 starts[v] := array of(extent ps 0)
                 homes[v] := array of(extent ps memory)
                 for k = 0 upto {extent ps - 1} do
                     starts[v][k] := firstPos(ps[k])
-                    if ps[k].reg >= 0 then homes[v][k] := pools[c][ps[k].reg] else spilled[v] := true end
+                    if ps[k].reg >= 0 then homes[v][k] := sc.pools[c][ps[k].reg] else spilled[v] := true end
                     (* A piece in a register inside a block is moved to. Such
                      * a piece starts where its previous piece ends, at a use,
                      * so the value is in that piece's register or memory just
@@ -1286,41 +1413,82 @@ export
                 end
                 (* A value never read is never stored, though its piece is in
                  * memory: nothing would read the slot, and since it dies at no
-                 * read, nothing would clear it either (a loop's parameter
-                 * that only its header defines, say, which the back edge
-                 * would store each time round) *)
-                if vector.empty(usesAt[v]) then spilled[v] := false end
+                 * read, nothing would clear it either (a loop's parameter that
+                 * only its header defines, say, which the back edge would
+                 * store each time round) *)
+                if vector.empty(rs.usesAt[v]) then spilled[v] := false end
             end
             let moved = vector.toArray(moves)
             sort.sort(moved fun(a: Move b: Move): Int
                 if a.at isnot b.at then sort.intCompare(a.at b.at) else sort.intCompare(a.value b.value) end)
-            (* The callee-saved registers in use, in the order of the pool *)
+            tuple let starts = starts let homes = homes let spilled = spilled let moves = moved end
+        end
+
+    (* The callee-saved registers in use, in the order of the pool *)
+    let calleeUsedOf(h: Homes pl: Pools nRegisters: Int): Array(Int) =
+        begin
             let given = array of(nRegisters false)
-            for v = 0 upto {nValues - 1} do
-                for k = 0 upto {extent homes[v] - 1} do
-                    if homes[v][k] isnot memory then given[homes[v][k]] := true end
+            for v = 0 upto {extent h.homes - 1} do
+                for k = 0 upto {extent h.homes[v] - 1} do
+                    if h.homes[v][k] isnot memory then given[h.homes[v][k]] := true end
                 end
             end
             let used = vector.new(:Int)
             for c = 0 upto {targets.classes - 1} do
-                for r = firstCallee[c] upto {extent pools[c] - 1} do
-                    if given[pools[c][r]] then vector.append(used pools[c][r]) end
+                for r = pl.firstCallee[c] upto {extent pl.pools[c] - 1} do
+                    if given[pl.pools[c][r]] then vector.append(used pl.pools[c][r]) end
                 end
             end
+            vector.toArray(used)
+        end
+
+    (* allocate, given f's blocks' order, their loop depths, and its
+     * liveness *)
+    let allocateWith(f: Function t: targets.Target rematerializable: All(i: machine.Inst) Bool cold: All(b: Int) Bool
+            order: Array(Int) depths: Array(Int) live: machine.Live): Allocation =
+        begin
+            let nValues = machine.virtuals(f)
+            let nBlocks = vector.length(f.blocks)
+            let nRegisters = extent t.registers
+            let classes = array of(nValues 0)
+            for v = 0 upto {nValues - 1} do classes[v] := targets.index(machine.virtualClass(f f.firstVirtual + v)) end
+            let at = positionsOf(f order depths cold)
+            let pl = poolsOf(t)
+            let fixed = fixedIntervals(f order at.blockStart pl nRegisters)
+            let rs = rangesOf(f order at.blockStart live.liveOut)
+            let h = hintsOf(f pl.allocatable rematerializable cold)
+            let sc = tuple
+                let classes = classes
+                let intervals = vector.new(:Interval)
+                let unhandled = heap.new(:Interval startOrder)
+                let var active = vector.new(:Interval)
+                let var inactive = vector.new(:Interval)
+                let pools = pl.pools
+                let firstCallee = pl.firstCallee
+                let calls = rs.callAt
+                let handlers = rs.handlerAt
+                let fixed = fixed
+                let firstVirtual = f.firstVirtual
+                let hints = h.hints
+                let given = array of(nValues ~1)
+                let freqAt = at.freqAt
+            end
+            let extents = scan(sc rs nValues)
+            let placed = homesOf(sc rs at.isStart nValues)
             let ins = array of(nBlocks array of(0 0))
-            for b = 0 upto {nBlocks - 1} do ins[b] := bitset.elements(liveIn[b]) end
+            for b = 0 upto {nBlocks - 1} do ins[b] := bitset.elements(live.liveIn[b]) end
             tuple
-                let starts = starts
-                let homes = homes
-                let spilled = spilled
-                let remat = remat
-                let moves = moved
-                let blockStart = blockStart
+                let starts = placed.starts
+                let homes = placed.homes
+                let spilled = placed.spilled
+                let remat = h.remat
+                let moves = placed.moves
+                let blockStart = at.blockStart
                 let liveIn = ins
-                let calleeUsed = vector.toArray(used)
-                let frequency = frequency
-                let first = first
-                let last = last
+                let calleeUsed = calleeUsedOf(placed pl nRegisters)
+                let frequency = at.frequency
+                let first = extents.first
+                let last = extents.last
             end
         end
 
