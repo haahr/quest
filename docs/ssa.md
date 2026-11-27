@@ -165,7 +165,7 @@ and `unit` (functions, static data, registration, and the unit).
   functions see it (`language/global_joins`).
 - **Memory.** Every aggregate slot is a word (`layout`); a box or a global holds a record or variant's 16 bytes; a
   location (a cell, what a `var` or `out` parameter points to) holds a record or variant as its box's pointer
-  (`layout.shapeLocationRepresentation`). Offsets come from `repr/layout`, `repr/staticdata`, and
+  (`layout.shapeLocationCType`). Offsets come from `repr/layout`, `repr/staticdata`, and
   `repr/runtimeLayout`, which the C asserts.
 - **Closures.** A closure is one object, its code pointer and then the descriptors of its type arguments and its
   captures, a word for each of their values: past the code pointer, private to the unit, which alone reads it

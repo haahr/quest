@@ -182,7 +182,7 @@ export
     (* A value's representation in a local, a parameter, or a result (section
      * 3.2), from its type's *)
     let valType(t: ir.Type): ValType =
-        case layout.representationKind(t)
+        case layout.representation(t)
             when repInt, repWord then model.i64
             when repBool, repChar then model.i32
             when repVoid, repPointer, repQVal then model.eqref
@@ -191,8 +191,8 @@ export
             when repVariant then fail("a variant as one value")
         end
 
-    let isRecord(t: ir.Type): Bool = layout.representationKind(t)?repRecord
-    let isVariant(t: ir.Type): Bool = layout.representationKind(t)?repVariant
+    let isRecord(t: ir.Type): Bool = layout.representation(t)?repRecord
+    let isVariant(t: ir.Type): Bool = layout.representation(t)?repVariant
     let locationParts = array of model.refNull(rt.index("slots")) model.i32 end
     (* Whether t is the type of a location (section 2.6): a cell's, or an
      * out parameter's *)
@@ -487,7 +487,7 @@ export
      * closure it adapts, of that closure's type, where a lifted function's
      * has the placeholder type Ok *)
     let isAdapter(fn: ir.Function): Bool =
-        maybe.isSome(fn.env) andif not(layout.representationKind(maybe.unwrap(fn.env).type)?repVoid)
+        maybe.isSome(fn.env) andif not(layout.representation(maybe.unwrap(fn.env).type)?repVoid)
 
     let withClosure(ts: Array(ValType)): Array(ValType) =
         begin

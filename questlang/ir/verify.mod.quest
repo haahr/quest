@@ -51,18 +51,18 @@ export
             let problems = vector.new(:String)
             let rep = fun(t: model.Type): maybe.T(String)
                 if shapes.kindIs(shapes.shape(t) shapes.shapeOk) then maybe.none()
-                else maybe.some(layout.representation(t))
+                else maybe.some(layout.cType(t))
                 end
             let isBox =
                 fun(a: Atom): Bool case a when atomVar with x then x.v.boxed andif not(x.v.isMutable) else false end
             let have = fun(a: Atom): maybe.T(String)
                 if isBox(a) then
-                    maybe.some(layout.slotRepresentation(nodes.atomType(a)))
+                    maybe.some(layout.slotCType(nodes.atomType(a)))
                 else
                     rep(nodes.atomType(a))
                 end
             let target = fun(v: Variable): maybe.T(String)
-                if v.boxed then maybe.some(layout.slotRepresentation(v.type)) else rep(v.type) end
+                if v.boxed then maybe.some(layout.slotCType(v.type)) else rep(v.type) end
             let expect = fun(a: Atom want: maybe.T(String) where: String): Ok
                 begin
                     let had = have(a)

@@ -4,14 +4,14 @@
  * (docs/c-representation.md), mirroring bootstrap/python/quest/repr/layout.py.
  * Layouts depend only on shapes and are cached per shape. They provide each
  * type's layout tag (which names its C struct and descriptor; repr/digests
- * distinguishes types that share a tag), its representation (the runtime C
- * type: a scalar, a QVal uniform 64-bit word, a 16-byte record or variant
- * value, or a pointer), and its slot representation (how an aggregate field
- * or QVal word stores it: a record or variant as a pointer to an immutable
- * box, and a Bool or Char widened to a full word). It also decides whether a
- * tuple or option value may be a proxy (a wrapper created when upcasting
- * changes how a component is viewed). Checking whether generic code's layout
- * agrees with the native layout belongs to repr/genericlayout. *)
+ * distinguishes types that share a tag), its representation (a scalar, a QVal
+ * uniform 64-bit word, a 16-byte record or variant value, or a pointer), and
+ * the C types that spell it, the value's own and its slot's (how an aggregate
+ * field or QVal word stores it: a record or variant as a pointer to an
+ * immutable box, and a Bool or Char widened to a full word). It also decides
+ * whether a tuple or option value may be a proxy (a wrapper created when
+ * upcasting changes how a component is viewed). Checking whether generic code's
+ * layout agrees with the native layout belongs to repr/genericlayout. *)
 
 interface Layout
 import
@@ -39,29 +39,36 @@ export
     Def Representation = Option
         repVoid repInt repWord repBool repChar repReal repRecord repVariant repPointer repQVal
     end
-    representationKind(t: model.Type): Representation
-    shapeRepresentationKind(s: shapes.Shape): Representation
+    (* The representation of a value of t, and of shape s, as resolved to its
+     * bound: the primary answer, which the C types below spell *)
+    representation(t: model.Type): Representation
+    shapeRepresentation(s: shapes.Shape): Representation
     (* Whether s is represented as a QVal *)
     isQVal(s: shapes.Shape): Bool
     (* Whether s is represented as a C pointer: a repPointer, but for an
      * external type whose C name is not a pointer's (uint64_t, say) *)
     isPointer(s: shapes.Shape): Bool
-    (* Whether s's slot representation (shapeSlotRepresentation) is a QVal (a
-     * QVal's or Ok's), and whether it is a pointer (a record's or variant's
-     * box, or a pointer's) *)
+    (* Whether s's slot (shapeSlotCType) holds a QVal (a QVal's or Ok's), and
+     * whether it holds a pointer (a record's or variant's box, or a
+     * pointer's) *)
     slotIsQVal(s: shapes.Shape): Bool
     slotIsPointer(s: shapes.Shape): Bool
-    (* The representation of a value of t, named by the runtime's C type for
-     * it *)
-    representation(t: model.Type): String
-    shapeRepresentation(s: shapes.Shape): String
+    (* Whether values of s and t are held alike, as values and in slots: in
+     * the same representation and, for pointers, to the same kind of object,
+     * so that one serves as the other without a cast *)
+    heldAlike(s: shapes.Shape t: shapes.Shape): Bool
+    slotsHeldAlike(s: shapes.Shape t: shapes.Shape): Bool
+    (* The runtime's C type for a value of t, spelled from its
+     * representation *)
+    cType(t: model.Type): String
+    shapeCType(s: shapes.Shape): String
     (* The C type of a value of t in an aggregate slot or a QVal word *)
-    slotRepresentation(t: model.Type): String
-    shapeSlotRepresentation(s: shapes.Shape): String
+    slotCType(t: model.Type): String
+    shapeSlotCType(s: shapes.Shape): String
     (* The C type of the location a var or out parameter points to (or a Var
      * cell is) *)
-    locationRepresentation(t: model.Type): String
-    shapeLocationRepresentation(s: shapes.Shape): String
+    locationCType(t: model.Type): String
+    shapeLocationCType(s: shapes.Shape): String
 
     (* Whether a value of shape s, a tuple or option, may be a proxy
      * (docs/c-representation.md section 5.8) *)

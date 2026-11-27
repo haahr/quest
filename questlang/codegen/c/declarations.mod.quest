@@ -92,7 +92,7 @@ export
                 for i = 0 upto {extent sig.params - 1} do
                     let p = sig.params[i]
                     if p.isOut orif p.isVar then
-                        add(params layout.locationRepresentation(p.type) <> " *qv_p_" <> p.name)
+                        add(params layout.locationCType(p.type) <> " *qv_p_" <> p.name)
                     else
                         add(params cType(p.type) <> " qv_p_" <> p.name)
                     end
@@ -334,7 +334,7 @@ export
      * Each is guarded by #ifndef, since a unit's C includes the headers of
      * the interfaces it imports, which may define the same structs. A
      * component is held in its slot representation
-     * (layout.slotRepresentation): a record or variant boxed, a Bool or Char
+     * (layout.slotCType): a record or variant boxed, a Bool or Char
      * widened to a word. For
      *
      *     Let Shape = Option circle with r: Int end square with side: Int end
@@ -391,7 +391,7 @@ export
                                     add(lines "    char _unused;")
                                 else
                                     for j = 0 upto {extent fields - 1} do
-                                        add(lines "    " <> layout.slotRepresentation(fields[j].type) <> " _"
+                                        add(lines "    " <> layout.slotCType(fields[j].type) <> " _"
                                             <> cInt(j) <> ";")
                                         assertAt("_" <> cInt(j) 8 * j)
                                     end
@@ -406,7 +406,7 @@ export
                                 else
                                     let fields = sortedFields(a.type)
                                     for j = 0 upto {extent fields - 1} do
-                                        add(lines "    " <> layout.slotRepresentation(fields[j].type) <> " qf_"
+                                        add(lines "    " <> layout.slotCType(fields[j].type) <> " qf_"
                                             <> symbols.memberIdent(fields[j].name)
                                             <> ";")
                                         assertAt("qf_"
@@ -442,7 +442,7 @@ export
                                                         for k = 0 upto {extent payload.components - 1} do
                                                             let cs = maybe.unwrap(payload.components[k].shape)
                                                             add(lines "            "
-                                                                <> layout.slotRepresentation(cs.type)
+                                                                <> layout.slotCType(cs.type)
                                                                 <> " _"
                                                                 <> cInt(k) <> ";")
                                                             assertAt("u.qo_" <> c.name <> "._"
@@ -453,7 +453,7 @@ export
                                                         for k = 0 upto {extent sorted - 1} do
                                                             let cs = maybe.unwrap(sorted[k].shape)
                                                             add(lines "            "
-                                                                <> layout.slotRepresentation(cs.type)
+                                                                <> layout.slotCType(cs.type)
                                                                 <> " qf_"
                                                                 <> symbols.memberIdent(maybe.unwrap(sorted[k].name))
                                                                 <> ";")
@@ -470,7 +470,7 @@ export
                                                         shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
                                                         shapePending then
                                                     add(lines "        struct { "
-                                                        <> layout.slotRepresentation(payloadType) <> " val; } qo_"
+                                                        <> layout.slotCType(payloadType) <> " val; } qo_"
                                                         <> c.name <> ";")
                                                     assertAt("u.qo_" <> c.name <> ".val" 8)
                                             end
@@ -1026,7 +1026,7 @@ export
                         let name = "qv_arg_" <> cInt(j)
                         let slot = "qv_args[" <> cInt(nq + j) <> "]"
                         if p.isVar orif p.isOut then
-                            add(paramDecls layout.locationRepresentation(p.type) <> " *" <> name)
+                            add(paramDecls layout.locationCType(p.type) <> " *" <> name)
                             add(uniform slot <> ".p = (void *)" <> name <> ";")
                         elsif isOk(p.type) then
                             add(paramDecls "QVal " <> name)
@@ -1095,7 +1095,7 @@ export
                     for j = 0 upto {np - 1} do
                         let p = vector.get(sig.params j)
                         let arg = "args[" <> cInt(nq + j) <> "]"
-                        if p.isVar orif p.isOut then add(invArgs "(" <> layout.locationRepresentation(p.type) <> " *)"
+                        if p.isVar orif p.isOut then add(invArgs "(" <> layout.locationCType(p.type) <> " *)"
                             <> arg <> ".p")
                         elsif isOk(p.type) then add(invArgs arg)
                         else add(invArgs types.qvalUnwrap(arg p.type))

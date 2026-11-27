@@ -25,10 +25,8 @@ import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
-    util/strutil : util/Strutil
 
     questlang/common/maps : questlang/common/Maps
-    questlang/common/strings : questlang/common/Strings
     questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     questlang/repr/layout : questlang/repr/Layout
     questlang/repr/shapes : questlang/repr/Shapes
@@ -39,19 +37,31 @@ export
     Let Type = model.Type
     Let Shape = shapes.Shape
     let eq(a: String b: String): Bool = stringOp.equal(a b)
-    let endsWith(s: String suffix: String): Bool = strutil.endsWith(s suffix)
     Let Seen = maps.IntSet
     let newSeen(): Seen = maps.newIntSet()
 
-    (* The C types of scalar values, which a slot holds in a word of its own *)
-    let wordScalars = array of "QInt" "QReal" "QBool" "QChar" "QVal" "void" end
-    (* The C types of native values passed and returned as a QVal is, in a
-     * 64-bit integer register: not a Real, in a floating-point register, nor a
-     * Bool or Char, a byte *)
-    let registerWords = array of "QInt" "QVal" end
-    (* The C types of native values that a QVal cell holds in the same eight
-     * bytes *)
-    let cellWords = array of "QInt" "QReal" "QVal" "uint64_t" end
+    (* Whether values of a representation are scalars, which a slot holds in a
+     * word of its own *)
+    let wordScalar(r: layout.Representation): Bool =
+        case r
+            when repInt, repReal, repBool, repChar, repQVal, repVoid then true
+            when repWord, repRecord, repVariant, repPointer then false
+        end
+    (* Whether native values of a representation are passed and returned as a
+     * QVal is, in a 64-bit integer register: not a Real, in a floating-point
+     * register, nor a Bool or Char, a byte *)
+    let registerWord(r: layout.Representation): Bool =
+        case r
+            when repInt, repQVal then true
+            when repVoid, repWord, repBool, repChar, repReal, repRecord, repVariant, repPointer then false
+        end
+    (* Whether a QVal cell holds native values of a representation in the same
+     * eight bytes, or, for a record or variant, boxed, as a QVal does *)
+    let cellWord(r: layout.Representation): Bool =
+        case r
+            when repInt, repReal, repQVal, repWord, repRecord, repVariant then true
+            when repVoid, repBool, repChar, repPointer then false
+        end
     (* Where a value is held: in an aggregate slot, in a register, or in a cell
      * a var or out parameter points to *)
     let slotPlace = "slot"
@@ -71,23 +81,22 @@ export
      * of shape v as generic code holds it in the place *)
     let storedValueAgrees(v: Shape arg: Type place: String): Bool =
         begin
-            let argC = layout.representation(arg)
+            let argShape = shapes.shape(arg)
+            let argRep = layout.shapeRepresentation(argShape)
             if maybe.isSome(v.bound) andif layout.ownView(v) then
                 (* Held as arg's own value, in the representation of the
                  * bound *)
-                let boundC = layout.shapeRepresentation(maybe.unwrap(v.bound))
-                eq(argC boundC) orif {endsWith(argC "*") andif endsWith(boundC "*")}
+                let bound = maybe.unwrap(v.bound)
+                layout.heldAlike(argShape bound) orif {layout.isPointer(argShape) andif layout.isPointer(bound)}
             elsif maybe.isSome(v.bound) then
                 (* Held as a value of the bound, viewed at it, which agrees with
                  * one of arg only when both are the same scalar *)
-                eq(argC layout.shapeRepresentation(maybe.unwrap(v.bound))) andif strings.isOneOf(argC wordScalars)
-                    andif {not(eq(place registerPlace)) orif strings.isOneOf(argC registerWords)}
+                layout.heldAlike(argShape maybe.unwrap(v.bound)) andif wordScalar(argRep)
+                    andif {not(eq(place registerPlace)) orif registerWord(argRep)}
             elsif eq(place registerPlace) then
-                strings.isOneOf(argC registerWords) orif endsWith(argC "*")
+                registerWord(argRep) orif layout.isPointer(argShape)
             elsif eq(place cellPlace) then
-                (* A cell holds a record or variant boxed, as a QVal does *)
-                strings.isOneOf(argC cellWords) orif endsWith(argC "*")
-                    orif strings.isOneOf(argC array of "QRecordVal" "QVariantVal" end)
+                cellWord(argRep) orif layout.isPointer(argShape)
             else
                 true
             end
@@ -345,20 +354,20 @@ export
             let params = if shapes.kindIs(s shapes.shapeFun) then s.params else array of :shapes.Param end end
             let result = if shapes.kindIs(s shapes.shapeFun) then shapes.result(s) else s end
             let key = sb.new()
-            sb.str(key layout.shapeRepresentation(result))
+            sb.str(key layout.shapeCType(result))
             sb.char(key '|')
             sb.str(key syntax.cInt(count))
             for i = 0 upto {extent params - 1} do
                 let p = params[i]
                 sb.char(key '|')
                 if not(eq(p.mode "value")) then
-                    sb.str(key layout.shapeLocationRepresentation(p.shape) <> " *")
+                    sb.str(key layout.shapeLocationCType(p.shape) <> " *")
                 (* An Ok parameter is passed as a QVal word, since C has no
                  * void parameter *)
                 elsif shapes.kindIs(p.shape shapes.shapeOk) then
                     sb.str(key "QVal")
                 else
-                    sb.str(key layout.shapeRepresentation(p.shape))
+                    sb.str(key layout.shapeCType(p.shape))
                 end
             end
             sb.toString(key)

@@ -408,7 +408,7 @@ export
                 if isOk(t) then
                     words(array of scalar end)
                 else
-                    case layout.representationKind(t)
+                    case layout.representation(t)
                         when repBool, repChar then
                             wordAt(offset / 8 scalar)
                             offset := offset + 1
@@ -446,10 +446,10 @@ export
             lines
         end
 
-    let slotCType(s: Shape): String = layout.shapeSlotRepresentation(s)
-    let isRecord(t: Type): Bool = case layout.representationKind(t) when repRecord then true else false end
-    let isVariant(t: Type): Bool = case layout.representationKind(t) when repVariant then true else false end
-    let locationCType(t: Type): String = layout.shapeLocationRepresentation(shapeOf(t))
+    let slotCType(s: Shape): String = layout.shapeSlotCType(s)
+    let isRecord(t: Type): Bool = case layout.representation(t) when repRecord then true else false end
+    let isVariant(t: Type): Bool = case layout.representation(t) when repVariant then true else false end
+    let locationCType(t: Type): String = layout.shapeLocationCType(shapeOf(t))
 
     let held(t: Type kind: shapes.ShapeKind): Shape =
         begin
@@ -692,7 +692,7 @@ export
             case access
                 when direct then raw
                 when original then
-                    "((" <> layout.shapeRepresentation(os) <> ")quest_unproxy(" <> v <> "))->u.qo_" <> tag <> part
+                    "((" <> layout.shapeCType(os) <> ")quest_unproxy(" <> v <> "))->u.qo_" <> tag <> part
                 when proxy then
                     let cs = maybe.unwrap(shapes.caseShape(os tag))
                     let comp = if maybe.isNone(i) then cs else componentShape(cs maybe.unwrap(i)) end
@@ -876,7 +876,7 @@ export
     let slotAddress(ptr: String s: Shape): String =
         begin
             let slot = slotCType(s)
-            let c = layout.shapeLocationRepresentation(s)
+            let c = layout.shapeLocationCType(s)
             if eq(slot c) then ptr else "((" <> c <> " *)" <> ptr <> ")" end
         end
 
@@ -1148,7 +1148,7 @@ export
                     <> ", " <> cInt(k) <> ")" slot.shape)
             else
                 let index = fieldIndex(rs field)
-                let cField = layout.shapeRepresentation(slot.shape)
+                let cField = layout.shapeCType(slot.shape)
                 let dictType = staticdata.offsetDictStructName(p.ctx rs.structure)
                 let val = temp(p cField)
                 let stored = "((const " <> dictType <> " *)" <> recC <> ".dict)->stored_types"
@@ -1606,7 +1606,7 @@ export
     let arraySlot(p: P arr: String idx: String elem: Shape offset: maybe.T(Int)): String =
         begin
             emit(p "quest_check_array_bounds_at(" <> arr <> ", " <> idx <> ", " <> site(p offset) <> ");")
-            let cElem = layout.shapeLocationRepresentation(elem)
+            let cElem = layout.shapeLocationCType(elem)
             if layout.isQVal(elem) then "(&(" <> arr <> "->data[" <> idx <> "]))"
             elsif shapes.kindIs(elem shapes.shapeInt) then "(&(" <> arr <> "->data[" <> idx <> "].i))"
             elsif shapes.kindIs(elem shapes.shapeReal) then "(&(" <> arr <> "->data[" <> idx <> "].r))"
@@ -2051,7 +2051,7 @@ export
                             slotAddress("(&(" <> unproxied <> "->_" <> cInt(x.index) <> "))" component)
                         when proxy then
                             let through =
-                                "((" <> layout.shapeLocationRepresentation(component) <> " *)quest_proxy_slot("
+                                "((" <> layout.shapeLocationCType(component) <> " *)quest_proxy_slot("
                                     <> b <> ", "
                                     <> cInt(x.index) <> "))"
                             "(quest_is_proxy(" <> b <> ") ? " <> through <> " : " <> address <> ")"

@@ -256,7 +256,7 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
 - **Slots:**
   Every slot of an aggregate (a tuple component, an option payload component, a record field, an array element, an
   auto value's component, a module record's field) is one 8-byte word holding the value's *slot representation*
-  (`slot_representation` in `repr/layout.py`, `layout.slotRepresentation` in the self-hosted compiler): a record or
+  (`slot_representation` in `repr/layout.py`, `layout.slotCType` in the self-hosted compiler): a record or
   variant is a pointer to an immutable 16-byte box
   (`QRecordVal *`, `QVariantVal *`, made by `quest_record_box` and `quest_variant_box`), a `Bool` or `Char` is a word
   of its own (`QBoolSlot`, `QCharSlot`: 0 or 1, or the character, as a `QVal`'s `.i` holds it), an `Ok` is the word

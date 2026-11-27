@@ -221,19 +221,14 @@ export
             let nativeType = model.substitute(genericType lay.subst)
             let genericShape = shapes.shape(genericType)
             let nativeShape = shapes.shape(nativeType)
-            let genericC = layout.shapeRepresentation(genericShape)
-            let nativeC = layout.shapeRepresentation(nativeShape)
-            let isRecord = eq(genericC "QRecordVal") andif eq(nativeC "QRecordVal")
-            let endsStar =
-                fun(s: String): Bool
-                    {
-                    stringOp.length(s) > 0} andif {stringOp.getChar(s {stringOp.length(s) - 1}) is '*'}
+            let isRecord = layout.shapeRepresentation(genericShape)?repRecord
+                andif layout.shapeRepresentation(nativeShape)?repRecord
             if isFunctionKind(genericShape) then
                 none
-            elsif not(isRecord) andif {not(endsStar(genericC)) orif not(endsStar(nativeC))} then
+            elsif not(isRecord) andif {not(layout.isPointer(genericShape)) orif not(layout.isPointer(nativeShape))} then
                 none
             elsif genericLayout.genericLayoutAgrees(genericType lay.subst) then
-                if eq(genericC nativeC) then none else newPlan(nodes.planCast source target) end
+                if layout.heldAlike(genericShape nativeShape) then none else newPlan(nodes.planCast source target) end
             elsif genericLayout.genericLayoutCopiesMutableData(genericType lay.subst) then
                 raise rejectedConversion with
                     "Compiled code cannot pass a value of type '" <> model.show(nativeType)
@@ -292,7 +287,7 @@ export
     let referencesOnly(fields: Array(maybe.T(Plan))): Bool =
         begin
             let held = fun(t: Type): Bool
-                case layout.representationKind(t) when repPointer, repQVal then true else false end
+                case layout.representation(t) when repPointer, repQVal then true else false end
             let var only = true
             for i = 0 upto extent fields - 1 do
                 if maybe.isSome(fields[i]) then
@@ -504,16 +499,15 @@ export
             if shapes.kindIs(ss shapes.shapeOk) orif shapes.kindIs(ts shapes.shapeOk) then
                 none
             else
-                let cs = layout.shapeRepresentation(ss)
-                let ct = layout.shapeRepresentation(ts)
-                let abstract = abstractPlan(source target ss ts cs ct)
+                let abstract = abstractPlan(source target ss ts)
+                let neitherQVal = not(layout.isQVal(ss)) andif not(layout.isQVal(ts))
                 if maybe.isSome(abstract) then
                     maybe.unwrap(abstract)
-                elsif not(eq(cs "QVal")) andif not(eq(ct "QVal")) andif isFunctionKind(ss) andif isFunctionKind(ts) then
+                elsif neitherQVal andif isFunctionKind(ss) andif isFunctionKind(ts) then
                     adaptPlan(source target lay)
                 else
                     let laid =
-                        if hasInstantiation(lay) andif not(eq(cs "QVal")) andif not(eq(ct "QVal")) then
+                        if hasInstantiation(lay) andif neitherQVal then
                             let lp = layoutPlan(source target maybe.unwrap(lay))
                             (* A module's abstract type's value is held viewed at
                              * its bound, whatever the layouts *)
@@ -526,7 +520,7 @@ export
                     if maybe.isSome(laid) then
                         maybe.unwrap(laid)
                     else
-                        viewPlan(source target ss ts cs ct)
+                        viewPlan(source target ss ts layout.heldAlike(ss ts))
                     end
                 end
             end
@@ -539,14 +533,14 @@ export
      * the two layouts differ (or raises rejectedConversion if that would copy
      * mutable data), and none so later tests run when the layouts agree or the
      * other side is not the native representation. *)
-    and abstractPlan(source: Type target: Type ss: Shape ts: Shape cs: String ct: String): maybe.T(maybe.T(Plan)) =
+    and abstractPlan(source: Type target: Type ss: Shape ts: Shape): maybe.T(maybe.T(Plan)) =
         begin
             let toGeneric = shapes.kindIs(ts shapes.shapeAbstract)
             let abstractT = if toGeneric then target else source end
             let nativeT = if toGeneric then source else target end
-            let nativeC = if toGeneric then cs else ct end
+            let nativeShape = if toGeneric then ss else ts end
             let instance =
-                if {shapes.kindIs(ss shapes.shapeAbstract) is toGeneric} orif eq(nativeC "QVal") then
+                if {shapes.kindIs(ss shapes.shapeAbstract) is toGeneric} orif layout.isQVal(nativeShape) then
                     maybe.none(:genericLayout.AbstractInstance)
                 else
                     genericLayout.abstractInstance(abstractT)
@@ -574,19 +568,19 @@ export
             end
         end
 
-    (* The plan from source to target, of shapes ss and ts and C
-     * representations cs and ct, by plan's tests 5 to 11 (boxing, bounded
-     * type parameters' views, records, variants, options, tuples, and the
-     * rest), where neither a function's adapter nor a polymorphic callee's
-     * layout decided it *)
-    and viewPlan(source: Type target: Type ss: Shape ts: Shape cs: String ct: String): maybe.T(Plan) =
+    (* The plan from source to target, of shapes ss and ts, held alike or not
+     * (layout.heldAlike), by plan's tests 5 to 11 (boxing, bounded type
+     * parameters' views, records, variants, options, tuples, and the rest),
+     * where neither a function's adapter nor a polymorphic callee's layout
+     * decided it *)
+    and viewPlan(source: Type target: Type ss: Shape ts: Shape alike: Bool): maybe.T(Plan) =
         (* A value of a type parameter, held as a QVal word: a scalar or pointer
          * in its bits, a record or variant boxed *)
-        if eq(ct "QVal") andif not(eq(cs "QVal")) then
+        if layout.isQVal(ts) andif not(layout.isQVal(ss)) then
             newPlan(nodes.planBox source target)
-        elsif eq(cs "QVal") andif not(eq(ct "QVal")) then
+        elsif layout.isQVal(ss) andif not(layout.isQVal(ts)) then
             newPlan(nodes.planUnbox source target)
-        elsif eq(cs "QVal") orif {equal(source target) andif sameViews(source target)} then
+        elsif layout.isQVal(ss) orif {equal(source target) andif sameViews(source target)} then
             none
         elsif layout.ownView(ss) andif layout.ownView(ts) andif {ss.symbolId is ts.symbolId} then
             (* One type parameter, at whatever bounds: its values are held at
@@ -625,7 +619,7 @@ export
                      * the type the caller holds it at *)
                     newPlan(nodes.planView sHeld.structure tHeld.structure)
                 end
-            elsif shapes.kindIs(sHeld shapes.shapeOption) andif shapes.kindIs(tHeld shapes.shapeOption) andif eq(cs ct)
+            elsif shapes.kindIs(sHeld shapes.shapeOption) andif shapes.kindIs(tHeld shapes.shapeOption) andif alike
                     andif equal(sHeld.type tHeld.type) andif not(boundedView(ss) orif boundedView(ts)) then
                 (* Equal option types spelled otherwise (an option of an alias,
                  * and of the type it names): one representation, nothing to
@@ -634,7 +628,7 @@ export
             elsif shapes.kindIs(sHeld shapes.shapeOption) andif shapes.kindIs(tHeld shapes.shapeOption)
                     andif not(equal(sHeld.type tHeld.type)) then
                 if not(boundedView(ss) orif boundedView(ts)) andif optionCasesAgree(sHeld tHeld) then
-                    if eq(cs ct) then none else newPlan(nodes.planCast source target) end
+                    if alike then none else newPlan(nodes.planCast source target) end
                 else
                     (* A proxy (made by the runtime, between the two views'
                      * descriptors) *)
@@ -667,20 +661,20 @@ export
                         end
                     end
                     if not(changing) then
-                        if eq(cs ct) then none else newPlan(nodes.planCast source target) end
+                        if alike then none else newPlan(nodes.planCast source target) end
                     else
                         (* Components change view: a proxy of the tuple, which
                          * converts them as they are read *)
                         newPlan(nodes.planView source target)
                     end
                 end
-            elsif eq(cs ct) andif not(isFunctionKind(ts) orif shapes.kindIs(ts shapes.shapeOption)
+            elsif alike andif not(isFunctionKind(ts) orif shapes.kindIs(ts shapes.shapeOption)
                     orif shapes.kindIs(ts shapes.shapeArray)) then
                 none
             else
                 let arrayServes =
                     if shapes.kindIs(ss shapes.shapeArray) andif shapes.kindIs(ts shapes.shapeArray)
-                            andif eq(cs ct) then
+                            andif alike then
                         (* An array is shared and assigned through, so its elements
                          * cannot change view: it serves as it is when they need no
                          * conversion either way, or only a box or unbox *)
@@ -694,8 +688,8 @@ export
                 if arrayServes then
                     none
                 else
-                    unsupported("converting a value of type " <> model.show(source) <> " (" <> cs <> ") to "
-                        <> model.show(target) <> " (" <> ct <> ")")
+                    unsupported("converting a value of type " <> model.show(source) <> " (" <> layout.cType(source)
+                        <> ") to " <> model.show(target) <> " (" <> layout.cType(target) <> ")")
                 end
             end
         end
@@ -753,11 +747,7 @@ export
     (* Whether a slot of shape source holds its value as a slot of shape target
      * does *)
     let slotsAgree(source: Shape target: Shape): Bool =
-        begin
-            let sc = layout.shapeSlotRepresentation(source)
-            let tc = layout.shapeSlotRepresentation(target)
-            eq(sc tc) orif {eq(tc "QVal") andif not(eq(sc "void"))}
-        end
+        layout.slotsHeldAlike(source target) orif layout.slotIsQVal(target)
 
     Def AutoParts = Tuple symbolId: Int signature: Array(model.RecordField) end
 
@@ -792,8 +782,7 @@ export
                 end
             end
             if allNone andif allAgree then
-                if eq(layout.shapeRepresentation(shapes.shape(payloadType))
-                        layout.shapeRepresentation(shapes.shape(storedType))) then
+                if layout.heldAlike(shapes.shape(payloadType) shapes.shape(storedType)) then
                     none
                 else
                     unproxied(newPlan(nodes.planCast payloadType storedType))
@@ -820,15 +809,13 @@ export
                 if i < extent arm then
                     let storedShape = shapes.componentShape(stored[i])
                     let armShape = shapes.componentShape(arm[i])
-                    let storedC = layout.shapeSlotRepresentation(storedShape)
-                    let armC = layout.shapeSlotRepresentation(armShape)
-                    if eq(storedC armC) then
+                    if layout.slotsHeldAlike(storedShape armShape) then
                         if isFunctionKind(armShape)
                                 andif not(eq(genericLayout.signatureRepresentation(storedShape.type)
                                         genericLayout.signatureRepresentation(armShape.type))) then
                             agree := false
                         end
-                    elsif not(eq(storedC "QVal")) orif eq(armC "void") then
+                    elsif not(layout.slotIsQVal(storedShape)) then
                         agree := false
                     end
                 end

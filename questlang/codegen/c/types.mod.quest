@@ -23,7 +23,7 @@ export
      * Values in C
      * ====================================================================== *)
 
-    let qtypeToCType(t: Type): String = layout.representation(t)
+    let qtypeToCType(t: Type): String = layout.cType(t)
 
     (* Wrap a C expression e as a QVal word, and unwrap a QVal word back to its
      * native C representation, dispatching on layout.wordForm *)
@@ -50,7 +50,7 @@ export
             when wordBits then "(" <> e <> ".u)"
             when wordInteger then "(" <> e <> ".i)"
             when wordReal then "(" <> e <> ".r)"
-            when wordPointer then "((" <> layout.shapeRepresentation(layout.resolvedShape(s)) <> ")(" <> e <> ".p))"
+            when wordPointer then "((" <> layout.shapeCType(layout.resolvedShape(s)) <> ")(" <> e <> ".p))"
         end
 
     let qvalUnwrap(e: String t: Type): String = shapeQvalUnwrap(e shapes.shape(t))
@@ -60,7 +60,7 @@ export
     let shapeSlotStore(e: String s: Shape): String =
         if layout.isBoxedInSlots(s) then
             let box =
-                case layout.shapeRepresentationKind(s)
+                case layout.shapeRepresentation(s)
                     when repRecord then "quest_record_box"
                     else "quest_variant_box"
                 end
@@ -77,7 +77,7 @@ export
 
     let shapeQvalToSlot(e: String s: Shape): String =
         begin
-            let slot = layout.shapeSlotRepresentation(s)
+            let slot = layout.shapeSlotCType(s)
             if layout.slotIsQVal(s) then e
             elsif layout.isBoxedInSlots(s) then "((" <> slot <> ")(" <> e <> ".p))"
             else shapeQvalUnwrap(e s)
@@ -95,19 +95,19 @@ export
                 s := shapes.body(s)
             end
             if not(shapes.kindIs(s shapes.shapeFun)) then
-                layout.shapeRepresentation(s) <> " (*)(" <> syntax.comma(params) <> ")"
+                layout.shapeCType(s) <> " (*)(" <> syntax.comma(params) <> ")"
             else
                 for i = 0 upto {extent s.params - 1} do
                     let p = s.params[i]
                     if not(eq(p.mode "value")) then
-                        vector.append(params layout.shapeLocationRepresentation(p.shape) <> " *")
+                        vector.append(params layout.shapeLocationCType(p.shape) <> " *")
                     elsif shapes.kindIs(p.shape shapes.shapeOk) then
                         vector.append(params "QVal")
                     else
-                        vector.append(params layout.shapeRepresentation(p.shape))
+                        vector.append(params layout.shapeCType(p.shape))
                     end
                 end
-                layout.shapeRepresentation(shapes.result(s)) <> " (*)(" <> syntax.comma(params) <> ")"
+                layout.shapeCType(shapes.result(s)) <> " (*)(" <> syntax.comma(params) <> ")"
             end
         end
 end

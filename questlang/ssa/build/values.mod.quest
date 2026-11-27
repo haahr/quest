@@ -516,7 +516,7 @@ export
 
     (* Reads a value stored directly in memory (a box or global record) versus
      * a location (a cell or var/out parameter), where records and variants are
-     * held as box pointers (layout.shapeLocationRepresentation) *)
+     * held as box pointers (layout.shapeLocationCType) *)
     let readValue(fn: Fn address: Int t: Type): Array(Int) = readParts(fn address parts.ofType(t))
     let locationParts(t: Type): Array(parts.Part) =
         if layout.isBoxedInSlots(shapes.shape(t)) then array of parts.wordPart(tPtr) end else parts.ofType(t) end
@@ -751,7 +751,7 @@ export
     let boxed(fn: Fn vs: Array(Int) t: Type): Array(Int) =
         begin
             let helper =
-                case layout.representationKind(t)
+                case layout.representation(t)
                     when repRecord then "quest_record_box"
                     (* Records and variants alone are boxed (isBoxedInSlots) *)
                     when repVariant, repVoid, repInt, repWord, repBool, repChar, repReal, repPointer, repQVal then

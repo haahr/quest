@@ -103,7 +103,7 @@ export
                                 let b = vals.atom(fn o.args[1])
                                 if extent a isnot 1 then
                                     raise vals.unsupported with "is of a value of "
-                                        <> layout.representation(ir.atomType(first)) end
+                                        <> layout.cType(ir.atomType(first)) end
                                 end
                                 case ssa.typeOf(fn.f a[0])
                                     when typePtr then
@@ -483,12 +483,11 @@ export
             case maybe.unwrap(t).form
                 when typeFun with f then
                     let unboxed(p: Type): Bool =
-                        case layout.representationKind(p)
+                        case layout.representation(p)
                             when repInt, repWord, repBool, repChar, repPointer then true
                             else false
                         end
-                    let var all =
-                        case layout.representationKind(f.result) when repVoid then true else unboxed(f.result) end
+                    let var all = case layout.representation(f.result) when repVoid then true else unboxed(f.result) end
                     for i = 0 upto {extent f.params - 1} do
                         if not(unboxed(f.params[i].type)) then all := false end
                     end

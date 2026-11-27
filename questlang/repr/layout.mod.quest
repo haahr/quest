@@ -38,13 +38,19 @@ export
      * once per shape.
      * ====================================================================== *)
 
+    Def Representation = Option
+        repVoid repInt repWord repBool repChar repReal repRecord repVariant repPointer repQVal
+    end
+
     (* What has been computed of a shape's layout, each part when it is first
-     * asked for: its tag, representation, and slot representation (C
-     * spellings), and whether its values may be proxies *)
+     * asked for: its tag, its representation, the C types of its values and of
+     * its slots (spelled from the representation), and whether its values may
+     * be proxies *)
     Let Layout = Tuple
         shape: Shape
         var tag: maybe.T(String)
-        var representation: maybe.T(String)
+        var representation: maybe.T(Representation)
+        var cType: maybe.T(String)
         var slot: maybe.T(String)
         var proxied: maybe.T(Bool)
     end
@@ -60,7 +66,8 @@ export
                 let l = tuple
                     let shape = s
                     let var tag = maybe.none(:String)
-                    let var representation = maybe.none(:String)
+                    let var representation = maybe.none(:Representation)
+                    let var cType = maybe.none(:String)
                     let var slot = maybe.none(:String)
                     let var proxied = maybe.none(:Bool)
                 end
@@ -98,18 +105,6 @@ export
         andif not(heldAtBound(s))
 
     let isWordShaped(t: Type): Bool = shapes.kindIs(shapes.shape(t) shapes.shapeWord)
-
-    (* The slot representation of a value of a representation: a record or
-     * variant (16 bytes) as a pointer to a box, a Bool or Char widened to a
-     * word, and Ok, which has no value, as a QVal word *)
-    let slotOf(representation: String): String =
-        if eq(representation "QRecordVal") then "QRecordVal *"
-        elsif eq(representation "QVariantVal") then "QVariantVal *"
-        elsif eq(representation "QBool") then "QBoolSlot"
-        elsif eq(representation "QChar") then "QCharSlot"
-        elsif eq(representation "void") then "QVal"
-        else representation
-        end
 
     (* Whether a recursive type with shape s is named by recursiveTag *)
     let isSelfNamed(s: Shape): Bool =
@@ -301,14 +296,11 @@ export
             when shapeBottom, shapeAbstract, shapeOperator, shapePending then "QVal"
         end
 
-    Def Representation = Option
-        repVoid repInt repWord repBool repChar repReal repRecord repVariant repPointer repQVal
-    end
-
     let isWriter(s: Shape): Bool = strings.isOneOf(s.name array of "Writer.T" "writer.T" end)
     let isReader(s: Shape): Bool = strings.isOneOf(s.name array of "Reader.T" "reader.T" end)
 
-    let rec shapeRepresentationKind(s0: Shape): Representation =
+    (* The representation of shape s0, as resolved to its bound *)
+    let rawRepresentation(s0: Shape): Representation =
         begin
             let s = resolvedShape(s0)
             case s.kind
@@ -331,53 +323,71 @@ export
             end
         end
 
-    (* Whether s is represented as a QVal *)
-    and isQVal(s: Shape): Bool =
-        case shapeRepresentationKind(s)
-            when repQVal then true
-            when repVoid, repInt, repWord, repBool, repChar, repReal, repRecord, repVariant, repPointer then false
-        end
-
-    let representationKind(t: Type): Representation = shapeRepresentationKind(shapes.shape(t))
-
-    let rec shapeRepresentation(s: Shape): String =
+    let shapeRepresentation(s: Shape): Representation =
         begin
             let l = layoutOf(s)
             if maybe.isSome(l.representation) then
                 maybe.unwrap(l.representation)
             else
-                let rep = rawRepresentation(s)
-                l.representation := maybe.some(rep)
-                rep
+                let r = rawRepresentation(s)
+                l.representation := maybe.some(r)
+                r
             end
         end
 
-    and shapeLocationRepresentation(s: Shape): String =
-        if isBoxedInSlots(s) then shapeSlotRepresentation(s) else shapeRepresentation(s) end
+    let representation(t: Type): Representation = shapeRepresentation(shapes.shape(t))
 
-    and shapeSlotRepresentation(s: Shape): String =
+    (* Whether s is represented as a QVal *)
+    let isQVal(s: Shape): Bool = shapeRepresentation(s)?repQVal
+
+    let isBoxedInSlots(s: Shape): Bool =
+        case shapeRepresentation(s)
+            when repRecord, repVariant then true
+            when repVoid, repInt, repWord, repBool, repChar, repReal, repPointer, repQVal then false
+        end
+
+    let rec shapeCType(s: Shape): String =
+        begin
+            let l = layoutOf(s)
+            if maybe.isSome(l.cType) then
+                maybe.unwrap(l.cType)
+            else
+                let c = rawCType(s)
+                l.cType := maybe.some(c)
+                c
+            end
+        end
+
+    and shapeLocationCType(s: Shape): String = if isBoxedInSlots(s) then shapeSlotCType(s) else shapeCType(s) end
+
+    (* The C type of a slot holding a value of s: a record or variant (16
+     * bytes) as a pointer to a box, a Bool or Char widened to a word, Ok,
+     * which has no value, as a QVal word, and any other value as itself *)
+    and shapeSlotCType(s: Shape): String =
         begin
             let l = layoutOf(s)
             if maybe.isSome(l.slot) then
                 maybe.unwrap(l.slot)
             else
-                let slot = slotOf(shapeRepresentation(s))
+                let slot =
+                    case shapeRepresentation(s)
+                        when repRecord then "QRecordVal *"
+                        when repVariant then "QVariantVal *"
+                        when repBool then "QBoolSlot"
+                        when repChar then "QCharSlot"
+                        when repVoid then "QVal"
+                        when repInt, repWord, repReal, repPointer, repQVal then shapeCType(s)
+                    end
                 l.slot := maybe.some(slot)
                 slot
             end
         end
 
-    and isBoxedInSlots(s: Shape): Bool =
-        case shapeRepresentationKind(s)
-            when repRecord, repVariant then true
-            when repVoid, repInt, repWord, repBool, repChar, repReal, repPointer, repQVal then false
-        end
-
     (* The C type spelling for shape s0's representation *)
-    and rawRepresentation(s0: Shape): String =
+    and rawCType(s0: Shape): String =
         begin
             let s = resolvedShape(s0)
-            case shapeRepresentationKind(s)
+            case shapeRepresentation(s)
                 when repVoid then "void"
                 when repInt then "QInt"
                 when repWord then "uint64_t"
@@ -399,7 +409,7 @@ export
                         when shapeFun, shapeAll then "QClosure *"
                         when shapeArray then "QArray *"
                         when shapeException then "const QException *"
-                        when shapeCell, shapeOut then shapeLocationRepresentation(shapes.element(s)) <> " *"
+                        when shapeCell, shapeOut then shapeLocationCType(shapes.element(s)) <> " *"
                         when shapeInt, shapeReal, shapeBool, shapeChar, shapeOk, shapeWord, shapeBottom, shapeRecord,
                                 shapeVariant, shapeAbstract, shapeOperator, shapePending then
                             "QVal"
@@ -410,19 +420,23 @@ export
     let isPointer(s0: Shape): Bool =
         begin
             let s = resolvedShape(s0)
-            case shapeRepresentationKind(s)
+            case shapeRepresentation(s)
                 when repPointer then not(shapes.kindIs(s shapes.shapeExternal)) orif endsWith(s.name "*")
                 when repVoid, repInt, repWord, repBool, repChar, repReal, repRecord, repVariant, repQVal then false
             end
         end
 
     let slotIsQVal(s: Shape): Bool =
-        case shapeRepresentationKind(s)
+        case shapeRepresentation(s)
             when repQVal, repVoid then true
             when repInt, repWord, repBool, repChar, repReal, repRecord, repVariant, repPointer then false
         end
 
     let slotIsPointer(s: Shape): Bool = isBoxedInSlots(s) orif isPointer(s)
+
+    let heldAlike(s: Shape t: Shape): Bool = eq(shapeCType(s) shapeCType(t))
+
+    let slotsHeldAlike(s: Shape t: Shape): Bool = eq(shapeSlotCType(s) shapeSlotCType(t))
 
     Def WordForm = Option
         wordItself
@@ -456,8 +470,6 @@ export
                 end
             end
         end
-
-    let representation(t: Type): String = shapeRepresentation(shapes.shape(t))
 
     let slotsBytes(n: Int): Int = if n is 0 then 1 else 8 * n end
     let words(n: Int): Int = if n is 0 then 1 else n end
@@ -527,15 +539,14 @@ export
         end
 
     let representationBytes(t: Type): Int =
-        begin
-            let r = representation(t)
-            if eq(r "QRecordVal") orif eq(r "QVariantVal") then 16
-            elsif eq(r "QBool") orif eq(r "QChar") then 1
-            else 8
-            end
+        case representation(t)
+            when repRecord, repVariant then 16
+            when repBool, repChar then 1
+            when repVoid, repInt, repWord, repReal, repPointer, repQVal then 8
         end
-    let slotRepresentation(t: Type): String = shapeSlotRepresentation(shapes.shape(t))
-    let locationRepresentation(t: Type): String = shapeLocationRepresentation(shapes.shape(t))
+    let cType(t: Type): String = shapeCType(shapes.shape(t))
+    let slotCType(t: Type): String = shapeSlotCType(shapes.shape(t))
+    let locationCType(t: Type): String = shapeLocationCType(shapes.shape(t))
     let tupleStructName(t: Type): String = typeTag(t)
     let optionStructName(t: Type): String = typeTag(t)
 

@@ -856,7 +856,7 @@ alignment beyond 8.
 |---|---|---|
 | Scalars: `Int` `int64_t`, `Real` `double`, `Word` `uint64_t`, `Bool` C `bool` (1 byte), `Char` `uint8_t` (`QChar`, §3.9), `Ok` nothing (a `void` result; `QVal` 0 where stored) | `layout.representation` | layout; a narrow value in a register is always extended to 64 bits (zero-extended, both), and one received is extended again, never trusted (Apple's ABI extends only to 32 bits) |
 | 16-byte values: a record is `QRecordVal { val, dict }`, a variant `QVariantVal { tag, payload }` | runtime structs | layout; two SSA values each (§3.2) |
-| Slots: a record or variant in a slot is a pointer to an immutable 16-byte box; `Bool` and `Char` are widened to a word (`QBoolSlot`, `QCharSlot`); every other value is its own word | `layout.slotRepresentation` | layout |
+| Slots: a record or variant in a slot is a pointer to an immutable 16-byte box; `Bool` and `Char` are widened to a word (`QBoolSlot`, `QCharSlot`); every other value is its own word | `layout.slotCType` | layout |
 | Slot conversions, value to slot and back: `Real` by its bits, `Bool`, `Char`, and `Int` as `.i`, a record or variant boxed or dereferenced | `codegen/c/types` (`shapeSlotToQval`, `qvalWrap`, ...), as C text | build, by rules moved into layout (§7.5) |
 | Tuples: component `i` at `8i` | `emitAggregateStructs` | layout |
 | Records: one allocation of the box (`QRecordVal`, 16 bytes) and then the payload: a header word (the layout's descriptor), then the fields sorted by name, a word each | `makeRecord`, `emitAggregateStructs` | layout |
