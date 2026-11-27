@@ -292,4 +292,52 @@ export
                 end
             end
         end
+
+    let loopBody(g: Graph h: Int): Array(Bool) =
+        begin
+            let n = extent g.preds
+            let inside = array of(n false)
+            let work = vector.new(:Int)
+            for k = 0 upto {extent g.preds[h] - 1} do
+                let p = g.preds[h][k]
+                if reached(g p) andif dominates(g h p) then vector.append(work p) end
+            end
+            if not(vector.empty(work)) then inside[h] := true end
+            while not(vector.empty(work)) do
+                let b = vector.pop(work)
+                if not(inside[b]) then
+                    inside[b] := true
+                    for k = 0 upto {extent g.preds[b] - 1} do
+                        let p = g.preds[b][k]
+                        if reached(g p) andif not(inside[p]) then vector.append(work p) end
+                    end
+                end
+            end
+            inside
+        end
+
+    let beforeTerminator(f: ssa.Function b: Int emitting: All() Ok): Ok =
+        begin
+            let blk = ssa.block(f b)
+            let t = blk.term
+            blk.term := ssa.termNone
+            emitting()
+            blk.term := t
+        end
+
+    let onlyRaises(f: ssa.Function r: Int): Bool =
+        begin
+            let blk = ssa.block(f r)
+            let var only = vector.empty(blk.params) andif not(vector.empty(blk.insts))
+            for k = 0 upto {vector.length(blk.insts) - 1} do
+                let i = vector.get(blk.insts k)
+                if k is {vector.length(blk.insts) - 1} then
+                    (* A call that the block's end says does not return *)
+                    if not(ssa.isOp(i ssa.opCall)) then only := false end
+                elsif not(ssa.info(i.op).rematerializable) then
+                    only := false
+                end
+            end
+            case blk.term when termUnreachable then only else false end
+        end
 end

@@ -1,0 +1,23 @@
+(* Quest Self-Hosted Compiler: The SSA's Loops: Module Cells Interface
+ *
+ * A step of the loops pass (ssa/passes/loops, docs/ssa.md section 4.1).
+ *
+ * A module cell's word that a loop stores to (a top-level tuple's var field,
+ * reached through its global's load) is kept in a stack slot across the
+ * loop, which slot promotion makes a register: each predecessor from outside
+ * loads it, the loop's accesses use the slot, and each edge that leaves the
+ * loop stores it back, a raise's among them. The word is an Int or a Real,
+ * read and written only whole; nothing else in the loop can reach it (an
+ * access at an overlapping offset through another address); the loop stores
+ * nothing to the global, calls only runtime functions that write no memory
+ * and cannot raise, and enters no try. *)
+
+interface Cells
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* Keeps the module cells that f's loops store to in registers, outermost
+     * loops first, promoting the slots it makes (ssa/passes/promote); whether
+     * it kept any *)
+    keepCells(f: ssa.Function): Bool
+end

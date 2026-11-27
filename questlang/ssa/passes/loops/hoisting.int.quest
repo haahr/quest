@@ -1,0 +1,31 @@
+(* Quest Self-Hosted Compiler: The SSA's Loops: Hoisting Interface
+ *
+ * A step of the loops pass (ssa/passes/loops, docs/ssa.md section 4.1).
+ *
+ * What each loop computes the same on every pass moves before it, into
+ * a new preheader: pure operations and loads that cannot fault (of a stack
+ * slot, of a global the loop stores nothing to, or invariant loads of what a
+ * check before the loop found not null). When the loop's header only tests
+ * whether to leave, and its first pass then checks invariant values before
+ * it stores, calls, or tests what varies (an array's null check, say), the
+ * loop is rotated: a copy of the header's test before it, as a guard, leaves
+ * where the header would, and otherwise runs those checks, once, then enters
+ * the header's successor, so that the header becomes the loop's test at its
+ * bottom. The checks raise as the first pass would have, and the conditions
+ * pass then decides the loop's own copies of them, which the guard's
+ * dominate; the loads they make safe move too. The header's values that
+ * other blocks use are kept in stack slots, stored by the header and the
+ * guard, which promotion makes block parameters where the two meet. A
+ * derived pointer (ptrAdd) moves only out of a loop that calls nothing, so
+ * that none is live across a collection without its object's pointer. *)
+
+interface Hoisting
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* Moves what is invariant out of f's loops, innermost first, so that an
+     * outer loop then sees what an inner one moved, rotating each loop as
+     * above, every loop when rotateAll (the backend's policy), else those with
+     * checks to move; whether it moved any. Every loop gets a preheader. *)
+    hoistLoops(f: ssa.Function rotateAll: Bool): Bool
+end

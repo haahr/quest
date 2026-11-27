@@ -69,6 +69,10 @@ export
      * quadratic in a function's blocks, which a whole program's largest
      * functions make seconds. *)
     isLoopHeader(g: Graph h: Int): Bool
+    (* The blocks of the natural loop whose header is h: those that reach one
+     * of h's back edges' sources without passing h, h among them; none when h
+     * heads no loop *)
+    loopBody(g: Graph h: Int): Array(Bool)
     (* Each block's dominance frontier: the blocks where its dominance ends *)
     frontiers(g: Graph): Array(Array(Int))
     (* Each block's loop depth: the number of natural loops (of back edges to
@@ -88,4 +92,11 @@ export
      * order, as a pass that makes blocks unreachable must, since their
      * instructions may use values it removed *)
     dropUnreached(f: ssa.Function): Ok
+    (* Appends what emitting appends to block b, which is terminated, before
+     * its terminator *)
+    beforeTerminator(f: ssa.Function b: Int emitting: All() Ok): Ok
+    (* Whether block r only raises: no parameters, instructions that make the
+     * raise's constants and then call a function, and an end that control
+     * never reaches (unreachable), so the call does not return *)
+    onlyRaises(f: ssa.Function r: Int): Bool
 end

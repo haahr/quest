@@ -1,0 +1,241 @@
+(* Quest Self-Hosted Compiler: The SSA's Loops: Module Cells Implementation *)
+
+module cells : Cells
+import
+    stringOp = string : StringOp
+
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+
+    questlang/ssa/cfg : questlang/ssa/CFG
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/passes/promote : questlang/ssa/passes/Promote
+    questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
+export
+    Let Function = ssa.Function
+
+    (* Whether a call i in a loop leaves its memory alone and returns: a direct
+     * call of a runtime function that writes no memory, cannot raise, and
+     * returns (quest_alloc writes only the object it makes) *)
+    let calm(i: ssa.Inst): Bool =
+        if ssa.isOp(i ssa.opCallIndirect) then
+            false
+        else
+            let var known = false
+            for k = 0 upto {extent runtimeFunctions.functions - 1} do
+                let r = runtimeFunctions.functions[k]
+                if stringOp.equal(r.name i.symbol) then
+                    known := case r.effects.memory when memoryWrites then false else true end
+                        andif not(r.effects.raises) andif not(r.effects.noReturn)
+                end
+            end
+            known
+        end
+
+    (* A module cell's word: the global symbol holding the cell's address, the
+     * offset of the address in it, and the word's offset in the cell *)
+    Let Cell = Tuple symbol: String at: Int offset: Int type: ssa.Type end
+
+    (* The global and offset whose load made address a, if one did: a global
+     * of the unit's (g_...) that the loop does not store to, which only its
+     * module's initialization writes, or a word an invariant load reads *)
+    Let Base = Tuple symbol: String at: Int end
+    let baseOf(defs: Array(maybe.T(ssa.Inst)) a: Int): maybe.T(Base) =
+        if maybe.isNone(defs[a]) then
+            maybe.none()
+        else
+            let d = maybe.unwrap(defs[a])
+            if ssa.isOp(d ssa.opLoad) andif {d.width is 8} andif maybe.isSome(defs[d.args[0]])
+                    andif ssa.isOp(maybe.unwrap(defs[d.args[0]]) ssa.opSymbol)
+                    andif {d.invariant orif strutil.startsWith(maybe.unwrap(defs[d.args[0]]).symbol "g_")} then
+                maybe.some(tuple let symbol = maybe.unwrap(defs[d.args[0]]).symbol let at = d.imm end)
+            else
+                maybe.none()
+            end
+        end
+
+    let sameBase(x: maybe.T(Base) y: Base): Bool =
+        maybe.isSome(x) andif stringOp.equal(maybe.unwrap(x).symbol y.symbol) andif {maybe.unwrap(x).at is y.at}
+
+    (* An access's address, offset, and width, if i is a load or a store *)
+    Let Access = Tuple address: Int offset: Int width: Int end
+    let accessOf(i: ssa.Inst): maybe.T(Access) =
+        if ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opStore) then
+            maybe.some(tuple let address = i.args[0] let offset = i.imm let width = i.width end)
+        else
+            maybe.none()
+        end
+
+    (* The type a load reads or a store writes *)
+    let accessType(f: Function i: ssa.Inst): ssa.Type =
+        if ssa.isOp(i ssa.opLoad) then ssa.typeOf(f i.results[0]) else ssa.typeOf(f i.args[1]) end
+
+    (* Whether access i cannot reach a cell's word, whatever its offset: an
+     * access of a stack slot or of a global's own word (g_..., a variable's
+     * word, never an object's), or an invariant load, which reads a word that
+     * nothing writes once made *)
+    let apart(defs: Array(maybe.T(ssa.Inst)) i: ssa.Inst): Bool =
+        if ssa.isOp(i ssa.opLoad) andif i.invariant then true
+        elsif maybe.isNone(defs[i.args[0]]) then false
+        else
+            let d = maybe.unwrap(defs[i.args[0]])
+            ssa.isOp(d ssa.opSlot) orif {ssa.isOp(d ssa.opSymbol) andif strutil.startsWith(d.symbol "g_")}
+        end
+
+    (* A cell the loop of h stores to and may keep in a register: its word is
+     * read and written only whole, as an Int or a Real, through the global's
+     * invariant load; no other access in the loop can reach the word (one at
+     * an overlapping offset through any other address, but a stack slot's);
+     * and the loop makes no call but calm ones, and enters no try *)
+    let candidate(f: Function g: cfg.Graph defs: Array(maybe.T(ssa.Inst)) inside: Array(Bool)): maybe.T(Cell) =
+        begin
+            let var fine = true
+            let cells = vector.new(:Cell)
+            let accesses = vector.new(:ssa.Inst)
+            for b = 0 upto {extent inside - 1} do
+                if inside[b] then
+                    let blk = ssa.block(f b)
+                    case blk.term when termTry then fine := false else ok end
+                    for k = 0 upto {vector.length(blk.insts) - 1} do
+                        let i = vector.get(blk.insts k)
+                        if ssa.isCall(i) then
+                            if not(calm(i)) then fine := false end
+                        elsif maybe.isSome(accessOf(i)) then
+                            vector.append(accesses i)
+                            let base = baseOf(defs i.args[0])
+                            let t = accessType(f i)
+                            if ssa.isOp(i ssa.opStore) andif maybe.isSome(base) andif {i.width is 8}
+                                    andif {{t is ssa.typeInt} orif {t is ssa.typeReal}} then
+                                let bb = maybe.unwrap(base)
+                                vector.append(cells tuple
+                                    let symbol = bb.symbol
+                                    let at = bb.at
+                                    let offset = i.imm
+                                    let type = t
+                                end)
+                            end
+                        end
+                    end
+                end
+            end
+            let var found = maybe.none(:Cell)
+            if fine then
+                for c = 0 upto {vector.length(cells) - 1} do
+                    if maybe.isNone(found) then
+                        let cell = vector.get(cells c)
+                        let base = tuple let symbol = cell.symbol let at = cell.at end
+                        let var clear = true
+                        (* The global itself is not written in the loop *)
+                        for k = 0 upto {vector.length(accesses) - 1} do
+                            let i = vector.get(accesses k)
+                            if ssa.isOp(i ssa.opStore) andif maybe.isSome(defs[i.args[0]])
+                                    andif ssa.isOp(maybe.unwrap(defs[i.args[0]]) ssa.opSymbol)
+                                    andif stringOp.equal(maybe.unwrap(defs[i.args[0]]).symbol cell.symbol) then
+                                clear := false
+                            end
+                        end
+                        for k = 0 upto {vector.length(accesses) - 1} do
+                            let i = vector.get(accesses k)
+                            let a = maybe.unwrap(accessOf(i))
+                            let overlaps = {a.offset < cell.offset + 8} andif {cell.offset < a.offset + a.width}
+                            if overlaps andif not(apart(defs i)) then
+                                if sameBase(baseOf(defs a.address) base) then
+                                    if {a.offset isnot cell.offset} orif {a.width isnot 8}
+                                            orif {accessType(f i) isnot cell.type} then
+                                        clear := false
+                                    end
+                                else
+                                    clear := false
+                                end
+                            end
+                        end
+                        if clear then found := maybe.some(cell) end
+                    end
+                end
+            end
+            found
+        end
+
+    (* The cell's address, loaded from its global in block b *)
+    let cellAddress(f: Function b: Int cell: Cell): Int =
+        ssa.invariantLoad(f b ssa.symbolAddress(f b cell.symbol) cell.at 8 false ssa.typePtr)
+
+    (* Keeps cell in a stack slot across the loop of h: each predecessor from
+     * outside loads the cell's word into it, the loop's accesses use it, and
+     * each edge that leaves the loop stores it back, in a block of its own *)
+    let keep(f: Function g: cfg.Graph defs: Array(maybe.T(ssa.Inst)) h: Int inside: Array(Bool) cell: Cell): Ok =
+        begin
+            let slot = ssa.newSlot(f 8 8)
+            let var address = 0
+            cfg.beforeTerminator(f 0 fun(): Ok address := ssa.slotAddress(f 0 slot))
+            let slotAt = address
+            for k = 0 upto {extent g.preds[h] - 1} do
+                let p = g.preds[h][k]
+                if not(inside[p]) then
+                    cfg.beforeTerminator(f p fun(): Ok
+                        ssa.store(f p slotAt 0 8 ssa.load(f p cellAddress(f p cell) cell.offset 8 false cell.type)))
+                end
+            end
+            let base = tuple let symbol = cell.symbol let at = cell.at end
+            for b = 0 upto {extent inside - 1} do
+                if inside[b] then
+                    let blk = ssa.block(f b)
+                    for k = 0 upto {vector.length(blk.insts) - 1} do
+                        let i = vector.get(blk.insts k)
+                        if maybe.isSome(accessOf(i)) andif sameBase(baseOf(defs i.args[0]) base)
+                                andif {i.imm is cell.offset} then
+                            i.args[0] := slotAt
+                            i.imm := 0
+                        end
+                    end
+                end
+            end
+            for b = 0 upto {extent inside - 1} do
+                if inside[b] then
+                    let blk = ssa.block(f b)
+                    blk.term := ssa.mapTargets(blk.term fun(t: ssa.Target): ssa.Target
+                        if inside[t.block] then
+                            t
+                        else
+                            let w = ssa.newBlock(f)
+                            let v = ssa.load(f w slotAt 0 8 false cell.type)
+                            ssa.store(f w cellAddress(f w cell) cell.offset 8 v)
+                            ssa.terminate(f w ssa.jump(t.block t.args))
+                            ssa.target(w array of :Int end)
+                        end)
+                end
+            end
+        end
+
+    (* Keeps the module cells that f's loops store to in registers, outermost
+     * loops first; whether it kept any *)
+    let keepCells(f: Function): Bool =
+        begin
+            let var kept = false
+            let var again = true
+            let var rounds = 0
+            while again andif {rounds < 16} do
+                again := false
+                rounds := rounds + 1
+                let g = cfg.graph(f)
+                let defs = ssa.definitions(f)
+                for r = 0 upto {extent g.order - 1} do
+                    if not(again) andif cfg.isLoopHeader(g g.order[r]) then
+                        let h = g.order[r]
+                        let inside = cfg.loopBody(g h)
+                        if inside[h] then
+                            let c = candidate(f g defs inside)
+                            if maybe.isSome(c) then
+                                keep(f g defs h inside maybe.unwrap(c))
+                                kept := true
+                                again := true
+                            end
+                        end
+                    end
+                end
+            end
+            if kept then promote.promoteAgain(f) end
+            kept
+        end
+end

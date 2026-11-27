@@ -1,0 +1,28 @@
+(* Quest Self-Hosted Compiler: The SSA's Loops: Self Tail Calls Interface
+ *
+ * A step of the loops pass (ssa/passes/loops, docs/ssa.md section 4.1).
+ *
+ * A recursive loop that stays a function, because the IR could not contify
+ * it (it is called from more than one place), is a self tail call in the
+ * SSA, which only the backends would make a jump. When a function calls
+ * itself in tail position once, this step moves the entry block's
+ * instructions and terminator into a new header block whose parameters stand
+ * for the function's, and makes the call a jump to the header. A function
+ * that calls itself so twice or more is left: its calls are usually loops
+ * nested in one function (an outer one inlined into its inner one's), which
+ * one header would merge into a shape clang's loop analysis does not take
+ * apart. A function from which a stack slot's address may escape keeps its
+ * calls, as tail calls would (ssa/passes/tailCalls): a jump would reuse
+ * slots that a call would have made anew. *)
+
+interface SelfCalls
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* Makes f's one self tail call a loop, before ssa/passes/tailCalls marks
+     * tail calls: a call followed by its return; whether it made one *)
+    loopFunction(f: ssa.Function): Bool
+    (* The same after tailCalls, of a marked tail call (ssa/passes/loops'
+     * loopTailCalls) *)
+    loopMarked(f: ssa.Function): Bool
+end

@@ -4,57 +4,12 @@
  * in registers across them, and moves what is invariant out of them
  * (docs/ssa.md section 4.1).
  *
- * A recursive loop that stays a function, because the IR could not contify
- * it (it is called from more than one place), is a self tail call in the
- * SSA, which only the backends would make a jump. When a function calls
- * itself in tail position once, this pass moves the entry block's
- * instructions and terminator into a new header block whose parameters stand
- * for the function's, and makes the call a jump to the header. A function
- * that calls itself so twice or more is left: its calls are usually loops
- * nested in one function (an outer one inlined into its inner one's), which
- * one header would merge into a shape clang's loop analysis does not take
- * apart. A function from which a stack slot's address may escape keeps its
- * calls, as tail calls would (ssa/passes/tailCalls): a jump would reuse
- * slots that a call would have made anew.
- *
- * A module cell's word that a loop stores to (a top-level tuple's var field,
- * reached through its global's load) is then kept in a stack slot across the
- * loop, which slot promotion makes a register: each predecessor from outside
- * loads it, the loop's accesses use the slot, and each edge that leaves the
- * loop stores it back, a raise's among them. The word is an Int or a Real,
- * read and written only whole; nothing else in the loop can reach it (an
- * access at an overlapping offset through another address); the loop stores
- * nothing to the global, calls only runtime functions that write no memory
- * and cannot raise, and enters no try.
- *
- * Last, what each loop computes the same on every pass moves before it, into
- * a new preheader: pure operations and loads that cannot fault (of a stack
- * slot, of a global the loop stores nothing to, or invariant loads of what a
- * check before the loop found not null). When the loop's header only tests
- * whether to leave, and its first pass then checks invariant values before
- * it stores, calls, or tests what varies (an array's null check, say), the
- * loop is rotated: a copy of the header's test before it, as a guard, leaves
- * where the header would, and otherwise runs those checks, once, then enters
- * the header's successor, so that the header becomes the loop's test at its
- * bottom. The checks raise as the first pass would have, and the conditions
- * pass then decides the loop's own copies of them, which the guard's
- * dominate; the loads they make safe move too. The header's values that
- * other blocks use are kept in stack slots, stored by the header and the
- * guard, which promotion makes block parameters where the two meet. A
- * derived pointer (ptrAdd) moves only out of a loop that calls nothing, so
- * that none is live across a collection without its object's pointer.
- *
- * Then a bounds check (a branch on x <u len to a block that raises) goes
- * when the comparisons before it decide it: x is never negative (a constant,
- * a length, such a value plus a small constant, or a block parameter every
- * jump binds such a value to) and x <= len - 1, by a comparison on a branch
- * that dominates the check or, for a block parameter, on every jump into its
- * block: by the value the jump binds, or, for one that binds x + 1, by a test
- * there that x isnot len - 1 (a for loop's, by induction). Values compare by
- * form (a base and a constant offset, with loads by address and symbols by
- * name), so that len - 1 copied for a guard is the header's; string.length's
- * test for a null string is the length, since under a bound of 0 - 1 no index
- * that is not negative reaches the check. *)
+ * Each step is a module of its own, run in this order on each function:
+ * ssa/passes/loops/selfCalls makes a self tail call a loop,
+ * ssa/passes/loops/cells keeps module cells in registers,
+ * ssa/passes/loops/hoisting moves what is invariant before each loop and
+ * rotates it, and ssa/passes/loops/bounds decides bounds checks. Then values
+ * are numbered and conditions decided again in each function that changed. *)
 
 interface Loops
 import

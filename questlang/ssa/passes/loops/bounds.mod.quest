@@ -1,0 +1,352 @@
+(* Quest Self-Hosted Compiler: The SSA's Loops: Bounds Checks Implementation *)
+
+module bounds : Bounds
+import
+    conv : Conv
+    stringOp = string : StringOp
+
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+
+    questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    questlang/ssa/cfg : questlang/ssa/CFG
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    Let Function = ssa.Function
+
+    (* What the bounds analysis knows of a function: each value's defining
+     * instruction, each value's block if it is a parameter (~1 if not) and its
+     * position, the graph, and the lengths' offsets *)
+    Let Ranges = Tuple
+        f: Function
+        defs: Array(maybe.T(ssa.Inst))
+        paramBlock: Array(Int)
+        paramIndex: Array(Int)
+        g: cfg.Graph
+        arrayLength: Int
+        stringLength: Int
+    end
+
+    let defOf(r: Ranges v: Int): maybe.T(ssa.Inst) = if v < extent r.defs then r.defs[v] else maybe.none() end
+
+    let constantOf(r: Ranges v: Int): maybe.T(Int) = ssa.constantOf(r.defs v)
+
+    let isOne(r: Ranges v: Int): Bool = maybe.isSome(constantOf(r v)) andif {maybe.unwrap(constantOf(r v)) is 1}
+
+    let isZero(r: Ranges v: Int): Bool = maybe.isSome(constantOf(r v)) andif {maybe.unwrap(constantOf(r v)) is 0}
+
+    (* Whether v tests a pointer for null (peq p null) *)
+    let nullTest(r: Ranges v: Int): Bool =
+        begin
+            let d = defOf(r v)
+            if maybe.isNone(d) orif not(ssa.isOp(maybe.unwrap(d) ssa.opPeq)) then
+                false
+            else
+                let i = maybe.unwrap(d)
+                let isNull =
+                    fun(a: Int): Bool maybe.isSome(defOf(r a)) andif ssa.isOp(maybe.unwrap(defOf(r a)) ssa.opNull)
+                isNull(i.args[0]) orif isNull(i.args[1])
+            end
+        end
+
+    (* A value as a base and a constant offset: through additions and
+     * subtractions of constants, and with invariant loads named by their
+     * address's form and offset, so that a length loaded twice, or a copy of
+     * len - 1 made for a loop's guard, compares equal *)
+    Let Form = Tuple base: String offset: Int end
+    let rec form(r: Ranges v: Int depth: Int): Form =
+        begin
+            let d = defOf(r v)
+            let plain = tuple let base = "v" <> conv.int(v) let offset = 0 end
+            if {depth > 8} orif maybe.isNone(d) then
+                plain
+            else
+                let i = maybe.unwrap(d)
+                if ssa.isOp(i ssa.opAdd) andif maybe.isSome(constantOf(r i.args[1])) then
+                    let inner = form(r i.args[0] depth + 1)
+                    tuple let base = inner.base let offset = inner.offset + maybe.unwrap(constantOf(r i.args[1])) end
+                elsif ssa.isOp(i ssa.opAdd) andif maybe.isSome(constantOf(r i.args[0])) then
+                    let inner = form(r i.args[1] depth + 1)
+                    tuple let base = inner.base let offset = inner.offset + maybe.unwrap(constantOf(r i.args[0])) end
+                elsif ssa.isOp(i ssa.opSub) andif maybe.isSome(constantOf(r i.args[1])) then
+                    let inner = form(r i.args[0] depth + 1)
+                    tuple let base = inner.base let offset = inner.offset - maybe.unwrap(constantOf(r i.args[1])) end
+                elsif ssa.isOp(i ssa.opLoad) andif i.invariant then
+                    let at = form(r i.args[0] depth + 1)
+                    tuple
+                        let base = "load(" <> at.base <> "+" <> conv.int(at.offset) <> "+" <> conv.int(i.imm) <> ")"
+                        let offset = 0
+                    end
+                elsif ssa.isOp(i ssa.opCopy) then
+                    form(r i.args[0] depth + 1)
+                elsif ssa.isOp(i ssa.opSymbol) then
+                    (* A symbol is what it names, wherever it is made: value
+                     * numbering keeps a block's own *)
+                    tuple let base = "symbol(" <> i.symbol <> "+" <> conv.int(i.imm) <> ")" let offset = 0 end
+                elsif ssa.isOp(i ssa.opSelect) andif nullTest(r i.args[0]) andif isZero(r i.args[1]) then
+                    (* string.length: 0 for a null string, else its length,
+                     * which is the length's form as a bound: a bound of 0 - 1
+                     * leaves no index that is not negative, so a check under
+                     * it is never reached *)
+                    form(r i.args[2] depth + 1)
+                else
+                    plain
+                end
+            end
+        end
+
+    (* Whether v is never negative: a constant that is not, an array's or a
+     * string's length, such a value plus a small constant, or
+     * a block parameter every jump to which binds such a value (assumed of
+     * the parameters being asked about, which a loop's back edges reach) *)
+    let rec nonNegative(r: Ranges v: Int asking: vector.T(Int) depth: Int): Bool =
+        if depth > 12 then
+            false
+        else
+            let d = defOf(r v)
+            if maybe.isSome(d) then
+                let i = maybe.unwrap(d)
+                if ssa.isOp(i ssa.opConst) then i.imm >= 0
+                elsif ssa.isOp(i ssa.opLoad) andif i.invariant andif {i.width is 8}
+                        andif {{i.imm is r.arrayLength} orif {i.imm is r.stringLength}}
+                        andif {ssa.typeOf(r.f i.results[0]) is ssa.typeInt} then
+                    true
+                elsif ssa.isOp(i ssa.opAdd) then
+                    (* Only a small constant added, so that the sum cannot
+                     * wrap: a loop's index stepping up, a length plus one *)
+                    let small = fun(c: Int): Bool
+                        maybe.isSome(constantOf(r c)) andif {maybe.unwrap(constantOf(r c)) >= 0}
+                            andif {maybe.unwrap(constantOf(r c)) <= 65536}
+                    {small(i.args[1]) andif nonNegative(r i.args[0] asking depth + 1)}
+                        orif {small(i.args[0]) andif nonNegative(r i.args[1] asking depth + 1)}
+                elsif ssa.isOp(i ssa.opCopy) then nonNegative(r i.args[0] asking depth + 1)
+                else false
+                end
+            elsif {v < extent r.paramBlock} andif {r.paramBlock[v] > 0} then
+                let var seen = false
+                for k = 0 upto {vector.length(asking) - 1} do if vector.get(asking k) is v then seen := true end end
+                if seen then
+                    true
+                else
+                    vector.append(asking v)
+                    let b = r.paramBlock[v]
+                    let var all = extent r.g.preds[b] > 0
+                    for k = 0 upto {extent r.g.preds[b] - 1} do
+                        let q = r.g.preds[b][k]
+                        if cfg.reached(r.g q) then
+                            let ts = ssa.targets(ssa.block(r.f q).term)
+                            for t = 0 upto {extent ts - 1} do
+                                if {ts[t].block is b} andif all then
+                                    all := nonNegative(r ts[t].args[r.paramIndex[v]] asking depth + 1)
+                                end
+                            end
+                        end
+                    end
+                    let ignored = vector.pop(asking)
+                    all
+                end
+            else
+                false
+            end
+        end
+
+    (* The comparisons known where control goes along an edge from q to b
+     * (b's only way in, or the branch of q itself), and along the single
+     * edges into the blocks that dominate q: each a comparison's instruction
+     * and the value it is known to have *)
+    Let Fact = Tuple compare: ssa.Inst holds: Bool end
+    let factsOn(r: Ranges q: Int into: Int): vector.T(Fact) =
+        begin
+            let facts = vector.new(:Fact)
+            let note = fun(from: Int to: Int): Ok
+                case ssa.block(r.f from).term
+                    when termBranch with x then
+                        if x.ifTrue.block isnot x.ifFalse.block then
+                            let d = defOf(r x.cond)
+                            if maybe.isSome(d) andif {{to is x.ifTrue.block} orif {to is x.ifFalse.block}} then
+                                vector.append(facts tuple
+                                    let compare = maybe.unwrap(d)
+                                    let holds = to is x.ifTrue.block
+                                end)
+                            end
+                        end
+                    else ok
+                end
+            if into >= 0 then note(q into) end
+            let var b = q
+            while {b >= 0} andif cfg.reached(r.g b) do
+                if extent r.g.preds[b] is 1 then note(r.g.preds[b][0] b) end
+                b := r.g.idom[b]
+            end
+            facts
+        end
+
+    (* What a fact says of x: x <= bound - slack (relation "le", where
+     * "x < b" is "x <= b - 1"), or x isnot bound ("ne"), with bound a form;
+     * relation "" when it says nothing of x *)
+    Let Says = Tuple relation: String bound: Form end
+    let says(r: Ranges fact: Fact x: Int): Says =
+        begin
+            let i = fact.compare
+            let nothing = tuple let relation = "" let bound = tuple let base = "" let offset = 0 end end
+            if extent i.args isnot 2 then
+                nothing
+            else
+                let a = i.args[0]
+                let c = i.args[1]
+                (* small <= big - slack *)
+                let var small = ~1
+                let var big = ~1
+                let var slack = 0
+                let var relation = "le"
+                let relate = fun(s: Int t: Int k: Int): Ok begin small := s big := t slack := k end
+                case i.op
+                    when opLt then if fact.holds then relate(a c 1) else relate(c a 0) end
+                    when opLe then if fact.holds then relate(a c 0) else relate(c a 1) end
+                    when opGt then if fact.holds then relate(c a 1) else relate(a c 0) end
+                    when opGe then if fact.holds then relate(c a 0) else relate(a c 1) end
+                    when opEq then
+                        if not(fact.holds) then
+                            relation := "ne"
+                            if a is x then relate(a c 0) else relate(c a 0) end
+                        end
+                    when opNe then
+                        if fact.holds then
+                            relation := "ne"
+                            if a is x then relate(a c 0) else relate(c a 0) end
+                        end
+                    else ok
+                end
+                if {small is x} andif {big >= 0} then
+                    let bf = form(r big 0)
+                    tuple
+                        let relation = relation
+                        let bound = tuple let base = bf.base let offset = bf.offset - slack end
+                    end
+                else
+                    nothing
+                end
+            end
+        end
+
+    (* Whether x <= top holds where control goes from q into b (or at q, when
+     * b is ~1): by a known comparison of x itself; or, when x is a block's
+     * parameter, along every jump into that block: by the value it binds,
+     * or, for a jump that binds x + 1, by a comparison there that says
+     * x isnot top or x < top (by induction over the block's entries, x <=
+     * top before it, so x + 1 <= top) *)
+    let rec atMost(r: Ranges q: Int into: Int x: Int top: Form depth: Int): Bool =
+        begin
+            let facts = factsOn(r q into)
+            let within = fun(strictly: Bool): Bool
+                begin
+                    let var found = false
+                    for k = 0 upto {vector.length(facts) - 1} do
+                        let w = says(r vector.get(facts k) x)
+                        if stringOp.equal(w.bound.base top.base) then
+                            if stringOp.equal(w.relation "le") then
+                                if w.bound.offset <= {if strictly then top.offset - 1 else top.offset end} then
+                                    found := true
+                                end
+                            elsif stringOp.equal(w.relation "ne") andif strictly
+                                    andif {w.bound.offset is top.offset} then
+                                found := true
+                            end
+                        end
+                    end
+                    found
+                end
+            if within(false) then true
+            elsif {depth < 4} andif {x < extent r.paramBlock} andif {r.paramBlock[x] > 0} then
+                let b = r.paramBlock[x]
+                let var all = extent r.g.preds[b] > 0
+                for k = 0 upto {extent r.g.preds[b] - 1} do
+                    let p = r.g.preds[b][k]
+                    if all andif cfg.reached(r.g p) then
+                        let ts = ssa.targets(ssa.block(r.f p).term)
+                        for t = 0 upto {extent ts - 1} do
+                            if {ts[t].block is b} andif all then
+                                let a = ts[t].args[r.paramIndex[x]]
+                                let d = defOf(r a)
+                                let stepped = maybe.isSome(d) andif ssa.isOp(maybe.unwrap(d) ssa.opAdd)
+                                    andif {{{maybe.unwrap(d).args[0] is x} andif isOne(r maybe.unwrap(d).args[1])}
+                                        orif {{maybe.unwrap(d).args[1] is x} andif isOne(r maybe.unwrap(d).args[0])}}
+                                if stepped then
+                                    let edge = factsOn(r p b)
+                                    let var found = false
+                                    for e = 0 upto {vector.length(edge) - 1} do
+                                        let w = says(r vector.get(edge e) x)
+                                        if stringOp.equal(w.bound.base top.base) then
+                                            if stringOp.equal(w.relation "le")
+                                                    andif {w.bound.offset <= top.offset - 1} then
+                                                found := true
+                                            elsif stringOp.equal(w.relation "ne")
+                                                    andif {w.bound.offset is top.offset} then
+                                                found := true
+                                            end
+                                        end
+                                    end
+                                    all := found
+                                else
+                                    all := atMost(r p b a top depth + 1)
+                                end
+                            end
+                        end
+                    end
+                end
+                all
+            else
+                false
+            end
+        end
+
+    (* Decides f's bounds checks (a branch on x <u len to a block that only
+     * raises) that the comparisons before them decide: x is never negative,
+     * and x <= len - 1 (atMost); whether it decided any *)
+    let decideBounds(f: Function): Bool =
+        begin
+            let n = vector.length(f.types)
+            let paramBlock = array of(n ~1)
+            let paramIndex = array of(n ~1)
+            for b = 1 upto {vector.length(f.blocks) - 1} do
+                let ps = ssa.block(f b).params
+                for k = 0 upto {vector.length(ps) - 1} do
+                    paramBlock[vector.get(ps k)] := b
+                    paramIndex[vector.get(ps k)] := k
+                end
+            end
+            let r = tuple
+                let f = f
+                let defs = ssa.definitions(f)
+                let paramBlock = paramBlock
+                let paramIndex = paramIndex
+                let g = cfg.graph(f)
+                let arrayLength = runtimeLayout.offset("QArray" "length")
+                let stringLength = runtimeLayout.offset("QString" "length")
+            end
+            let var decided = false
+            for b = 0 upto {vector.length(f.blocks) - 1} do
+                if cfg.reached(r.g b) then
+                    let blk = ssa.block(f b)
+                    case blk.term
+                        when termBranch with x then
+                            let d = defOf(r x.cond)
+                            if maybe.isSome(d) andif ssa.isOp(maybe.unwrap(d) ssa.opUlt)
+                                    andif cfg.onlyRaises(f x.ifFalse.block)
+                                    andif {x.ifTrue.block isnot x.ifFalse.block} then
+                                let i = maybe.unwrap(d)
+                                let len = form(r i.args[1] 0)
+                                let top = tuple let base = len.base let offset = len.offset - 1 end
+                                if nonNegative(r i.args[0] vector.new(:Int) 0) andif atMost(r b ~1 i.args[0] top 0) then
+                                    blk.term := option termJump of ssa.Terminator with let target = x.ifTrue end
+                                    decided := true
+                                end
+                            end
+                        else ok
+                    end
+                end
+            end
+            if decided then cfg.dropUnreached(f) end
+            decided
+        end
+end

@@ -1,0 +1,109 @@
+(* Quest Self-Hosted Compiler: The SSA's Loops: Self Tail Calls Implementation *)
+
+module selfCalls : SelfCalls
+import
+    stringOp = string : StringOp
+
+    collections/vector : collections/Vector
+
+    questlang/ssa/blockParams : questlang/ssa/BlockParams
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/passes/tailCalls : questlang/ssa/passes/TailCalls
+export
+    Let Function = ssa.Function
+
+    (* Whether vs and ws are the same values, in order *)
+    let same(vs: Array(Int) ws: Array(Int)): Bool =
+        begin
+            let var equal = extent vs is extent ws
+            for k = 0 upto {extent vs - 1} do if equal andif {vs[k] isnot ws[k]} then equal := false end end
+            equal
+        end
+
+    (* Whether blk ends in a call of f itself whose results blk returns,
+     * directly or through blocks that only pass them on *)
+    let selfTail(f: Function blk: ssa.Block): Bool =
+        begin
+            let n = vector.length(blk.insts)
+            if n is 0 then
+                false
+            else
+                let last = vector.get(blk.insts {n - 1})
+                if ssa.isOp(last ssa.opCall) andif stringOp.equal(last.symbol f.symbol)
+                        andif {extent last.args is vector.length(f.paramTypes)} then
+                    case blk.term
+                        when termReturn with x then same(x.values last.results)
+                        when termJump with x then tailCalls.returnsThrough(f x.target last.results)
+                        when termNone, termBranch, termSwitch, termTailCall, termTry, termUnreachable then false
+                    end
+                else
+                    false
+                end
+            end
+        end
+
+    (* Whether blk ends in a tail call of f itself, as ssa/passes/tailCalls
+     * marks one, with all of f's arguments *)
+    let selfTailCall(f: Function blk: ssa.Block): Bool =
+        case blk.term
+            when termTailCall with x then
+                ssa.isOp(x.call ssa.opCall) andif stringOp.equal(x.call.symbol f.symbol)
+                    andif {extent x.call.args is vector.length(f.paramTypes)}
+            when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable then false
+        end
+
+    (* Makes f's one self tail call a loop: a call followed by its return
+     * before tailCalls (marked false), or a tail call after it (marked true) *)
+    let loopSites(f: Function marked: Bool): Bool =
+        begin
+            let sites = vector.new(:Int)
+            if not(tailCalls.slotsEscape(f)) then
+                for b = 0 upto {vector.length(f.blocks) - 1} do
+                    let blk = ssa.block(f b)
+                    if if marked then selfTailCall(f blk) else selfTail(f blk) end then vector.append(sites b) end
+                end
+            end
+            (* A marked site is a call and a return of its results again, the
+             * shape the conversion below takes, when it is the only one *)
+            if marked andif {vector.length(sites) is 1} then
+                let blk = ssa.block(f vector.get(sites 0))
+                case blk.term
+                    when termTailCall with x then
+                        vector.append(blk.insts x.call)
+                        blk.term := option termReturn of ssa.Terminator with let values = x.call.results end
+                    when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable then ok
+                end
+            end
+            (* Two or more sites are loops nested in one function (an outer
+             * one inlined into its inner one's, say), which one header would
+             * merge: clang keeps them apart from the calls, and the backends
+             * make each call a jump as before *)
+            if vector.length(sites) isnot 1 then
+                false
+            else
+                (* The header takes the entry's instructions and terminator,
+                 * with fresh parameters that replace the function's *)
+                let entry = ssa.block(f 0)
+                let params = vector.toArray(entry.params)
+                let header = blockParams.splitEntry(f).header
+                let h = ssa.block(f header)
+                (* Each site's call, its arguments renamed by replaceUses, is
+                 * a jump to the header; a site in the entry is now in the
+                 * header *)
+                for k = 0 upto {vector.length(sites) - 1} do
+                    let s = vector.get(sites k)
+                    let blk = ssa.block(f if s is 0 then header else s end)
+                    let call = vector.pop(blk.insts)
+                    blk.term := ssa.jump(header call.args)
+                    blk.termLoc := call.loc
+                end
+                entry.term := ssa.jump(header params)
+                entry.termLoc := h.termLoc
+                true
+            end
+        end
+
+    let loopFunction(f: Function): Bool = loopSites(f false)
+
+    let loopMarked(f: Function): Bool = loopSites(f true)
+end
