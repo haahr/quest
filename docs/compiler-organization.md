@@ -512,3 +512,24 @@ Left whole, because no split of them moves code without changing it:
   dump_header, dump_children, and dump_type, as each syntax node keeps its fields: taking 93 methods out of their
   classes into a table is a rewrite, not a move.
 
+
+## 8. What the Design Relies On
+
+A review of the whole compiler (2026-11-20) named what it already does well; a refactoring should not undo these.
+
+- **Types:** hash-consed type nodes that cache their free ids and metavariables
+  ([type-system.md](type-system.md) §2.2); the coinductive subtype prover (§3.2); one `elaborateX(expected)` per
+  construct, checking against the type expected (§6.1); and canonicalization by partition refinement
+  ([c-representation.md](c-representation.md)).
+- **IR** ([ir.md](ir.md)): ANF with structured join points; lowering by destination passing; `verify` and the IR
+  interpreter at every stage; and the numbered rule list in front of `represent.plan`.
+- **SSA** ([ssa.md](ssa.md)): block parameters; one instruction shape with dense numbering; a verifier and a text
+  form that round-trips; the runtime functions' effects table; one `cfg` module; and bisecting with
+  `QUEST_SKIP_PASSES` (§4.1).
+- **Machine code** ([arm64.md](arm64.md)): the target-independent machine layer and linear scan (§3.8); an encoder
+  separate from the printer and checked against it (`QUEST_CHECK_ENCODING`, [testing.md](testing.md)); and
+  exhaustive `case` with no `else`.
+- **WebAssembly** ([wasm.md](wasm.md)): `wasm/model` as a typed module, and one opcode table for `encode` and
+  `printer`.
+- **Build:** `Diagnostic`, `SourceMap` ([diagnostics.md](diagnostics.md)), and atomic `.qi` writes
+  ([build-process.md](build-process.md)).
