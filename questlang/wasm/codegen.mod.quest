@@ -25,7 +25,7 @@ import
     questlang/ir/describe : questlang/ir/Describe
     ir = questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/walk : questlang/ir/Walk
-    questlang/repr/externals : questlang/repr/Externals
+    questlang/repr/externalFunctions : questlang/repr/ExternalFunctions
     questlang/repr/genericLayout : questlang/repr/GenericLayout
     questlang/repr/layout : questlang/repr/Layout
     questlang/repr/shapes : questlang/repr/Shapes
@@ -2189,18 +2189,6 @@ export
      * The library's externals (section 4.2)
      * ====================================================================== *)
 
-    (* The C symbol of the library's member path.member, if it is an external
-     * function (repr/externals), which a call compiles to in place *)
-    let externalSymbol(path: String member: String): maybe.T(String) =
-        begin
-            let var found = maybe.none(:String)
-            for k = 0 upto extent externals.functions - 1 do
-                let e = externals.functions[k]
-                if stringOp.equal(e[0] path) andif stringOp.equal(e[1] member) then found := maybe.some(e[2]) end
-            end
-            found
-        end
-
     (* The externals that are functions of wasm/core, in Quest: each symbol,
      * the core's function, and its parameters' and result's representations
      * (e an eqref, n an i64, b an i32) *)
@@ -2901,7 +2889,7 @@ export
                         let member = maybe.unwrapOr(x.member "")
                         let symbol =
                             if maybe.isSome(imp.i.libPath) then
-                                externalSymbol(maybe.unwrap(imp.i.libPath) member)
+                                externalFunctions.symbolOf(maybe.unwrap(imp.i.libPath) member)
                             else
                                 maybe.none(:String)
                             end
@@ -5955,7 +5943,7 @@ export
                                         let key = imp.i.canonicalPath <> "." <> maybe.unwrapOr(member "")
                                         let known = hashMap.contains(g.importFunctions key)
                                         let fast = maybe.isSome(imp.i.libPath)
-                                            andif maybe.isSome(externalSymbol(maybe.unwrap(imp.i.libPath)
+                                            andif maybe.isSome(externalFunctions.symbolOf(maybe.unwrap(imp.i.libPath)
                                                     maybe.unwrapOr(member "")))
                                         if isUnitImport(moduleName imp.i) andif not(known) andif not(fast)
                                                 andif maybe.isSome(calleeType) then
@@ -6005,7 +5993,7 @@ export
                                     case maybe.unwrap(c.moduleRef)
                                         when refImport with imp then
                                             if maybe.isSome(imp.i.libPath) then
-                                                let sym = externalSymbol(maybe.unwrap(imp.i.libPath)
+                                                let sym = externalFunctions.symbolOf(maybe.unwrap(imp.i.libPath)
                                                         maybe.unwrapOr(c.member ""))
                                                 if maybe.isSome(sym) then coreFunction(maybe.unwrap(sym)) end
                                             end

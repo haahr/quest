@@ -92,6 +92,8 @@ and tag maps. The C backend spells these in C; the SSA's backends lay them out a
   modules here that produce C text.
 - [`externals`](externals.mod.quest): a table, generated from `lib/` by `tools/externals`, of the standard library's
   members defined as external C functions and its external types, so that an importer calls the C function directly.
+- [`externalFunctions`](externalfunctions.int.quest): that table's functions as typed rows, and the lookup the
+  backends make of a library member's C symbol.
 
 ## Connections
 

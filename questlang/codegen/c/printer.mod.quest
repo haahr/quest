@@ -25,7 +25,7 @@ import
     questlang/ir/describe : questlang/ir/Describe
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/walk : questlang/ir/Walk
-    questlang/repr/externals : questlang/repr/Externals
+    questlang/repr/externalFunctions : questlang/repr/ExternalFunctions
     questlang/repr/genericLayout : questlang/repr/GenericLayout
     questlang/repr/layout : questlang/repr/Layout
     questlang/repr/objectLayout : questlang/repr/ObjectLayout
@@ -1748,7 +1748,7 @@ export
 
     (* The C function a call of an imported member is, if the member is one of
      * the standard library's external functions built into the compiler
-     * (questlang/repr/externals), the import resolves to lib/, and the
+     * (repr/externalFunctions), the import resolves to lib/, and the
      * member's wrapper has the C function's signature: no parameter or result
      * held as a QVal, as the importer holds an external type it sees only as
      * abstract (os/process's process.T) *)
@@ -1770,12 +1770,7 @@ export
                     false
                 end
             if concrete andif maybe.isSome(imp.libPath) then
-                for i = 0 upto {extent externals.functions - 1} do
-                    let entry = externals.functions[i]
-                    if eq(entry[0] maybe.unwrap(imp.libPath)) andif eq(entry[1] member) then
-                        symbol := maybe.some(entry[2])
-                    end
-                end
+                symbol := externalFunctions.symbolOf(maybe.unwrap(imp.libPath) member)
             end
             symbol
         end

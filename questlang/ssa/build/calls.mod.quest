@@ -8,7 +8,7 @@ import
     util/sort : util/Sort
 
     ir = questlang/ir/nodes : questlang/ir/Nodes
-    questlang/repr/externals : questlang/repr/Externals
+    questlang/repr/externalFunctions : questlang/repr/ExternalFunctions
     questlang/repr/layout : questlang/repr/Layout
     questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     questlang/repr/shapes : questlang/repr/Shapes
@@ -498,7 +498,7 @@ export
 
     (* Returns the underlying C symbol for an imported member if it is a
      * standard-library external built into the compiler
-     * (questlang/repr/externals), the import resolves to lib/, and no argument
+     * (repr/externalFunctions), the import resolves to lib/, and no argument
      * or result is represented as a QVal word (which happens when the importer
      * sees an external type only as abstract, such as os/process's process.T).
      * Mirrors the C printer's libraryExternal. *)
@@ -518,12 +518,7 @@ export
             end
             let var symbol = maybe.none(:String)
             if unheld andif maybe.isSome(imp.libPath) then
-                for i = 0 upto {extent externals.functions - 1} do
-                    let entry = externals.functions[i]
-                    if vals.eq(entry[0] maybe.unwrap(imp.libPath)) andif vals.eq(entry[1] member) then
-                        symbol := maybe.some(entry[2])
-                    end
-                end
+                symbol := externalFunctions.symbolOf(maybe.unwrap(imp.libPath) member)
             end
             symbol
         end

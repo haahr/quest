@@ -1,0 +1,36 @@
+(* Quest Self-Hosted Compiler: The Standard Library's External Functions
+ * Implementation *)
+
+module externalFunctions : ExternalFunctions
+import
+    stringOp = string : StringOp
+
+    util/maybe : util/Maybe
+
+    questlang/repr/externals : questlang/repr/Externals
+export
+    Def Function = Tuple path: String member: String symbol: String end
+
+    (* The table's rows are path, member, and symbol, in that order *)
+    let functions: Array(Function) =
+        begin
+            let rows = externals.functions
+            let fs = array of(extent rows tuple let path = "" let member = "" let symbol = "" end)
+            for i = 0 upto {extent rows - 1} do
+                fs[i] := tuple let path = rows[i][0] let member = rows[i][1] let symbol = rows[i][2] end
+            end
+            fs
+        end
+
+    let symbolOf(path: String member: String): maybe.T(String) =
+        begin
+            let var found = maybe.none(:String)
+            for i = 0 upto {extent functions - 1} do
+                let f = functions[i]
+                if stringOp.equal(f.path path) andif stringOp.equal(f.member member) then
+                    found := maybe.some(f.symbol)
+                end
+            end
+            found
+        end
+end
