@@ -687,7 +687,7 @@ export
                                 let body = x.value
                                 let typeParams = vector.new()
                             end)
-                            checker.checkExpr(c fnExpr sym.type e 0)
+                            checker.checkExpr(c fnExpr sym.type e loopDepth)
                         else
                             checker.checkExpr(c x.value sym.type e loopDepth)
                         end
@@ -751,6 +751,7 @@ export
      * elaborateTypes module, to which this function passes them. *)
     let rec elaborateBinding(c: checker.T b: ast.Decl e: env.T loopDepth: Int): typedAst.Binding =
         begin
+            checker.agree(c e loopDepth)
             let offset = b.span.startOffset
             case b.form
                 when exprException then exprStmt(offset exceptions.synthException(c b e loopDepth true))

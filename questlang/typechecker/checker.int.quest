@@ -49,6 +49,9 @@ export
         errors: vector.T(diagnostics.CompilerError)
         (* The warnings found, in order, which do not stop elaboration *)
         warnings: vector.T(diagnostics.CompilerError)
+        (* Whether agree checks the state passed (QUEST_CHECK_SCOPES=1, as
+         * in the test runs) *)
+        checksState: Bool
         (* The dispatch, which typecheck defines *)
         var checkHook: All(c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int) typedAst.Expr
         var synthHook: All(c: T expr: ast.Expr e: env.T loopDepth: Int isCallee: Bool) typedAst.Expr
@@ -56,6 +59,20 @@ export
 
     (* A checker of the environment, without its dispatch *)
     new(e: env.T loopDepth: Int): T
+
+    (* Under QUEST_CHECK_SCOPES=1, an internal error unless e is c.env and
+     * loopDepth is c.loopDepth: the families pass both, and each must be
+     * the checker's (until they read them from c alone) *)
+    agree(c: T e: env.T loopDepth: Int): Ok
+
+    (* Runs body with the checker of a binding that the module system
+     * elaborates in e at loopDepth (elaboration.hooks.elaborateBinding, as
+     * typecheck.elaborateProgram installs it): c itself, at loopDepth, if e
+     * is c's environment. The hook outlives the program's check, and a module
+     * compiled later in the same process (one the program imports, compiled
+     * to C) has an environment of its own: then body gets a checker of e, at
+     * c's function depth, that records its errors and warnings in c's. *)
+    forBinding(A::TYPE c: T e: env.T loopDepth: Int body: All(c: T) A): A
 
     (* Checks expr against expected (Gamma |- e <= T) *)
     checkExpr(c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int): typedAst.Expr

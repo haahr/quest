@@ -5,6 +5,8 @@ module checker : Checker
 import
     conv : Conv
     raised : Raised
+    stringOp = string : StringOp
+    system : System
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
@@ -27,6 +29,7 @@ export
         var pendingTypeArgs: maybe.T(vector.T(PendingTypeArg))
         errors: vector.T(diagnostics.CompilerError)
         warnings: vector.T(diagnostics.CompilerError)
+        checksState: Bool
         var checkHook: All(c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int) typedAst.Expr
         var synthHook: All(c: T expr: ast.Expr e: env.T loopDepth: Int isCallee: Bool) typedAst.Expr
     end
@@ -39,16 +42,64 @@ export
             let var pendingTypeArgs = maybe.none()
             let errors = vector.new()
             let warnings = vector.new()
+            let checksState = stringOp.equal(system.getEnv("QUEST_CHECK_SCOPES") "1")
             let var checkHook = fun(c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int): typedAst.Expr
                 diagnostics.internal("the checker has no dispatch" expr.span.startOffset)
             let var synthHook = fun(c: T expr: ast.Expr e: env.T loopDepth: Int isCallee: Bool): typedAst.Expr
                 diagnostics.internal("the checker has no dispatch" expr.span.startOffset)
         end
 
+    let agree(c: T e: env.T loopDepth: Int): Ok =
+        if c.checksState then
+            if not(e is c.env) then diagnostics.internal(:Ok "the environment passed is not the checker's" 0) end
+            if loopDepth isnot c.loopDepth then
+                diagnostics.internal(:Ok "the loop depth passed (" <> conv.int(loopDepth)
+                    <> ") is not the checker's (" <> conv.int(c.loopDepth) <> ")" 0)
+            end
+        end
+
+    let forBinding(A::TYPE c: T e: env.T loopDepth: Int body: All(c: T) A): A =
+        if e is c.env then
+            let saved = c.loopDepth
+            c.loopDepth := loopDepth
+            let result =
+                try
+                    body(c)
+                else with r then
+                    c.loopDepth := saved
+                    raised.reraise(:A r)
+                end
+            c.loopDepth := saved
+            result
+        else
+            body(tuple
+                let env = e
+                let var loopDepth = loopDepth
+                let var functionDepth = c.functionDepth
+                let var pendingTypeArgs = c.pendingTypeArgs
+                let errors = c.errors
+                let warnings = c.warnings
+                let checksState = c.checksState
+                let var checkHook = c.checkHook
+                let var synthHook = c.synthHook
+            end)
+        end
+
     let checkExpr(c: T expr: ast.Expr expected: model.Type e: env.T loopDepth: Int): typedAst.Expr =
-        c.checkHook(c expr expected e loopDepth)
-    let synthExpr(c: T expr: ast.Expr e: env.T loopDepth: Int): typedAst.Expr = c.synthHook(c expr e loopDepth false)
-    let synthCallee(c: T expr: ast.Expr e: env.T loopDepth: Int): typedAst.Expr = c.synthHook(c expr e loopDepth true)
+        begin
+            agree(c e loopDepth)
+            c.checkHook(c expr expected e loopDepth)
+        end
+    let synthExpr(c: T expr: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
+        begin
+            agree(c e loopDepth)
+            c.synthHook(c expr e loopDepth false)
+        end
+    let synthCallee(c: T expr: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
+        begin
+            agree(c e loopDepth)
+            c.synthHook(c expr e loopDepth true)
+        end
 
     let inLoop(A::TYPE c: T body: All() A): A =
         begin
@@ -195,6 +246,7 @@ export
 
     let lookupValue(c: T e: env.T name: String): maybe.T(symbols.ValueSymbol) =
         begin
+            agree(c e c.loopDepth)
             let sym = env.lookupValue(e name)
             if maybe.isSome(sym) then checkPoisoned(maybe.unwrap(sym)) end
             sym

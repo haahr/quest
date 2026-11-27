@@ -115,6 +115,7 @@ export
 
     let rec checkExpr(c: checker.T x0: ast.Expr expected: Type e: env.T loopDepth: Int): typedAst.Expr =
         begin
+            checker.agree(c e loopDepth)
             let exp = maybe.some(expected)
             case x0.form
                 (* Conditionals with an else branch: both branches are checked
@@ -191,6 +192,7 @@ export
      * the typed AST. *)
     and synthExpr(c: checker.T x0: ast.Expr e: env.T loopDepth: Int isCallee: Bool): typedAst.Expr =
         begin
+            checker.agree(c e loopDepth)
             let offset = x0.span.startOffset
             let none = maybe.none(:Type)
             case x0.form
@@ -476,7 +478,8 @@ export
              * members *)
             loader.install()
             elaboration.hooks.elaborateBinding := fun(b: ast.Decl en: env.T loopDepth: Int): maybe.T(typedAst.Binding)
-                bindings.elaborateRecovering(c b en loopDepth)
+                checker.forBinding(c en loopDepth fun(hc: checker.T): maybe.T(typedAst.Binding)
+                    bindings.elaborateRecovering(hc b en loopDepth))
             e.report := maybe.some(fun(err: diagnostics.CompilerError): Ok
                 checker.recordError(c err))
             let phrases = vector.new(:typedAst.Binding)
