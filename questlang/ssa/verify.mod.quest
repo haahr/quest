@@ -28,371 +28,405 @@ export
             when typeVal then case b when typeVal then true when typeInt, typePtr, typeReal then false end
         end
 
+    let tInt = nodes.typeInt
+    let tPtr = nodes.typePtr
+    let tReal = nodes.typeReal
+    let tVal = nodes.typeVal
+    let one(t: Type): Array(Type) = array of t end
+    let noTypes = array of :Type end
+
+    (* What checking a function knows: the function, the unit's function of a
+     * symbol (callee), the problems found so far, the function's sizes and
+     * graph, and where each value is defined: its block, and its position in
+     * it (~1 for a block parameter) *)
+    Let Check = Tuple
+        f: Function
+        callee: All(symbol: String) maybe.T(Function)
+        problems: vector.T(String)
+        n: Int
+        nValues: Int
+        nSlots: Int
+        g: cfg.Graph
+        defBlock: Array(Int)
+        defIndex: Array(Int)
+    end
+
+    let problem(c: Check text: String): Ok = vector.append(c.problems "function " <> c.f.symbol <> ": " <> text)
+
+    let define(c: Check v: Int b: Int i: Int): Ok =
+        if {v < 0} orif {v >= c.nValues} then
+            problem(c "block " <> conv.int(b) <> " defines value " <> conv.int(v) <> ", which does not exist")
+        elsif c.defBlock[v] >= 0 then
+            problem(c "value %" <> conv.int(v) <> " is defined more than once")
+        else
+            c.defBlock[v] := b
+            c.defIndex[v] := i
+        end
+
+    let use(c: Check v: Int b: Int i: Int what: String): Ok =
+        if {v < 0} orif {v >= c.nValues} then
+            problem(c what <> " in block " <> conv.int(b) <> " uses value " <> conv.int(v) <> ", which does not exist")
+        elsif c.defBlock[v] < 0 then
+            problem(c what <> " in block " <> conv.int(b) <> " uses %" <> conv.int(v) <> ", which nothing defines")
+        elsif cfg.reached(c.g b) then
+            let dominated = if c.defBlock[v] is b then c.defIndex[v] < i else cfg.dominates(c.g c.defBlock[v] b) end
+            if not(dominated) then
+                problem(c what <> " in block " <> conv.int(b) <> " uses %" <> conv.int(v)
+                    <> ", whose definition does not dominate it")
+            end
+        end
+
+    let typeIs(c: Check v: Int t: Type what: String): Ok =
+        if {v >= 0} andif {v < c.nValues} andif not(sameType(nodes.typeOf(c.f v) t)) then
+            problem(c what <> ": %" <> conv.int(v) <> " is " <> nodes.typeName(nodes.typeOf(c.f v)) <> ", not "
+                <> nodes.typeName(t))
+        end
+
+    let isReal(c: Check v: Int): Bool =
+        case nodes.typeOf(c.f v) when typeReal then true when typeInt, typePtr, typeVal then false end
+    let isVal(c: Check v: Int): Bool =
+        case nodes.typeOf(c.f v) when typeVal then true when typeInt, typePtr, typeReal then false end
+
+    let argsAre(c: Check inst: nodes.Inst types: Array(Type) what: String): Ok =
+        if extent inst.args isnot extent types then
+            problem(c what <> " has " <> conv.int(extent inst.args) <> " arguments, not " <> conv.int(extent types))
+        else
+            for k = 0 upto {extent types - 1} do typeIs(c inst.args[k] types[k] what) end
+        end
+
+    let resultsAre(c: Check inst: nodes.Inst types: Array(Type) what: String): Ok =
+        if extent inst.results isnot extent types then
+            problem(c what <> " has " <> conv.int(extent inst.results) <> " results, not " <> conv.int(extent types))
+        else
+            for k = 0 upto {extent types - 1} do typeIs(c inst.results[k] types[k] what <> "'s result") end
+        end
+
+    (* Checks that sig matches params and results: one passing class per
+     * entry, every passPair followed by passPairRest, and passReal used if
+     * and only if the type is real *)
+    let signatureIsValid(c: Check sig: nodes.Signature params: Array(Type) results: Array(Type) what: String): Ok =
+        begin
+            let classes(ps: Array(nodes.Passed) types: Array(Type) name: String): Ok =
+                if extent ps isnot extent types then
+                    problem(c what <> "'s signature has " <> conv.int(extent ps) <> " " <> name <> ", not "
+                        <> conv.int(extent types))
+                else
+                    for k = 0 upto {extent ps - 1} do
+                        let isReal = sameType(types[k] nodes.typeReal)
+                        let rest = {k > 0} andif case ps[k - 1]
+                            when passPair then true
+                            when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false
+                        end
+                        let fits =
+                            case ps[k]
+                                when passReal then isReal
+                                when passPairRest then rest
+                                when passWord, passPair, passByte, passInt32, passMemory then not(isReal)
+                            end
+                        let missing = rest andif case ps[k]
+                            when passPairRest then false
+                            when passWord, passReal, passPair, passByte, passInt32, passMemory then true
+                        end
+                        (* A pair's first word last, its second
+                         * missing *)
+                        let unfinished = {k is {extent ps - 1}} andif case ps[k]
+                            when passPair then true
+                            when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false
+                        end
+                        if not(fits) orif missing orif unfinished then
+                            problem(c what <> "'s signature does not fit its " <> name <> " " <> conv.int(k))
+                        end
+                    end
+                end
+            classes(sig.params params "parameters")
+            classes(sig.results results "results")
+        end
+
+    let valueTypes(c: Check vs: Array(Int)): Array(Type) =
+        begin
+            let ts = array of(extent vs tInt)
+            for k = 0 upto {extent vs - 1} do
+                if {vs[k] >= 0} andif {vs[k] < c.nValues} then ts[k] := nodes.typeOf(c.f vs[k]) end
+            end
+            ts
+        end
+
+    (* Checks a call's signature, result count (at most 2), and—for a direct
+     * call to a function in the same unit—that its arguments and results
+     * match the callee *)
+    let callIsValid(c: Check inst: nodes.Inst what: String): Ok =
+        begin
+            signatureIsValid(c inst.signature valueTypes(c inst.args) valueTypes(c inst.results) what)
+            if extent inst.results > 2 then
+                problem(c what <> " has " <> conv.int(extent inst.results) <> " results")
+            end
+            if nodes.isOp(inst nodes.opCall) then
+                let target = c.callee(inst.symbol)
+                if maybe.isSome(target) then
+                    let t = maybe.unwrap(target)
+                    argsAre(c inst vector.toArray(t.paramTypes) what <> " " <> inst.symbol)
+                    resultsAre(c inst vector.toArray(t.resultTypes) what <> " " <> inst.symbol)
+                end
+            end
+        end
+
+    let checkTarget(c: Check t: nodes.Target from: Int what: String): Ok =
+        if {t.block < 0} orif {t.block >= c.n} then
+            problem(c what <> " in block " <> conv.int(from) <> " goes to block " <> conv.int(t.block)
+                <> ", which does not exist")
+        else
+            let params = nodes.block(c.f t.block).params
+            if extent t.args isnot vector.length(params) then
+                problem(c what <> " in block " <> conv.int(from) <> " passes " <> conv.int(extent t.args)
+                    <> " arguments to block " <> conv.int(t.block) <> ", which has " <> conv.int(vector.length(params))
+                    <> " parameters")
+            else
+                for k = 0 upto {extent t.args - 1} do
+                    typeIs(c t.args[k] nodes.typeOf(c.f vector.get(params k)) what <> " to block " <> conv.int(t.block))
+                end
+            end
+        end
+
+    (* Checks instruction inst, the i'th of block b: its uses, then its
+     * arguments' and results' types and counts, by its opcode *)
+    let instruction(c: Check b: Int i: Int inst: nodes.Inst): Ok =
+        begin
+            let what = nodes.opcodeName(inst.op)
+            for k = 0 upto {extent inst.args - 1} do use(c inst.args[k] b i what) end
+            let widthIsValid(): Ok =
+                if not({inst.width is 8} orif {inst.width is 4} orif {inst.width is 1}) then
+                    problem(c what <> " of width " <> conv.int(inst.width))
+                end
+            case inst.op
+                when opConst then
+                    argsAre(c inst noTypes what)
+                    resultsAre(c inst one(tInt) what)
+                when opRealConst then
+                    argsAre(c inst noTypes what)
+                    resultsAre(c inst one(tReal) what)
+                when opSymbol, opNull then
+                    argsAre(c inst noTypes what)
+                    resultsAre(c inst one(tPtr) what)
+                when opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr,
+                        opEq, opNe, opLt, opLe,
+                        opGt, opGe, opUlt then
+                    argsAre(c inst array of tInt tInt end what)
+                    resultsAre(c inst one(tInt) what)
+                when opPeq, opPne then
+                    argsAre(c inst array of tPtr tPtr end what)
+                    resultsAre(c inst one(tInt) what)
+                when opFadd, opFsub, opFmul, opFdiv then
+                    argsAre(c inst array of tReal tReal end what)
+                    resultsAre(c inst one(tReal) what)
+                when opFeq, opFlt, opFle, opFgt, opFge then
+                    argsAre(c inst array of tReal tReal end what)
+                    resultsAre(c inst one(tInt) what)
+                when opIsNaN, opRealBits then
+                    argsAre(c inst array of tReal end what)
+                    resultsAre(c inst one(tInt) what)
+                when opIntToPtr then
+                    argsAre(c inst one(tInt) what)
+                    resultsAre(c inst one(tPtr) what)
+                when opBitsReal, opIntToReal then
+                    argsAre(c inst one(tInt) what)
+                    resultsAre(c inst one(tReal) what)
+                when opSext8, opZext8 then
+                    argsAre(c inst one(tInt) what)
+                    resultsAre(c inst one(tInt) what)
+                when opPtrToInt then
+                    argsAre(c inst one(tPtr) what)
+                    resultsAre(c inst one(tInt) what)
+                when opLoad then
+                    if extent inst.args isnot 1 then
+                        problem(c "a load has " <> conv.int(extent inst.args) <> " arguments")
+                    else
+                        typeIs(c inst.args[0] tPtr what)
+                    end
+                    widthIsValid()
+                    if extent inst.results isnot 1 then
+                        problem(c "a load has " <> conv.int(extent inst.results) <> " results")
+                    elsif inst.width < 8 then
+                        (* A narrow load extends its bytes to an int *)
+                        typeIs(c inst.results[0] tInt what <> conv.int(inst.width))
+                    end
+                when opStore then
+                    if extent inst.args isnot 2 then
+                        problem(c "a store has " <> conv.int(extent inst.args) <> " arguments")
+                    else
+                        typeIs(c inst.args[0] tPtr what)
+                        (* A narrow store truncates an int *)
+                        if inst.width < 8 then typeIs(c inst.args[1] tInt what <> conv.int(inst.width)) end
+                    end
+                    widthIsValid()
+                    resultsAre(c inst noTypes what)
+                when opCall then callIsValid(c inst what)
+                when opCallIndirect then
+                    if extent inst.args < 1 then problem(c "an indirect call has no function")
+                    else typeIs(c inst.args[0] tPtr what)
+                    end
+                    callIsValid(c inst what)
+                when opSlot then
+                    argsAre(c inst noTypes what)
+                    resultsAre(c inst one(tPtr) what)
+                    if {inst.imm < 0} orif {inst.imm >= c.nSlots} then
+                        problem(c "slot " <> conv.int(inst.imm) <> " does not exist")
+                    end
+                when opPtrAdd then
+                    argsAre(c inst array of tPtr tInt end what)
+                    resultsAre(c inst one(tPtr) what)
+                (* A QVal word from an int or a ptr, and back *)
+                when opToVal then
+                    if {extent inst.args isnot 1} orif isReal(c inst.args[0]) orif isVal(c inst.args[0]) then
+                        problem(c what <> " of other than an int or a ptr")
+                    end
+                    resultsAre(c inst one(tVal) what)
+                when opFromVal then
+                    argsAre(c inst one(tVal) what)
+                    if {extent inst.results isnot 1} orif isReal(c inst.results[0])
+                            orif isVal(c inst.results[0]) then
+                        problem(c what <> " to other than an int or a ptr")
+                    end
+                (* An int, a ptr, or a QVal word, by an int *)
+                when opSelect then
+                    if {extent inst.args isnot 3} orif isReal(c inst.args[1]) then
+                        problem(c what <> " of other than three arguments, an int and two words")
+                    else
+                        typeIs(c inst.args[0] tInt what)
+                        typeIs(c inst.args[2] nodes.typeOf(c.f inst.args[1]) what)
+                        resultsAre(c inst one(nodes.typeOf(c.f inst.args[1])) what)
+                    end
+                (* The object a pointer that may be a proxy's is *)
+                when opUnproxy then
+                    argsAre(c inst one(tPtr) what)
+                    resultsAre(c inst one(tPtr) what)
+                when opCopy then
+                    if extent inst.args isnot 1 then
+                        problem(c "a copy has " <> conv.int(extent inst.args) <> " arguments")
+                    else
+                        resultsAre(c inst one(nodes.typeOf(c.f inst.args[0])) what)
+                    end
+            end
+        end
+
+    (* Checks block b's terminator: its uses, then its targets and values *)
+    let terminator(c: Check b: Int): Ok =
+        begin
+            let blk = nodes.block(c.f b)
+            let t = blk.term
+            let uses = nodes.terminatorUses(t)
+            for k = 0 upto {extent uses - 1} do use(c uses[k] b vector.length(blk.insts) "a terminator") end
+            case t
+                when termNone then problem(c "block " <> conv.int(b) <> " has no terminator")
+                when termJump with x then checkTarget(c x.target b "a jump")
+                when termBranch with x then
+                    typeIs(c x.cond tInt "a branch's condition")
+                    checkTarget(c x.ifTrue b "a branch")
+                    checkTarget(c x.ifFalse b "a branch")
+                when termSwitch with x then
+                    typeIs(c x.value tInt "a switch's value")
+                    if extent x.cases isnot extent x.targets then
+                        problem(c "a switch's cases are not its targets")
+                    end
+                    for k = 0 upto {extent x.cases - 1} do
+                        for j = 0 upto {k - 1} do
+                            if x.cases[j] is x.cases[k] then problem(c "a switch's case " <> conv.int(x.cases[k])
+                                <> " repeats") end
+                        end
+                    end
+                    for k = 0 upto {extent x.targets - 1} do checkTarget(c x.targets[k] b "a switch") end
+                    checkTarget(c x.default b "a switch")
+                when termReturn with x then
+                    if extent x.values isnot vector.length(c.f.resultTypes) then
+                        problem(c "block " <> conv.int(b) <> " returns " <> conv.int(extent x.values)
+                            <> " values, not "
+                            <> conv.int(vector.length(c.f.resultTypes)))
+                    else
+                        for k = 0 upto {extent x.values - 1} do
+                            typeIs(c x.values[k] vector.get(c.f.resultTypes k) "a return")
+                        end
+                    end
+                when termTailCall with x then
+                    let what = nodes.opcodeName(x.call.op)
+                    if nodes.isCall(x.call) then
+                        if nodes.isOp(x.call nodes.opCallIndirect) andif {extent x.call.args < 1} then
+                            problem(c "an indirect call has no function")
+                        end
+                        callIsValid(c x.call "a tail " <> what)
+                        (* A pointer may be returned as a QVal word, and
+                         * back (the tail calls pass looks through the
+                         * retyping, which changes no register) *)
+                        if extent x.call.results isnot vector.length(c.f.resultTypes) then
+                            resultsAre(c x.call vector.toArray(c.f.resultTypes) "a tail " <> what)
+                        else
+                            for k = 0 upto {extent x.call.results - 1} do
+                                let want = vector.get(c.f.resultTypes k)
+                                let have = nodes.typeOf(c.f x.call.results[k])
+                                let words = {sameType(want tVal) orif sameType(want tPtr)}
+                                    andif {sameType(have tVal) orif sameType(have tPtr)}
+                                if not(words) then
+                                    typeIs(c x.call.results[k] want "a tail " <> what <> "'s result")
+                                end
+                            end
+                        end
+                    else
+                        problem(c "block " <> conv.int(b) <> "'s tail call is a " <> what)
+                    end
+                when termTry with x then
+                    checkTarget(c x.body b "a try")
+                    if {x.slot < 0} orif {x.slot >= c.nSlots} then
+                        problem(c "a try's slot " <> conv.int(x.slot) <> " does not exist")
+                    end
+                    if {x.handler < 0} orif {x.handler >= c.n} then
+                        problem(c "a try's handler " <> conv.int(x.handler) <> " does not exist")
+                    else
+                        let hp = c.g.preds[x.handler]
+                        if {extent hp isnot 1} orif {hp[0] isnot b} then
+                            problem(c "block " <> conv.int(x.handler)
+                                <> ", a try's handler, is reached from elsewhere too")
+                        end
+                        if not(vector.empty(nodes.block(c.f x.handler).params)) then
+                            problem(c "block " <> conv.int(x.handler) <> ", a try's handler, has parameters")
+                        end
+                    end
+                when termUnreachable then ok
+            end
+        end
+
     (* The problems with f; callee is the unit's function of a symbol, if the
      * unit has one *)
     let problemsIn(f: Function callee: All(symbol: String) maybe.T(Function)): Array(String) =
         begin
-            let problems = vector.new(:String)
-            let where = "function " <> f.symbol
-            let problem(text: String): Ok = vector.append(problems where <> ": " <> text)
-            let n = blockCount(f)
             let nValues = vector.length(f.types)
-            let nSlots = vector.length(f.slots)
-            let g = cfg.graph(f)
-            (* Where each value is defined: its block, and its position in it
-             * (~1 for a block parameter) *)
-            let defBlock = array of(nValues ~1)
-            let defIndex = array of(nValues ~2)
-            let define(v: Int b: Int i: Int): Ok =
-                if {v < 0} orif {v >= nValues} then
-                    problem("block " <> conv.int(b) <> " defines value " <> conv.int(v) <> ", which does not exist")
-                elsif defBlock[v] >= 0 then
-                    problem("value %" <> conv.int(v) <> " is defined more than once")
-                else
-                    defBlock[v] := b
-                    defIndex[v] := i
-                end
-            for b = 0 upto {n - 1} do
+            let c = tuple
+                let f = f
+                let callee = callee
+                let problems = vector.new(:String)
+                let n = blockCount(f)
+                let nValues = nValues
+                let nSlots = vector.length(f.slots)
+                let g = cfg.graph(f)
+                let defBlock = array of(nValues ~1)
+                let defIndex = array of(nValues ~2)
+            end
+            for b = 0 upto {c.n - 1} do
                 let blk = nodes.block(f b)
-                for i = 0 upto {vector.length(blk.params) - 1} do define(vector.get(blk.params i) b ~1) end
+                for i = 0 upto {vector.length(blk.params) - 1} do define(c vector.get(blk.params i) b ~1) end
                 for i = 0 upto {vector.length(blk.insts) - 1} do
                     let inst = vector.get(blk.insts i)
-                    for r = 0 upto {extent inst.results - 1} do define(inst.results[r] b i) end
+                    for r = 0 upto {extent inst.results - 1} do define(c inst.results[r] b i) end
                 end
             end
             (* The entry's parameters are the function's *)
-            let entry = nodes.block(f 0)
-            if vector.length(entry.params) isnot vector.length(f.paramTypes) then
-                problem("its entry block's parameters are not its parameters")
+            if vector.length(nodes.block(f 0).params) isnot vector.length(f.paramTypes) then
+                problem(c "its entry block's parameters are not its parameters")
             end
-            let use(v: Int b: Int i: Int what: String): Ok =
-                if {v < 0} orif {v >= nValues} then
-                    problem(what <> " in block " <> conv.int(b) <> " uses value " <> conv.int(v)
-                        <> ", which does not exist")
-                elsif defBlock[v] < 0 then
-                    problem(what <> " in block " <> conv.int(b) <> " uses %" <> conv.int(v)
-                        <> ", which nothing defines")
-                elsif cfg.reached(g b) then
-                    let dominated = if defBlock[v] is b then defIndex[v] < i else cfg.dominates(g defBlock[v] b) end
-                    if not(dominated) then
-                        problem(what <> " in block " <> conv.int(b) <> " uses %" <> conv.int(v)
-                            <> ", whose definition does not dominate it")
-                    end
-                end
-            let typeIs(v: Int t: Type what: String): Ok =
-                if {v >= 0} andif {v < nValues} andif not(sameType(nodes.typeOf(f v) t)) then
-                    problem(what <> ": %" <> conv.int(v) <> " is " <> nodes.typeName(nodes.typeOf(f v)) <> ", not "
-                        <> nodes.typeName(t))
-                end
-            let tInt = nodes.typeInt
-            let tPtr = nodes.typePtr
-            let tReal = nodes.typeReal
-            let tVal = nodes.typeVal
-            let isReal(v: Int): Bool =
-                case nodes.typeOf(f v) when typeReal then true when typeInt, typePtr, typeVal then false end
-            let isVal(v: Int): Bool =
-                case nodes.typeOf(f v) when typeVal then true when typeInt, typePtr, typeReal then false end
-            let argsAre(inst: nodes.Inst types: Array(Type) what: String): Ok =
-                if extent inst.args isnot extent types then
-                    problem(what <> " has " <> conv.int(extent inst.args) <> " arguments, not "
-                        <> conv.int(extent types))
-                else
-                    for k = 0 upto {extent types - 1} do typeIs(inst.args[k] types[k] what) end
-                end
-            let resultsAre(inst: nodes.Inst types: Array(Type) what: String): Ok =
-                if extent inst.results isnot extent types then
-                    problem(what <> " has " <> conv.int(extent inst.results) <> " results, not "
-                        <> conv.int(extent types))
-                else
-                    for k = 0 upto {extent types - 1} do typeIs(inst.results[k] types[k] what <> "'s result") end
-                end
-            let one(t: Type): Array(Type) = array of t end
-            let noTypes = array of :Type end
-            (* Checks that sig matches params and results: one passing class
-             * per entry, every passPair followed by passPairRest, and passReal
-             * used if and only if the type is real *)
-            let signatureIsValid(sig: nodes.Signature params: Array(Type) results: Array(Type) what: String): Ok =
-                begin
-                    let classes(ps: Array(nodes.Passed) types: Array(Type) name: String): Ok =
-                        if extent ps isnot extent types then
-                            problem(what <> "'s signature has " <> conv.int(extent ps) <> " " <> name <> ", not "
-                                <> conv.int(extent types))
-                        else
-                            for k = 0 upto {extent ps - 1} do
-                                let isReal = sameType(types[k] tReal)
-                                let rest = {k > 0} andif case ps[k - 1]
-                                    when passPair then true
-                                    when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false
-                                end
-                                let fits =
-                                    case ps[k]
-                                        when passReal then isReal
-                                        when passPairRest then rest
-                                        when passWord, passPair, passByte, passInt32, passMemory then not(isReal)
-                                    end
-                                let missing = rest andif case ps[k]
-                                    when passPairRest then false
-                                    when passWord, passReal, passPair, passByte, passInt32, passMemory then true
-                                end
-                                (* A pair's first word last, its second
-                                 * missing *)
-                                let unfinished = {k is {extent ps - 1}} andif case ps[k]
-                                    when passPair then true
-                                    when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false
-                                end
-                                if not(fits) orif missing orif unfinished then
-                                    problem(what <> "'s signature does not fit its " <> name <> " " <> conv.int(k))
-                                end
-                            end
-                        end
-                    classes(sig.params params "parameters")
-                    classes(sig.results results "results")
-                end
-            let valueTypes(vs: Array(Int)): Array(Type) =
-                begin
-                    let ts = array of(extent vs tInt)
-                    for k = 0 upto {extent vs - 1} do if {vs[k] >= 0}
-                            andif {vs[k] < nValues} then ts[k] := nodes.typeOf(f vs[k]) end end
-                    ts
-                end
-            (* Checks a call's signature, result count (at most 2), and—for a
-             * direct call to a function in the same unit—that its arguments
-             * and results match the callee *)
-            let callIsValid(inst: nodes.Inst what: String): Ok =
-                begin
-                    signatureIsValid(inst.signature valueTypes(inst.args) valueTypes(inst.results) what)
-                    if extent inst.results > 2 then problem(what <> " has " <> conv.int(extent inst.results)
-                        <> " results") end
-                    if nodes.isOp(inst nodes.opCall) then
-                        let target = callee(inst.symbol)
-                        if maybe.isSome(target) then
-                            let c = maybe.unwrap(target)
-                            argsAre(inst vector.toArray(c.paramTypes) what <> " " <> inst.symbol)
-                            resultsAre(inst vector.toArray(c.resultTypes) what <> " " <> inst.symbol)
-                        end
-                    end
-                end
-            let checkTarget(t: nodes.Target from: Int what: String): Ok =
-                if {t.block < 0} orif {t.block >= n} then
-                    problem(what <> " in block " <> conv.int(from) <> " goes to block " <> conv.int(t.block)
-                        <> ", which does not exist")
-                else
-                    let params = nodes.block(f t.block).params
-                    if extent t.args isnot vector.length(params) then
-                        problem(what <> " in block " <> conv.int(from) <> " passes " <> conv.int(extent t.args)
-                            <> " arguments to block " <> conv.int(t.block) <> ", which has "
-                            <> conv.int(vector.length(params))
-                            <> " parameters")
-                    else
-                        for k = 0 upto {extent t.args - 1} do
-                            typeIs(t.args[k] nodes.typeOf(f vector.get(params k)) what <> " to block "
-                                <> conv.int(t.block))
-                        end
-                    end
-                end
-            signatureIsValid(f.signature vector.toArray(f.paramTypes) vector.toArray(f.resultTypes)
-                    "the function")
-            for b = 0 upto {n - 1} do
+            signatureIsValid(c f.signature vector.toArray(f.paramTypes) vector.toArray(f.resultTypes) "the function")
+            for b = 0 upto {c.n - 1} do
                 let blk = nodes.block(f b)
-                let count = vector.length(blk.insts)
-                for i = 0 upto {count - 1} do
-                    let inst = vector.get(blk.insts i)
-                    let what = nodes.opcodeName(inst.op)
-                    for k = 0 upto {extent inst.args - 1} do use(inst.args[k] b i what) end
-                    let widthIsValid(): Ok =
-                        if not({inst.width is 8} orif {inst.width is 4} orif {inst.width is 1}) then
-                            problem(what <> " of width " <> conv.int(inst.width))
-                        end
-                    case inst.op
-                        when opConst then
-                            argsAre(inst noTypes what)
-                            resultsAre(inst one(tInt) what)
-                        when opRealConst then
-                            argsAre(inst noTypes what)
-                            resultsAre(inst one(tReal) what)
-                        when opSymbol, opNull then
-                            argsAre(inst noTypes what)
-                            resultsAre(inst one(tPtr) what)
-                        when opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr,
-                                opEq, opNe, opLt, opLe,
-                                opGt, opGe, opUlt then
-                            argsAre(inst array of tInt tInt end what)
-                            resultsAre(inst one(tInt) what)
-                        when opPeq, opPne then
-                            argsAre(inst array of tPtr tPtr end what)
-                            resultsAre(inst one(tInt) what)
-                        when opFadd, opFsub, opFmul, opFdiv then
-                            argsAre(inst array of tReal tReal end what)
-                            resultsAre(inst one(tReal) what)
-                        when opFeq, opFlt, opFle, opFgt, opFge then
-                            argsAre(inst array of tReal tReal end what)
-                            resultsAre(inst one(tInt) what)
-                        when opIsNaN, opRealBits then
-                            argsAre(inst array of tReal end what)
-                            resultsAre(inst one(tInt) what)
-                        when opIntToPtr then
-                            argsAre(inst one(tInt) what)
-                            resultsAre(inst one(tPtr) what)
-                        when opBitsReal, opIntToReal then
-                            argsAre(inst one(tInt) what)
-                            resultsAre(inst one(tReal) what)
-                        when opSext8, opZext8 then
-                            argsAre(inst one(tInt) what)
-                            resultsAre(inst one(tInt) what)
-                        when opPtrToInt then
-                            argsAre(inst one(tPtr) what)
-                            resultsAre(inst one(tInt) what)
-                        when opLoad then
-                            if extent inst.args isnot 1 then
-                                problem("a load has " <> conv.int(extent inst.args) <> " arguments")
-                            else
-                                typeIs(inst.args[0] tPtr what)
-                            end
-                            widthIsValid()
-                            if extent inst.results isnot 1 then
-                                problem("a load has " <> conv.int(extent inst.results) <> " results")
-                            elsif inst.width < 8 then
-                                (* A narrow load extends its bytes to an int *)
-                                typeIs(inst.results[0] tInt what <> conv.int(inst.width))
-                            end
-                        when opStore then
-                            if extent inst.args isnot 2 then
-                                problem("a store has " <> conv.int(extent inst.args) <> " arguments")
-                            else
-                                typeIs(inst.args[0] tPtr what)
-                                (* A narrow store truncates an int *)
-                                if inst.width < 8 then typeIs(inst.args[1] tInt what <> conv.int(inst.width)) end
-                            end
-                            widthIsValid()
-                            resultsAre(inst noTypes what)
-                        when opCall then callIsValid(inst what)
-                        when opCallIndirect then
-                            if extent inst.args < 1 then problem("an indirect call has no function")
-                            else typeIs(inst.args[0] tPtr what)
-                            end
-                            callIsValid(inst what)
-                        when opSlot then
-                            argsAre(inst noTypes what)
-                            resultsAre(inst one(tPtr) what)
-                            if {inst.imm < 0} orif {inst.imm >= nSlots} then
-                                problem("slot " <> conv.int(inst.imm) <> " does not exist")
-                            end
-                        when opPtrAdd then
-                            argsAre(inst array of tPtr tInt end what)
-                            resultsAre(inst one(tPtr) what)
-                        (* A QVal word from an int or a ptr, and back *)
-                        when opToVal then
-                            if {extent inst.args isnot 1} orif isReal(inst.args[0]) orif isVal(inst.args[0]) then
-                                problem(what <> " of other than an int or a ptr")
-                            end
-                            resultsAre(inst one(tVal) what)
-                        when opFromVal then
-                            argsAre(inst one(tVal) what)
-                            if {extent inst.results isnot 1} orif isReal(inst.results[0])
-                                    orif isVal(inst.results[0]) then
-                                problem(what <> " to other than an int or a ptr")
-                            end
-                        (* An int, a ptr, or a QVal word, by an int *)
-                        when opSelect then
-                            if {extent inst.args isnot 3} orif isReal(inst.args[1]) then
-                                problem(what <> " of other than three arguments, an int and two words")
-                            else
-                                typeIs(inst.args[0] tInt what)
-                                typeIs(inst.args[2] nodes.typeOf(f inst.args[1]) what)
-                                resultsAre(inst one(nodes.typeOf(f inst.args[1])) what)
-                            end
-                        (* The object a pointer that may be a proxy's is *)
-                        when opUnproxy then
-                            argsAre(inst one(tPtr) what)
-                            resultsAre(inst one(tPtr) what)
-                        when opCopy then
-                            if extent inst.args isnot 1 then
-                                problem("a copy has " <> conv.int(extent inst.args) <> " arguments")
-                            else
-                                resultsAre(inst one(nodes.typeOf(f inst.args[0])) what)
-                            end
-                    end
-                end
-                let t = blk.term
-                let uses = nodes.terminatorUses(t)
-                for k = 0 upto {extent uses - 1} do use(uses[k] b count "a terminator") end
-                case t
-                    when termNone then problem("block " <> conv.int(b) <> " has no terminator")
-                    when termJump with x then checkTarget(x.target b "a jump")
-                    when termBranch with x then
-                        typeIs(x.cond tInt "a branch's condition")
-                        checkTarget(x.ifTrue b "a branch")
-                        checkTarget(x.ifFalse b "a branch")
-                    when termSwitch with x then
-                        typeIs(x.value tInt "a switch's value")
-                        if extent x.cases isnot extent x.targets then
-                            problem("a switch's cases are not its targets")
-                        end
-                        for k = 0 upto {extent x.cases - 1} do
-                            for j = 0 upto {k - 1} do
-                                if x.cases[j] is x.cases[k] then problem("a switch's case " <> conv.int(x.cases[k])
-                                    <> " repeats") end
-                            end
-                        end
-                        for k = 0 upto {extent x.targets - 1} do checkTarget(x.targets[k] b "a switch") end
-                        checkTarget(x.default b "a switch")
-                    when termReturn with x then
-                        if extent x.values isnot vector.length(f.resultTypes) then
-                            problem("block " <> conv.int(b) <> " returns " <> conv.int(extent x.values)
-                                <> " values, not "
-                                <> conv.int(vector.length(f.resultTypes)))
-                        else
-                            for k = 0 upto {extent x.values - 1} do
-                                typeIs(x.values[k] vector.get(f.resultTypes k) "a return")
-                            end
-                        end
-                    when termTailCall with x then
-                        let what = nodes.opcodeName(x.call.op)
-                        if nodes.isCall(x.call) then
-                            if nodes.isOp(x.call nodes.opCallIndirect) andif {extent x.call.args < 1} then
-                                problem("an indirect call has no function")
-                            end
-                            callIsValid(x.call "a tail " <> what)
-                            (* A pointer may be returned as a QVal word, and
-                             * back (the tail calls pass looks through the
-                             * retyping, which changes no register) *)
-                            if extent x.call.results isnot vector.length(f.resultTypes) then
-                                resultsAre(x.call vector.toArray(f.resultTypes) "a tail " <> what)
-                            else
-                                for k = 0 upto {extent x.call.results - 1} do
-                                    let want = vector.get(f.resultTypes k)
-                                    let have = nodes.typeOf(f x.call.results[k])
-                                    let words = {sameType(want tVal) orif sameType(want tPtr)}
-                                        andif {sameType(have tVal) orif sameType(have tPtr)}
-                                    if not(words) then
-                                        typeIs(x.call.results[k] want "a tail " <> what <> "'s result")
-                                    end
-                                end
-                            end
-                        else
-                            problem("block " <> conv.int(b) <> "'s tail call is a " <> what)
-                        end
-                    when termTry with x then
-                        checkTarget(x.body b "a try")
-                        if {x.slot < 0} orif {x.slot >= nSlots} then
-                            problem("a try's slot " <> conv.int(x.slot) <> " does not exist")
-                        end
-                        if {x.handler < 0} orif {x.handler >= n} then
-                            problem("a try's handler " <> conv.int(x.handler) <> " does not exist")
-                        else
-                            let hp = g.preds[x.handler]
-                            if {extent hp isnot 1} orif {hp[0] isnot b} then
-                                problem("block " <> conv.int(x.handler)
-                                    <> ", a try's handler, is reached from elsewhere too")
-                            end
-                            if not(vector.empty(nodes.block(f x.handler).params)) then
-                                problem("block " <> conv.int(x.handler) <> ", a try's handler, has parameters")
-                            end
-                        end
-                    when termUnreachable then ok
-                end
+                for i = 0 upto {vector.length(blk.insts) - 1} do instruction(c b i vector.get(blk.insts i)) end
+                terminator(c b)
             end
-            vector.toArray(problems)
+            vector.toArray(c.problems)
         end
 
     let functionProblems(f: Function): Array(String) = problemsIn(f fun(symbol: String): maybe.T(Function)
