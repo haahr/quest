@@ -20,9 +20,6 @@ import
 export
     Let Type = model.Type
 
-    let internal(A::TYPE what: String expr: ast.Expr): A =
-        diagnostics.fail("internal: not " <> what expr.span.startOffset)
-
     (* The auto type of an inspect target *)
     let inspectedAutoType(target: typedAst.Expr): maybe.T(model.Type) =
         begin
@@ -160,7 +157,7 @@ export
                         let autoType = inspectedAutoType(targetTyped)
                     end)
                 end
-            else internal("an inspect" expr)
+            else checks.unexpected("an inspect" expr.span.startOffset)
         end
 
     (* Checks that witness has the kind, else fails with message *)
@@ -222,6 +219,6 @@ export
                         let payload = payloadTyped
                     end)
                 end
-            else internal("an auto value" expr)
+            else checks.unexpected("an auto value" expr.span.startOffset)
         end
 end

@@ -25,9 +25,8 @@ export
     Let Kind = model.Kind
     Let TupleTypeBinding = Tuple member: ast.TypeBinding sym: symbols.TypeSymbol bound: maybe.T(model.Kind) end
 
-    let some(e: env.T): kinds.Env = maybe.some(e)
-    let checkKind(t: Type k: Kind e: env.T): Ok = kinds.checkKind(t k some(e))
-    let checkKindWellFormed(k: Kind e: env.T): Ok = kinds.checkKindWellFormed(k some(e))
+    let checkKind(t: Type k: Kind e: env.T): Ok = kinds.checkKind(t k maybe.some(e))
+    let checkKindWellFormed(k: Kind e: env.T): Ok = kinds.checkKindWellFormed(k maybe.some(e))
     let declare(e: env.T sym: symbols.TypeSymbol): symbols.TypeSymbol = symbols.declareType(e.currentScope sym)
     let declareVariable(e: env.T name: String symbolId: Int kind: Kind): Ok =
         begin declare(e symbols.newTypeSymbol(name symbolId kind maybe.none())) ok end
@@ -348,7 +347,8 @@ export
                             let body = elaborateType(x.body e)
                             let ids = newIds()
                             hashSet.insert(ids symbolId)
-                            contractiveness.checkTypeContractive(body ids x.varName x.body.span.startOffset some(e))
+                            contractiveness.checkTypeContractive(body ids x.varName x.body.span.startOffset
+                                    maybe.some(e))
                             model.recType(x.varName symbolId bound body)
                         end)
                 when typeArray with x then model.arrayType(elaborateType(x.elementType e))
@@ -882,7 +882,7 @@ export
                             end
                         let body = elaborateType(vector.get(shapes i).body e)
                         checkKind(body bound e)
-                        contractiveness.checkTypeContractive(body recIds member.name member.offset some(e))
+                        contractiveness.checkTypeContractive(body recIds member.name member.offset maybe.some(e))
                         let recId = case recVar.form when typeVariable with v then v.symbolId else 0 end
                         vector.append(entries tuple
                             let name = member.name
@@ -997,7 +997,7 @@ export
                             checkKind(body targetBound e)
                             let ids = newIds()
                             hashSet.insert(ids symbolId)
-                            contractiveness.checkTypeContractive(body ids b.name b.offset some(e))
+                            contractiveness.checkTypeContractive(body ids b.name b.offset maybe.some(e))
                             tuple let type = model.recType(b.name symbolId targetBound body) let kind = targetBound end
                         end)
                 else
@@ -1012,7 +1012,7 @@ export
                         checkKind(t targetBound e)
                         tuple let type = t let kind = targetBound end
                     else
-                        tuple let type = t let kind = kinds.synthKind(t some(e)) end
+                        tuple let type = t let kind = kinds.synthKind(t maybe.some(e)) end
                     end
                 end
             (* Validate overall kind conformance *)
@@ -1082,7 +1082,7 @@ export
                                 let p = vector.get(pre i)
                                 let body = elaborateType(p.b.typeVal e)
                                 checkKind(body p.bound e)
-                                contractiveness.checkTypeContractive(body ids p.name p.b.offset some(e))
+                                contractiveness.checkTypeContractive(body ids p.name p.b.offset maybe.some(e))
                                 vector.append(entries tuple
                                     let name = p.name
                                     let symbolId = p.symbolId

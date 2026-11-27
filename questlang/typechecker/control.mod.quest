@@ -30,14 +30,7 @@ import
 export
     Let Type = model.Type
 
-    let some(e: env.T): kinds.Env = maybe.some(e)
-    let evaluate(t: Type): Type = model.evaluateLazily(t symbols.lookup)
-    let isSubtype(a: Type b: Type e: env.T): Bool = subtyping.isSubtype(a b env.lookupOf(e))
-    let expr(offset: Int t: Type form: typedAst.ExprForm): typedAst.Expr = typedAst.expr(offset t form)
-    let internal(A::TYPE what: String x: ast.Expr): A = diagnostics.fail("internal: not " <> what x.span.startOffset)
-    let okExpr(offset: Int): typedAst.Expr = expr(offset model.okType option exprOk of typedAst.ExprForm end)
-    let notDesugared(A::TYPE className: String x: ast.Expr): A =
-        diagnostics.raiseError(checks.notDesugared(className x.span.startOffset))
+    let okExpr(offset: Int): typedAst.Expr = typedAst.expr(offset model.okType option exprOk of typedAst.ExprForm end)
     let newIds(): maps.IntSet = maps.newIntSet()
 
     (* ======================================================================
@@ -115,7 +108,7 @@ export
                     when typeVariant with v then variantTags(v.variants)
                     else
                         begin
-                            let bound = kinds.resolveSumBound(targetType some(e))
+                            let bound = kinds.resolveSumBound(targetType maybe.some(e))
                             if maybe.isSome(bound) then
                                 case maybe.unwrap(bound).form
                                     when typeVariant with v then variantTags(v.variants)
@@ -162,7 +155,7 @@ export
                                 let t = elaborateTypes.elaborateType(maybe.unwrap(branch.binderType) e)
                                 for j = 0 upto {tagCount - 1} do
                                     let payload = vector.get(payloads j)
-                                    if not(isSubtype(payload t e)) then
+                                    if not(checks.isSubtype(payload t e)) then
                                         diagnostics.fail(:Ok "Binder '" <> binder <> "' type '" <> model.show(t)
                                             <> "' is not compatible with payload '" <> model.show(payload)
                                             <> "'" branch.offset)
@@ -234,7 +227,7 @@ export
             when exprCase with x then
                 begin
                     let targetTyped = checker.synthExpr(c x.target e loopDepth)
-                    let targetType = evaluate(targetTyped.type)
+                    let targetType = checks.evaluate(targetTyped.type)
                     let branches =
                         elaborateCaseBranches(c x0 x.target x.branches x.elseBranch targetType expected e loopDepth)
                     let elseTyped = checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
@@ -262,13 +255,13 @@ export
                             let binder = b.binder
                         end)
                     end
-                    expr(x0.span.startOffset joined.type option exprCase of typedAst.ExprForm with
+                    typedAst.expr(x0.span.startOffset joined.type option exprCase of typedAst.ExprForm with
                         let target = targetTyped
                         let branches = vector.toArray(joinedBranches)
                         let elseBranch = joined.elseBranch
                     end)
                 end
-            else internal("a case" x0)
+            else checks.unexpected("a case" x0.span.startOffset)
         end
 
     (* ======================================================================
@@ -327,12 +320,13 @@ export
                         if not(sym.isVar) andif not(sym.isOut) then
                             diagnostics.fail(:Ok "Cannot assign to immutable variable '" <> id.name <> "'" idOff)
                         end
-                        let targetNode = expr(idOff model.varType(sym.type) option exprVar of typedAst.ExprForm with
-                            let name = sym.name
-                            let symbol = sym
-                        end)
+                        let targetNode =
+                            typedAst.expr(idOff model.varType(sym.type) option exprVar of typedAst.ExprForm with
+                                let name = sym.name
+                                let symbol = sym
+                            end)
                         let rhsTyped = checker.checkExpr(c right sym.type e loopDepth)
-                        expr(offset model.okType assignForm(targetNode rhsTyped))
+                        typedAst.expr(offset model.okType assignForm(targetNode rhsTyped))
                     end
                 (* Target 2: a record or tuple field (r.field := rhs, t.field :=
                  * rhs) *)
@@ -341,12 +335,12 @@ export
                         let selOff = left.span.startOffset
                         let field = sel.field
                         let targetTyped = checker.synthExpr(c sel.target e loopDepth)
-                        let var targetType = evaluate(targetTyped.type)
+                        let var targetType = checks.evaluate(targetTyped.type)
                         let isTuple = case targetType.form when typeTuple then true else false end
-                        if not(isTuple) andif maybe.isNone(kinds.resolveRecordBound(targetType some(e))) then
+                        if not(isTuple) andif maybe.isNone(kinds.resolveRecordBound(targetType maybe.some(e))) then
                             (* A type parameter bounded by a tuple type is
                              * assigned through its bound *)
-                            targetType := maybe.unwrapOr(kinds.resolveTupleBound(targetType some(e)) targetType)
+                            targetType := maybe.unwrapOr(kinds.resolveTupleBound(targetType maybe.some(e)) targetType)
                         end
                         case targetType.form
                             when typeTuple with t then
@@ -381,15 +375,16 @@ export
                                             <> "'" selOff)
                                     end
                                     let rhsTyped = checker.checkExpr(c right f.type e loopDepth)
-                                    let targetSelect = expr(selOff f.type option exprSelect of typedAst.ExprForm with
-                                        let target = targetTyped
-                                        let field = field
-                                    end)
-                                    expr(offset model.okType assignForm(targetSelect rhsTyped))
+                                    let targetSelect =
+                                        typedAst.expr(selOff f.type option exprSelect of typedAst.ExprForm with
+                                            let target = targetTyped
+                                            let field = field
+                                        end)
+                                    typedAst.expr(offset model.okType assignForm(targetSelect rhsTyped))
                                 end
                             else
                                 begin
-                                    let recBound = kinds.resolveRecordBound(targetType some(e))
+                                    let recBound = kinds.resolveRecordBound(targetType maybe.some(e))
                                     if maybe.isNone(recBound) then
                                         diagnostics.fail(:Ok "Cannot mutate field of non-record type '"
                                             <> model.show(targetType)
@@ -410,17 +405,18 @@ export
                                             <> "'" selOff)
                                     end
                                     let rhsTyped = checker.checkExpr(c right f.type e loopDepth)
-                                    let targetSelect = expr(selOff f.type option exprSelect of typedAst.ExprForm with
-                                        let target = targetTyped
-                                        let field = field
-                                    end)
-                                    expr(offset model.okType assignForm(targetSelect rhsTyped))
+                                    let targetSelect =
+                                        typedAst.expr(selOff f.type option exprSelect of typedAst.ExprForm with
+                                            let target = targetTyped
+                                            let field = field
+                                        end)
+                                    typedAst.expr(offset model.okType assignForm(targetSelect rhsTyped))
                                 end
                         end
                     end
                 (* Desugaring has made an assignment to an array element an
                  * index assignment *)
-                when exprIndex then notDesugared("ExprInfix" x0)
+                when exprIndex then checks.notDesugared("ExprInfix" x0.span.startOffset)
                 else
                     diagnostics.fail("Assignment target must be a mutable variable or field" left.span.startOffset)
             end
@@ -436,18 +432,18 @@ export
                     if stringOp.equal(op ":=") then
                         synthAssignment(c x0 x.left x.right e loopDepth)
                     elsif stringOp.equal(op "andif") orif stringOp.equal(op "orif") then
-                        notDesugared("ExprInfix" x0)
+                        checks.notDesugared("ExprInfix" x0.span.startOffset)
                     elsif maybe.isSome(infix) then
                         let o = maybe.unwrap(infix)
                         let leftTyped = checker.checkExpr(c x.left o.left e loopDepth)
                         let rightTyped = checker.checkExpr(c x.right o.right e loopDepth)
-                        expr(offset o.result infixForm(leftTyped op rightTyped))
+                        typedAst.expr(offset o.result infixForm(leftTyped op rightTyped))
                     elsif stringOp.equal(op "is") orif stringOp.equal(op "isnot") then
                         let leftTyped = checker.synthExpr(c x.left e loopDepth)
                         let rightTyped = checker.synthExpr(c x.right e loopDepth)
-                        if isSubtype(leftTyped.type rightTyped.type e)
-                                orif isSubtype(rightTyped.type leftTyped.type e) then
-                            expr(offset model.boolType infixForm(leftTyped op rightTyped))
+                        if checks.isSubtype(leftTyped.type rightTyped.type e)
+                                orif checks.isSubtype(rightTyped.type leftTyped.type e) then
+                            typedAst.expr(offset model.boolType infixForm(leftTyped op rightTyped))
                         else
                             diagnostics.fail("Equality operator '" <> op
                                 <> "' requires operands of compatible types, got '" <> model.show(leftTyped.type)
@@ -461,10 +457,10 @@ export
                     else
                         (* Other infix operators are desugared into calls: a op
                          * b is op(a, b) *)
-                        notDesugared("ExprInfix" x0)
+                        checks.notDesugared("ExprInfix" x0.span.startOffset)
                     end
                 end
-            else internal("an infix expression" x0)
+            else checks.unexpected("an infix expression" x0.span.startOffset)
         end
 
     (* ======================================================================
@@ -476,7 +472,7 @@ export
             when exprIf with x then
                 begin
                     let offset = x0.span.startOffset
-                    if not(vector.empty(x.elsifs)) then notDesugared(:Ok "ExprIf" x0) end
+                    if not(vector.empty(x.elsifs)) then checks.notDesugared(:Ok "ExprIf" x0.span.startOffset) end
                     let expected = if x.shortCircuit then maybe.some(model.boolType) else expected0 end
                     let condTyped = checker.checkExpr(c x.cond model.boolType e loopDepth)
                     let ifForm(thenBranch: typedAst.Expr elseBranch: typedAst.Expr): typedAst.ExprForm =
@@ -491,24 +487,24 @@ export
                         let stmt = typedAst.binding(thenOffset option bindExprStmt of typedAst.BindingForm with
                             let expr = thenTyped
                         end)
-                        let thenBody = expr(thenOffset model.okType option exprBlock of typedAst.ExprForm with
+                        let thenBody = typedAst.expr(thenOffset model.okType option exprBlock of typedAst.ExprForm with
                             let bindings = array of stmt end
                             let result = okExpr(thenOffset)
                         end)
-                        expr(offset model.okType ifForm(thenBody okExpr(offset)))
+                        typedAst.expr(offset model.okType ifForm(thenBody okExpr(offset)))
                     else
                         let thenTyped = checker.elaborateSubexpr(c x.thenBranch expected e loopDepth)
                         let elseTyped = checker.elaborateSubexpr(c maybe.unwrap(x.elseBranch) expected e loopDepth)
                         if maybe.isSome(expected) then
-                            expr(offset maybe.unwrap(expected) ifForm(thenTyped elseTyped))
+                            typedAst.expr(offset maybe.unwrap(expected) ifForm(thenTyped elseTyped))
                         else
                             let joined = checks.joinBranches(array of thenTyped elseTyped end e offset
                                     maybe.some("Cannot find common supertype for conditional branches '{t1}' and '{t2}'"))
-                            expr(offset joined.type ifForm(joined.parts[0] joined.parts[1]))
+                            typedAst.expr(offset joined.type ifForm(joined.parts[0] joined.parts[1]))
                         end
                     end
                 end
-            else internal("a conditional" x0)
+            else checks.unexpected("a conditional" x0.span.startOffset)
         end
 
     let synthFor(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
@@ -528,7 +524,7 @@ export
                                 checker.synthExpr(c x.body e c.loopDepth))
                             tuple let sym = sym let body = body end
                         end)
-                    expr(x0.span.startOffset model.okType option exprFor of typedAst.ExprForm with
+                    typedAst.expr(x0.span.startOffset model.okType option exprFor of typedAst.ExprForm with
                         let varName = x.varName
                         let symbol = looped.sym
                         let start = startTyped
@@ -537,7 +533,7 @@ export
                         let body = looped.body
                     end)
                 end
-            else internal("a for loop" x0)
+            else checks.unexpected("a for loop" x0.span.startOffset)
         end
 
     (* ======================================================================
@@ -600,7 +596,8 @@ export
                          * without another error *)
                         if state.failed then diagnostics.raiseError(:Ok diagnostics.silentError) end
                         if maybe.isNone(result) then
-                            if maybe.isSome(expected) andif not(isSubtype(model.okType maybe.unwrap(expected) e)) then
+                            if maybe.isSome(expected)
+                                    andif not(checks.isSubtype(model.okType maybe.unwrap(expected) e)) then
                                 let what = if n > 0 then "Block ending with declaration" else "Empty block" end
                                 diagnostics.fail(:Ok what <> " has type Ok, not expected type '"
                                     <> model.show(maybe.unwrap(expected)) <> "'" offset)
@@ -618,11 +615,11 @@ export
                                 escape.checkNoEscapingPathTypes(resultExpr.type ids "its scope" resultExpr.offset)
                                 resultExpr.type
                             end
-                        expr(offset resultType option exprBlock of typedAst.ExprForm with
+                        typedAst.expr(offset resultType option exprBlock of typedAst.ExprForm with
                             let bindings = vector.toArray(typed)
                             let result = resultExpr
                         end)
                     end)
-            else internal("a block" x0)
+            else checks.unexpected("a block" x0.span.startOffset)
         end
 end

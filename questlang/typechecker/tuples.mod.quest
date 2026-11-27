@@ -20,18 +20,10 @@ import
     questlang/types/env : questlang/types/Env
     questlang/types/kinds : questlang/types/Kinds
     questlang/types/model : questlang/types/Model
-    questlang/types/subtyping : questlang/types/Subtyping
     questlang/types/symbols : questlang/types/Symbols
 export
     Let Type = model.Type
     Let Kind = model.Kind
-
-    let some(e: env.T): kinds.Env = maybe.some(e)
-    let evaluate(t: Type): Type = model.evaluateLazily(t symbols.lookup)
-    let isSubtype(a: Type b: Type e: env.T): Bool = subtyping.isSubtype(a b env.lookupOf(e))
-    let isTypeEqual(a: Type b: Type e: env.T): Bool = subtyping.isTypeEqual(a b env.lookupOf(e))
-    let expr(offset: Int t: Type form: typedAst.ExprForm): typedAst.Expr = typedAst.expr(offset t form)
-    let internal(A::TYPE what: String x: ast.Expr): A = diagnostics.fail("internal: not " <> what x.span.startOffset)
 
     (* A component of a tuple after flattening declarations' members: a type
      * binding of a type declaration (its index in typeGroups), a member of a
@@ -133,7 +125,7 @@ export
                 end
 
             let witnessExpr(offset: Int name: String t: Type bound: maybe.T(Kind)): typedAst.Expr =
-                expr(offset model.okType option exprTypeWitness of typedAst.ExprForm with
+                typedAst.expr(offset model.okType option exprTypeWitness of typedAst.ExprForm with
                     let name = name
                     let witnessType = t
                     let bound = bound
@@ -181,7 +173,7 @@ export
                                         end
                                         let witnessType = maybe.unwrap(witnessOf(t.group t.pos).sym.definition)
                                         let expectedBound = model.substituteInKind(f.bound witnessSubst)
-                                        kinds.checkKind(witnessType expectedBound some(e))
+                                        kinds.checkKind(witnessType expectedBound maybe.some(e))
                                         hashMap.insert(witnessSubst f.symbolId witnessType)
                                         symbols.declareType(e.currentScope
                                                 symbols.newTypeSymbol(f.name f.symbolId expectedBound
@@ -210,7 +202,7 @@ export
                                         end
                                         let witnessType = maybe.unwrap(witnessOf(t.group t.pos).sym.definition)
                                         let expectedTypeVal = model.substitute(f.type witnessSubst)
-                                        if not(isTypeEqual(witnessType expectedTypeVal e)) then
+                                        if not(checks.isTypeEqual(witnessType expectedTypeVal e)) then
                                             diagnostics.fail(:Ok "Type binding '" <> f.name
                                                 <> "' must match manifest type '"
                                                 <> model.show(expectedTypeVal) <> "', got '" <> model.show(witnessType)
@@ -329,7 +321,7 @@ export
                                                             v.value.symbol.isVar))
                                                     tuple let value = v.value.value let sym = v.value.symbol end
                                                 end
-                                            else diagnostics.fail("internal: not a let declaration" itemOffset)
+                                            else checks.unexpected("a let declaration" itemOffset)
                                         end
                                     else
                                         let recSym = vector.get(hashMap.find(recSymbols r.group) r.pos)
@@ -338,7 +330,7 @@ export
                                                 <> "' must be declared mutable (var)" itemOffset)
                                         end
                                         let eft = maybe.unwrap(expFieldType)
-                                        if not(isSubtype(recSym.type eft e)) then
+                                        if not(checks.isSubtype(recSym.type eft e)) then
                                             diagnostics.fail(:Ok "Tuple field '" <> namedDecl(r.decl).name
                                                 <> "' declared type '"
                                                 <> model.show(recSym.type)
@@ -384,7 +376,7 @@ export
                                                         <> "' must be declared mutable (var)" b.offset)
                                                 end
                                                 let t = checker.checkExpr(c b.value eft e loopDepth)
-                                                if not(isTypeEqual(t.type eft e)) then
+                                                if not(checks.isTypeEqual(t.type eft e)) then
                                                     diagnostics.fail(:Ok "Mutable tuple field '"
                                                         <> maybe.unwrapOr(expName "")
                                                         <> "' is invariant; expected '" <> model.show(eft) <> "', got '"
@@ -394,7 +386,7 @@ export
                                             elsif maybe.isSome(b.typeAnnot) then
                                                 let annotType =
                                                     elaborateTypes.elaborateType(maybe.unwrap(b.typeAnnot) e)
-                                                if not(isSubtype(annotType eft e)) then
+                                                if not(checks.isSubtype(annotType eft e)) then
                                                     diagnostics.fail(:Ok "Tuple field '" <> nameOf(b.name)
                                                         <> "' declared type '"
                                                         <> model.show(annotType)
@@ -477,7 +469,7 @@ export
                 else
                     model.tupleType(vector.toArray(qFields))
                 end
-            expr(x0.span.startOffset tupleType option exprTuple of typedAst.ExprForm with
+            typedAst.expr(x0.span.startOffset tupleType option exprTuple of typedAst.ExprForm with
                 let elements = elements
                 let recGroups = vector.toArray(recGroups)
                 let simultaneousGroups = vector.toArray(simultaneousGroups)
@@ -610,7 +602,7 @@ export
                     let var expectedTupleType = maybe.none(:Type)
                     let var early = maybe.none(:typedAst.Expr)
                     if maybe.isSome(expected) then
-                        let expectedLazy = evaluate(maybe.unwrap(expected))
+                        let expectedLazy = checks.evaluate(maybe.unwrap(expected))
                         case expectedLazy.form
                             when typeTuple with t then
                                 expectedTuple := maybe.some(t.fields)
@@ -626,6 +618,6 @@ export
                         elaborateTupleComponents(c x0 x.fields expectedTuple expectedTupleType e loopDepth)
                     end
                 end
-            else internal("a tuple" x0)
+            else checks.unexpected("a tuple" x0.span.startOffset)
         end
 end

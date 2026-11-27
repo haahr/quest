@@ -73,8 +73,10 @@
  * - Errors are raised with diagnostics.fail at the offending syntax's offset.
  *   An error ends the elaboration of the phrase it is in; elaborateProgram
  *   records it and goes on with the next phrase, until 20 errors or a fatal
- *   one (docs/diagnostics.md section 4.5). A broken internal invariant is an
- *   error whose message starts "internal:". *)
+ *   one (docs/diagnostics.md section 4.5). A broken internal invariant is
+ *   raised with diagnostics.internal, a fatal error whose message starts
+ *   "internal:"; checks.unexpected is the one for a form a family's function
+ *   was not meant to be given. *)
 
 module typecheck : Typecheck
 import
@@ -111,8 +113,6 @@ export
         partial: typedAst.Program
     end
 
-    let expr(offset: Int t: Type form: typedAst.ExprForm): typedAst.Expr = typedAst.expr(offset t form)
-
     let rec checkExpr(c: checker.T x0: ast.Expr expected: Type e: env.T loopDepth: Int): typedAst.Expr =
         begin
             let exp = maybe.some(expected)
@@ -141,7 +141,7 @@ export
                         if loopDepth <= 0 then
                             diagnostics.fail(:Ok "Exit statement outside of any loop" x0.span.startOffset)
                         end
-                        expr(x0.span.startOffset expected option exprExit of typedAst.ExprForm end)
+                        typedAst.expr(x0.span.startOffset expected option exprExit of typedAst.ExprForm end)
                     end
                 when exprTry then exceptions.elaborateTry(c x0 exp e loopDepth)
                 when exprInspect then autoValues.elaborateInspect(c x0 exp e loopDepth)
@@ -150,7 +150,7 @@ export
                 when exprExternal with x then
                     begin
                         elaborateTypes.requireUnsoundModule(e x0.span.startOffset)
-                        expr(x0.span.startOffset expected
+                        typedAst.expr(x0.span.startOffset expected
                                 option exprExternal of typedAst.ExprForm with let symbol = x.symbol end)
                     end
                 (* An application: the type required by the context can
@@ -196,20 +196,28 @@ export
             case x0.form
                 (* Literals *)
                 when exprInt with x then
-                    expr(offset model.intType option exprInt of typedAst.ExprForm with let value = x.value end)
+                    typedAst.expr(offset model.intType option exprInt of typedAst.ExprForm with let value = x.value end)
                 when exprReal with x then
-                    expr(offset model.realType option exprReal of typedAst.ExprForm with let value = x.value end)
+                    typedAst.expr(offset model.realType option exprReal of typedAst.ExprForm with
+                        let value = x.value
+                    end)
                 when exprBool with x then
-                    expr(offset model.boolType option exprBool of typedAst.ExprForm with let value = x.value end)
+                    typedAst.expr(offset model.boolType option exprBool of typedAst.ExprForm with
+                        let value = x.value
+                    end)
                 when exprChar with x then
-                    expr(offset model.charType option exprChar of typedAst.ExprForm with let value = x.value end)
+                    typedAst.expr(offset model.charType option exprChar of typedAst.ExprForm with
+                        let value = x.value
+                    end)
                 when exprString with x then
-                    expr(offset model.stringType option exprString of typedAst.ExprForm with let value = x.value end)
-                when exprOk then expr(offset model.okType option exprOk of typedAst.ExprForm end)
+                    typedAst.expr(offset model.stringType option exprString of typedAst.ExprForm with
+                        let value = x.value
+                    end)
+                when exprOk then typedAst.expr(offset model.okType option exprOk of typedAst.ExprForm end)
                 when exprExit then
                     begin
                         if loopDepth <= 0 then diagnostics.fail(:Ok "Exit statement outside of any loop" offset) end
-                        expr(offset model.okType option exprExit of typedAst.ExprForm end)
+                        typedAst.expr(offset model.okType option exprExit of typedAst.ExprForm end)
                     end
                 when exprExternal with x then
                     diagnostics.fail("External binding '" <> x.symbol <> "' requires an explicit type annotation"
@@ -243,12 +251,12 @@ export
                         (* A mutable variable in a value position is
                          * dereferenced *)
                         if sym.isVar then
-                            let varNode = expr(offset model.varType(sym.type) varForm)
-                            expr(offset sym.type option exprDerefCell of typedAst.ExprForm with
+                            let varNode = typedAst.expr(offset model.varType(sym.type) varForm)
+                            typedAst.expr(offset sym.type option exprDerefCell of typedAst.ExprForm with
                                 let target = varNode
                             end)
                         else
-                            expr(offset sym.type varForm)
+                            typedAst.expr(offset sym.type varForm)
                         end
                     end
 
@@ -276,11 +284,12 @@ export
                                 end
                                 let varType = if sym.isVar then model.varType(sym.type) else sym.type end
                                 let elemType = if sym.isVar then sym.type else maybe.unwrap(element) end
-                                let varNode = expr(targetOffset varType option exprVar of typedAst.ExprForm with
-                                    let name = sym.name
-                                    let symbol = sym
-                                end)
-                                expr(offset elemType option exprDerefCell of typedAst.ExprForm with
+                                let varNode =
+                                    typedAst.expr(targetOffset varType option exprVar of typedAst.ExprForm with
+                                        let name = sym.name
+                                        let symbol = sym
+                                    end)
+                                typedAst.expr(offset elemType option exprDerefCell of typedAst.ExprForm with
                                     let target = varNode
                                 end)
                             end
@@ -289,7 +298,7 @@ export
                                 let targetTyped = synthExpr(c x.target e loopDepth false)
                                 case targetTyped.type.form
                                     when typeVar with v then
-                                        expr(offset v.element option exprDerefCell of typedAst.ExprForm with
+                                        typedAst.expr(offset v.element option exprDerefCell of typedAst.ExprForm with
                                             let target = targetTyped
                                         end)
                                     else
@@ -303,7 +312,7 @@ export
                 when exprVarCell with x then
                     begin
                         let valTyped = synthExpr(c x.value e loopDepth false)
-                        expr(offset model.varType(valTyped.type) option exprVarCell of typedAst.ExprForm with
+                        typedAst.expr(offset model.varType(valTyped.type) option exprVarCell of typedAst.ExprForm with
                             let value = valTyped
                         end)
                     end
@@ -318,7 +327,7 @@ export
                         c.loopDepth := loopDepth
                         let bodyTyped = checker.inLoop(c fun(): typedAst.Expr
                             synthExpr(c x.body e c.loopDepth false))
-                        expr(offset model.okType option exprWhile of typedAst.ExprForm with
+                        typedAst.expr(offset model.okType option exprWhile of typedAst.ExprForm with
                             let cond = condTyped
                             let body = bodyTyped
                         end)
@@ -328,7 +337,9 @@ export
                         c.loopDepth := loopDepth
                         let bodyTyped = checker.inLoop(c fun(): typedAst.Expr
                             synthExpr(c x.body e c.loopDepth false))
-                        expr(offset model.okType option exprLoop of typedAst.ExprForm with let body = bodyTyped end)
+                        typedAst.expr(offset model.okType option exprLoop of typedAst.ExprForm with
+                            let body = bodyTyped
+                        end)
                     end
                 when exprFor then control.synthFor(c x0 e loopDepth)
 
@@ -487,11 +498,15 @@ export
             if vector.empty(c.errors) andif scoping.scopeChecksEnabled() then
                 let problems = scoping.checkWellScoped(typed)
                 if extent problems > 0 then
-                    let var message = "internal: the typed program is not well scoped:"
+                    let var message = "the typed program is not well scoped:"
                     for i = 0 upto {if extent problems < 20 then extent problems - 1 else 19 end} do
                         message := message <> "\n  " <> problems[i]
                     end
-                    vector.append(c.errors diagnostics.errorAt(message 0))
+                    try
+                        diagnostics.internal(:Ok message 0)
+                    when diagnostics.compilerError with err then
+                        vector.append(c.errors err)
+                    end
                 end
             end
             let errors = vector.toArray(c.errors)

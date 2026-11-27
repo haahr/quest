@@ -14,6 +14,17 @@ import
     questlang/types/env : questlang/types/Env
     questlang/types/model : questlang/types/Model
 export
+    (* t with its outermost constructor exposed (model.evaluateLazily over the
+     * symbols' definitions), for casing on its form *)
+    evaluate(t: model.Type): model.Type
+    (* Subtyping and type equality, with the symbols' definitions *)
+    isSubtype(a: model.Type b: model.Type e: env.T): Bool
+    isTypeEqual(a: model.Type b: model.Type e: env.T): Bool
+    (* Raises the internal error "not " <> what at offset: a family's function
+     * was given a form its dispatch does not send it, or a declaration of the
+     * wrong kind *)
+    unexpected(A::TYPE what: String offset: Int): A
+
     Def Named = Tuple name: String offset: Int end
     (* Rejects a simultaneous declaration (members joined by and) that declares
      * one name twice *)
@@ -49,7 +60,7 @@ export
     requireSubtype(offset: Int typed: typedAst.Expr expected: model.Type e: env.T
             typeDesc: maybe.T(String)): typedAst.Expr
 
-    (* The internal error for syntactic sugar (the bootstrap's node class
-     * className) that reached the checker *)
-    notDesugared(className: String offset: Int): diagnostics.CompilerError
+    (* Raises the internal error for syntactic sugar (the bootstrap's node
+     * class className) that reached the checker *)
+    notDesugared(A::TYPE className: String offset: Int): A
 end

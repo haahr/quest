@@ -7,11 +7,10 @@ import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
+    questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/maps : questlang/common/Maps
     questlang/types/model : questlang/types/Model
 export
-    let redefined: Exception(String) = exception redefined: String end
-
     (* ======================================================================
      * 1. Symbols
      * ====================================================================== *)
@@ -97,7 +96,7 @@ export
     let defineType(sym: TypeSymbol definition: model.Type): Ok =
         if maybe.isSome(sym.definition) then
             if not(model.same(maybe.unwrap(sym.definition) definition)) then
-                raise redefined with "Type symbol '" <> sym.name <> "' is already defined" end
+                diagnostics.internal(:Ok "Type symbol '" <> sym.name <> "' is already defined" 0)
             end
         else
             if hashSet.contains(typeIdsSeenUndefined sym.symbolId) then meaningsChanged() end

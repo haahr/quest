@@ -21,6 +21,7 @@ import
     util/maybe : util/Maybe
     util/sort : util/Sort
 
+    questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/keys : questlang/common/Keys
     questlang/common/maps : questlang/common/Maps
     questlang/types/dump : questlang/types/Dump
@@ -30,10 +31,6 @@ import
 export
     Let Type = model.Type
     Let Kind = model.Kind
-
-    (* A canonical form not equal to its type, or not a fixed point, when
-     * QUEST_CHECK_CANONICAL=1 (the bootstrap's AssertionError) *)
-    let canonicalError: Exception(String) = exception canonicalError: String end
 
     (* ======================================================================
      * Reserved symbols of canonical forms and tags
@@ -1640,7 +1637,7 @@ export
      * equal to t. So the form is used only if subtyping.isTypeEqual accepts
      * it. And a canonical form must be its own canonical form (a fixed point).
      * When QUEST_CHECK_CANONICAL=1, as in the tests, both are checked and a
-     * failure raises canonicalError. Otherwise only equality is checked, and
+     * failure is an internal error. Otherwise only equality is checked, and
      * if it fails, a warning is printed and t is used as written. *)
     let rec canonicalUncached(t: Type): maybe.T(Type) =
         begin
@@ -1696,7 +1693,7 @@ export
                         if not(subtyping.isTypeEqual(c model.stripAliases(t) maybe.none())) then
                             let message =
                                 "canonical form of the type " <> dump.shortTypeName(t) <> " is not equal to it"
-                            if checkCanonical() then raise canonicalError with message end end
+                            if checkCanonical() then diagnostics.internal(:Ok message 0) end
                             (* The type is named as written; the program is
                              * still compiled *)
                             writer.putString(writer.err
@@ -1712,9 +1709,8 @@ export
                                 begin registerGraph(cs) ok end
                             end
                             if checkCanonical() andif maybe.isSome(canonicalType(c)) then
-                                raise canonicalError with
-                                    "canonical form of " <> dump.shortTypeName(t) <> " is not a fixed point"
-                                end
+                                diagnostics.internal(:Ok "canonical form of " <> dump.shortTypeName(t)
+                                    <> " is not a fixed point" 0)
                             end
                             canonical
                         end

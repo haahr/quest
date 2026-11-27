@@ -18,7 +18,13 @@ import
     questlang/types/kinds : questlang/types/Kinds
     questlang/types/model : questlang/types/Model
     questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/symbols : questlang/types/Symbols
 export
+    let evaluate(t: model.Type): model.Type = model.evaluateLazily(t symbols.lookup)
+    let isSubtype(a: model.Type b: model.Type e: env.T): Bool = subtyping.isSubtype(a b env.lookupOf(e))
+    let isTypeEqual(a: model.Type b: model.Type e: env.T): Bool = subtyping.isTypeEqual(a b env.lookupOf(e))
+    let unexpected(A::TYPE what: String offset: Int): A = diagnostics.internal("not " <> what offset)
+
     Let Named = Tuple name: String offset: Int end
 
     let checkBinder(name: String offset: Int): Ok =
@@ -203,8 +209,8 @@ export
                             let elseBranch = rm(k.elseBranch)
                             let elseBinder = k.elseBinder
                         end
-                    else diagnostics.fail(:typedAst.ExprForm "internal: retyping an expression that is not divergent"
-                            x.offset)
+                    else
+                        diagnostics.internal(:typedAst.ExprForm "retyping an expression that is not divergent" x.offset)
                 end
             typedAst.expr(x.offset t form)
         end
@@ -239,6 +245,6 @@ export
                     nearMiss.mismatchHelp(typed.type expected))
         end
 
-    let notDesugared(className: String offset: Int): diagnostics.CompilerError =
-        diagnostics.errorAt("internal: " <> className <> " reached the type checker without desugaring" offset)
+    let notDesugared(A::TYPE className: String offset: Int): A =
+        diagnostics.internal(className <> " reached the type checker without desugaring" offset)
 end

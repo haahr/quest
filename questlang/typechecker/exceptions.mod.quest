@@ -8,6 +8,7 @@ import
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/syntax/ast : questlang/syntax/AST
     questlang/typechecker/checker : questlang/typechecker/Checker
+    questlang/typechecker/checks : questlang/typechecker/Checks
     questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
     questlang/types/env : questlang/types/Env
@@ -16,9 +17,6 @@ import
     questlang/types/symbols : questlang/types/Symbols
 export
     Let Type = model.Type
-
-    let internal(A::TYPE what: String expr: ast.Expr): A =
-        diagnostics.fail("internal: not " <> what expr.span.startOffset)
 
     (* The payload type of an exception type, if t is one *)
     let exceptionPayload(t: Type): maybe.T(Type) =
@@ -53,7 +51,7 @@ export
                         let symbol = sym
                     end)
                 end
-            else internal("an exception" expr)
+            else checks.unexpected("an exception" expr.span.startOffset)
         end
 
     let elaborateRaise(c: checker.T expr: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
@@ -96,7 +94,7 @@ export
                         let payload = payloadTyped
                     end)
                 end
-            else internal("a raise" expr)
+            else checks.unexpected("a raise" expr.span.startOffset)
         end
 
     let elaborateTry(c: checker.T expr: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
@@ -205,6 +203,6 @@ export
                         let elseBinder = elseBinder
                     end)
                 end
-            else internal("a try" expr)
+            else checks.unexpected("a try" expr.span.startOffset)
         end
 end

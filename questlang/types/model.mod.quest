@@ -12,12 +12,10 @@ import
     util/sort : util/Sort
     util/strutil : util/Strutil
 
+    questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/keys : questlang/common/Keys
     questlang/common/maps : questlang/common/Maps
 export
-    (* Raised on an internal error: a limit of the model reached *)
-    let internalError: Exception(String) = exception internalError: String end
-
     (* ======================================================================
      * 1. Reserved symbol ids
      * ====================================================================== *)
@@ -695,9 +693,8 @@ export
         begin
             counters.meta := counters.meta + 1
             if counters.meta >= reservedIndexLimit then
-                raise internalError with
-                    "too many type metavariables: their ids would collide with reserved symbol ids"
-                end
+                diagnostics.internal(:Ok "too many type metavariables: their ids would collide with reserved symbol ids"
+                        0)
             end
             let symbolId = ~1 * counters.meta
             let meta: Meta = tuple
@@ -1367,7 +1364,7 @@ export
                     end
                     tupleType(vector.toArray(fields))
                 end
-            else raise internalError with "autoPayloadType: not an auto type" end
+            else diagnostics.internal("autoPayloadType: not an auto type" 0)
         end
 
     (* Whether inspect may select a branch whose type is a proper supertype of

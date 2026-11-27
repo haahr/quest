@@ -120,7 +120,8 @@ are any.
   so in its help, found by walking the two types together through type applications and array, var, and out types
   (`mismatch_help`, `nearMiss.mismatchHelp`).
 - **Internal errors.** A broken invariant of the bootstrap usually shows as a Python exception, reported with its
-  traceback (§3). The self-hosted checker reports one as an error whose message starts `internal:`.
+  traceback (§3). The self-hosted checker and `types/` raise one with `diagnostics.internal`, a fatal error whose
+  message starts `internal:` (§3).
 
 ### 4.3. Running Programs
 Every run-time error is a Quest exception. A program raises its own with `raise exc with payload end` and catches them

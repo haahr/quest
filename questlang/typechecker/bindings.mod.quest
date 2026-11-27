@@ -27,8 +27,6 @@ import
 export
     Let Type = model.Type
 
-    let internal(A::TYPE what: String offset: Int): A = diagnostics.fail("internal: not " <> what offset)
-
     let isVarMode(m: ast.ParamMode): Bool = case m when modeVar then true else false end
     let isOutMode(m: ast.ParamMode): Bool = case m when modeOut then true else false end
 
@@ -62,7 +60,7 @@ export
                     let isRec = x.isRec
                     let isDef = x.isDef
                 end
-            else internal("a type binding" d.span.startOffset)
+            else checks.unexpected("a type binding" d.span.startOffset)
         end
 
     let valueMembers(d: ast.Decl): vector.T(ast.Decl) =
@@ -410,9 +408,9 @@ export
                                     end
                                 end)
                         end
-                    else internal("a polymorphic type" expr.span.startOffset)
+                    else checks.unexpected("a polymorphic type" expr.span.startOffset)
                 end
-            else internal("a function" expr.span.startOffset)
+            else checks.unexpected("a function" expr.span.startOffset)
         end
 
     (* Elaborates a function, fun[(type params)](params)[: R] body, into a
@@ -484,7 +482,7 @@ export
                         elaborateFunBody(c expr x.params x.returnType x.body x.typeParams expectedFun e)
                     end
                 end
-            else internal("a function" expr.span.startOffset)
+            else checks.unexpected("a function" expr.span.startOffset)
         end
 
     and elaborateFunBody(
@@ -674,7 +672,7 @@ export
                         end
                     declareLet(c sym offset e)
                 end
-            else internal("a let declaration" b.span.startOffset)
+            else checks.unexpected("a let declaration" b.span.startOffset)
         end
 
     let checkRecValue(c: checker.T b: ast.Decl sym: symbols.ValueSymbol e: env.T loopDepth: Int): typedAst.LetValue =
@@ -702,7 +700,7 @@ export
                         let redefines = env.redefines(e sym)
                     end
                 end
-            else internal("a let declaration" b.span.startOffset)
+            else checks.unexpected("a let declaration" b.span.startOffset)
         end
 
     let letValueBinding(v: typedAst.LetValue): typedAst.Binding =
@@ -771,7 +769,7 @@ export
                             let recSym = declareRecValue(c b e)
                             letValueBinding(checkRecValue(c b recSym e loopDepth))
                         elsif hasParams then
-                            diagnostics.raiseError(checks.notDesugared("LetValueBinding" offset))
+                            checks.notDesugared("LetValueBinding" offset)
                         else
                             Let Valued = Tuple typed: typedAst.Expr type: Type end
                             let valued: Valued =
@@ -871,7 +869,7 @@ export
                         let redefines = env.redefines(e sym)
                     end)
                 end
-            else internal("a let declaration" b.span.startOffset)
+            else checks.unexpected("a let declaration" b.span.startOffset)
         end
 
     (* let [rec] x = ... and y = ...: with rec, every member is declared before
@@ -891,7 +889,7 @@ export
                         elaborateBinding(c member e loopDepth))
                     case t.form
                         when bindLetValue with v then vector.append(typed v.value)
-                        else internal(:Ok "a let declaration" member.span.startOffset)
+                        else checks.unexpected(:Ok "a let declaration" member.span.startOffset)
                     end
                 end
                 for i = 0 upto {n - 1} do
