@@ -992,52 +992,69 @@ export
 
     let pure(s: Selection i: machine.Inst): Bool = minst.pure(vector.get(s.ops i.op))
 
-    let select(f: ssa.Function prefix: String defined: maps.StringMap(Bool)): Selection =
+    (* What one sweep of a function finds: each value's definition, defining
+     * block, and use count, the outgoing stack-argument size, and whether the
+     * function enters a try *)
+    Let Sweep = Tuple
+        f: ssa.Function
+        defs: Array(maybe.T(ssa.Inst))
+        defBlock: Array(Int)
+        uses: Array(Int)
+        var outgoing: Int
+        var entersTry: Bool
+    end
+
+    let sweep(f: ssa.Function): Sweep =
         begin
             let nValues = vector.length(f.types)
-            let nBlocks = vector.length(f.blocks)
-            let g = cfg.graph(f)
-            (* Collect each value's definition, defining block, and use count,
-             * along with the outgoing stack-argument size and whether the
-             * function enters a try *)
-            let defs = array of(nValues maybe.none(:ssa.Inst))
-            let defBlock = array of(nValues ~1)
-            let uses = array of(nValues 0)
-            let var outgoing = 0
-            let var entersTry = false
+            let w = tuple
+                let f = f
+                let defs = array of(nValues maybe.none(:ssa.Inst))
+                let defBlock = array of(nValues ~1)
+                let uses = array of(nValues 0)
+                let var outgoing = 0
+                let var entersTry = false
+            end
             let measure(i: ssa.Inst): Ok =
                 begin
                     let placed = placeCall(f i)
-                    if placed.stackBytes > outgoing then outgoing := placed.stackBytes end
+                    if placed.stackBytes > w.outgoing then w.outgoing := placed.stackBytes end
                 end
-            for b = 0 upto {nBlocks - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let blk = ssa.block(f b)
                 for k = 0 upto {vector.length(blk.insts) - 1} do
                     let i = vector.get(blk.insts k)
                     for j = 0 upto {extent i.results - 1} do
-                        defs[i.results[j]] := maybe.some(i)
-                        defBlock[i.results[j]] := b
+                        w.defs[i.results[j]] := maybe.some(i)
+                        w.defBlock[i.results[j]] := b
                     end
-                    for j = 0 upto {extent i.args - 1} do uses[i.args[j]] := uses[i.args[j]] + 1 end
+                    for j = 0 upto {extent i.args - 1} do w.uses[i.args[j]] := w.uses[i.args[j]] + 1 end
                     if ssa.isCall(i) then measure(i) end
                 end
                 let tu = ssa.terminatorUses(blk.term)
-                for j = 0 upto {extent tu - 1} do uses[tu[j]] := uses[tu[j]] + 1 end
+                for j = 0 upto {extent tu - 1} do w.uses[tu[j]] := w.uses[tu[j]] + 1 end
                 case blk.term
                     when termTailCall with x then measure(x.call)
-                    when termTry then entersTry := true
+                    when termTry then w.entersTry := true
                     when termNone, termJump, termBranch, termSwitch, termReturn, termUnreachable then ok
                 end
             end
-            (* The comparisons fused into their branches *)
-            let fused = array of(nValues false)
-            for b = 0 upto {nBlocks - 1} do
+            w
+        end
+
+    (* The comparisons fused into their branches, and the single-use ones
+     * fused into select instructions, by value *)
+    let fusedComparisons(w: Sweep): Array(Bool) =
+        begin
+            let f = w.f
+            let defs = w.defs
+            let fused = array of(vector.length(f.types) false)
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 case ssa.block(f b).term
                     when termBranch with x then
                         let c = x.cond
-                        let here(v: Int): Bool = {defBlock[v] is b} andif {uses[v] is 1}
-                        if maybe.isSome(defs[c]) andif isComparison(maybe.unwrap(defs[c]).op)
-                                andif here(c) then
+                        let here(v: Int): Bool = {w.defBlock[v] is b} andif {w.uses[v] is 1}
+                        if maybe.isSome(defs[c]) andif isComparison(maybe.unwrap(defs[c]).op) andif here(c) then
                             fused[c] := true
                             (* An equality comparison of a single-bit mask
                              * against 0 fuses into tbz or tbnz, eliminating
@@ -1069,21 +1086,29 @@ export
                 for k = 0 upto {vector.length(insts) - 1} do
                     let i = vector.get(insts k)
                     let c = if ssa.isOp(i ssa.opSelect) then i.args[0] else ~1 end
-                    if {c >= 0} andif maybe.isSome(defs[c])
-                            andif isComparison(maybe.unwrap(defs[c]).op) andif {defBlock[c] is b}
-                            andif {uses[c] is 1} then
+                    if {c >= 0} andif maybe.isSome(defs[c]) andif isComparison(maybe.unwrap(defs[c]).op)
+                            andif {w.defBlock[c] is b} andif {w.uses[c] is 1} then
                         fused[c] := true
                     end
                 end
             end
-            (* Carries: a sum = add x, y of two registers, its comparison
-             * ult sum, x (or y), which holds exactly when the add carried
-             * out, and, when that comparison is fused into a select of 1 or
-             * 0, the select, all in one block. The add sets the flags
-             * (adds), and the carry is made at once from them (cset hs), so
-             * that neither the comparison nor the select is emitted:
-             * bignum's limbs, whose carries are bit(word.lt(sum operand)),
-             * took an add, a cmp, and a cset for each *)
+            fused
+        end
+
+    (* Carries: a sum = add x, y of two registers, its comparison ult sum, x
+     * (or y), which holds exactly when the add carried out, and, when that
+     * comparison is fused into a select of 1 or 0, the select, all in one
+     * block. The add sets the flags (adds), and the carry is made at once from
+     * them (cset hs), so that neither the comparison nor the select is
+     * emitted: bignum's limbs, whose carries are bit(word.lt(sum operand)),
+     * took an add, a cmp, and a cset for each. By value: each sum's carry
+     * (~1 for none), and whether a value is a carry so made. *)
+    Let Carries = Tuple carryOf: Array(Int) carried: Array(Bool) end
+    let carries(w: Sweep fused: Array(Bool)): Carries =
+        begin
+            let f = w.f
+            let defs = w.defs
+            let nValues = vector.length(f.types)
             let carryOf = array of(nValues ~1)
             let carried = array of(nValues false)
             let isConstant(v: Int k: Int): Bool =
@@ -1092,7 +1117,7 @@ export
             let inRegister(v: Int): Bool = not(maybe.isSome(defs[v]) andif ssa.isOp(maybe.unwrap(defs[v]) ssa.opConst))
             (* Each fused comparison's select of 1 or 0, in its block *)
             let selectOf = array of(nValues ~1)
-            for b = 0 upto {nBlocks - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let insts = ssa.block(f b).insts
                 for k = 0 upto {vector.length(insts) - 1} do
                     let i = vector.get(insts k)
@@ -1101,7 +1126,7 @@ export
                     end
                 end
             end
-            for b = 0 upto {nBlocks - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let insts = ssa.block(f b).insts
                 for k = 0 upto {vector.length(insts) - 1} do
                     let i = vector.get(insts k)
@@ -1109,7 +1134,7 @@ export
                         let c = i.results[0]
                         let sum = i.args[0]
                         let made = if fused[c] then selectOf[c] else c end
-                        if {made >= 0} andif maybe.isSome(defs[sum]) andif {defBlock[sum] is b}
+                        if {made >= 0} andif maybe.isSome(defs[sum]) andif {w.defBlock[sum] is b}
                                 andif {carryOf[sum] < 0} then
                             let add = maybe.unwrap(defs[sum])
                             if ssa.isOp(add ssa.opAdd) andif inRegister(add.args[0]) andif inRegister(add.args[1])
@@ -1121,10 +1146,20 @@ export
                     end
                 end
             end
-            (* Identify ptrAdd instructions used only as the addresses of
-             * loads and stores in their own block that can fold into a
-             * register-indexed addressing mode, along with any single-use
-             * multiplication by the access width (as in array indexing) *)
+            tuple let carryOf = carryOf let carried = carried end
+        end
+
+    (* The ptrAdd instructions used only as the addresses of loads and stores
+     * in their own block that can fold into a register-indexed addressing
+     * mode, along with any single-use multiplication by the access width (as
+     * in array indexing). By value: a folded ptrAdd's index (~1 for none) and
+     * its shift, and whether a value is folded into its uses *)
+    Let Folds = Tuple indexOf: Array(Int) shiftOf: Array(Int) folded: Array(Bool) end
+    let foldedAddresses(w: Sweep): Folds =
+        begin
+            let f = w.f
+            let defs = w.defs
+            let nValues = vector.length(f.types)
             let indexOf = array of(nValues ~1)
             let shiftOf = array of(nValues 0)
             let folded = array of(nValues false)
@@ -1135,12 +1170,12 @@ export
              * store back, say) folds into each *)
             let accesses = array of(nValues 0)
             let widthAt = array of(nValues 0)
-            for b = 0 upto {nBlocks - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let insts = ssa.block(f b).insts
                 for k = 0 upto {vector.length(insts) - 1} do
                     let i = vector.get(insts k)
                     if {ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opStore)} andif {i.imm is 0}
-                            andif {defBlock[i.args[0]] is b} then
+                            andif {w.defBlock[i.args[0]] is b} then
                         let v = i.args[0]
                         if {accesses[v] is 0} orif {widthAt[v] is i.width} then
                             accesses[v] := accesses[v] + 1
@@ -1151,11 +1186,11 @@ export
                     end
                 end
             end
-            for b = 0 upto {nBlocks - 1} do
+            for b = 0 upto {vector.length(f.blocks) - 1} do
                 let insts = ssa.block(f b).insts
-                let here(v: Int): Bool = {defBlock[v] is b} andif {uses[v] is 1} andif maybe.isSome(defs[v])
+                let here(v: Int): Bool = {w.defBlock[v] is b} andif {w.uses[v] is 1} andif maybe.isSome(defs[v])
                 let addressed(v: Int): Bool =
-                    {defBlock[v] is b} andif {accesses[v] is uses[v]} andif maybe.isSome(defs[v])
+                    {w.defBlock[v] is b} andif {accesses[v] is w.uses[v]} andif maybe.isSome(defs[v])
                 for k = 0 upto {vector.length(insts) - 1} do
                     let i = vector.get(insts k)
                     if {ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opStore)} andif {i.imm is 0}
@@ -1183,7 +1218,14 @@ export
                     end
                 end
             end
-            (* The stack slots, after the outgoing arguments *)
+            tuple let indexOf = indexOf let shiftOf = shiftOf let folded = folded end
+        end
+
+    (* The stack slots' offsets, after the outgoing arguments, and where they
+     * end *)
+    Let Slots = Tuple slotAt: Array(Int) slotsEnd: Int end
+    let stackSlots(f: ssa.Function outgoing: Int): Slots =
+        begin
             let nSlots = vector.length(f.slots)
             let slotAt = array of(nSlots 0)
             let var at = outgoing
@@ -1193,6 +1235,19 @@ export
                 slotAt[k] := at
                 at := at + alignUp(if slot.bytes > 0 then slot.bytes else 8 end 8)
             end
+            tuple let slotAt = slotAt let slotsEnd = at end
+        end
+
+    let select(f: ssa.Function prefix: String defined: maps.StringMap(Bool)): Selection =
+        begin
+            let nValues = vector.length(f.types)
+            let nBlocks = vector.length(f.blocks)
+            let g = cfg.graph(f)
+            let w = sweep(f)
+            let fused = fusedComparisons(w)
+            let carry = carries(w fused)
+            let folds = foldedAddresses(w)
+            let slots = stackSlots(f w.outgoing)
             (* Map each SSA value v to virtual register index v, create a
              * dedicated entry block before all SSA blocks, and allocate
              * machine blocks only for reachable SSA blocks *)
@@ -1207,16 +1262,16 @@ export
                 let prefix = prefix
                 let defined = defined
                 let blockOf = array of(nBlocks ~1)
-                let defs = defs
-                let defBlock = defBlock
-                let uses = uses
+                let defs = w.defs
+                let defBlock = w.defBlock
+                let uses = w.uses
                 let fused = fused
-                let carryOf = carryOf
-                let carried = carried
-                let indexOf = indexOf
-                let shiftOf = shiftOf
-                let folded = folded
-                let slotAt = slotAt
+                let carryOf = carry.carryOf
+                let carried = carry.carried
+                let indexOf = folds.indexOf
+                let shiftOf = folds.shiftOf
+                let folded = folds.folded
+                let slotAt = slots.slotAt
                 let var b = 0
                 let var loc = ssa.noLoc
             end
@@ -1244,7 +1299,7 @@ export
                     for k = 0 upto {vector.length(blk.insts) - 1} do
                         let i = vector.get(blk.insts k)
                         s.loc := i.loc
-                        if {extent i.results isnot 1} orif not(folded[i.results[0]]) then instruction(s i) end
+                        if {extent i.results isnot 1} orif not(folds.folded[i.results[0]]) then instruction(s i) end
                     end
                     s.loc := blk.termLoc
                     terminator(s blk.term)
@@ -1257,10 +1312,10 @@ export
                 let types = s.types
                 let layout = s.layout
                 let prefix = prefix
-                let outgoing = outgoing
-                let slotAt = slotAt
-                let slotsEnd = at
-                let entersTry = entersTry
+                let outgoing = w.outgoing
+                let slotAt = slots.slotAt
+                let slotsEnd = slots.slotsEnd
+                let entersTry = w.entersTry
             end
             machine.removeDead(m fun(i: machine.Inst): Bool pure(selection i))
             selection
