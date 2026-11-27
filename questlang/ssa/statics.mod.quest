@@ -100,7 +100,8 @@ export
                     put(ws 0 s "extra" extra)
                     vector.append(res datum(symbol ws))
                 end
-            let plain(extra: ssa.Word): Ok = descriptor("quest_type_" <> tag d.kindConstant d.name d.size.bytes extra)
+            let plain(extra: ssa.Word): Ok =
+                descriptor("quest_type_" <> tag staticdata.kindConstant(d.form.kind) d.name d.size.bytes extra)
             (* A struct the extra field points at *)
             let extra(symbol: String ws: Words): Ok =
                 begin
@@ -151,7 +152,9 @@ export
                     put(ws 0 s "rep" int(0))
                     extra("qopaque_desc_" <> tag ws)
                 when payloadStored with x then
-                    descriptor("quest_type_" <> tag <> "_abstract" "QTYPE_KIND_OPAQUE" d.name 8 int(0))
+                    descriptor("quest_type_" <> tag
+                        <> "_abstract" staticdata.kindConstant(option formOpaque of staticdata.FormKind end) d.name 8
+                            int(0))
                     let s = "QStoredDescriptor"
                     let ws = struct(s)
                     put(ws 0 s "type" address("quest_type_" <> tag <> "_abstract"))

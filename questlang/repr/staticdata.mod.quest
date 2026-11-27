@@ -13,7 +13,6 @@ import
 
     questlang/common/maps : questlang/common/Maps
     questlang/common/pyRepr : questlang/common/PyRepr
-    questlang/common/strings : questlang/common/Strings
     questlang/repr/descriptors : questlang/repr/Descriptors
     questlang/repr/digests : questlang/repr/Digests
     questlang/repr/layout : questlang/repr/Layout
@@ -31,8 +30,45 @@ export
 
     let missingDescriptor: Exception(String) = exception missingDescriptor: String end
 
+    Def FormKind = Option
+        formBase formRecord formTuple formVariant formOption formArray formException formFun formAuto formOpaque
+        formStored formHole
+    end
+
+    let kindName(k: FormKind): String =
+        case k
+            when formBase then "base"
+            when formRecord then "record"
+            when formTuple then "tuple"
+            when formVariant then "variant"
+            when formOption then "option"
+            when formArray then "array"
+            when formException then "exception"
+            when formFun then "fun"
+            when formAuto then "auto"
+            when formOpaque then "opaque"
+            when formStored then "stored"
+            when formHole then "hole"
+        end
+
+    let kindConstant(k: FormKind): String =
+        case k
+            when formBase then ""
+            when formRecord then "QTYPE_KIND_RECORD"
+            when formTuple then "QTYPE_KIND_TUPLE"
+            when formVariant then "QTYPE_KIND_VARIANT"
+            when formOption then "QTYPE_KIND_OPTION"
+            when formArray then "QTYPE_KIND_ARRAY"
+            when formException then "QTYPE_KIND_EXCEPTION"
+            when formFun then "QTYPE_KIND_FUN"
+            when formAuto then "QTYPE_KIND_AUTO"
+            when formOpaque then "QTYPE_KIND_OPAQUE"
+            when formStored then "QTYPE_KIND_STORED"
+            when formHole then "QTYPE_KIND_HOLE"
+        end
+
     Def DescriptorForm = Tuple
-        kind: String
+        kind: FormKind
         tag: String
         type: maybe.T(Type)
         name: String
@@ -46,7 +82,7 @@ export
     (* A descriptor of the runtime's, element index of the array symbol *)
     let base(expr: String symbol: String index: Int): DescriptorForm =
         tuple
-            let kind = "base"
+            let kind = option formBase of FormKind end
             let tag = ""
             let type = maybe.none()
             let name = ""
@@ -56,7 +92,7 @@ export
             let symbol = symbol
             let index = index
         end
-    let described(kind: String tag: String t: maybe.T(Type) name: String): DescriptorForm =
+    let described(kind: FormKind tag: String t: maybe.T(Type) name: String): DescriptorForm =
         tuple
             let kind = kind
             let tag = tag
@@ -68,7 +104,7 @@ export
             let symbol = "quest_type_" <> tag
             let index = 0
         end
-    let ofType(kind: String tag: String t: Type): DescriptorForm = described(kind tag maybe.some(t) "")
+    let ofType(kind: FormKind tag: String t: Type): DescriptorForm = described(kind tag maybe.some(t) "")
 
     (* =========================================================================
      * Record naming
@@ -209,7 +245,7 @@ export
                     else
                         ""
                     end
-                described("hole" tag maybe.some(s.type) syntax.cInt(index))
+                described(option formHole of FormKind end tag maybe.some(s.type) syntax.cInt(index))
             else
                 (* Equal types share a descriptor: a type is described by its
                  * shape's structure, the unfolding of its canonical form *)
@@ -234,19 +270,21 @@ export
                      * outside the module in the representation of its bound,
                      * viewed at the bound (a stored descriptor) *)
                     let g = maybe.unwrap(abstractName)
-                    described("stored" "stored_" <> digests.textDigest(g) maybe.some(t) g)
+                    described(option formStored of FormKind end "stored_" <> digests.textDigest(g) maybe.some(t) g)
                 elsif shapes.kindIs(held shapes.shapeRecord) then
                     (* A type variable bounded by a record, variant, or option
                      * type is described by its bound *)
-                    ofType("record" recordStructName(held.structure ctx) held.structure)
+                    ofType(option formRecord of FormKind end recordStructName(held.structure ctx) held.structure)
                 elsif shapes.kindIs(s shapes.shapeTuple) then
-                    ofType("tuple" layout.tupleStructName(t) <> "_" <> digests.typeDigest(t) t)
+                    ofType(option formTuple of FormKind end layout.tupleStructName(t) <> "_" <> digests.typeDigest(t) t)
                 elsif shapes.kindIs(held shapes.shapeVariant) then
                     let v = held.structure
-                    ofType("variant" layout.typeTag(v) <> "_" <> digests.typeDigest(v) v)
+                    ofType(option formVariant of FormKind end layout.typeTag(v) <> "_" <> digests.typeDigest(v) v)
                 elsif shapes.kindIs(held shapes.shapeOption) then
                     let o = held.structure
-                    let f = ofType("option" layout.optionStructName(o) <> "_" <> digests.typeDigest(o) o)
+                    let f =
+                        ofType(option formOption of FormKind end layout.optionStructName(o) <> "_"
+                            <> digests.typeDigest(o) o)
                     tuple
                         let kind = f.kind
                         let tag = f.tag
@@ -259,20 +297,22 @@ export
                         let index = f.index
                     end
                 else
-                    let opaque(tag: String name: String): DescriptorForm = described("opaque" tag maybe.none() name)
+                    let opaque(tag: String name: String): DescriptorForm =
+                        described(option formOpaque of FormKind end tag maybe.none() name)
                     let named(name: String): DescriptorForm = opaque("opaque_" <> symbols.mangleIdent(name) name)
                     case t.form
                         when typeApp with x then
                             (* An application of an abstract type operator
                              * (list.T(Int)): opaque, compared by the
                              * operator's name and the arguments *)
-                            described("opaque" "opaque_" <> digests.typeDigest(t) maybe.some(t)
+                            described(option formOpaque of FormKind end "opaque_" <> digests.typeDigest(t) maybe.some(t)
                                     opaqueName(x.constructor))
-                        when typeArray then ofType("array" "array_" <> digests.typeDigest(t) t)
-                        when typeException then ofType("exception" "exception_" <> digests.typeDigest(t) t)
+                        when typeArray then ofType(option formArray of FormKind end "array_" <> digests.typeDigest(t) t)
+                        when typeException then
+                            ofType(option formException of FormKind end "exception_" <> digests.typeDigest(t) t)
                         when typeFun, typeAll then
                             let canonical = descriptors.canonicalFunType(t)
-                            ofType("fun" "fun_" <> digests.typeDigest(canonical) canonical)
+                            ofType(option formFun of FormKind end "fun_" <> digests.typeDigest(canonical) canonical)
                         when typeExternal with x then
                             let name = if stringOp.length(x.name) > 0 then x.name else x.cType end
                             named(name)
@@ -293,7 +333,8 @@ export
                                         opaque("opaque_" <> digests.textDigest(name) name)
                                     when typeAuto then
                                         let canonical = descriptors.canonicalAutoType(t)
-                                        ofType("auto" "auto_" <> digests.typeDigest(canonical) canonical)
+                                        ofType(option formAuto of FormKind end "auto_"
+                                            <> digests.typeDigest(canonical) canonical)
                                     (* The type of a var or out parameter:
                                      * described by its element type *)
                                     when typeVar with x then descriptorForm(x.element ctx)
@@ -391,13 +432,14 @@ export
                 maybe.none()
             else
                 let f = descriptorForm(t ctx)
-                if not(strings.isOneOf(f.kind array of "tuple" "record" "array" "option" "variant" end)) then
+                if not(f.kind?formTuple orif f.kind?formRecord orif f.kind?formArray orif f.kind?formOption
+                        orif f.kind?formVariant) then
                     maybe.none()
                 else
                     (* A record's tag names its struct too, which the copy
                      * keeps *)
                     let struct = if stringOp.length(f.struct) > 0 then f.struct
-                        elsif eq(f.kind "record") then f.tag
+                        elsif f.kind?formRecord then f.tag
                         else ""
                         end
                     let tag = f.tag <> "_echo_" <> digests.textDigest(maybe.unwrap(key))
@@ -482,8 +524,11 @@ export
      * The descriptors a unit needs
      * ====================================================================== *)
 
-    let descriptorKinds = array of "opaque" "stored" "hole" "fun" "auto" "exception" "array" "record" "tuple"
-        "variant" "option"
+    let descriptorKinds = array of
+        option formOpaque of FormKind end option formStored of FormKind end option formHole of FormKind end
+        option formFun of FormKind end option formAuto of FormKind end option formException of FormKind end
+        option formArray of FormKind end option formRecord of FormKind end option formTuple of FormKind end
+        option formVariant of FormKind end option formOption of FormKind end
     end
 
     Def Collected = Tuple
@@ -491,7 +536,7 @@ export
         byKind: maps.StringMap(vector.T(DescriptorForm))
     end
 
-    let formsOf(c: Collected kind: String): vector.T(DescriptorForm) = hashMap.find(c.byKind kind)
+    let formsOf(c: Collected kind: FormKind): vector.T(DescriptorForm) = hashMap.find(c.byKind kindName(kind))
 
     let collectDescriptors(ts: vector.T(Type) echoTypes: vector.T(Type) ctx: maybe.T(RecordNaming)
             emittedBefore: maps.StringSet): Collected =
@@ -501,7 +546,7 @@ export
                 let byKind = maps.newStringMap(:vector.T(DescriptorForm))
             end
             for i = 0 upto {extent descriptorKinds - 1} do
-                hashMap.insert(c.byKind descriptorKinds[i] vector.new(:DescriptorForm))
+                hashMap.insert(c.byKind kindName(descriptorKinds[i]) vector.new(:DescriptorForm))
             end
             let seen = maps.newStringSet()
             let isNew(tag: String): Bool =
@@ -525,7 +570,7 @@ export
                         end
                     if maybe.isSome(form) then
                         let f = maybe.unwrap(form)
-                        if not(eq(f.kind "base")) andif isNew(f.tag) then
+                        if not(f.kind?formBase) andif isNew(f.tag) then
                             remember(f)
                             visitParts(f)
                         end
@@ -536,44 +581,44 @@ export
             and visitParts(f: DescriptorForm): Ok =
                 begin
                     let kind = f.kind
-                    if eq(kind "record") then
+                    if kind?formRecord then
                         let fields = recordFields(typeOf(f))
                         for i = 0 upto {extent fields - 1} do visit(fields[i].type) end
-                    elsif eq(kind "tuple") then
+                    elsif kind?formTuple then
                         let fields = valueFields(typeOf(f))
                         for i = 0 upto {extent fields - 1} do visit(fields[i].type) end
-                    elsif eq(kind "variant") then
+                    elsif kind?formVariant then
                         case typeOf(f).form
                             when typeVariant with v then
                                 for i = 0 upto {extent v.variants - 1} do visitMaybe(v.variants[i].type) end
                             else ok
                         end
-                    elsif eq(kind "option") then
+                    elsif kind?formOption then
                         case typeOf(f).form
                             when typeOption with o then
                                 for i = 0 upto {extent o.options - 1} do visitMaybe(o.options[i].payload) end
                             else ok
                         end
-                    elsif eq(kind "array") then
+                    elsif kind?formArray then
                         case typeOf(f).form when typeArray with a then visit(a.element) else ok end
-                    elsif eq(kind "exception") then
+                    elsif kind?formException then
                         case typeOf(f).form when typeException with x then visit(x.payload) else ok end
-                    elsif eq(kind "hole") orif eq(kind "stored") then
+                    elsif kind?formHole orif kind?formStored then
                         visitMaybe(variableBound(typeOf(f)))
-                    elsif eq(kind "opaque") andif maybe.isSome(f.type) then
+                    elsif kind?formOpaque andif maybe.isSome(f.type) then
                         case typeOf(f).form
                             when typeApp with x then
                                 for i = 0 upto {extent x.arguments - 1} do visit(x.arguments[i]) end
                             else ok
                         end
-                    elsif eq(kind "auto") then
+                    elsif kind?formAuto then
                         case typeOf(f).form
                             when typeAuto with x then
                                 visitMaybe(kindBound(maybe.some(x.kindBound)))
                                 for i = 0 upto {extent x.signature - 1} do visit(x.signature[i].type) end
                             else ok
                         end
-                    elsif eq(kind "fun") then
+                    elsif kind?formFun then
                         let sig = funShapeSignature(typeOf(f))
                         for i = 0 upto {vector.length(sig.bounds) - 1} do
                             visitMaybe(vector.get(sig.bounds i))
@@ -643,7 +688,6 @@ export
     Def Descriptor = Tuple
         form: DescriptorForm
         tag: String
-        kindConstant: String
         name: String
         size: Size
         payload: Payload
@@ -681,11 +725,10 @@ export
                     else refType(maybe.unwrap(x))
                     end
                 end
-            let made(kindConstant: String name: String sz: Size payload: Payload): Descriptor =
+            let made(name: String sz: Size payload: Payload): Descriptor =
                 tuple
                     let form = f
                     let tag = f.tag
-                    let kindConstant = kindConstant
                     let name = name
                     let size = sz
                     let payload = payload
@@ -693,7 +736,7 @@ export
             (* A descriptor's size is a value's as a variable holds it, a word
              * for most kinds; its payload is its parts' descriptors *)
             let kind = f.kind
-            if eq(kind "opaque") then
+            if kind?formOpaque then
                 let var payload = option payloadNone of Payload end
                 if maybe.isSome(f.type) then
                     case t.form
@@ -704,24 +747,24 @@ export
                         else ok
                     end
                 end
-                made("QTYPE_KIND_OPAQUE" f.name pointerSize("sizeof(QVal)") payload)
-            elsif eq(kind "stored") then
+                made(f.name pointerSize("sizeof(QVal)") payload)
+            elsif kind?formStored then
                 let bound = maybe.unwrap(variableBound(t))
-                made("QTYPE_KIND_STORED" f.name
+                made(f.name
                         size("sizeof(" <> layout.cType(t) <> ")" layout.representationBytes(t))
                         option payloadStored of Payload with let storage = refType(bound) end)
-            elsif eq(kind "hole") then
+            elsif kind?formHole then
                 let bound = variableBound(t)
                 let bounded = maybe.isSome(bound)
                 let sz =
                     if bounded then size("sizeof(" <> layout.cType(t) <> ")" layout.representationBytes(t))
                     else pointerSize("sizeof(QVal)")
                     end
-                made("QTYPE_KIND_HOLE" "?" <> f.name sz option payloadHole of Payload with
+                made("?" <> f.name sz option payloadHole of Payload with
                     let index = maybe.unwrapOr(descriptors.holeIndex(t) 0)
                     let storage = refMaybe(bound)
                 end)
-            elsif eq(kind "fun") then
+            elsif kind?formFun then
                 let sig = funShapeSignature(t)
                 let params = array of(vector.length(sig.params)
                         tuple let type = nullRef let isVar = false let isOut = false end)
@@ -733,13 +776,13 @@ export
                 for j = 0 upto {vector.length(sig.bounds) - 1} do
                     bounds[j] := refMaybe(vector.get(sig.bounds j))
                 end
-                made("QTYPE_KIND_FUN" dump.shortTypeName(t) pointerSize("sizeof(QClosure *)")
+                made(dump.shortTypeName(t) pointerSize("sizeof(QClosure *)")
                         option payloadFun of Payload with
                             let params = params
                             let result = refType(sig.result)
                             let bounds = bounds
                         end)
-            elsif eq(kind "auto") then
+            elsif kind?formAuto then
                 let payloadType = model.autoPayloadType(t maybe.none())
                 let structName = layout.tupleStructName(payloadType)
                 let n = extent valueFields(payloadType)
@@ -763,25 +806,25 @@ export
                         end
                         let payloadSize =
                             if n > 0 then sizeofStruct(structName layout.slotsBytes(n)) else size("0" 0) end
-                        made("QTYPE_KIND_AUTO" dump.shortTypeName(t) pointerSize("sizeof(QAuto *)")
+                        made(dump.shortTypeName(t) pointerSize("sizeof(QAuto *)")
                                 option payloadAuto of Payload with
                                     let bound = refMaybe(kindBound(maybe.some(x.kindBound)))
                                     let payloadSize = payloadSize
                                     let components = components
                                 end)
                     else
-                        made("QTYPE_KIND_AUTO" dump.shortTypeName(t) pointerSize("sizeof(QAuto *)")
+                        made(dump.shortTypeName(t) pointerSize("sizeof(QAuto *)")
                                 option payloadNone of Payload end)
                 end
-            elsif eq(kind "exception") then
+            elsif kind?formException then
                 let payloadType = case t.form when typeException with x then refType(x.payload) else nullRef end
-                made("QTYPE_KIND_EXCEPTION" dump.shortTypeName(t) pointerSize("sizeof(void *)")
+                made(dump.shortTypeName(t) pointerSize("sizeof(void *)")
                         option payloadException of Payload with let payloadType = payloadType end)
-            elsif eq(kind "array") then
+            elsif kind?formArray then
                 let element = case t.form when typeArray with x then partRef("" maybe.some(x.element)) else nullRef end
-                made("QTYPE_KIND_ARRAY" dump.shortTypeName(t) pointerSize("sizeof(void *)")
+                made(dump.shortTypeName(t) pointerSize("sizeof(void *)")
                         option payloadArray of Payload with let element = element end)
-            elsif eq(kind "record") then
+            elsif kind?formRecord then
                 let structName = structOr(f f.tag)
                 let fields = sortedFields(t)
                 let n = extent fields
@@ -803,13 +846,13 @@ export
                 end
                 let payload = option payloadRecord of Payload with let fields = components end
                 if n > 0 then
-                    made("QTYPE_KIND_RECORD" dump.shortTypeName(t)
+                    made(dump.shortTypeName(t)
                             sizeofStruct(structName layout.recordBytes(shapes.shape(t)))
                             payload)
                 else
-                    made("QTYPE_KIND_RECORD" "Record end" pointerSize("sizeof(void *)") payload)
+                    made("Record end" pointerSize("sizeof(void *)") payload)
                 end
-            elsif eq(kind "tuple") then
+            elsif kind?formTuple then
                 let structName = layout.tupleStructName(t)
                 let fields = valueFields(t)
                 let n = extent fields
@@ -836,7 +879,7 @@ export
                         let isVar = fld.isVar
                     end
                 end
-                made("QTYPE_KIND_TUPLE" dump.shortTypeName(t) sizeofStruct(structName layout.slotsBytes(n))
+                made(dump.shortTypeName(t) sizeofStruct(structName layout.slotsBytes(n))
                         option payloadTuple of Payload with
                             let typeComponents = typeComponents
                             let elements = elements
@@ -869,11 +912,11 @@ export
                     else ok
                 end
                 let all = vector.toArray(cases)
-                if eq(kind "variant") then
-                    made("QTYPE_KIND_VARIANT" dump.shortTypeName(t) size("sizeof(QVariantVal)" 16)
+                if kind?formVariant then
+                    made(dump.shortTypeName(t) size("sizeof(QVariantVal)" 16)
                             option payloadVariant of Payload with let cases = all end)
                 else
-                    made("QTYPE_KIND_OPTION" dump.shortTypeName(t)
+                    made(dump.shortTypeName(t)
                             sizeofStruct(structOr(f layout.optionStructName(t)) layout.optionBytes(shapes.shape(t)))
                             option payloadOption of Payload with let cases = all end)
                 end

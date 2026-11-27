@@ -705,7 +705,8 @@ export
     let printDescriptor(lines: Lines d: staticdata.Descriptor): Ok =
         begin
             let tag = d.tag
-            let plain(extra: String): Ok = typeDescriptor(lines tag d.kindConstant d.name d.size.c extra)
+            let plain(extra: String): Ok =
+                typeDescriptor(lines tag staticdata.kindConstant(d.form.kind) d.name d.size.c extra)
             case d.payload
                 when payloadNone then plain("NULL")
                 when payloadOpaque with x then
@@ -723,7 +724,9 @@ export
                 when payloadStored with x then
                     (* A module's bounded abstract type: its opaque type, held
                      * as a value of its bound *)
-                    typeDescriptor(lines tag <> "_abstract" "QTYPE_KIND_OPAQUE" d.name "sizeof(QVal)" "NULL")
+                    typeDescriptor(lines tag
+                        <> "_abstract" staticdata.kindConstant(option formOpaque of staticdata.FormKind end) d.name
+                            "sizeof(QVal)" "NULL")
                     add(lines "static const QStoredDescriptor qstored_desc_" <> tag <> " Q_UNUSED = "
                         <> "{ .type = &quest_type_" <> tag <> "_abstract, .storage = " <> x.storage.expr
                         <> ", .viewed = true };")
@@ -887,10 +890,10 @@ export
             let lines = vector.new(:String)
             let ctx = maybe.some(e.ctx)
             let collected = staticdata.collectDescriptors(ts echoTypes ctx e.emittedBefore)
-            let formsOf(kind: String): vector.T(DescriptorForm) = staticdata.formsOf(collected kind)
+            let formsOf(kind: staticdata.FormKind): vector.T(DescriptorForm) = staticdata.formsOf(collected kind)
             let seenTags = collected.tags
             let funs = vector.new(:Aggregate)
-            let funForms = formsOf("fun")
+            let funForms = formsOf(option formFun of staticdata.FormKind end)
             for i = 0 upto {vector.length(funForms) - 1} do
                 let f = vector.get(funForms i)
                 vector.append(funs tuple let name = f.tag let type = typeOf(f) end)
@@ -918,22 +921,22 @@ export
                     end
                 let structOr(f: DescriptorForm otherwise: String): String =
                     if stringOp.length(f.struct) > 0 then f.struct else otherwise end
-                let tuples = formsOf("tuple")
+                let tuples = formsOf(option formTuple of staticdata.FormKind end)
                 for i = 0 upto {vector.length(tuples) - 1} do
                     let f = vector.get(tuples i)
                     need(layout.tupleStructName(typeOf(f)) typeOf(f))
                 end
-                let records = formsOf("record")
+                let records = formsOf(option formRecord of staticdata.FormKind end)
                 for i = 0 upto {vector.length(records) - 1} do
                     let f = vector.get(records i)
                     need(structOr(f f.tag) typeOf(f))
                 end
-                let options = formsOf("option")
+                let options = formsOf(option formOption of staticdata.FormKind end)
                 for i = 0 upto {vector.length(options) - 1} do
                     let f = vector.get(options i)
                     need(structOr(f layout.optionStructName(typeOf(f))) typeOf(f))
                 end
-                let autos = formsOf("auto")
+                let autos = formsOf(option formAuto of staticdata.FormKind end)
                 for i = 0 upto {vector.length(autos) - 1} do
                     let payload = model.autoPayloadType(typeOf(vector.get(autos i)) maybe.none())
                     if extent valueFields(payload) > 0 then need(layout.tupleStructName(payload) payload) end
@@ -966,10 +969,7 @@ export
                 add(lines "/* Static runtime type descriptors for compound and opaque types */")
                 (* Emit descriptors grouped by kind in the bootstrap's order,
                  * with variants and options last *)
-                let order =
-                    array of "opaque" "stored" "hole" "fun" "auto" "exception" "array" "record" "tuple" "variant"
-                        "option"
-                    end
+                let order = staticdata.descriptorKinds
                 for k = 0 upto {extent order - 1} do
                     let forms = formsOf(order[k])
                     for i = 0 upto {vector.length(forms) - 1} do

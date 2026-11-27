@@ -20,21 +20,38 @@ export
      * message the bootstrap's MissingDescriptorError has *)
     missingDescriptor: Exception(String)
 
+    (* How a type is described at run time: by a descriptor defined by the
+     * runtime (formBase), or by a unit-defined quest_type_<tag> descriptor of
+     * one of the other kinds. An opaque descriptor stands for an application
+     * of an abstract type operator or a type the runtime knows only by name; a
+     * module's bounded abstract type is stored (kept as its own opaque
+     * descriptor and its bound's); a hole is a type parameter's place in a
+     * descriptor template. *)
+    Def FormKind = Option
+        formBase formRecord formTuple formVariant formOption formArray formException formFun formAuto formOpaque
+        formStored formHole
+    end
+    (* A kind's name, as the bootstrap compiler spells it ("base", "record",
+     * and so on), and the name of the runtime's QTypeKind constant for a
+     * descriptor of the kind ("" for formBase, which the unit does not
+     * define) *)
+    kindName(k: FormKind): String
+    kindConstant(k: FormKind): String
+
     (* DescriptorForm records how a type is described at run time. kind is
-     * either "base" for a descriptor defined by the runtime (with expr giving
-     * its C expression), or one of "record", "tuple", "variant", "option",
-     * "array", "exception", "fun", "auto", "opaque", "stored", or "hole" (for
-     * a unit-defined quest_type_<tag> descriptor describing type). An opaque
+     * formBase for a descriptor defined by the runtime (with expr giving its
+     * C expression), or another kind for a unit-defined quest_type_<tag>
+     * descriptor describing type. An opaque
      * descriptor is compared by name and, for an application of an abstract
      * type operator, by its arguments; a hole's name is its index. struct
      * names the C struct laid out as type when it is not derived from type
      * itself. display is set only for echo-only descriptors (used when
      * printing values with their written type components and alias names).
-     * Kind names match the bootstrap compiler, except for elements of
+     * Kinds match the bootstrap compiler's, except for elements of
      * quest_type_bound_vars, which the bootstrap calls "bound_var" and this
-     * compiler calls "base". *)
+     * compiler calls formBase. *)
     Def DescriptorForm = Tuple
-        kind: String
+        kind: FormKind
         tag: String
         type: maybe.T(model.Type)
         name: String
@@ -97,10 +114,10 @@ export
         tags: vector.T(String)
         byKind: maps.StringMap(vector.T(DescriptorForm))
     end
-    descriptorKinds: Array(String)
+    descriptorKinds: Array(FormKind)
     collectDescriptors(ts: vector.T(model.Type) echoTypes: vector.T(model.Type) ctx: maybe.T(RecordNaming)
             emittedBefore: maps.StringSet): Collected
-    formsOf(c: Collected kind: String): vector.T(DescriptorForm)
+    formsOf(c: Collected kind: FormKind): vector.T(DescriptorForm)
 
     (* A reference from a descriptor to another (or NULL): its C expression,
      * and its address as a symbol and an index into it ("" when NULL) *)
@@ -139,12 +156,11 @@ export
         payloadOption with cases: Array(Case) end
     end
 
-    (* A descriptor the unit defines (quest_type_<tag>): its kind (a QTypeKind
-     * constant's name), its name, its size, and its payload *)
+    (* A descriptor the unit defines (quest_type_<tag>): its form (whose kind
+     * is the descriptor's), its name, its size, and its payload *)
     Def Descriptor = Tuple
         form: DescriptorForm
         tag: String
-        kindConstant: String
         name: String
         size: Size
         payload: Payload
@@ -152,7 +168,7 @@ export
     (* Builds the contents of the static descriptor quest_type_<tag> for the
      * descriptor form f (from collectDescriptors) as backend-independent data:
      * codegen/c/declarations prints it as a C initializer, and ssa/build/unit
-     * lays it out as bytes. The result gives the descriptor's QTypeKind, its
+     * lays it out as bytes. The result gives the descriptor's form, its
      * name (for most kinds, dump.shortTypeName of the type), the size of a
      * value as a variable holds it, and a kind-specific payload (a function
      * type's parameters and result, a record's fields and offsets, a variant's

@@ -942,20 +942,23 @@ export
             fail(:Ok "the runtime's " <> key)
         end
 
-    (* A descriptor's kind, as wasm/core numbers them, from its form's
-     * QTypeKind constant *)
-    let kindOf(constant: String): Int =
-        begin
-            let names = array of
-                "" "INT" "REAL" "BOOL" "CHAR" "STRING" "OK" "WORD" "FUN" "TUPLE" "RECORD" "OPTION" "VARIANT" "ARRAY"
-                "EXCEPTION" "OPAQUE" "AUTO" "BOUND_VAR" "HOLE" "STORED"
-            end
-            let var found = ~1
-            for k = 1 upto extent names - 1 do
-                if stringOp.equal(constant "QTYPE_KIND_" <> names[k]) then found := k end
-            end
-            if found < 0 then fail(:Ok "the descriptor kind " <> constant) end
-            found
+    (* The kind of a descriptor the unit defines, as wasm/core numbers kinds
+     * (1 to 7 are the scalars, of base descriptors only, and 17 a bound
+     * variable's) *)
+    let kindOf(kind: staticdata.FormKind): Int =
+        case kind
+            when formFun then 8
+            when formTuple then 9
+            when formRecord then 10
+            when formOption then 11
+            when formVariant then 12
+            when formArray then 13
+            when formException then 14
+            when formOpaque then 15
+            when formAuto then 16
+            when formHole then 18
+            when formStored then 19
+            when formBase then fail(:Int "the kind of a base descriptor, which the runtime defines")
         end
     (* The C runtime's descriptors, which staticdata names by symbol, and
      * their kinds (kindOf's numbers); quest_type_bound_vars is the bound
@@ -1050,7 +1053,7 @@ export
                     when staticdata.missingDescriptor with msg then
                         fail(:staticdata.DescriptorForm "a descriptor: " <> msg)
                     end
-                if stringOp.equal(form.kind "base") then
+                if form.kind?formBase then
                     emit(f i1(ops.globalGet descGlobal(f form.symbol)))
                 else
                     emit(f i1(ops.globalGet f.g.noClosure))
@@ -1179,7 +1182,7 @@ export
             for k = 0 upto vector.length(described) - 1 do
                 let d = vector.get(described k)
                 noClosure()
-                emit(f model.i64Const(kindOf(d.kindConstant)))
+                emit(f model.i64Const(kindOf(d.form.kind)))
                 literal(f d.name)
                 emit(f model.i64Const(extent partsOf(d)))
                 emit(f model.i64Const(extent textsOf(d)))
@@ -1196,7 +1199,7 @@ export
                     emit(f model.i64Const(j))
                     if {j is 0} andif stringOp.equal(ps[j].label "type") andif {d.payload?payloadStored} then
                         noClosure()
-                        emit(f model.i64Const(kindOf("QTYPE_KIND_OPAQUE")))
+                        emit(f model.i64Const(kindOf(option formOpaque of staticdata.FormKind end)))
                         literal(f d.name)
                         emit(f model.i64Const(0))
                         emit(f model.i64Const(0))
