@@ -26,14 +26,14 @@ export
             unit
         end
 
-    (* The passes of docs/ir.md section 8, in order: simplify, specialize,
-     * closure conversion, unbox, represent, describe, and thunks *)
     (* The simplifier's unit, without what it left of the copies of inlined
      * modules that nothing calls now (ir/opened): their members are pinned,
      * as named from outside the unit's bodies, which a copy's are not *)
     let simplified(unit: nodes.Unit): nodes.Unit =
         opened.dropUnreachable(simplify.simplifyUnit(unit) fun(m: nodes.Module): Bool opened.isOpened(m))
 
+    (* The passes of docs/ir.md section 8, in order: simplify, specialize,
+     * closure conversion, unbox, represent, describe, and thunks *)
     let runPasses(unit: nodes.Unit): nodes.Unit =
         begin
             let specialized = checked(specialize.specializeUnit(checked(simplified(unit))))

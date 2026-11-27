@@ -5,7 +5,8 @@
  * synthesizing them during code generation (docs/ir.md section 8.4.1). This
  * covers adapter functions for function-coercion plans (adapt plans),
  * wrapper thunks for type applications whose result is a function, and
- * closures for external C functions used as first-class values. The pass
+ * closures for external C functions used as first-class values; thunkUnit
+ * lists the pass's five jobs. The pass
  * completes the described stage; the bootstrap compiler has no separate pass
  * and emits these thunks directly in its C printer. *)
 
@@ -21,7 +22,13 @@ export
      *   of its thunk, capturing the applied function and type arguments;
      * - each external C function used as a value becomes a static closure of a
      *   wrapper calling it, and calls to variables bound to one call it
-     *   directly.
+     *   directly;
+     * - a closure made only to be adapted is made at the target type instead,
+     *   a copy of its function converting its parameters and returns, so one
+     *   closure is allocated rather than two;
+     * - an adapt conversion of an immutable top-level global that needs only
+     *   static descriptors is made once, right after the global's definition,
+     *   and its uses share the result.
      * Identical thunks (matching types and layout) are deduplicated into one
      * function. *)
     thunkUnit(unit: nodes.Unit): nodes.Unit

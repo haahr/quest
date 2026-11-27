@@ -475,11 +475,6 @@ let keptImports(unit: nodes.Unit): Array(passes.ImplicitImport) =
         vector.toArray(kept)
     end
 
-(* Compiled backend execution (compiled, below): takes a type-checked program
- * through the selected backend (C, ssac, arm64, or wasm), matching the
- * bootstrap's codegen_c and run_c_compiled phases as well as -o and `compile`.
- * It prints generated code, writes a binary or wasm bundle, or runs the
- * compiled program, building imported modules with the build engine. *)
 (* Returns the distinct module names from a WebAssembly binary's import section
  * (section id 2), which determines instantiation order. Parses function, table,
  * memory, global, and tag imports per the WebAssembly 3.0 binary format,
@@ -571,6 +566,11 @@ let wasmImports(bytes: String): Array(String) =
         vector.toArray(found)
     end
 
+(* Compiled backend execution: takes a type-checked program through the
+ * selected backend (C, ssac, arm64, or wasm), matching the bootstrap's
+ * codegen_c and run_c_compiled phases as well as -o and `compile`. It prints
+ * generated code, writes a binary or wasm bundle, or runs the compiled
+ * program, building imported modules with the build engine. *)
 let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
     begin
         let located = fun(message: String): Ok
