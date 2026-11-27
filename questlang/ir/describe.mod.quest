@@ -1057,19 +1057,6 @@ export
             vector.toArray(c.found)
         end
 
-    (* The number of type parameters a function's type quantifies: its own,
-     * after those its closure supplies (the enclosing functions') *)
-    let ownTypeParams(t: Type): Int =
-        begin
-            let var s = shapes.shape(t)
-            let var n = 0
-            while shapes.kindIs(s shapes.shapeAll) do
-                n := n + extent s.typeParams
-                s := shapes.body(s)
-            end
-            n
-        end
-
     (* Removes enclosing type-parameter descriptors from a function and its
      * closures when the function never uses any of them. A closure that also
      * captures no values can then be emitted statically instead of allocated on
@@ -1112,7 +1099,7 @@ export
                 changed := false
                 for i = 0 upto {vector.length(unit.functions) - 1} do
                     let f = vector.get(unit.functions i)
-                    let captured = extent f.typeParams - ownTypeParams(f.v.type)
+                    let captured = extent f.typeParams - shapes.quantified(shapes.shape(f.v.type)).count
                     let var unused = {captured > 0} andif hashMap.contains(closures f.id)
                     for k = 0 upto {captured - 1} do
                         if maybe.unwrapOr(hashMap.get(uses f.descriptorParams[k].v.id) 0) > 0 then

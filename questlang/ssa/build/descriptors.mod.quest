@@ -5,6 +5,7 @@ import
     util/maybe : util/Maybe
 
     ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/repr/layout : questlang/repr/Layout
     questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     questlang/repr/staticdata : questlang/repr/StaticData
     vals = questlang/ssa/build/values : questlang/ssa/build/Values
@@ -49,7 +50,7 @@ export
     (* Allocates a stack array holding ptrs and returns its address *)
     and slotArray(fn: vals.Fn ptrs: Array(Int)): Int =
         begin
-            let s = ssa.newSlot(fn.f 8 * {if extent ptrs is 0 then 1 else extent ptrs end} 8)
+            let s = ssa.newSlot(fn.f layout.allocationBytes(extent ptrs) 8)
             let addr = ssa.slotAddress(fn.f fn.cur s)
             for i = 0 upto {extent ptrs - 1} do vals.store(fn addr 8 * i 8 ptrs[i]) end
             addr

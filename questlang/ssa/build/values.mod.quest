@@ -381,12 +381,7 @@ export
 
     let codeParamTypes(f: ir.Function): Array(ssa.Type) =
         begin
-            let var s = shapes.shape(f.v.type)
-            let var own = 0
-            while shapes.kindIs(s shapes.shapeAll) do
-                own := own + extent s.typeParams
-                s := shapes.body(s)
-            end
+            let own = shapes.quantified(shapes.shape(f.v.type)).count
             let types = vector.new(:ssa.Type)
             for i = 0 upto own do vector.append(types tPtr) end
             for i = 0 upto {extent f.params - 1} do
@@ -506,7 +501,7 @@ export
             end
             if s < 0 then
                 let n = extent parts.varParts(v)
-                s := ssa.newSlot(fn.f 8 * {if n is 0 then 1 else n end} 8)
+                s := ssa.newSlot(fn.f layout.allocationBytes(n) 8)
                 bind(fn v option bindSlot of Binding with let slot = s end)
             end
             ssa.slotAddress(fn.f fn.cur s)

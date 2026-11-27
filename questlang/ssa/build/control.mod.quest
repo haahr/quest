@@ -157,12 +157,12 @@ export
                     objects.heldShape(ir.atomType(x.recordAtom) shapes.shapeRecord) x)
             when opMakeVariant with x then
                 let vs = objects.heldShape(maybe.unwrap(result).type shapes.shapeVariant)
-                let index = vals.constant(fn objects.tagIndex(vs x.tag))
+                let index = vals.constant(fn shapes.tagIndex(vs x.tag))
                 if maybe.isNone(x.payload) then
                     array of index vals.toVal(fn vals.constant(fn 0)) end
                 else
                     let pa = maybe.unwrap(x.payload)
-                    let cs = aggregates.caseShape(vs x.tag)
+                    let cs = shapes.caseShape(vs x.tag)
                     let caseT = if maybe.isSome(cs) then maybe.unwrap(cs).type else ir.atomType(pa) end
                     array of index objects.slotToWord(fn vals.atom(fn pa) caseT) end
                 end
@@ -170,7 +170,7 @@ export
             when opIsTag with x then
                 let ts = aggregates.tagShape(ir.atomType(x.value))
                 let tag = objects.tagOf(fn vals.atom(fn x.value) ts x.access x.viewMap)
-                array of vals.binary(fn ssa.opEq tag vals.constant(fn objects.tagIndex(ts x.tag))) end
+                array of vals.binary(fn ssa.opEq tag vals.constant(fn shapes.tagIndex(ts x.tag))) end
             when opPayload with x then aggregates.payload(fn x maybe.unwrap(result).type)
             when opOrdinal with x then
                 (* The tag numbers the shape's cases, ordered by name; the
@@ -223,7 +223,7 @@ export
                 array of vals.binary(fn ssa.opPne p vals.null(fn)) end
             when opAddrCell with x then
                 let t = ir.atomType(x.init)
-                let s = ssa.newSlot(fn.f 8 * {if extent parts.ofType(t) is 0 then 1 else extent parts.ofType(t) end} 8)
+                let s = ssa.newSlot(fn.f layout.allocationBytes(extent parts.ofType(t)) 8)
                 let addr = ssa.slotAddress(fn.f fn.cur s)
                 vals.writeLocation(fn addr t vals.atom(fn x.init))
                 array of addr end
@@ -725,7 +725,7 @@ export
                 blocks[ci] := ssa.newBlock(fn.f)
                 let c = x.cases[ci]
                 for ti = 0 upto {extent c.tags - 1} do
-                    vector.append(cases objects.tagIndex(t c.tags[ti]))
+                    vector.append(cases shapes.tagIndex(t c.tags[ti]))
                     vector.append(targets ssa.target(blocks[ci] vals.noValues))
                 end
             end
@@ -949,7 +949,7 @@ export
             let var n = extent arm.descriptors
             if extent storedFields < n then n := extent storedFields end
             if extent armFields < n then n := extent armFields end
-            let a = objects.alloc(fn 8 * {if extent armFields is 0 then 1 else extent armFields end}
+            let a = objects.alloc(fn layout.allocationBytes(extent armFields)
                     objectLayout.register(fn.u.layouts objectLayout.tupleLayout(shapes.shape(armType) "" noBoxes)))
             let mark = vals.beginInit(fn a)
             for i = 0 upto {n - 1} do

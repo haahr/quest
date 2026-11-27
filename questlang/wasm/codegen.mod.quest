@@ -447,23 +447,9 @@ export
             let composite = option compStruct of model.Composite with let fields = fields end
         end
 
-    (* A function type's quantifiers' type parameters, how many, and its
-     * body, a function's shape or, for a type-only function, its result's *)
-    Def Quantified = Tuple count: Int body: shapes.Shape end
-    let quantified(t: ir.Type): Quantified =
-        begin
-            let var s = shapeOf(t)
-            let var count = 0
-            while shapes.kindIs(s shapes.shapeAll) do
-                count := count + extent s.typeParams
-                s := shapes.body(s)
-            end
-            tuple let count = count let body = s end
-        end
-
     (* A type-only function's closure signature: a descriptor for each type
      * parameter, and its result's parts *)
-    let typeOnlySig(q: Quantified): Signature =
+    let typeOnlySig(q: shapes.Quantified): Signature =
         tuple let params = array of(q.count model.eqref) let results = parts(q.body.type) end
 
     (* A function type's closure signature (section 3.2): a descriptor for
@@ -472,7 +458,7 @@ export
      * closure itself, which comes first, is not among them (withClosure) *)
     let closureSig(t: ir.Type): Signature =
         begin
-            let q = quantified(t)
+            let q = shapes.quantified(shapeOf(t))
             let s = q.body
             if {q.count > 0} andif not(shapes.kindIs(s shapes.shapeFun)) then
                 typeOnlySig(q)
@@ -493,7 +479,7 @@ export
     (* How many parameters a function type has, its descriptors among them *)
     let arity(t: ir.Type): Int =
         begin
-            let q = quantified(t)
+            let q = shapes.quantified(shapeOf(t))
             q.count + if shapes.kindIs(q.body shapes.shapeFun) then extent q.body.params else 0 end
         end
     (* Whether a function is an adapter (ir/thunks): its environment is the
@@ -504,7 +490,7 @@ export
 
     (* How many of a function's type parameters its closure supplies, as
      * captures, rather than its callers (the rest) *)
-    let capturedDescriptors(fn: ir.Function): Int = extent fn.typeParams - quantified(fn.v.type).count
+    let capturedDescriptors(fn: ir.Function): Int = extent fn.typeParams - shapes.quantified(shapeOf(fn.v.type)).count
 
     let withClosure(ts: Array(ValType)): Array(ValType) =
         begin
@@ -1559,24 +1545,12 @@ export
         end
     let isVariantShape(t: ir.Type): Bool = shapes.kindIs(shapeOf(t) shapes.shapeVariant)
 
-    (* A case's tag: its index among the shape's cases, which are in name
-     * order (docs/c-representation.md section 5.3) *)
-    let tagIndex(s: shapes.Shape tag: String): Int =
-        begin
-            let var index = ~1
-            for k = 0 upto extent s.cases - 1 do
-                if stringOp.equal(maybe.unwrapOr(s.cases[k].name "") tag) then index := k end
-            end
-            if index < 0 then fail(:Ok "an option or variant of no case " <> tag) end
-            index
-        end
-
     (* How many components case tag has, and whether they are a tuple's,
      * which a case binder is; one that is not a tuple is one value *)
     Def CaseForm = Tuple count: Int isTuple: Bool end
     let caseForm(s: shapes.Shape tag: String): CaseForm =
         begin
-            let c = s.cases[tagIndex(s tag)]
+            let c = s.cases[shapes.tagIndex(s tag)]
             if maybe.isNone(c.shape) then
                 tuple let count = 0 let isTuple = true end
             else
@@ -1682,12 +1656,12 @@ export
                 atom(f index)
                 emit(f i(ops.i32WrapI64))
                 let tags = array of(extent x.cases 0)
-                for k = 0 upto extent x.cases - 1 do tags[k] := tagIndex(s x.cases[k]) end
+                for k = 0 upto extent x.cases - 1 do tags[k] := shapes.tagIndex(s x.cases[k]) end
                 mapI32(f tags)
             else
                 let tag = maybe.unwrapOr(x.tag "")
                 payloadSlots(f x s tag)
-                emit(f model.i32Const(tagIndex(s tag)))
+                emit(f model.i32Const(shapes.tagIndex(s tag)))
             end
             emit(f i1(ops.structNew tOption))
         end
@@ -1759,14 +1733,14 @@ export
                     variantAtom(f x.value)
                     emit(f i1(ops.localSet held))
                 end
-                emit(f model.i32Const(tagIndex(s x.tag)))
+                emit(f model.i32Const(shapes.tagIndex(s x.tag)))
                 emit(f i(ops.i32Ne))
                 emit(f model.ifInst(empty ""))
                 raiseAt(f "variant.tagMismatch" x.offset)
                 emit(f model.endInst)
             end
             emit(f i1(ops.localGet held))
-            if viewed then viewPartOnStack(f x.viewMap tagIndex(s x.tag)) end
+            if viewed then viewPartOnStack(f x.viewMap shapes.tagIndex(s x.tag)) end
             unboxFor(f t target)
         end
 
@@ -1780,7 +1754,7 @@ export
             (* A decided payload's tag is known, and not tested *)
             if not(x.decided) then
                 if viewed then viewTag(f x.value x.viewMap) else tagOf(f x.value x.access) end
-                emit(f model.i32Const(tagIndex(s x.tag)))
+                emit(f model.i32Const(shapes.tagIndex(s x.tag)))
                 emit(f i(ops.i32Ne))
                 emit(f model.ifInst(empty ""))
                 raiseAt(f "variant.tagMismatch" x.offset)
@@ -1807,7 +1781,7 @@ export
                 for j = 0 upto count - 1 do
                     emit(f i1(ops.localGet slots))
                     emit(f model.i32Const(j + 1))
-                    viewOptionComponent(f opt x.viewMap tagIndex(s x.tag) j)
+                    viewOptionComponent(f opt x.viewMap shapes.tagIndex(s x.tag) j)
                     emit(f i1(ops.arraySet tSlots))
                 end
             elsif {count > 0} andif anyProxy(x.components) andif not(f.g.isRuntime) then
@@ -2861,7 +2835,7 @@ export
             emit(f i1(ops.localGet held))
             castTo(f tClos)
             descriptors(f x.descriptors)
-            let body = quantified(c.type).body
+            let body = shapes.quantified(shapeOf(c.type)).body
             for k = 0 upto extent x.args - 1 do
                 if isLocatedParam(body k) then
                     atom(f x.args[k])
@@ -2875,7 +2849,7 @@ export
             emit(f i2(ops.structGet u 1))
             (* a result that is one eqref needs no unboxing, so a tail call
              * can return the uniform entry's result itself *)
-            let q = quantified(c.type)
+            let q = shapes.quantified(shapeOf(c.type))
             let result = if shapes.kindIs(q.body shapes.shapeFun) then shapes.result(q.body).type else q.body.type end
             let plain = {extent sig.results is 1} andif sig.results[0]?valRef andif not(isRecord(result))
             if tail andif plain then
@@ -3325,7 +3299,7 @@ export
                 if isUniform(sig n) then
                     native
                 else
-                    let q = quantified(fn.v.type)
+                    let q = shapes.quantified(shapeOf(fn.v.type))
                     let s = q.body
                     let names = array of(n + 1 "")
                     let f = newF(g names array of model.eqref end ~1)
@@ -3461,7 +3435,7 @@ export
                 let targetS = shapeOf(table.target)
                 let tags = array of(extent sourceS.cases 0)
                 for k = 0 upto extent sourceS.cases - 1 do
-                    tags[k] := tagIndex(targetS maybe.unwrapOr(sourceS.cases[k].name ""))
+                    tags[k] := shapes.tagIndex(targetS maybe.unwrapOr(sourceS.cases[k].name ""))
                 end
                 let held = scratch(f model.eqref)
                 unbox(f plan.source)
@@ -3550,7 +3524,7 @@ export
                 let targetS = shapeOf(table.target)
                 let tags = array of(extent sourceS.cases 0)
                 for k = 0 upto extent sourceS.cases - 1 do
-                    tags[k] := tagIndex(targetS maybe.unwrapOr(sourceS.cases[k].name ""))
+                    tags[k] := shapes.tagIndex(targetS maybe.unwrapOr(sourceS.cases[k].name ""))
                 end
                 let held = scratch(f model.eqref)
                 variantAtom(f x.value)
@@ -4444,15 +4418,15 @@ export
                 when opIsTag with x then
                     if maybe.isSome(x.viewMap) then
                         viewTag(f x.value x.viewMap)
-                        emit(f model.i32Const(tagIndex(shapeOf(ir.atomType(x.value)) x.tag)))
+                        emit(f model.i32Const(shapes.tagIndex(shapeOf(ir.atomType(x.value)) x.tag)))
                     elsif isVariantShape(ir.atomType(x.value)) then
                         variantAtom(f x.value)
                         emit(f i(ops.drop))
-                        emit(f model.i32Const(tagIndex(shapeOf(ir.atomType(x.value)) x.tag)))
+                        emit(f model.i32Const(shapes.tagIndex(shapeOf(ir.atomType(x.value)) x.tag)))
                     else
                         let s = optionShape(ir.atomType(x.value))
                         tagOf(f x.value x.access)
-                        emit(f model.i32Const(tagIndex(s x.tag)))
+                        emit(f model.i32Const(shapes.tagIndex(s x.tag)))
                     end
                     emit(f i(ops.i32Eq))
                 when opPayload with x then
@@ -4501,7 +4475,7 @@ export
                 when opMakeVariant with x then
                     (* its tag, in its type's numbering, and its payload as a
                      * slot holds it; a case with none holds ok *)
-                    emit(f model.i32Const(tagIndex(shapeOf(targetType()) x.tag)))
+                    emit(f model.i32Const(shapes.tagIndex(shapeOf(targetType()) x.tag)))
                     if maybe.isSome(x.payload) then
                         boxedAtom(f maybe.unwrap(x.payload))
                     else
@@ -5342,10 +5316,10 @@ export
             end
             let targets = array of(extent s.cases m)
             for k = 0 upto m - 1 do
-                for j = 0 upto extent x.cases[k].tags - 1 do targets[tagIndex(s x.cases[k].tags[j])] := k end
+                for j = 0 upto extent x.cases[k].tags - 1 do targets[shapes.tagIndex(s x.cases[k].tags[j])] := k end
             end
             (* A decided switch's tag is its one case's, not read *)
-            if x.decided then emit(f model.i32Const(tagIndex(s x.cases[0].tags[0])))
+            if x.decided then emit(f model.i32Const(shapes.tagIndex(s x.cases[0].tags[0])))
             elsif viewed then viewTag(f x.value x.viewMap)
             elsif isV then emit(f i1(ops.localGet vTag))
             elsif proxied then
@@ -5361,7 +5335,7 @@ export
                 let c = x.cases[k]
                 if maybe.isSome(c.binder) then
                     let binder = maybe.unwrap(c.binder)
-                    let b = tagIndex(s c.tags[0])
+                    let b = shapes.tagIndex(s c.tags[0])
                     if isV then
                         (* the variant's payload, whatever its type *)
                         emit(f i1(ops.localGet vPayload))
@@ -5453,7 +5427,7 @@ export
      * as its callers see it *)
     let paramParts(g: G fn: ir.Function k: Int): Array(ValType) =
         begin
-            let body = quantified(fn.v.type).body
+            let body = shapes.quantified(shapeOf(fn.v.type)).body
             if shapes.kindIs(body shapes.shapeFun) andif {k < extent body.params}
                     andif isLocation(body.params[k].shape.type) then locationParts
             else varParts(g fn.params[k].v)
@@ -5470,7 +5444,7 @@ export
              * parts *)
             let params = vector.new(:ValType)
             vector.append(params model.ref(tClos))
-            for k = 0 upto quantified(fn.v.type).count - 1 do vector.append(params model.eqref) end
+            for k = 0 upto shapes.quantified(shapeOf(fn.v.type)).count - 1 do vector.append(params model.eqref) end
             for k = 0 upto extent fn.params - 1 do
                 let located = not(stringOp.equal(fn.params[k].mode "value"))
                 if fn.params[k].v.boxed andif not(located) then fail(:Ok "a parameter held boxed") end

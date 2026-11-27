@@ -161,6 +161,26 @@ export
     let component(s: Shape name: String): maybe.T(Component) = named(s.components name)
     let caseOf(s: Shape name: String): maybe.T(Component) = named(s.cases name)
 
+    let tagIndex(s: Shape tag: String): Int =
+        begin
+            let var index = ~1
+            for i = 0 upto {extent s.cases - 1} do
+                if {index < 0} andif maybe.isSome(s.cases[i].name)
+                        andif stringOp.equal(maybe.unwrap(s.cases[i].name) tag) then
+                    index := i
+                end
+            end
+            if index < 0 then raise noShape with "a " <> kindName(s.kind) <> " shape has no case " <> tag end end
+            index
+        end
+
+    let caseShape(s: Shape tag: String): maybe.T(Shape) =
+        begin
+            let c = caseOf(s tag)
+            if maybe.isNone(c) then raise noShape with "a " <> kindName(s.kind) <> " shape has no case " <> tag end end
+            maybe.unwrap(c).shape
+        end
+
     let sortedComponents(s: Shape): Array(Component) =
         sort.sorted(s.components fun(a: Component b: Component): Int
             sort.stringCompare(maybe.unwrapOr(a.name "") maybe.unwrapOr(b.name "")))
@@ -636,11 +656,18 @@ export
                     shapeAbstract, shapeExternal, shapeOperator, shapePending then false
         end
 
-    (* Whether values of type t are functions, polymorphic or not *)
-    let isFunction(t: Type): Bool =
+    Def Quantified = Tuple count: Int body: Shape end
+    let quantified(t: Shape): Quantified =
         begin
-            let var s = shape(t)
-            while kindIs(s shapeAll) do s := body(s) end
-            kindIs(s shapeFun)
+            let var s = t
+            let var count = 0
+            while kindIs(s shapeAll) do
+                count := count + extent s.typeParams
+                s := body(s)
+            end
+            tuple let count = count let body = s end
         end
+
+    (* Whether values of type t are functions, polymorphic or not *)
+    let isFunction(t: Type): Bool = kindIs(quantified(shape(t)).body shapeFun)
 end

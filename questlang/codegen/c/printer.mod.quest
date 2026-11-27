@@ -89,64 +89,10 @@ export
             end
             found
         end
-    let componentShape(s: Shape i: Int): Shape = maybe.unwrap(s.components[i].shape)
+    let componentShape(s: Shape i: Int): Shape = shapes.componentShape(s.components[i])
     let atomType(a: Atom): Type = nodes.atomType(a)
     let atomVar(a: Atom): maybe.T(Variable) = nodes.atomVarOf(a)
     let some(s: String): maybe.T(String) = maybe.some(s)
-
-    (* The shape of t's values as held, if it is of the kind: t's own, or a
-     * bounded type parameter's bound's (ir/represent's held_shape) *)
-    let heldShape(t: Type kind: shapes.ShapeKind): maybe.T(Shape) =
-        begin
-            let held = layout.resolvedShape(shapeOf(t))
-            if shapes.sameKind(held.kind kind) then maybe.some(held) else maybe.none() end
-        end
-
-    (* How many type parameters t's quantifiers bind, nested ones included:
-     * the descriptors a function of type t takes after its environment *)
-    let typeParameterCount(t: Type): Int =
-        begin
-            let var s = shapeOf(t)
-            let var count = 0
-            while shapes.kindIs(s shapes.shapeAll) do
-                count := count + extent s.typeParams
-                s := shapes.body(s)
-            end
-            count
-        end
-
-    (* Whether t is a function type, under any quantifiers *)
-    let isFunction(t: Type): Bool =
-        begin
-            let var s = shapeOf(t)
-            while shapes.kindIs(s shapes.shapeAll) do s := shapes.body(s) end
-            shapes.kindIs(s shapes.shapeFun)
-        end
-
-    (* The index of a case of a variant or option shape (0 if it has none of
-     * the name) *)
-    let tagIndex(s: Shape tag: maybe.T(String)): Int =
-        begin
-            let var index = ~1
-            for i = 0 upto {extent s.cases - 1} do
-                if {index < 0} andif maybe.isSome(tag) andif maybe.isSome(s.cases[i].name)
-                        andif eq(maybe.unwrap(s.cases[i].name) maybe.unwrap(tag)) then
-                    index := i
-                end
-            end
-            if index < 0 then 0 else index end
-        end
-    let tagIndexOf(s: Shape tag: String): Int = tagIndex(s some(tag))
-    let caseOf(s: Shape tag: String): maybe.T(shapes.Component) = shapes.caseOf(s tag)
-    let caseShape(s: Shape tag: String): maybe.T(Shape) =
-        begin
-            let c = caseOf(s tag)
-            if maybe.isSome(c) then
-                maybe.unwrap(c).shape
-            else
-                maybe.none()
-            end
-        end
 
     (* =========================================================================
      * The printer's state
@@ -507,7 +453,7 @@ export
 
     let held(t: Type kind: shapes.ShapeKind): Shape =
         begin
-            let s = heldShape(t kind)
+            let s = layout.heldShape(t kind)
             if maybe.isNone(s) then
                 raise unsupported with "C printing of a " <> shapes.kindName(kind) <> " operation on a value of type "
                     <> model.show(t) end
@@ -517,8 +463,8 @@ export
 
     let tagShape(t: Type): Shape =
         begin
-            let v = heldShape(t shapes.shapeVariant)
-            let s = if maybe.isSome(v) then v else heldShape(t shapes.shapeOption) end
+            let v = layout.heldShape(t shapes.shapeVariant)
+            let s = if maybe.isSome(v) then v else layout.heldShape(t shapes.shapeOption) end
             if maybe.isNone(s) then
                 raise unsupported with "C printing of a tag test on a value of type " <> model.show(t) end
             end
@@ -748,7 +694,7 @@ export
                 when original then
                     "((" <> layout.shapeRepresentation(os) <> ")quest_unproxy(" <> v <> "))->u.qo_" <> tag <> part
                 when proxy then
-                    let cs = maybe.unwrap(caseShape(os tag))
+                    let cs = maybe.unwrap(shapes.caseShape(os tag))
                     let comp = if maybe.isNone(i) then cs else componentShape(cs maybe.unwrap(i)) end
                     let tmp = temp(p slotCType(comp))
                     let through = types.shapeQvalToSlot("quest_proxy_option_element(" <> v <> ", "
@@ -765,8 +711,8 @@ export
     let viewPayload(p: P v: String ts: Shape tag: String viewMap: Variable t: Type): String =
         begin
             let vm = name(p viewMap)
-            let b = tagIndexOf(ts tag)
-            let cs = caseShape(ts tag)
+            let b = shapes.tagIndex(ts tag)
+            let cs = shapes.caseShape(ts tag)
             case ts.kind
                 when shapeVariant then
                     let caseS = if maybe.isSome(cs) then maybe.unwrap(cs) else shapeOf(t) end
@@ -1229,7 +1175,7 @@ export
                             when opMakeOption with o then
                                 let os = held(y.v.type shapes.shapeOption)
                                 let rs = shapeOf(st.v.type)
-                                let pt = if maybe.isSome(o.tag) then caseShape(os maybe.unwrap(o.tag))
+                                let pt = if maybe.isSome(o.tag) then shapes.caseShape(os maybe.unwrap(o.tag))
                                     else maybe.none(:Shape) end
                                 if {extent t.embedded > 0} orif maybe.isNone(pt)
                                         orif not(shapes.kindIs(maybe.unwrap(pt) shapes.shapeTuple))
@@ -1372,7 +1318,7 @@ export
             let tags = array of(extent o.cases 0)
             let var identity = true
             for i = 0 upto {extent o.cases - 1} do
-                tags[i] := tagIndexOf(os o.cases[i])
+                tags[i] := shapes.tagIndex(os o.cases[i])
                 if not(tags[i] is i) then identity := false end
             end
             if identity then checked else syntax.indexTable(tags) <> "[" <> checked <> "]" end
@@ -1402,7 +1348,7 @@ export
                     else os.cases[0].name
                     end
             else
-                emit(p tmp <> "->tag = " <> lit(tagIndex(os tag)) <> ";")
+                emit(p tmp <> "->tag = " <> lit(shapes.tagIndex(os maybe.unwrap(tag))) <> ";")
             end
             let fusedLet =
                 if maybe.isSome(o.payload) then
@@ -1429,7 +1375,7 @@ export
                 end
             elsif maybe.isSome(o.payload) andif maybe.isSome(tag) then
                 let tagName = maybe.unwrap(tag)
-                let pt = caseShape(os tagName)
+                let pt = shapes.caseShape(os tagName)
                 let payloadAtom = maybe.unwrap(o.payload)
                 let pv = atom(p payloadAtom)
                 if maybe.isSome(pt) andif shapes.kindIs(maybe.unwrap(pt) shapes.shapeTuple) then
@@ -1449,7 +1395,7 @@ export
     (* Whether an option shape's case has no components *)
     let caseWithoutComponents(os: Shape tag: String): Bool =
         begin
-            let pt = caseShape(os tag)
+            let pt = shapes.caseShape(os tag)
             maybe.isNone(pt) orif {extent maybe.unwrap(:Shape pt).components is 0}
         end
 
@@ -1485,7 +1431,7 @@ export
             if maybe.isNone(o.ordinalAtom) andif maybe.isSome(o.tag)
                     andif caseWithoutComponents(os maybe.unwrap(o.tag)) then
                 "((" <> struct <> " *)&" <> optionTable(p struct extent os.cases) <> "["
-                    <> cInt(tagIndex(os o.tag)) <> "])"
+                    <> cInt(shapes.tagIndex(os maybe.unwrap(o.tag))) <> "])"
             elsif maybe.isSome(o.ordinalAtom) andif allWithout then
                 let mapped = ordinalTag(p o os maybe.unwrap(o.ordinalAtom))
                 "((" <> struct <> " *)&" <> optionTable(p struct extent os.cases) <> "[" <> mapped <> "])"
@@ -1528,7 +1474,7 @@ export
             emit(p tmp <> " = (" <> struct <> " *)quest_alloc(sizeof(" <> struct <> "), "
                 <> layoutRef(p objectLayout.tupleLayout(ts struct noBoxes)) <> ");")
             let mark = beginInit(p tmp)
-            let pt = caseShape(os tag)
+            let pt = shapes.caseShape(os tag)
             if offset > 0 then emit(p tmp <> "->_0 = " <> lit(ordinalValue) <> ";") end
             if maybe.isSome(pt) andif shapes.kindIs(maybe.unwrap(pt) shapes.shapeTuple) then
                 let ptShape = maybe.unwrap(pt)
@@ -1578,9 +1524,9 @@ export
                     when opPayload with o then
                         let ts = tagShape(atomType(o.value))
                         let v = atom(p o.value)
-                        emit(p "if (" <> optionTag(v o.access) <> " != " <> lit(tagIndexOf(ts o.tag))
+                        emit(p "if (" <> optionTag(v o.access) <> " != " <> lit(shapes.tagIndex(ts o.tag))
                             <> ") quest_raise_variant_error_at(" <> site(p o.offset) <> ");")
-                        let pt = caseShape(ts o.tag)
+                        let pt = shapes.caseShape(ts o.tag)
                         let i = index - 1
                         let wanted = componentShape(shapeOf(x.v.type) index)
                         if maybe.isSome(pt) andif shapes.kindIs(maybe.unwrap(pt) shapes.shapeTuple) then
@@ -1609,7 +1555,8 @@ export
             if maybe.isSome(o.viewMap) then
                 if not(o.decided) then
                     let tagC = tagOf(p atom(p o.value) ts o.access o.viewMap)
-                    emit(p "if (" <> tagC <> " != " <> lit(tagIndexOf(ts o.tag)) <> ") quest_raise_variant_error_at("
+                    emit(p "if (" <> tagC <> " != " <> lit(shapes.tagIndex(ts o.tag))
+                        <> ") quest_raise_variant_error_at("
                         <> st <> ");")
                 end
                 let result = viewPayload(p atom(p o.value) ts o.tag maybe.unwrap(o.viewMap) t)
@@ -1623,7 +1570,7 @@ export
                 end
                 result
             else
-                let index = tagIndexOf(ts o.tag)
+                let index = shapes.tagIndex(ts o.tag)
                 case ts.kind
                     when shapeVariant then
                         if not(o.decided) then
@@ -1631,7 +1578,7 @@ export
                                 <> ") quest_raise_variant_error_at("
                                 <> st <> ");")
                         end
-                        let cs = caseShape(ts o.tag)
+                        let cs = shapes.caseShape(ts o.tag)
                         let caseS = if maybe.isSome(cs) then maybe.unwrap(cs) else shapeOf(t) end
                         (* In its slot form (a record or variant, for a boxed
                          * variable) *)
@@ -2045,7 +1992,7 @@ export
             when opModuleMember with x then moduleMember(p x.moduleRef x.member)
             when opBuiltin with x then "(&" <> symbols.mangleIdent(x.name) <> "_closure)"
             when opExternal with x then
-                if maybe.isSome(result) andif isFunction(maybe.unwrap(result).type) then
+                if maybe.isSome(result) andif shapes.isFunction(maybe.unwrap(result).type) then
                     raise unsupported with
                         "C printing of an external C function used as a value, not its thunk's closure"
                     end
@@ -2167,12 +2114,12 @@ export
                 recordField(p atom(p x.recordAtom) held(atomType(x.recordAtom) shapes.shapeRecord) x.name x)
             when opMakeVariant with x then
                 let vs = held(maybe.unwrap(result).type shapes.shapeVariant)
-                let index = tagIndexOf(vs x.tag)
+                let index = shapes.tagIndex(vs x.tag)
                 if maybe.isNone(x.payload) then
                     "((QVariantVal){ .tag = " <> lit(index) <> ", .payload = Q_OK_VAL })"
                 else
                     let pa = maybe.unwrap(x.payload)
-                    let cs = caseShape(vs x.tag)
+                    let cs = shapes.caseShape(vs x.tag)
                     let caseS = if maybe.isSome(cs) then maybe.unwrap(cs) else shapeOf(atomType(pa)) end
                     let word = types.shapeSlotToQval(atom(p pa) caseS)
                     "((QVariantVal){ .tag = " <> lit(index) <> ", .payload = " <> word <> " })"
@@ -2181,7 +2128,7 @@ export
             when opIsTag with x then
                 let ts = tagShape(atomType(x.value))
                 let tagC = tagOf(p atom(p x.value) ts x.access x.viewMap)
-                "(" <> tagC <> " == " <> lit(tagIndexOf(ts x.tag)) <> ")"
+                "(" <> tagC <> " == " <> lit(shapes.tagIndex(ts x.tag)) <> ")"
             when opPayload with x then payload(p x maybe.unwrap(result).type)
             when opMakeArray with x then
                 let elem = shapes.element(shapeOf(maybe.unwrap(result).type))
@@ -2592,12 +2539,13 @@ export
             let t = tagShape(atomType(x.value))
             let isVariant = shapes.kindIs(t shapes.shapeVariant)
             (* A decided switch's tag is its one case's, not read *)
-            let tagC = if x.decided then lit(tagIndexOf(t x.cases[0].tags[0])) else tagOf(p v t x.access x.viewMap) end
+            let tagC =
+                if x.decided then lit(shapes.tagIndex(t x.cases[0].tags[0])) else tagOf(p v t x.access x.viewMap) end
             emit(p "switch (" <> tagC <> ") {")
             p.indent := p.indent + 1
             for ci = 0 upto {extent x.cases - 1} do
                 let c = x.cases[ci]
-                for ti = 0 upto {extent c.tags - 1} do emit(p "case " <> lit(tagIndexOf(t c.tags[ti])) <> ":") end
+                for ti = 0 upto {extent c.tags - 1} do emit(p "case " <> lit(shapes.tagIndex(t c.tags[ti])) <> ":") end
                 emit(p "{")
                 p.indent := p.indent + 1
                 if maybe.isSome(c.binder) andif not(isOk(maybe.unwrap(c.binder).type)) then
@@ -2824,7 +2772,7 @@ export
 
     let functionSignature(p: P f: nodes.Function): String =
         begin
-            let count = typeParameterCount(f.v.type)
+            let count = shapes.quantified(shapeOf(f.v.type)).count
             let params = vector.new(:String)
             add(params "void *_raw_env")
             if count > 0 then
@@ -2866,7 +2814,7 @@ export
             p.fs := newFnState(maybe.some(f))
             p.fs.volatile := volatileVars(f.body)
             p.fs.fused := fusedTuples(p f.body)
-            let nCaptured = extent f.typeParams - typeParameterCount(f.v.type)
+            let nCaptured = extent f.typeParams - shapes.quantified(shapeOf(f.v.type)).count
             let signature = functionSignature(p f)
             let prologue = vector.new(:String)
             for i = nCaptured upto {extent f.descriptorParams - 1} do

@@ -163,8 +163,7 @@ export
     (* The C ABI result parts for a function type's return type *)
     let resultParts(t: Type): Array(parts.Part) =
         begin
-            let var s = shapes.shape(t)
-            while shapes.kindIs(s shapes.shapeAll) do s := shapes.body(s) end
+            let s = shapes.quantified(shapes.shape(t)).body
             if shapes.kindIs(s shapes.shapeFun) then parts.ofType(shapes.result(s).type) else parts.ofType(s.type) end
         end
 
@@ -184,7 +183,7 @@ export
             for i = 0 upto {extent args - 1} do
                 let n = extent parts.ofType(ir.atomType(args[i]))
                 if n is 2 then vector.append(starts at) end
-                at := at + {if n is 0 then 1 else n end}
+                at := at + layout.words(n)
             end
             vector.toArray(starts)
         end
@@ -198,7 +197,7 @@ export
             for i = 0 upto {extent args - 1} do
                 let ps = parts.ofType(ir.atomType(args[i]))
                 if {extent ps is 1} andif {ps[0].width is 1} then vector.append(found at) end
-                at := at + {if extent ps is 0 then 1 else extent ps end}
+                at := at + layout.words(extent ps)
             end
             vector.toArray(found)
         end

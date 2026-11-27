@@ -40,24 +40,13 @@ export
      * Functions
      * ====================================================================== *)
 
-    let countTypeParams(t: Type): Int =
-        begin
-            let var s = shapes.shape(t)
-            let var n = 0
-            while shapes.kindIs(s shapes.shapeAll) do
-                n := n + extent s.typeParams
-                s := shapes.body(s)
-            end
-            n
-        end
-
     (* Lowers an IR function to SSA. Its C calling signature takes the closure
      * pointer first, then descriptors for its own type parameters, then its
      * value and var/out parameters. Captured type-parameter descriptors are
      * loaded from the closure immediately after its code pointer. *)
     let function(u: vals.UnitBuilder f: ir.Function): Function =
         begin
-            let own = countTypeParams(f.v.type)
+            let own = shapes.quantified(shapes.shape(f.v.type)).count
             let nCaptured = extent f.typeParams - own
             let paramTypes = vector.new(:ssa.Type)
             let paramPairs = vector.new(:Int)

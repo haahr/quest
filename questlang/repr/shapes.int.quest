@@ -123,6 +123,12 @@ export
     isRecursive(s: Shape): Bool
     component(s: Shape name: String): maybe.T(Component)
     caseOf(s: Shape name: String): maybe.T(Component)
+    (* The index of case tag of a variant or option shape s, as tags number
+     * them (its cases are in name order, docs/c-representation.md section
+     * 5.3), and the shape of the case's payload (none for a case without
+     * one). A tag s has no case of is a compiler error: both raise. *)
+    tagIndex(s: Shape tag: String): Int
+    caseShape(s: Shape tag: String): maybe.T(Shape)
     (* A record's fields in name order (the order of its payload's layout) *)
     sortedComponents(s: Shape): Array(Component)
     (* The shapes s refers to directly *)
@@ -131,6 +137,13 @@ export
     (* The kinds of shapes in whose representation a type parameter bounded by
      * one holds its values: records, variants, and options *)
     isViewedKind(kind: ShapeKind): Bool
+    (* The quantifiers of a shape: how many type parameters they bind, nested
+     * ones included (the descriptors a function of its type takes after its
+     * environment), and the shape under them (a function's shape, or for a
+     * type-only function its result's). A shape with no quantifiers has count
+     * 0 and is its own body. *)
+    Def Quantified = Tuple count: Int body: Shape end
+    quantified(s: Shape): Quantified
     (* Whether values of type t are functions, polymorphic or not *)
     isFunction(t: model.Type): Bool
 end
