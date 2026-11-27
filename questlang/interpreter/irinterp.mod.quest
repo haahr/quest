@@ -386,32 +386,7 @@ export
                     if maybe.isNone(ordinalIndex) then
                         fail(:Ok "the payload of option case " <> tag <> " without its ordinal")
                     end
-                    let ordinalValue = model.intValue(maybe.unwrap(ordinalIndex))
-                    if maybe.isNone(x.v.payload) then
-                        model.tupleValue(array of ordinalValue end maybe.some(array of maybe.none(:String) end))
-                    else
-                        let p = maybe.unwrap(x.v.payload)
-                        case p
-                            when vTuple with t then
-                                let n = extent t.t.elements
-                                let elements = array of({n + 1} ordinalValue)
-                                let labels = array of({n + 1} maybe.none(:String))
-                                for i = 0 upto {n - 1} do
-                                    elements[i + 1] :=
-                                        case t.t.elements[i]
-                                            when vRef with r then model.cellValue(model.deref(r.r))
-                                            else t.t.elements[i]
-                                        end
-                                    if maybe.isSome(t.t.labels) then
-                                        labels[i + 1] := maybe.unwrap(t.t.labels)[i]
-                                    end
-                                end
-                                model.tupleValue(elements maybe.some(labels))
-                            else
-                                model.tupleValue(array of ordinalValue p end
-                                        maybe.some(array of maybe.none(:String) maybe.none(:String) end))
-                        end
-                    end
+                    primitives.optionComponents(maybe.unwrap(ordinalIndex) x.v.payload)
                 when vVariant with x then maybe.unwrapOr(x.v.payload model.okValue)
                 else model.okValue
             end
@@ -793,7 +768,7 @@ export
                 case deref(atom(it x.base f))
                     when vArray with a then
                         let idx = case atom(it x.index f) when vInt with n then n.n else ~1 end
-                        if {idx < 0} orif {idx >= extent a.a} then raising(:Ok it primitives.arrayOpError x.offset) end
+                        if not(primitives.inBounds(a.a idx)) then raising(:Ok it primitives.arrayOpError x.offset) end
                         option vRef of Value with
                             let r =
                                 tuple
@@ -817,22 +792,39 @@ export
             let stringOf =
                 fun(v: Value): String
                     case v when vString with x then x.s else model.internalError("not a String" none) end
-            (* The interpreters' primitives are named by their spellings *)
-            let name = nodes.primName(op)
+            let ints = fun(o: primitives.Arithmetic): Value
+                model.intValue(primitives.intArithmetic(o intOf(args[0]) intOf(args[1]) none))
+            let intsCompared =
+                fun(c: primitives.Comparison): Value
+                    model.boolValue(primitives.intRelational(c intOf(args[0]) intOf(args[1])))
+            let reals = fun(o: primitives.Arithmetic): Value
+                model.realValue(primitives.realArithmetic(o realOf(args[0]) realOf(args[1]) none))
+            let realsCompared = fun(c: primitives.Comparison): Value
+                model.boolValue(primitives.realRelational(c realOf(args[0]) realOf(args[1])))
             case op
                 when primIs then model.boolValue(model.same(args[0] args[1]))
                 when primIsnot then model.boolValue(not(model.same(args[0] args[1])))
                 when primNot then case args[0] when vBool with x then model.boolValue(not(x.b)) else model.trueValue end
                 when primExtent then
                     case args[0] when vArray with x then model.intValue(extent x.a) else model.intValue(0) end
-                when primAdd, primSub, primMul, primDiv, primMod, primRem then
-                    model.intValue(primitives.intArithmetic(name intOf(args[0]) intOf(args[1]) none))
-                when primLt, primLe, primGt, primGe then
-                    model.boolValue(primitives.intRelational(name intOf(args[0]) intOf(args[1]) none))
-                when primRealAdd, primRealSub, primRealMul, primRealDiv, primRealPow then
-                    model.realValue(primitives.realArithmetic(name realOf(args[0]) realOf(args[1]) none))
-                when primRealLt, primRealLe, primRealGt, primRealGe then
-                    model.boolValue(primitives.realRelational(name realOf(args[0]) realOf(args[1]) none))
+                when primAdd then ints(primitives.add)
+                when primSub then ints(primitives.sub)
+                when primMul then ints(primitives.mul)
+                when primDiv then ints(primitives.div)
+                when primMod, primRem then ints(primitives.rem)
+                when primLt then intsCompared(primitives.lt)
+                when primLe then intsCompared(primitives.le)
+                when primGt then intsCompared(primitives.gt)
+                when primGe then intsCompared(primitives.ge)
+                when primRealAdd then reals(primitives.add)
+                when primRealSub then reals(primitives.sub)
+                when primRealMul then reals(primitives.mul)
+                when primRealDiv then reals(primitives.div)
+                when primRealPow then reals(primitives.pow)
+                when primRealLt then realsCompared(primitives.lt)
+                when primRealLe then realsCompared(primitives.le)
+                when primRealGt then realsCompared(primitives.gt)
+                when primRealGe then realsCompared(primitives.ge)
                 when primConcat then model.stringValue(stringOf(args[0]) <> stringOf(args[1]))
                 when primAnd then model.boolValue(boolOf(args[0]) andif boolOf(args[1]))
                 when primOr then model.boolValue(boolOf(args[0]) orif boolOf(args[1]))
@@ -945,7 +937,7 @@ export
                 case atom(it x.arr f)
                     when vArray with a then
                         let idx = case atom(it x.index f) when vInt with y then y.n else ~1 end
-                        if {idx < 0} orif {idx >= extent a.a} then raising(:Ok it primitives.arrayOpError x.offset) end
+                        if not(primitives.inBounds(a.a idx)) then raising(:Ok it primitives.arrayOpError x.offset) end
                         a.a[idx]
                     else model.internalError("not an array" none)
                 end
@@ -1029,7 +1021,7 @@ export
                 case deref(atom(it x.base f))
                     when vArray with a then
                         let idx = case atom(it x.index f) when vInt with y then y.n else ~1 end
-                        if {idx < 0} orif {idx >= extent a.a} then raising(:Ok it primitives.arrayOpError x.offset) end
+                        if not(primitives.inBounds(a.a idx)) then raising(:Ok it primitives.arrayOpError x.offset) end
                         a.a[idx] := value
                     else model.internalError("not an array" none)
                 end

@@ -60,8 +60,11 @@ call back into IR code.
 
 [`primitives.mod.quest`](primitives.mod.quest) defines the standard library's exceptions as interpreted values
 (`int.error`, `string.error`, ...) and integer and real arithmetic and comparison, implemented with Quest's own
-operators, so that a division by zero, say, raises what compiled code raises. `sameAt` is Quest's `is` at a known
-static type, which for options compares by case ([docs/extensions.md](../../docs/extensions.md)).
+operators, so that a division by zero, say, raises what compiled code raises. The operators are options
+(`Arithmetic`, `Comparison`): the tree walker finds them by their spellings (`infixOf`), and the IR interpreter by an
+exhaustive case over its primitives. The two also share what `opt!tag` gives for an option (`optionComponents`) and
+the bound an index, an indexed store, or an element's address must be within (`inBounds`). `sameAt` is Quest's `is`
+at a known static type, which for options compares by case ([docs/extensions.md](../../docs/extensions.md)).
 
 [`builtins.mod.quest`](builtins.mod.quest) gives the meaning of every `external "symbol"` that `lib/` declares.
 Since this interpreter is itself compiled Quest, each entry calls the library function the symbol names and wraps its

@@ -35,15 +35,52 @@ export
     stackOverflow: model.ExceptionValue
     maxCallDepth: Int
 
-    (* +, -, *, /, mod, and %, raising int.error for a zero divisor *)
-    intArithmetic(op: String a: Int b: Int offset: maybe.T(Int)): Int
-    (* <, <=, >, >= *)
-    intRelational(op: String a: Int b: Int offset: maybe.T(Int)): Bool
-    (* ++, --, **, //, and ^^, raising real.error for a NaN result, a zero
-     * divisor, or a pole *)
-    realArithmetic(op: String a: Real b: Real offset: maybe.T(Int)): Real
-    (* <<, <<=, >>, >>= *)
-    realRelational(op: String a: Real b: Real offset: maybe.T(Int)): Bool
+    (* The arithmetic and comparison operators, which the tree-walking
+     * interpreter finds by their spellings (infixOf) and the IR interpreter
+     * from its primitives: Int has no pow and Real no rem *)
+    Def Arithmetic = Option add sub mul div rem pow end
+    Def Comparison = Option lt le gt ge end
+    add: Arithmetic
+    sub: Arithmetic
+    mul: Arithmetic
+    div: Arithmetic
+    rem: Arithmetic
+    pow: Arithmetic
+    lt: Comparison
+    le: Comparison
+    gt: Comparison
+    ge: Comparison
+
+    (* An operator spelled infix, and the type of its operands *)
+    Def Infix = Option
+        infixInt with op: Arithmetic end
+        infixIntCompare with c: Comparison end
+        infixReal with op: Arithmetic end
+        infixRealCompare with c: Comparison end
+    end
+
+    (* The infix operator a spelling names: +, -, *, /, mod, and % (Int's
+     * arithmetic); <, <=, >, and >= (Int's comparisons); ++, --, **, //, and
+     * ^^ (Real's arithmetic); and <<, <<=, >>, and >>= (Real's comparisons) *)
+    infixOf(spelling: String): maybe.T(Infix)
+
+    (* Int's arithmetic, raising int.error for a zero divisor *)
+    intArithmetic(op: Arithmetic a: Int b: Int offset: maybe.T(Int)): Int
+    intRelational(c: Comparison a: Int b: Int): Bool
+    (* Real's arithmetic, raising real.error for a NaN result, a zero divisor,
+     * or a pole *)
+    realArithmetic(op: Arithmetic a: Real b: Real offset: maybe.T(Int)): Real
+    realRelational(c: Comparison a: Real b: Real): Bool
+
+    (* What opt!tag gives for an option whose case is its static type's
+     * caseIndex-th: a new tuple of that ordinal followed by the payload's
+     * components (its var components copies of the payload's, which a case's
+     * binder shares) *)
+    optionComponents(caseIndex: Int payload: maybe.T(model.Value)): model.Value
+
+    (* Whether i indexes a, as an index, an indexed store, or an element's
+     * address must, else raising arrayOp.error *)
+    inBounds(a: Array(model.Value) i: Int): Bool
     (* Implements `is` at static type t (with run-time type arguments
      * substituted): behaves like model.same, except that empty option cases
      * compare by tag and variant values of the same tag compare their payloads

@@ -36,7 +36,6 @@ deleted.
 |---|---|---|---|
 | 3. IR structure | 7 | One visitor for IR nodes, with positions in one place | medium |
 | 4. Small and mechanical | 9 | C representations as an option | small |
-| | 10 | One kernel for both interpreters | small to medium |
 
 Group 1 comes first because each of its steps fixes a copy that has already drifted. Group 2 makes the SSA's facts one
 table, after group 1 has removed the copies that would otherwise be converted twice. Group 3 is the largest step taken
@@ -74,22 +73,6 @@ and `positionAt` are 18 identical arms each.
 **Change.** A `CRep` option, made by `layout` and spelled only when printed.
 
 **Tests.** The C goldens, unchanged.
-
-### Step 10: One kernel for both interpreters
-
-**Problem.** `treewalk.optionAssertion` (`:446`) and `irinterp.payloadOf` (`:381`) are near copies that already
-differ: treewalk checks `i < extent labels`, and irinterp does not. Bounds checks are written inline three times in
-treewalk and four in irinterp. treewalk dispatches operators by their spelling, and irinterp maps each `Prim` back to
-a spelling (`nodes.primName`) to call the same functions.
-
-**Change.**
-- The value-level operations move into `interpreter/primitives`: option assertion and payload, the indexed access with
-  its bounds check, and arithmetic by operator.
-- Both interpreters call them.
-- Whether irinterp should check the labels' bound is decided first. If it should, adding the check is a fix that
-  lands before this step.
-
-**Tests.** The shared behavior goldens through both interpreters; `run_ir_*` at every stage.
 
 ## 4. Later
 

@@ -37,47 +37,120 @@ export
         if maybe.isSome(limit) andif {maybe.unwrap(limit) > 0} then maybe.unwrap(limit) else 1000 end
     let maxCallDepth = callLimit(strutil.tryToInt(system.getEnv("QUEST_CALL_LIMIT")))
 
-    let intArithmetic(op: String a: Int b: Int offset: maybe.T(Int)): Int =
+    Def Arithmetic = Option add sub mul div rem pow end
+    Def Comparison = Option lt le gt ge end
+    let add: Arithmetic = option add of Arithmetic end
+    let sub: Arithmetic = option sub of Arithmetic end
+    let mul: Arithmetic = option mul of Arithmetic end
+    let div: Arithmetic = option div of Arithmetic end
+    let rem: Arithmetic = option rem of Arithmetic end
+    let pow: Arithmetic = option pow of Arithmetic end
+    let lt: Comparison = option lt of Comparison end
+    let le: Comparison = option le of Comparison end
+    let gt: Comparison = option gt of Comparison end
+    let ge: Comparison = option ge of Comparison end
+
+    Def Infix = Option
+        infixInt with op: Arithmetic end
+        infixIntCompare with c: Comparison end
+        infixReal with op: Arithmetic end
+        infixRealCompare with c: Comparison end
+    end
+
+    let intOperator(op: Arithmetic): maybe.T(Infix) = maybe.some(option infixInt of Infix with let op = op end)
+    let intComparison(c: Comparison): maybe.T(Infix) = maybe.some(option infixIntCompare of Infix with let c = c end)
+    let realOperator(op: Arithmetic): maybe.T(Infix) = maybe.some(option infixReal of Infix with let op = op end)
+    let realComparison(c: Comparison): maybe.T(Infix) = maybe.some(option infixRealCompare of Infix with let c = c end)
+
+    let infixOf(spelling: String): maybe.T(Infix) =
+        if stringOp.equal(spelling "+") then intOperator(add)
+        elsif stringOp.equal(spelling "-") then intOperator(sub)
+        elsif stringOp.equal(spelling "*") then intOperator(mul)
+        elsif stringOp.equal(spelling "/") then intOperator(div)
+        elsif stringOp.equal(spelling "mod") orif stringOp.equal(spelling "%") then intOperator(rem)
+        elsif stringOp.equal(spelling "<") then intComparison(lt)
+        elsif stringOp.equal(spelling "<=") then intComparison(le)
+        elsif stringOp.equal(spelling ">") then intComparison(gt)
+        elsif stringOp.equal(spelling ">=") then intComparison(ge)
+        elsif stringOp.equal(spelling "++") then realOperator(add)
+        elsif stringOp.equal(spelling "--") then realOperator(sub)
+        elsif stringOp.equal(spelling "**") then realOperator(mul)
+        elsif stringOp.equal(spelling "//") then realOperator(div)
+        elsif stringOp.equal(spelling "^^") then realOperator(pow)
+        elsif stringOp.equal(spelling "<<") then realComparison(lt)
+        elsif stringOp.equal(spelling "<<=") then realComparison(le)
+        elsif stringOp.equal(spelling ">>") then realComparison(gt)
+        elsif stringOp.equal(spelling ">>=") then realComparison(ge)
+        else maybe.none()
+        end
+
+    let intArithmetic(op: Arithmetic a: Int b: Int offset: maybe.T(Int)): Int =
         try
-            if stringOp.equal(op "+") then a + b
-            elsif stringOp.equal(op "-") then a - b
-            elsif stringOp.equal(op "*") then a * b
-            elsif stringOp.equal(op "/") then a / b
-            elsif stringOp.equal(op "mod") orif stringOp.equal(op "%") then a % b
-            else model.internalError("Unknown integer arithmetic operator '" <> op <> "'" offset)
+            case op
+                when add then a + b
+                when sub then a - b
+                when mul then a * b
+                when div then a / b
+                when rem then a % b
+                when pow then model.internalError("Int has no pow" offset)
             end
         when intOp.error then
             model.raiseException(intError offset)
         end
 
-    let intRelational(op: String a: Int b: Int offset: maybe.T(Int)): Bool =
-        if stringOp.equal(op "<") then a < b
-        elsif stringOp.equal(op "<=") then a <= b
-        elsif stringOp.equal(op ">") then a > b
-        elsif stringOp.equal(op ">=") then a >= b
-        else model.internalError("Unknown integer relational operator '" <> op <> "'" offset)
-        end
+    let intRelational(c: Comparison a: Int b: Int): Bool =
+        case c when lt then a < b when le then a <= b when gt then a > b when ge then a >= b end
 
-    let realArithmetic(op: String a: Real b: Real offset: maybe.T(Int)): Real =
+    let realArithmetic(op: Arithmetic a: Real b: Real offset: maybe.T(Int)): Real =
         try
-            if stringOp.equal(op "++") then a ++ b
-            elsif stringOp.equal(op "--") then a -- b
-            elsif stringOp.equal(op "**") then a ** b
-            elsif stringOp.equal(op "//") then a // b
-            elsif stringOp.equal(op "^^") then a ^^ b
-            else model.internalError("Unknown real arithmetic operator '" <> op <> "'" offset)
+            case op
+                when add then a ++ b
+                when sub then a -- b
+                when mul then a ** b
+                when div then a // b
+                when pow then a ^^ b
+                when rem then model.internalError("Real has no rem" offset)
             end
         when realOp.error then
             model.raiseException(realError offset)
         end
 
-    let realRelational(op: String a: Real b: Real offset: maybe.T(Int)): Bool =
-        if stringOp.equal(op "<<") then a << b
-        elsif stringOp.equal(op "<<=") then a <<= b
-        elsif stringOp.equal(op ">>") then a >> b
-        elsif stringOp.equal(op ">>=") then a >>= b
-        else model.internalError("Unknown real relational operator '" <> op <> "'" offset)
+    let realRelational(c: Comparison a: Real b: Real): Bool =
+        case c when lt then a << b when le then a <<= b when gt then a >> b when ge then a >>= b end
+
+    let optionComponents(caseIndex: Int payload: maybe.T(model.Value)): model.Value =
+        begin
+            let ord = model.intValue(caseIndex)
+            let noLabel = maybe.none(:String)
+            if maybe.isNone(payload) then
+                model.tupleValue(array of ord end maybe.some(array of noLabel end))
+            else
+                case maybe.unwrap(payload)
+                    when vTuple with x then
+                        let n = extent x.t.elements
+                        let elements = array of({n + 1} ord)
+                        let labels = array of({n + 1} noLabel)
+                        for i = 0 upto {n - 1} do
+                            elements[i + 1] :=
+                                case x.t.elements[i]
+                                    when vRef with r then model.cellValue(model.deref(r.r))
+                                    else x.t.elements[i]
+                                end
+                            if maybe.isSome(x.t.labels)
+                                    andif {i < extent maybe.unwrap(:Array(maybe.T(String)) x.t.labels)} then
+                                labels[i + 1] := maybe.unwrap(x.t.labels)[i]
+                            end
+                        end
+                        model.tupleValue(elements maybe.some(labels))
+                    else
+                        model.tupleValue(array of ord
+                            maybe.unwrap(payload)
+                        end maybe.some(array of noLabel noLabel end))
+                end
+            end
         end
+
+    let inBounds(a: Array(model.Value) i: Int): Bool = {i >= 0} andif {i < extent a}
 
     let rec sameAt(t: tm.Type v1: model.Value v2: model.Value): Bool =
         model.same(v1 v2) orif case v1

@@ -12,7 +12,6 @@ import
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
-    questlang/common/strings : questlang/common/Strings
     questlang/interpreter/builtins : questlang/interpreter/Builtins
     questlang/interpreter/literals : questlang/interpreter/Literals
     questlang/interpreter/primitives : questlang/interpreter/Primitives
@@ -188,58 +187,59 @@ export
                 <> " and " <> model.typeName(w) offset)
         end
 
-    let intArithmeticOps = array of "+" "-" "*" "/" "mod" "%" end
-    let intRelationalOps = array of "<" "<=" ">" ">=" end
-    let realArithmeticOps = array of "++" "--" "**" "//" "^^" end
-    let realRelationalOps = array of "<<" "<<=" ">>" ">>=" end
-
     (* An operator applied to the values of its operands *)
     let infix(op: String left: Value right: Value offset: maybe.T(Int)): Value =
-        if strings.isOneOf(op intArithmeticOps) then
-            let a = intOperand(op left right offset)
-            let b = intOperand(op right left offset)
-            model.intValue(primitives.intArithmetic(op a b offset))
-        elsif strings.isOneOf(op intRelationalOps) then
-            let a = intOperand(op left right offset)
-            let b = intOperand(op right left offset)
-            model.boolValue(primitives.intRelational(op a b offset))
-        elsif strings.isOneOf(op realArithmeticOps) then
-            let a = realOperand(op left right offset)
-            let b = realOperand(op right left offset)
-            model.realValue(primitives.realArithmetic(op a b offset))
-        elsif strings.isOneOf(op realRelationalOps) then
-            let a = realOperand(op left right offset)
-            let b = realOperand(op right left offset)
-            model.boolValue(primitives.realRelational(op a b offset))
-        elsif stringOp.equal(op "<>") then
-            case left
-                when vString with x then
-                    case right
-                        when vString with y then model.stringValue(x.s <> y.s)
-                        else model.internalError("Operator '<>' requires String operands, got "
-                            <> model.typeName(left) <> " and " <> model.typeName(right) offset)
-                    end
-                else model.internalError("Operator '<>' requires String operands, got "
-                    <> model.typeName(left) <> " and " <> model.typeName(right) offset)
+        begin
+            let arithmetic = primitives.infixOf(op)
+            if maybe.isSome(arithmetic) then
+                case maybe.unwrap(arithmetic)
+                    when infixInt with x then
+                        let a = intOperand(op left right offset)
+                        let b = intOperand(op right left offset)
+                        model.intValue(primitives.intArithmetic(x.op a b offset))
+                    when infixIntCompare with x then
+                        let a = intOperand(op left right offset)
+                        let b = intOperand(op right left offset)
+                        model.boolValue(primitives.intRelational(x.c a b))
+                    when infixReal with x then
+                        let a = realOperand(op left right offset)
+                        let b = realOperand(op right left offset)
+                        model.realValue(primitives.realArithmetic(x.op a b offset))
+                    when infixRealCompare with x then
+                        let a = realOperand(op left right offset)
+                        let b = realOperand(op right left offset)
+                        model.boolValue(primitives.realRelational(x.c a b))
+                end
+            elsif stringOp.equal(op "<>") then
+                case left
+                    when vString with x then
+                        case right
+                            when vString with y then model.stringValue(x.s <> y.s)
+                            else model.internalError("Operator '<>' requires String operands, got "
+                                <> model.typeName(left) <> " and " <> model.typeName(right) offset)
+                        end
+                    else model.internalError("Operator '<>' requires String operands, got "
+                        <> model.typeName(left) <> " and " <> model.typeName(right) offset)
+                end
+            elsif stringOp.equal(op "/\\") orif stringOp.equal(op "\\/") then
+                case left
+                    when vBool with x then
+                        case right
+                            when vBool with y then
+                                model.boolValue(if stringOp.equal(op "/\\") then x.b andif y.b else x.b orif y.b end)
+                            else model.internalError("Operator '" <> op <> "' requires Bool operands, got "
+                                <> model.typeName(left) <> " and " <> model.typeName(right) offset)
+                        end
+                    else model.internalError("Operator '" <> op <> "' requires Bool operands, got "
+                        <> model.typeName(left) <> " and " <> model.typeName(right) offset)
+                end
+            elsif stringOp.equal(op "is") then
+                model.boolValue(model.same(left right))
+            elsif stringOp.equal(op "isnot") then
+                model.boolValue(not(model.same(left right)))
+            else
+                model.internalError("Unsupported infix operator '" <> op <> "'" offset)
             end
-        elsif stringOp.equal(op "/\\") orif stringOp.equal(op "\\/") then
-            case left
-                when vBool with x then
-                    case right
-                        when vBool with y then
-                            model.boolValue(if stringOp.equal(op "/\\") then x.b andif y.b else x.b orif y.b end)
-                        else model.internalError("Operator '" <> op <> "' requires Bool operands, got "
-                            <> model.typeName(left) <> " and " <> model.typeName(right) offset)
-                    end
-                else model.internalError("Operator '" <> op <> "' requires Bool operands, got "
-                    <> model.typeName(left) <> " and " <> model.typeName(right) offset)
-            end
-        elsif stringOp.equal(op "is") then
-            model.boolValue(model.same(left right))
-        elsif stringOp.equal(op "isnot") then
-            model.boolValue(not(model.same(left right)))
-        else
-            model.internalError("Unsupported infix operator '" <> op <> "'" offset)
         end
 
     (* An operator as a function of two values; its errors are located at the
@@ -440,40 +440,6 @@ export
     (* The target of e, an extraction o!tag *)
     let extracted(e: Expr): Expr = case e.form when exprVariantAssert with x then x.target else e end
 
-    (* What opt!tag gives for an option: a new tuple of the case's ordinal
-     * followed by the payload's components (its var components copies of the
-     * payload's, which a case's binder shares) *)
-    let optionAssertion(t: model.Tagged caseIndex: Int): Value =
-        begin
-            let ord = model.intValue(caseIndex)
-            let noLabel = maybe.none(:String)
-            if maybe.isNone(t.payload) then
-                model.tupleValue(array of ord end maybe.some(array of noLabel end))
-            else
-                case maybe.unwrap(t.payload)
-                    when vTuple with x then
-                        let n = extent x.t.elements
-                        let elements = array of({n + 1} ord)
-                        let labels = array of({n + 1} noLabel)
-                        for i = 0 upto {n - 1} do
-                            elements[i + 1] :=
-                                case x.t.elements[i]
-                                    when vRef with r then model.cellValue(model.deref(r.r))
-                                    else x.t.elements[i]
-                                end
-                            if maybe.isSome(x.t.labels)
-                                    andif {i < extent maybe.unwrap(:Array(maybe.T(String)) x.t.labels)} then
-                                labels[i + 1] := maybe.unwrap(x.t.labels)[i]
-                            end
-                        end
-                        model.tupleValue(elements maybe.some(labels))
-                    else
-                        model.tupleValue(array of ord maybe.unwrap(t.payload) end
-                                maybe.some(array of noLabel noLabel end))
-                end
-            end
-        end
-
     (* The labels of a tuple's components, its types' included, if its type is a
      * tuple type *)
     let tupleLabels(t: tm.Type): maybe.T(Array(maybe.T(String))) =
@@ -594,7 +560,7 @@ export
                     case target
                         when vArray with a then
                             let i = indexOf(evalExpr(x.index f) offset)
-                            if {i < 0} orif {i >= extent a.a} then
+                            if not(primitives.inBounds(a.a i)) then
                                 model.raiseException(:Ok primitives.arrayOpError offset)
                             end
                             option vRef of Value with
@@ -851,7 +817,7 @@ export
                     case target
                         when vArray with a then
                             let i = indexOf(idx offset)
-                            if {i < 0} orif {i >= extent a.a} then
+                            if not(primitives.inBounds(a.a i)) then
                                 model.raiseException(:Ok primitives.arrayOpError offset)
                             end
                             a.a[i]
@@ -864,7 +830,7 @@ export
                     case target
                         when vArray with a then
                             let i = indexOf(idx offset)
-                            if {i < 0} orif {i >= extent a.a} then
+                            if not(primitives.inBounds(a.a i)) then
                                 model.raiseException(:Ok primitives.arrayOpError offset)
                             end
                             a.a[i] := rhs
@@ -921,7 +887,8 @@ export
                             if not(stringOp.equal(v.v.tag x.tag)) then
                                 model.raiseException(:Ok primitives.variantError offset)
                             end
-                            optionAssertion(v.v position(reduce.optionCaseNames(x.target.type) x.tag))
+                            primitives.optionComponents(position(reduce.optionCaseNames(x.target.type) x.tag)
+                                    v.v.payload)
                         else model.internalError("Variant assert target must be Variant or Option, got "
                             <> model.typeName(target) offset)
                     end
