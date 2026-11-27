@@ -68,14 +68,16 @@ class TestReportInferable(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.tmp.cleanup()
 
-    def report(self, *flag: str) -> dict[str, list[tuple[int, int, str, str]]]:
+    def report(self, *flag: str, wasm: bool = False) -> dict[str, list[tuple[int, int, str, str]]]:
         """Each of the test's files' reported calls: line, column, class, and
         the text of their type arguments. The build directory is shared, so
         that a second build finds the first's artifacts fresh, as a warm build
-        would."""
+        would; with wasm, the program is written as a WebAssembly bundle, in a
+        build directory of its own."""
+        build = ["--backend", "wasm", "--build-dir", str(self.dir / "wasm-build"), "-o", str(self.dir / "main.wasm")] \
+            if wasm else ["compile", "--build-dir", str(self.dir / "build"), "-o", str(self.dir / "main")]
         process = subprocess.run(
-            [str(ROOT_DIR / "quest"), "compile", *flag, "-j", "2", "-I", str(self.dir), "--build-dir",
-             str(self.dir / "build"), "-o", str(self.dir / "main"), str(self.dir / "main.quest")],
+            [str(ROOT_DIR / "quest"), *build, *flag, "-j", "2", "-I", str(self.dir), str(self.dir / "main.quest")],
             capture_output=True, text=True, cwd=ROOT_DIR, timeout=1800)
         self.assertEqual(process.returncode, 0, process.stderr)
         found: dict[str, list[tuple[int, int, str, str]]] = {}
@@ -101,6 +103,13 @@ class TestReportInferable(unittest.TestCase):
         # Not reported: maybe.some(:Base p), which inference would make a
         # maybe.T(Point), and maybe.some(:Int 3), in a call whose own type
         # arguments are inferred
+
+    def test_wasm(self) -> None:
+        """The wasm backend's build engine reports its modules' calls too"""
+        found = self.report("--report-inferable", wasm=True)
+        self.assertEqual(found["main.quest"], [(5, 1, "from the arguments", ":Int ")])
+        self.assertEqual([call[:2] for call in found.get("calls.mod.quest", [])],
+                         [(11, 29), (11, 72), (14, 44), (15, 35)])
 
     def test_exact(self) -> None:
         found = self.report("--report-inferable=exact")

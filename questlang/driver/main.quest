@@ -533,9 +533,10 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         end
                     let engineIncludes = array of(extent options.includePaths + 1 runtimeRoot)
                     for k = 0 upto extent options.includePaths - 1 do engineIncludes[k] := options.includePaths[k] end
-                    let wasmEngine = engine.withBackends(engine.parallel(engine.new(maybe.some(buildDir)
-                            engineIncludes options.verbose options.nogc options.extraObjects
-                            maybe.some(e.units.resolver)) options.jobs system.args[0]) options.backends)
+                    let wasmEngine = engine.reportingInferable(engine.withBackends(engine.parallel(
+                            engine.new(maybe.some(buildDir) engineIncludes options.verbose options.nogc
+                                    options.extraObjects maybe.some(e.units.resolver))
+                            options.jobs system.args[0]) options.backends) options.reportInferable)
                     let objects = engine.buildModules(wasmEngine modules importer e.programDir)
                     let units = wasmBundle.ordered(objects buildDir)
                     if writing then
