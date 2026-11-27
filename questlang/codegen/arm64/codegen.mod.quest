@@ -1074,8 +1074,8 @@ export
 
     (* Compiles every function in u to machine code and GC frame metadata,
      * shared by assembleUnit and encodeUnit *)
-    Let Compiled = Tuple machines: Array(encode.Function) frames: Array(maybe.T(Frame)) end
-    let compiled(u: ssa.Unit defined: maps.StringMap(Bool)): Compiled =
+    Let UnitCode = Tuple machines: Array(encode.Function) frames: Array(maybe.T(Frame)) end
+    let unitCode(u: ssa.Unit defined: maps.StringMap(Bool)): UnitCode =
         begin
             let machines = array of(vector.length(u.functions) tuple
                 let symbol = ""
@@ -1116,7 +1116,7 @@ export
             appendAll(asm.files(files))
             let debugged = {extent files > 0} andif {stringOp.length(files[0]) > 0}
                 andif not(vector.empty(u.functions))
-            let made = compiled(u defined)
+            let made = unitCode(u defined)
             let machines = made.machines
             let frames = made.frames
             for k = 0 upto {vector.length(u.functions) - 1} do
@@ -1168,7 +1168,7 @@ export
 
     let encodeUnit(u: ssa.Unit): encode.Encoded =
         begin
-            let made = compiled(u definedSymbols(u))
+            let made = unitCode(u definedSymbols(u))
             encode.unit(made.machines dataBesidesFrames(u) vector.toArray(u.files)
                     if hasFrames(u) then maybe.some(frameTable(made.frames))
                     else maybe.none()

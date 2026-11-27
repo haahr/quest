@@ -183,7 +183,12 @@ export
     let blockLabel(prefix: String b: Int): String = prefix <> "_b" <> conv.int(b)
     let label(s: Selection b: Int): String = blockLabel(s.prefix b)
     let labelOf(s: S b: Int): String = blockLabel(s.prefix b)
-    let classOf(t: ssa.Type): targets.Class = targets.classOfType(t)
+    (* The class of the registers that hold a value of an SSA type *)
+    let classOf(t: ssa.Type): targets.Class =
+        case t
+            when typeInt, typePtr, typeVal then targets.classInt
+            when typeReal then targets.classReal
+        end
 
     (* An SSA value's virtual register *)
     let r(s: S v: Int): Int = s.m.firstVirtual + v

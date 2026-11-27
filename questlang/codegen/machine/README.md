@@ -6,8 +6,11 @@ real machine's instructions, and the register allocator that works on that form.
 function's SSA ([`../../ssa`](../../ssa)), using *virtual registers*, as many as it likes; the allocator here maps
 them onto the target's few physical registers and its stack frame; and the target's code generator
 ([`../arm64/codegen`](../arm64/codegen.int.quest)) adds the frame and prints or encodes the result. Nothing in this
-directory knows an arm64 instruction or a register's name, so that another target (x86-64, say) would write only
-its own selection, printer, and target description and reuse all of this.
+directory knows an arm64 instruction or a register's name, so that another target (x86-64, say) would reuse all of
+this with its own selection, printer, target description, and code generator. That code generator holds more than
+arm64's frame: block layout into fall-through chains, the marking of cold blocks, jump threading, and
+`definedSymbols` know no arm64 either, and a second target would move them here or write them again
+([docs/arm64.md](../../../docs/arm64.md) §3.17).
 
 ## A machine function, seen through a narrow window
 
@@ -78,7 +81,8 @@ target with a few registers, so that its choices show:
 ## What is not here
 
 Frame layout, the prologue and epilogues, the frame maps the collector reads, branch relaxation, and pairing loads
-and stores are the target's, in [`../arm64/codegen`](../arm64/codegen.int.quest) and
+and stores are the target's, as for now are the target-independent steps above (block layout, cold blocks, jump
+threading), in [`../arm64/codegen`](../arm64/codegen.int.quest) and
 [`../arm64/peephole`](../arm64/peephole.int.quest). The bootstrap compiler has no native backend, so this directory
 has no counterpart there.
 
