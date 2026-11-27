@@ -4,17 +4,26 @@ module runtimeFunctions : RuntimeFunctions
 import
     stringOp = string : StringOp
 
+    collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/verify : questlang/ssa/Verify
 export
     Def Memory = Option memoryNone memoryReads memoryWrites end
     Def Effects = Tuple memory: Memory raises: Bool allocates: Bool noReturn: Bool end
-    Def Function = Tuple name: String result: String params: Array(String) effects: Effects end
+    Def Function = Tuple
+        name: String
+        result: String
+        params: Array(String)
+        effects: Effects
+        fresh: Bool
+        registration: Bool
+    end
 
     let memoryNone: Memory = option memoryNone of Memory end
     let memoryReads: Memory = option memoryReads of Memory end
@@ -22,24 +31,53 @@ export
     let effects(memory: Memory raises: Bool allocates: Bool noReturn: Bool): Effects =
         tuple let memory = memory let raises = raises let allocates = allocates let noReturn = noReturn end
     let fn(name: String result: String params: Array(String) e: Effects): Function =
-        tuple let name = name let result = result let params = params let effects = e end
+        tuple
+            let name = name
+            let result = result
+            let params = params
+            let effects = e
+            let fresh = false
+            let registration = false
+        end
+    (* f, marked as returning a new object, or as a registration *)
+    let fresh(f: Function): Function =
+        tuple
+            let name = f.name
+            let result = f.result
+            let params = f.params
+            let effects = f.effects
+            let fresh = true
+            let registration = f.registration
+        end
+    let registration(f: Function): Function =
+        tuple
+            let name = f.name
+            let result = f.result
+            let params = f.params
+            let effects = f.effects
+            let fresh = f.fresh
+            let registration = true
+        end
+    (* The effects the passes take a call of a function the table does not
+     * have to have: it writes memory, may raise, and allocates *)
+    let unknownEffects = effects(memoryWrites true true false)
 
     (* In order of name *)
     let functions = array of
         fn("puts" "int" array of "const char *" end effects(memoryWrites false false false))
-        fn("quest_alloc" "void *" array of "size_t" "const QLayout *" end effects(memoryNone false true false))
+        fresh(fn("quest_alloc" "void *" array of "size_t" "const QLayout *" end effects(memoryNone false true false)))
         fn("quest_alloc_exception" "const QException *"
                 array of "const char *" end effects(memoryReads false true false))
-        fn("quest_array_new" "QArray *" array of "int64_t" "QVal" "const QLayout *" end
-                effects(memoryNone false true false))
+        fresh(fn("quest_array_new" "QArray *" array of "int64_t" "QVal" "const QLayout *" end
+                effects(memoryNone false true false)))
         fn("quest_auto_new" "QAuto *"
                 array of "const QTypeDescriptor *" "QVal" end effects(memoryNone false true false))
         (* The barriers write only an object's header word, the collector's
          * log, and the card table, none of which compiled code loads, so
          * value numbering keeps its loads across them; reads keeps them
          * from counting as pure *)
-        fn("quest_barrier" "void" array of "const void *" end effects(memoryReads false false false))
-        fn("quest_barrier_slot" "void" array of "const void *" end effects(memoryReads false false false))
+        registration(fn("quest_barrier" "void" array of "const void *" end effects(memoryReads false false false)))
+        registration(fn("quest_barrier_slot" "void" array of "const void *" end effects(memoryReads false false false)))
         fn("quest_builtins_init" "void" array of "int" "char **" end effects(memoryWrites false false false))
         fn("quest_convert" "QVal"
                 array of "QVal" "const QTypeDescriptor *" "const QTypeDescriptor *" end effects(memoryReads true true
@@ -113,22 +151,35 @@ export
                 array of "const QTypeDescriptor *" "const QTypeDescriptor *" end effects(memoryReads false true false))
         fn("quest_record_view" "QRecordVal"
                 array of "QRecordVal" "const QTypeDescriptor *" end effects(memoryReads false true false))
-        fn("quest_register_abstract_type" "void"
-                array of "const char *" "size_t" "const QTypeDescriptor *" end effects(memoryWrites false false false))
-        fn("quest_register_frames" "void" array of "const void *" end effects(memoryWrites false false false))
-        fn("quest_register_funcs" "void"
-                array of "const QFuncEntry *" "size_t" end effects(memoryWrites false false false))
-        fn("quest_register_record_dict" "void"
-                array of "const QTypeDescriptor *"
-                    "const QTypeDescriptor *"
-                    "const void *"
-                end effects(memoryWrites false
-                        false false))
-        fn("quest_register_roots" "void" array of "const QRootEntry *" end effects(memoryWrites false false false))
+        registration(fn("quest_register_abstract_type" "void"
+                array of "const char *" "size_t" "const QTypeDescriptor *" end effects(memoryWrites false false false)))
+        registration(fn("quest_register_frames" "void"
+                array of "const void *" end effects(memoryWrites false false false)))
+        registration(fn("quest_register_funcs" "void"
+                array of "const QFuncEntry *" "size_t" end effects(memoryWrites false false false)))
+        registration(fn("quest_register_record_dict" "void"
+                array of "const QTypeDescriptor *" "const QTypeDescriptor *" "const void *" end
+                effects(memoryWrites false false false)))
+        registration(fn("quest_register_roots" "void"
+                array of "const QRootEntry *" end effects(memoryWrites false false false)))
         fn("quest_reraise" "void" array of "QExceptionState" end effects(memoryWrites true false true))
-        fn("quest_string_concat" "QString *"
-                array of "const QString *" "const QString *" end effects(memoryReads false true false))
-        fn("quest_string_concat_n" "QString *"
+        (* Three of the library's externals (repr/externals), which the
+         * builder calls as it calls any external, not through this table: each
+         * returns a new string, which the conditions pass knows is not null.
+         * Their effects are an unknown call's, which no pass has needed
+         * finer. *)
+        fresh(fn("quest_string_alloc" "QString *" array of "int64_t" "QChar" end unknownEffects))
+        fresh(fn("quest_string_cat_sub" "QString *"
+                array of "const QString *"
+                    "int64_t"
+                    "int64_t"
+                    "const QString *"
+                    "int64_t"
+                    "int64_t"
+                end unknownEffects))
+        fresh(fn("quest_string_concat" "QString *"
+                array of "const QString *" "const QString *" end effects(memoryReads false true false)))
+        fresh(fn("quest_string_concat_n" "QString *"
                 array of "int64_t"
                     "const QString *"
                     "const QString *"
@@ -136,8 +187,10 @@ export
                     "const QString *"
                     "const QString *"
                     "const QString *" "const QString *"
-                end effects(memoryReads false true false))
-        fn("quest_string_new" "QString *" array of "const char *" "int64_t" end effects(memoryReads false true false))
+                end effects(memoryReads false true false)))
+        fresh(fn("quest_string_get_sub" "QString *" array of "const QString *" "int64_t" "int64_t" end unknownEffects))
+        fresh(fn("quest_string_new" "QString *"
+                array of "const char *" "int64_t" end effects(memoryReads false true false)))
         fn("quest_val_is" "bool"
                 array of "const QTypeDescriptor *" "QVal" "QVal" end effects(memoryReads false true false))
         fn("quest_variant_box" "QVariantVal *" array of "QVariantVal" end effects(memoryNone false true false))
@@ -176,6 +229,28 @@ export
             maybe.unwrap(found)
         end
 
+    (* The table's functions, by name *)
+    let byName: maps.StringMap(Function) =
+        begin
+            let m = maps.newStringMap(:Function)
+            for i = 0 upto {extent functions - 1} do
+                begin let ignored = hashMap.insert(m functions[i].name functions[i]) end
+            end
+            m
+        end
+
+    let returnsFresh(symbol: String): Bool =
+        begin
+            let found = hashMap.get(byName symbol)
+            maybe.isSome(found) andif maybe.unwrap(found).fresh
+        end
+
+    let registers(symbol: String): Bool =
+        begin
+            let found = hashMap.get(byName symbol)
+            maybe.isSome(found) andif maybe.unwrap(found).registration
+        end
+
     let callWrites(i: ssa.Inst): Bool =
         if ssa.isOp(i ssa.opCallIndirect) then
             true
@@ -207,7 +282,8 @@ export
                     "void") then tuple let passed = array of :ssa.Passed end let types = array of :ssa.Type end end
             elsif strutil.endsWith(c "*") then one(ssa.passWord ssa.typePtr)
             elsif stringOp.equal(c "double") then one(ssa.passReal ssa.typeReal)
-            elsif stringOp.equal(c "bool") orif stringOp.equal(c "char") then one(ssa.passByte ssa.typeInt)
+            elsif stringOp.equal(c "bool") orif stringOp.equal(c "char") orif stringOp.equal(c "QChar") then
+                one(ssa.passByte ssa.typeInt)
             elsif stringOp.equal(c "int") then one(ssa.passInt32 ssa.typeInt)
             (* A record is its payload's and its offset table's pointers, a
              * variant its tag and its payload's word *)

@@ -43,16 +43,6 @@ export
         else maybe.none()
         end
 
-    (* Runtime functions that write memory without running Quest code: module
-     * startup registration helpers (for types, functions, record dictionaries,
-     * GC roots, and stack frame tables; docs/collector.md section 3.8) and GC
-     * write barriers (section 3.5), which only record modified objects or
-     * slots for the collector *)
-    let registrations = array of
-        "quest_register_abstract_type" "quest_register_funcs" "quest_register_record_dict" "quest_register_roots"
-        "quest_register_frames" "quest_barrier" "quest_barrier_slot"
-    end
-
     (* Whether symbol is a module's initialization, which the builder names
      * qv_mod_<module>_init *)
     let initialization(symbol: String): Bool =
@@ -78,7 +68,11 @@ export
      * recursively, while calls from one module initializer to another cannot
      * reach the storing module's code because module imports are acyclic
      * (enforced by detectModuleCycle). External runtime calls are safe only if
-     * they are listed in registrations or do not write memory
+     * they are registrations (runtimeFunctions.registers: module startup's
+     * registration helpers, for types, functions, record dictionaries, GC
+     * roots, and stack frame tables, docs/collector.md section 3.8, and the
+     * GC's write barriers, section 3.5, which only record modified objects or
+     * slots for the collector) or do not write memory
      * (runtimeFunctions.callWrites assumes any call that can run Quest code
      * writes memory). *)
     let rec reads(q: Query fi: Int i: ssa.Inst): Bool =
@@ -94,11 +88,7 @@ export
             elsif initialization(i.symbol) andif initialization(storing) then false
             elsif maybe.isSome(callee) then functionReads(q maybe.unwrap(callee))
             else
-                let var registration = false
-                for k = 0 upto {extent registrations - 1} do
-                    if stringOp.equal(registrations[k] i.symbol) then registration := true end
-                end
-                not(registration) andif runtimeFunctions.callWrites(i)
+                not(runtimeFunctions.registers(i.symbol)) andif runtimeFunctions.callWrites(i)
             end
         else
             false

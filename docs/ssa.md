@@ -235,10 +235,11 @@ dumps show the passes under the policy of the backend chosen (`--backend ssac` d
   when the store is in no loop. What could read it is a load of it, or a call of code that could: any call but of a
   function of the unit's own whose code, looked at in turn, could not; of a runtime function the effects table says
   writes no memory (Quest code is taken to write memory), as `quest_alloc_exception` for a module's exceptions; of one
-  that registers types, functions, or dictionaries; or, from a module's initialization, of another module's. Modules
-  import one another in no cycle, so the modules a module's initialization initializes first reach none of its code. The
-  datum then holds the value from the start, read-only; the store goes, and each load becomes the value, which value
-  numbering then folds into what uses it. A module's member bound to a literal or to what the builder makes a constant
+  that registers types, functions, or dictionaries (the table's `registration` column, which marks the barriers too);
+  or, from a module's initialization, of another module's. Modules import one another in no cycle, so the modules a
+  module's initialization initializes first reach none of its code. The datum then holds the value from the start,
+  read-only; the store goes, and each load becomes the value, which value numbering then folds into what uses it. A
+  module's member bound to a literal or to what the builder makes a constant
   (a call of a standard library external it makes an instruction, as `word.fromInt(1)` for `util/bignum`'s `oneW`) is
   such a global: the module's initialization stores it, guarded by the module's flag, and each use would load it, in
   every iteration of a loop that uses it ([benchmarks.md](benchmarks.md) §15.5). Only a unit's own globals are seen, so
@@ -295,7 +296,7 @@ dumps show the passes under the policy of the backend chosen (`--backend ssac` d
   24 null checks and 24 bounds checks for its 8 elements, and this takes its arm64 instructions retired to 0.81
   (benchmarks.md §39). A null test of a pointer that cannot be null is decided too: a symbol's address, or a new object
   (from `quest_alloc`, `quest_array_new`, or a runtime function that returns a string, each of which returns a new one;
-  `conditions.allocates`), so an array that a loop fills as it makes it is not checked on every pass (benchmarks.md
+  the table's `fresh` column, `runtimeFunctions.returnsFresh`), so an array that a loop fills as it makes it is not checked on every pass (benchmarks.md
   §46). It then numbers the values again of each function it changed, which merges the loads that the checks kept in
   separate generations.
 - **`ssa/passes/selects`** makes selects of branches (if-conversion): a branch whose two arms only pass values to one

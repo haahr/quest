@@ -1,9 +1,10 @@
 (* Quest Self-Hosted Compiler: The Runtime's Functions Interface
  *
  * This module catalogs the functions from runtime/quest_runtime.h that the SSA
- * builder calls (docs/ssa.md section 2.2), recording each function's C
- * prototype (which determines its calling signature and SSA parameter and
- * result types) and its side effects for optimization passes. The table is
+ * builder calls (docs/ssa.md section 2.2), and three of the library's
+ * externals the passes know a fact of, recording each function's C prototype
+ * (which determines its calling signature and SSA parameter and result types)
+ * and its side effects and facts for optimization passes. The table is
  * checked against the C header: the questlang test codegen_runtime_functions
  * emits a C type assertion for each entry, which
  * tests/python/test_runtime_layout.py compiles against quest_runtime.h. *)
@@ -19,13 +20,30 @@ export
      * whether it allocates, and whether it never returns. One that does
      * nothing to memory, cannot raise, and does not allocate is pure. *)
     Def Effects = Tuple memory: Memory raises: Bool allocates: Bool noReturn: Bool end
-    (* A function: its name, its C result type and parameter types, and its
-     * effects *)
-    Def Function = Tuple name: String result: String params: Array(String) effects: Effects end
+    (* A function: its name, its C result type and parameter types, its
+     * effects, and two facts the passes use:
+     * - fresh: its result is a new object, so never null (an allocation, an
+     *   array made, and each function that returns a string);
+     * - registration: it records something for the runtime (types,
+     *   functions, dictionaries, roots, frames, or a barrier's entry in the
+     *   collector's log) and reads no global of the program's, so that the
+     *   constants pass need not take it as reading one *)
+    Def Function = Tuple
+        name: String
+        result: String
+        params: Array(String)
+        effects: Effects
+        fresh: Bool
+        registration: Bool
+    end
     functions: Array(Function)
     (* The function of a name; raises ssa/verify's verifyError if the table has
      * none *)
     function(name: String): Function
+    (* Whether symbol names a function of the table that is fresh, or a
+     * registration *)
+    returnsFresh(symbol: String): Bool
+    registers(symbol: String): Bool
     isPure(f: Function): Bool
     (* Reports whether call instruction i may write observable memory: true for
      * every call except a direct call to a runtime function whose table entry

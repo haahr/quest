@@ -10,7 +10,7 @@ import
 
     questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/passes/conditions : questlang/ssa/passes/Conditions
+    questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
 export
     Let Function = ssa.Function
 
@@ -219,7 +219,8 @@ export
         else
             let d = maybe.unwrap(defs[a])
             ssa.isOp(d ssa.opSymbol) orif ssa.isOp(d ssa.opSlot)
-                orif {ssa.isOp(d ssa.opCall) andif {extent d.results is 1} andif conditions.allocates(d.symbol)}
+                orif {ssa.isOp(d ssa.opCall) andif {extent d.results is 1}
+                    andif runtimeFunctions.returnsFresh(d.symbol)}
         end
 
     (* What hoisting knows of f's loop at its start: the block defining each
