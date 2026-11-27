@@ -268,7 +268,8 @@ export
                 vector.append(fields tuple let name = f.name let type = ir.atomType(f.atom) let isVar = f.isVar end)
             end
             let concrete = model.recordType(vector.toArray(fields) maybe.none())
-            let structBytes = layout.recordBytes(concrete)
+            let concreteS = shapes.shape(concrete)
+            let structBytes = layout.recordBytes(concreteS)
             (* Layout of the single allocation: 16-byte QRecordVal box, then
              * the record payload, then any inline embedded boxes *)
             let stored = vector.new(:Int)
@@ -285,7 +286,7 @@ export
                 let i = vector.get(stored j)
                 vector.append(argList o.fields[i].atom)
                 vector.append(typeList ir.atomType(o.fields[i].atom))
-                vector.append(offsetList layout.recordFieldOffset(concrete o.fields[i].name))
+                vector.append(offsetList layout.recordFieldOffset(concreteS o.fields[i].name))
                 for k = 0 upto {extent o.embedded - 1} do if o.embedded[k] is i then vector.append(embedded j) end end
             end
             let args = vector.toArray(argList)
@@ -366,7 +367,7 @@ export
 
     let makeAllocatedOption(fn: vals.Fn o: ir.OpMakeOption t: Type os: shapes.Shape): Array(Int) =
         begin
-            let opt = objects.alloc(fn layout.optionBytes(os.structure)
+            let opt = objects.alloc(fn layout.optionBytes(os)
                     objectLayout.register(fn.u.layouts objectLayout.optionLayout(os "" o.tag)))
             let mark = vals.beginInit(fn opt)
             let var tag = o.tag

@@ -464,22 +464,36 @@ export
     let allocationBytes(n: Int): Int = 8 * words(n)
     let optionComponentOffset(i: Int): Int = runtimeLayout.offset("QOptionHeader" "fields") + 8 * i
 
-    let tupleBytes(t: Type): Int =
-        case t.form when typeTuple with x then slotsBytes(extent model.tupleValueFields(x.fields)) else 8 end
+    (* The structure of s, which is of the given kind, or a compiler error:
+     * a struct's layout is asked of a shape of another kind *)
+    let structureOf(s: Shape kind: shapes.ShapeKind): Type =
+        if shapes.kindIs(s kind) then
+            s.structure
+        else
+            raise shapes.noShape with
+                "a " <> shapes.kindName(s.kind) <> " shape has no " <> shapes.kindName(kind) <> " struct"
+            end
+        end
 
-    let recordFieldsOf(t: Type): Array(model.RecordField) =
-        case t.form
+    let tupleBytes(s: Shape): Int =
+        case structureOf(s shapes.shapeTuple).form
+            when typeTuple with x then slotsBytes(extent model.tupleValueFields(x.fields))
+            else raise shapes.noShape with "a tuple shape whose structure is no tuple" end
+        end
+
+    let recordFieldsOf(s: Shape): Array(model.RecordField) =
+        case structureOf(s shapes.shapeRecord).form
             when typeRecord with r then r.fields
-            else vector.toArray(vector.new(:model.RecordField))
+            else raise shapes.noShape with "a record shape whose structure is no record" end
         end
 
     (* A header and the fields' slots, or with no field, a header and a char,
      * padded to the header's alignment *)
-    let recordBytes(t: Type): Int = begin let n = extent recordFieldsOf(t) if n is 0 then 16 else 8 + 8 * n end end
+    let recordBytes(s: Shape): Int = begin let n = extent recordFieldsOf(s) if n is 0 then 16 else 8 + 8 * n end end
 
-    let recordFieldOffset(t: Type name: String): Int =
+    let recordFieldOffset(s: Shape name: String): Int =
         begin
-            let fields = recordFieldsOf(t)
+            let fields = recordFieldsOf(s)
             let var before = 0
             for i = 0 upto {extent fields - 1} do
                 if sort.stringCompare(fields[i].name name) < 0 then before := before + 1 end
@@ -496,8 +510,8 @@ export
                     orif shapes.kindIs(s shapes.shapeRecord) then extent s.components else 1 end
         end
 
-    let optionBytes(t: Type): Int =
-        case t.form
+    let optionBytes(s: Shape): Int =
+        case structureOf(s shapes.shapeOption).form
             when typeOption with o then
                 let var most = 0
                 let var anyPayload = false
@@ -509,7 +523,7 @@ export
                     end
                 end
                 if anyPayload then 8 + 8 * most else 8 end
-            else 8
+            else raise shapes.noShape with "an option shape whose structure is no option" end
         end
 
     let representationBytes(t: Type): Int =
