@@ -35,8 +35,7 @@ deleted.
 | Group | Step | What | Size |
 |---|---|---|---|
 | 3. IR structure | 7 | One visitor for IR nodes, with positions in one place | medium |
-| 4. Small and mechanical | 8 | IR passes' state in their records; IR stages as an option | small |
-| | 9 | C representations as an option | small |
+| 4. Small and mechanical | 9 | C representations as an option | small |
 | | 10 | One kernel for both interpreters | small to medium |
 
 Group 1 comes first because each of its steps fixes a copy that has already drifted. Group 2 makes the SSA's facts one
@@ -66,15 +65,6 @@ and `positionAt` are 18 identical arms each.
   in one step, it is a step of its own after this one.
 
 **Tests.** IR goldens at every stage, unchanged, and `verify` at every stage as always.
-
-### Step 8: IR passes' state in their records
-
-**Problem.** `represent.typeVarsMemo`, `planning`, and `adapting`, `describe.uses`, and `nodes.counter` are module-level
-state, cleared by hand (`hashMap.clear(typeVarsMemo)`, `represent:1502`). The passes are not reentrant, which the JIT
-and the kernel would want. IR stages are strings (`unit.stage := "simplified"`) compared by `atLeast` six times.
-
-**Change.** The state moves into `Representer` and `Describer`, and the counter into the unit. `Stage` becomes an
-option, with its name for printing.
 
 ### Step 9: C representations as an option
 
@@ -143,6 +133,13 @@ Worth doing, but larger or less urgent; each becomes a step when there is time f
   need to find an instruction's place), barriers' table of definitions (the same, for a checker), arm64 selection's
   use counts and definitions (made in its one sweep over the function with what else it collects, on a hot path), and
   the terminator cases of escape and scalars that give each kind of use its own reason.
+- **What step 8 left.** The IR's stages are `ir/stages.Stage`, and describe's use counts are in its `Describer`.
+  Left as module state: `nodes`' id counter, which `newBody` and every variable's constructor take from, so moving it
+  into the unit would pass the unit to every pass's every constructor; and represent's `typeVarsMemo`, a cache cleared
+  per unit, and `planning` and `adapting`, guards against recursion in `plan` that are empty between top-level calls.
+  Moving those into `Representer` means passing it to `plan` and `typeVars` and everything that calls them, which
+  includes functions that have no `Representer` today. Reentrancy, which the JIT and the kernel would want, needs
+  all of it; until then the passes run one unit at a time.
 - **An analysis cache for the SSA passes.** `cfg.graph` is rebuilt once per pass and four times inside `loops`. A
   `changesCfg` flag in `ssa/pipeline`'s table of passes would make a cache per function possible; it was left out of
   that table (step 1) because nothing reads it, and a wrong flag nothing checks would be worse than none. The cache

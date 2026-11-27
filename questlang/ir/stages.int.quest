@@ -1,0 +1,30 @@
+(* Quest Self-Hosted Compiler: The IR's Stages Interface
+ *
+ * The IR's stages, in the order the passes reach them (docs/ir.md section
+ * 9): the stage a unit has reached (ir/nodes' Unit.stage), and their names,
+ * which the driver's ir_STAGE and run_ir_STAGE phases take. It imports
+ * nothing, so that the driver's options, which know the phases, need not
+ * import the IR. *)
+
+interface Stages
+export
+    (* Each pass produces the next stage, but for unbox and thunks, which
+     * leave the stage as the pass before them set it (questlang/ir/pipeline) *)
+    Def Stage = Option stageCore stageSimplified stageSpecialized stageClosed stageRepresented stageDescribed end
+
+    (* The stages, in order *)
+    all: Array(Stage)
+    core: Stage
+    simplified: Stage
+    specialized: Stage
+    closed: Stage
+    represented: Stage
+    described: Stage
+
+    (* A stage's name: core, simplified, specialized, closed, represented,
+     * or described *)
+    name(s: Stage): String
+
+    (* Whether stage a is stage b or one after it *)
+    atLeast(a: Stage b: Stage): Bool
+end

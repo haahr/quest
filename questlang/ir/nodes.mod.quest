@@ -11,6 +11,7 @@ import
     util/maybe : util/Maybe
 
     questlang/common/location : questlang/common/Location
+    questlang/ir/stages : questlang/ir/Stages
     questlang/repr/shapes : questlang/repr/Shapes
     questlang/types/model : questlang/types/Model
     questlang/types/reduce : questlang/types/Reduce
@@ -495,7 +496,7 @@ export
         var modules: vector.T(Module)
         var imports: Array(Import)
         var functions: vector.T(Function)
-        var stage: String
+        var stage: stages.Stage
         var sourceMap: maybe.T(location.SourceMap)
         var mergedSources: vector.T(maybe.T(location.SourceMap))
         var staticData: maybe.T(StaticData)
@@ -513,8 +514,6 @@ export
     let catchAll: Catching = option catchAll of Catching end
     let catchAllTraced: Catching = option catchAllTraced of Catching end
     let catchUnknown: Catching = option catchUnknown of Catching end
-
-    let stages = array of "core" "simplified" "specialized" "closed" "represented" "described" end
 
     let descriptorType = model.externalType("descriptor" "const QTypeDescriptor *")
     let viewMapType = model.externalType("view_map" "const QViewMap *")
@@ -667,7 +666,7 @@ export
             let var modules = modules
             let var imports = imports
             let var functions = vector.new()
-            let var stage = "core"
+            let var stage = stages.core
             let var sourceMap = sourceMap
             let var mergedSources = vector.new()
             let var staticData = maybe.none()
@@ -1061,14 +1060,5 @@ export
             when refImport with x then case b when refImport with y then x.i.id is y.i.id else false end
         end
 
-    let atLeast(unit: Unit stage: String): Bool =
-        begin
-            let var at = ~1
-            let var wanted = ~1
-            for i = 0 upto {extent stages - 1} do
-                if stringOp.equal(stages[i] unit.stage) then at := i end
-                if stringOp.equal(stages[i] stage) then wanted := i end
-            end
-            at >= wanted
-        end
+    let atLeast(unit: Unit stage: stages.Stage): Bool = stages.atLeast(unit.stage stage)
 end

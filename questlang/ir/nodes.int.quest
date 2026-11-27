@@ -27,6 +27,7 @@ import
     util/maybe : util/Maybe
 
     questlang/common/location : questlang/common/Location
+    questlang/ir/stages : questlang/ir/Stages
     questlang/repr/shapes : questlang/repr/Shapes
     questlang/types/model : questlang/types/Model
 export
@@ -121,11 +122,6 @@ export
     catchAll: Catching
     catchAllTraced: Catching
     catchUnknown: Catching
-
-    (* The IR's stages, in order, the names Unit.stage takes: each pass
-     * produces the next, but for unbox and thunks, which leave the stage as
-     * the pass before them set it (questlang/ir/pipeline) *)
-    stages: Array(String)
 
     (* The types of the variables the describe pass binds (docs/ir.md sections
      * 7 and 8.4), external types whose C forms are pointers.
@@ -846,8 +842,8 @@ export
         (* The unit's top-level functions: empty until closure conversion
          * lifts every function here; the thunks pass adds its thunks *)
         var functions: vector.T(Function)
-        (* The last stage the unit has reached, one of stages *)
-        var stage: String
+        (* The last stage the unit has reached *)
+        var stage: stages.Stage
         var sourceMap: maybe.T(location.SourceMap)
         (* With --whole-program, the maps of the files of the modules merged
          * into the unit (driver/whole): file k's offsets are
@@ -961,5 +957,5 @@ export
     (* The name an opened module copying the module named canonical has *)
     openedModuleNameFor(canonical: String): String
     (* Whether the unit is at the given stage or a later one *)
-    atLeast(unit: Unit stage: String): Bool
+    atLeast(unit: Unit stage: stages.Stage): Bool
 end

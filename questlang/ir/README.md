@@ -184,7 +184,8 @@ linked symbol names) to emit what the described IR names.
 
 - [`printer`](printer.int.quest) writes the textual form shown above; each stage can be dumped with
   `--dump-after ir_core` (or `ir_simplified`, `ir_specialized`, `ir_closed`, `ir_represented`, `ir_described`), and
-  those dumps are golden tests (`tests/golden/ir_*`).
+  those dumps are golden tests (`tests/golden/ir_*`). [`stages`](stages.int.quest) names the stages, in order: a
+  unit's `stage` is one of them, and the driver takes its `ir_STAGE` and `run_ir_STAGE` phases from their names.
 - [`verify`](verify.int.quest) and [`verifycore`](verifycore.int.quest) check each stage's invariants (ANF, scoping,
   jumps only to enclosing join points, no `funs` after closure conversion, conversions only after represent, every
   descriptor bound where used). `runPasses` runs them after each pass when `QUEST_CHECK_IR=1`, which the test runners

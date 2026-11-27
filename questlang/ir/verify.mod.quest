@@ -14,6 +14,7 @@ import
 
     questlang/ir/describe : questlang/ir/Describe
     questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/stages : questlang/ir/Stages
     questlang/ir/verifyCore : questlang/ir/VerifyCore
     questlang/ir/walk : questlang/ir/Walk
     questlang/repr/layout : questlang/repr/Layout
@@ -587,7 +588,7 @@ export
             end
             for i = 0 upto {extent unit.imports - 1} do hashMap.insert(modules unit.imports[i].id true) end
             let functions =
-                if nodes.atLeast(unit "closed") then
+                if nodes.atLeast(unit stages.closed) then
                     let ids = verifyCore.newIds()
                     for i = 0 upto {vector.length(unit.functions) - 1} do
                         hashMap.insert(ids vector.get(unit.functions i).id true)
@@ -601,7 +602,7 @@ export
                 let bound = verifyCore.newIds()
                 let modules = modules
                 let var functions = functions
-                let var represented = nodes.atLeast(unit "represented")
+                let var represented = nodes.atLeast(unit stages.represented)
             end
             (* A module's members are visible to the code after its definition
              * (by name, through the module), not as variables; each module's
@@ -611,7 +612,7 @@ export
                 verifyCore.body(v m.init verifyCore.newScope(verifyCore.newIds()) "module '" <> m.name <> "'")
             end
             verifyCore.body(v unit.main verifyCore.newScope(verifyCore.newIds()) "main")
-            if nodes.atLeast(unit "closed") then
+            if nodes.atLeast(unit stages.closed) then
                 (* Lifted functions use their parameters, their environment, and
                  * the unit's globals *)
                 let globals = walk.globalVariables(unit)
@@ -619,11 +620,11 @@ export
                     verifyCore.function(v vector.get(unit.functions i) verifyCore.newScope(verifyCore.copyIds(globals)))
                 end
             end
-            if nodes.atLeast(unit "represented") then
+            if nodes.atLeast(unit stages.represented) then
                 let found = representationProblems(unit)
                 for i = 0 upto {vector.length(found) - 1} do vector.append(v.problems vector.get(found i)) end
             end
-            if nodes.atLeast(unit "described") then
+            if nodes.atLeast(unit stages.described) then
                 let found = descriptorProblems(unit)
                 for i = 0 upto {vector.length(found) - 1} do vector.append(v.problems vector.get(found i)) end
             end
