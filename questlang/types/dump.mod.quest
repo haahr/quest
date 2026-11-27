@@ -10,19 +10,13 @@ import
     util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
 
+    questlang/common/maps : questlang/common/Maps
     questlang/types/model : questlang/types/Model
 export
     Let Type = model.Type
     Let Kind = model.Kind
 
     let joined(parts: vector.T(String)): String = strutil.join(" " parts)
-
-    let hasId(ids: Array(Int) id: Int): Bool =
-        begin
-            let var found = false
-            for i = 0 upto {extent ids - 1} do if ids[i] is id then found := true end end
-            found
-        end
 
     let withIds(ids: Array(Int) more: vector.T(Int)): Array(Int) =
         begin
@@ -181,7 +175,7 @@ export
                         if vector.empty(parts) then "Option end" else "Option " <> joined(parts) <> " end" end
                     end
                 when typeRec with x then
-                    if hasId(visited x.symbolId) orif {depth > 1} then
+                    if maps.intIsOneOf(x.symbolId visited) orif {depth > 1} then
                         x.varName
                     else
                         let seen = withIds(visited vector.fromArray(array of x.symbolId end))
@@ -191,7 +185,7 @@ export
                 when typeRecGroup with x then
                     begin
                         let b = x.bindings[x.activeIndex]
-                        if hasId(visited b.symbolId) orif {depth > 1} then
+                        if maps.intIsOneOf(b.symbolId visited) orif {depth > 1} then
                             b.name
                         else
                             let ids = vector.new(:Int)

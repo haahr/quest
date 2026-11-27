@@ -702,22 +702,6 @@ export
         end
 
     (* ======================================================================
-     * Dead parameters
-     * ====================================================================== *)
-
-    (* Drops the parameters of f's blocks (but its entry's) that nothing uses
-     * but jumps to blocks whose parameters nothing uses, and their arguments.
-     * Promotion leaves them where a variable's slot is live across a loop its
-     * value is not (the last of a loop's tuples, carried round an outer loop
-     * from a null at the entry); bound to a pointer and to other values, they
-     * would keep the pointer's objects whole. Returns the number dropped. *)
-    let dropDeadParams(f: Function): Int =
-        begin
-            let dead = blockParams.deadParams(f)
-            blockParams.dropParams(f fun(p: Int): Bool dead[p])
-        end
-
-    (* ======================================================================
      * Replacement
      * ====================================================================== *)
 
@@ -755,7 +739,12 @@ export
 
     let replaceFunction(u: ssa.Unit f: Function): Int =
         begin
-            let ignored = dropDeadParams(f)
+            (* The dead parameters go first: promotion leaves them where a
+             * variable's slot is live across a loop its value is not (the
+             * last of a loop's tuples, carried round an outer loop from a null
+             * at the entry); bound to a pointer and to other values, they
+             * would keep the pointer's objects whole *)
+            let ignored = blockParams.dropDeadParams(f)
             let s = solve(u f)
             let n = extent s.parent
             let var replaced = 0

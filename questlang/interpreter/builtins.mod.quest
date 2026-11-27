@@ -4,7 +4,6 @@ module builtins : Builtins
 import
     arrayOp : ArrayOp
     ascii : Ascii
-    conv : Conv
     intOp = int : IntOp
     reader : Reader
     realOp = real : RealOp
@@ -24,6 +23,7 @@ import
     util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
 
+    commonStrings = questlang/common/strings : questlang/common/Strings
     questlang/interpreter/fileCalls : questlang/interpreter/FileCalls
     questlang/interpreter/literals : questlang/interpreter/Literals
     questlang/interpreter/primitives : questlang/interpreter/Primitives
@@ -214,11 +214,7 @@ export
                     hash.identityHash(x.v)
                 else
                     let r = maybe.unwrap(rule)
-                    let var empty = false
-                    for i = 0 upto {extent r.empty - 1} do
-                        if stringOp.equal(r.empty[i] x.v.tag) then empty := true end
-                    end
-                    if empty then
+                    if commonStrings.isOneOf(x.v.tag r.empty) then
                         hash.string(x.v.tag)
                     else
                         hash.identityHash(x.v)

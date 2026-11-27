@@ -45,14 +45,6 @@ export
             let unit = unit
         end
 
-    (* A number as Python writes it, with - for conv's ~ *)
-    let signed(s: String): String =
-        if {stringOp.length(s) > 0} andif {stringOp.getChar(s 0) is '~'} then
-            "-" <> stringOp.getSub(s 1 {stringOp.length(s) - 1})
-        else
-            s
-        end
-
     let quoted(s: String): String = json.dump(json.string(s))
 
     let joinWith(separator: String items: vector.T(String)): String = strutil.join(separator items)
@@ -92,8 +84,8 @@ export
                 case x.c.value
                     when constOk then "ok"
                     when constBool with y then if y.b then "true" else "false" end
-                    when constInt with y then signed(conv.int(y.n))
-                    when constReal with y then signed(conv.real(y.r))
+                    when constInt with y then pyRepr.number(conv.int(y.n))
+                    when constReal with y then pyRepr.number(conv.real(y.r))
                     when constChar with y then pyRepr.str(stringOp.new(1 y.c))
                     when constString with y then
                         if shapes.kindIs(x.c.shape shapes.shapeChar) then pyRepr.str(y.s) else quoted(y.s) end
@@ -190,20 +182,17 @@ export
             if allDirect then "" else " via (" <> strutil.joinArray(", " names) <> ")" end
         end
 
-    let isEmbedded(embedded: Array(Int) i: Int): Bool =
-        begin
-            let var found = false
-            for j = 0 upto {extent embedded - 1} do if embedded[j] is i then found := true end end
-            found
-        end
-
     (* Formats atoms, prefixing with "box " any index that the represent pass
      * allocates inline inside the aggregate *)
     let boxedAtoms(p: Printer items: Array(Atom) embedded: Array(Int)): String =
         begin
             let texts = vector.new(:String)
             for i = 0 upto {extent items - 1} do
-                vector.append(texts if isEmbedded(embedded i) then "box " <> atom(p items[i]) else atom(p items[i]) end)
+                vector.append(texts if maps.intIsOneOf(i embedded) then
+                    "box " <> atom(p items[i])
+                else
+                    atom(p items[i])
+                end)
             end
             joinWith(", " texts)
         end
@@ -312,7 +301,7 @@ export
                 for i = 0 upto {extent x.fields - 1} do
                     let f = x.fields[i]
                     vector.append(fields if f.isVar then "var " else "" end <> f.name <> " = "
-                        <> if isEmbedded(x.embedded i) then "box " else "" end <> atom(p f.atom))
+                        <> if maps.intIsOneOf(i x.embedded) then "box " else "" end <> atom(p f.atom))
                 end
                 let var text = "record(" <> joinWith(", " fields) <> ")"
                 if x.runtimeOffsets then

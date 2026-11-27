@@ -5,143 +5,159 @@ import maybe = "util/maybe" : util/Maybe
 import diagbag = "questlang/common/diagbag" : questlang/common/DiagBag
 import diagnostics = "questlang/common/diagnostics" : questlang/common/Diagnostics
 import location = "questlang/common/location" : questlang/common/Location
+import pyRepr = "questlang/common/pyRepr" : questlang/common/PyRepr
 main {
-  let wOut: writer.T = member writer.output @14:12
+  let wOut: writer.T = member writer.output @16:12
   funs {
     fun printStr(s: String): Ok {
-      do call writer.putString(wOut, s) @18:9
-      let %1: Ok = call writer.putString(wOut, "\n") @19:9
+      do call writer.putString(wOut, s) @20:9
+      let %1: Ok = call writer.putString(wOut, "\n") @21:9
       return %1
     }
   }
   funs {
     fun printInt(n: Int): Ok {
-      let %2: String = call conv.int(n) @22:37
-      let %3: Ok = call printStr(%2) @22:28
+      let %2: String = call conv.int(n) @24:37
+      let %3: Ok = call printStr(%2) @24:28
       return %3
     }
   }
   funs {
     fun printBool(b: Bool): Ok {
-      let %4: String = call conv.bool(b) @24:39
-      let %5: Ok = call printStr(%4) @24:30
+      let %4: String = call conv.bool(b) @26:39
+      let %5: Ok = call printStr(%4) @26:30
       return %5
     }
   }
-  let sampleCode: String = "let x = 10;\nlet y = 20;\nlet sum = x + y;\n" @30:18
-  let sm: location.SourceMap = call location.newSourceMap("test.quest", sampleCode) @31:10
-  let %6: String = call location.file(sm) @33:10
-  do call printStr(%6) @33:1
-  let %7: Int = call location.lineCount(sm) @34:10
-  do call printInt(%7) @34:1
-  let p1: Pos = call location.locate(sm, 0) @37:10
-  let %8: Int = tuple_field(p1, 1) @38:10
-  do call printInt(%8) @38:1
-  let %9: Int = tuple_field(p1, 2) @39:10
-  do call printInt(%9) @39:1
-  let p2: Pos = call location.locate(sm, 4) @41:10
-  let %10: Int = tuple_field(p2, 1) @42:10
-  do call printInt(%10) @42:1
-  let %11: Int = tuple_field(p2, 2) @43:10
-  do call printInt(%11) @43:1
-  let p3: Pos = call location.locate(sm, 12) @46:10
-  let %12: Int = tuple_field(p3, 1) @47:10
-  do call printInt(%12) @47:1
-  let %13: Int = tuple_field(p3, 2) @48:10
-  do call printInt(%13) @48:1
-  let p4: Pos = call location.locate(sm, 24) @51:10
-  let %14: Int = tuple_field(p4, 1) @52:10
-  do call printInt(%14) @52:1
-  let %15: Int = tuple_field(p4, 2) @53:10
-  do call printInt(%15) @53:1
-  let %16: String = call location.getLine(sm, 1) @56:10
-  do call printStr(%16) @56:1
-  let %17: String = call location.getLine(sm, 2) @57:10
-  do call printStr(%17) @57:1
-  let %18: String = call location.getLine(sm, 3) @58:10
-  do call printStr(%18) @58:1
-  let %19: String = call location.getLine(sm, 99) @59:10
-  do call printStr(%19) @59:1
-  let sp1: Span = call location.span("test.quest", 4, 5) @62:11
-  let %20: String = call location.extractSnippet(sm, sp1) @63:10
-  do call printStr(%20) @63:1
-  let sp2: Span = call location.span("test.quest", 12, 17) @65:11
-  let %21: String = call location.extractSnippet(sm, sp2) @66:10
-  do call printStr(%21) @66:1
-  let spSpan: Tuple start: Pos endPos: Pos end = call location.locateSpan(sm, sp2) @68:14
-  let %22: Pos = tuple_field(spSpan, 0) @69:10
-  let %23: Int = tuple_field(%22, 1) @69:10
-  do call printInt(%23) @69:1
-  let %24: Pos = tuple_field(spSpan, 0) @70:10
-  let %25: Int = tuple_field(%24, 2) @70:10
-  do call printInt(%25) @70:1
-  let %26: Pos = tuple_field(spSpan, 1) @71:10
-  let %27: Int = tuple_field(%26, 1) @71:10
-  do call printInt(%27) @71:1
-  let %28: Pos = tuple_field(spSpan, 1) @72:10
-  let %29: Int = tuple_field(%28, 2) @72:10
-  do call printInt(%29) @72:1
-  let %30: Span = call location.span("test.quest", 16, 17) @78:55
-  let dWarn: diagnostics.Diagnostic = call diagnostics.warning("unused variable 'y'", %30) @78:13
-  do call diagnostics.addNote(dWarn, "variable defined here but never read") @79:1
-  do call diagnostics.setHelp(dWarn, "prefix with underscore if intentionally unused") @80:1
-  let %31: Severity = call diagnostics.severity(dWarn) @82:37
-  let %32: String = call diagnostics.severityString(%31) @82:10
-  do call printStr(%32) @82:1
-  let %33: String = call diagnostics.format(dWarn, sm) @83:10
-  do call printStr(%33) @83:1
-  let %34: Span = call location.span("test.quest", 34, 39) @85:46
-  let dErr: diagnostics.Diagnostic = call diagnostics.error("type mismatch", %34) @85:12
-  let %35: String = call diagnostics.format(dErr, sm) @86:10
-  do call printStr(%35) @86:1
-  let bag: diagbag.T = call diagbag.new() @92:11
-  let %36: Bool = call diagbag.hasErrors(bag) @93:11
-  do call printBool(%36) @93:1
-  let %37: Int = call diagbag.count(bag) @94:10
-  do call printInt(%37) @94:1
-  let %38: Span = call location.span("test.quest", 0, 3) @96:24
-  do call diagbag.addWarning(bag, %38, "consider explicit type") @96:1
-  let %39: Bool = call diagbag.hasErrors(bag) @97:11
-  do call printBool(%39) @97:1
-  let %40: Int = call diagbag.warningCount(bag) @98:10
-  do call printInt(%40) @98:1
-  let %41: Int = call diagbag.errorCount(bag) @99:10
-  do call printInt(%41) @99:1
-  let %42: Int = call diagbag.count(bag) @100:10
-  do call printInt(%42) @100:1
-  let %43: Span = call location.span("test.quest", 8, 10) @102:22
-  do call diagbag.addError(bag, %43, "invalid literal") @102:1
-  let %44: Bool = call diagbag.hasErrors(bag) @103:11
-  do call printBool(%44) @103:1
-  let %45: Int = call diagbag.warningCount(bag) @104:10
-  do call printInt(%45) @104:1
-  let %46: Int = call diagbag.errorCount(bag) @105:10
-  do call printInt(%46) @105:1
-  let %47: Int = call diagbag.count(bag) @106:10
-  do call printInt(%47) @106:1
+  let sampleCode: String = "let x = 10;\nlet y = 20;\nlet sum = x + y;\n" @32:18
+  let sm: location.SourceMap = call location.newSourceMap("test.quest", sampleCode) @33:10
+  let %6: String = call location.file(sm) @35:10
+  do call printStr(%6) @35:1
+  let %7: Int = call location.lineCount(sm) @36:10
+  do call printInt(%7) @36:1
+  let p1: Pos = call location.locate(sm, 0) @39:10
+  let %8: Int = tuple_field(p1, 1) @40:10
+  do call printInt(%8) @40:1
+  let %9: Int = tuple_field(p1, 2) @41:10
+  do call printInt(%9) @41:1
+  let p2: Pos = call location.locate(sm, 4) @43:10
+  let %10: Int = tuple_field(p2, 1) @44:10
+  do call printInt(%10) @44:1
+  let %11: Int = tuple_field(p2, 2) @45:10
+  do call printInt(%11) @45:1
+  let p3: Pos = call location.locate(sm, 12) @48:10
+  let %12: Int = tuple_field(p3, 1) @49:10
+  do call printInt(%12) @49:1
+  let %13: Int = tuple_field(p3, 2) @50:10
+  do call printInt(%13) @50:1
+  let p4: Pos = call location.locate(sm, 24) @53:10
+  let %14: Int = tuple_field(p4, 1) @54:10
+  do call printInt(%14) @54:1
+  let %15: Int = tuple_field(p4, 2) @55:10
+  do call printInt(%15) @55:1
+  let %16: String = call location.getLine(sm, 1) @58:10
+  do call printStr(%16) @58:1
+  let %17: String = call location.getLine(sm, 2) @59:10
+  do call printStr(%17) @59:1
+  let %18: String = call location.getLine(sm, 3) @60:10
+  do call printStr(%18) @60:1
+  let %19: String = call location.getLine(sm, 99) @61:10
+  do call printStr(%19) @61:1
+  let sp1: Span = call location.span("test.quest", 4, 5) @64:11
+  let %20: String = call location.extractSnippet(sm, sp1) @65:10
+  do call printStr(%20) @65:1
+  let sp2: Span = call location.span("test.quest", 12, 17) @67:11
+  let %21: String = call location.extractSnippet(sm, sp2) @68:10
+  do call printStr(%21) @68:1
+  let spSpan: Tuple start: Pos endPos: Pos end = call location.locateSpan(sm, sp2) @70:14
+  let %22: Pos = tuple_field(spSpan, 0) @71:10
+  let %23: Int = tuple_field(%22, 1) @71:10
+  do call printInt(%23) @71:1
+  let %24: Pos = tuple_field(spSpan, 0) @72:10
+  let %25: Int = tuple_field(%24, 2) @72:10
+  do call printInt(%25) @72:1
+  let %26: Pos = tuple_field(spSpan, 1) @73:10
+  let %27: Int = tuple_field(%26, 1) @73:10
+  do call printInt(%27) @73:1
+  let %28: Pos = tuple_field(spSpan, 1) @74:10
+  let %29: Int = tuple_field(%28, 2) @74:10
+  do call printInt(%29) @74:1
+  let %30: Span = call location.span("test.quest", 16, 17) @80:55
+  let dWarn: diagnostics.Diagnostic = call diagnostics.warning("unused variable 'y'", %30) @80:13
+  do call diagnostics.addNote(dWarn, "variable defined here but never read") @81:1
+  do call diagnostics.setHelp(dWarn, "prefix with underscore if intentionally unused") @82:1
+  let %31: Severity = call diagnostics.severity(dWarn) @84:37
+  let %32: String = call diagnostics.severityString(%31) @84:10
+  do call printStr(%32) @84:1
+  let %33: String = call diagnostics.format(dWarn, sm) @85:10
+  do call printStr(%33) @85:1
+  let %34: Span = call location.span("test.quest", 34, 39) @87:46
+  let dErr: diagnostics.Diagnostic = call diagnostics.error("type mismatch", %34) @87:12
+  let %35: String = call diagnostics.format(dErr, sm) @88:10
+  do call printStr(%35) @88:1
+  let bag: diagbag.T = call diagbag.new() @94:11
+  let %36: Bool = call diagbag.hasErrors(bag) @95:11
+  do call printBool(%36) @95:1
+  let %37: Int = call diagbag.count(bag) @96:10
+  do call printInt(%37) @96:1
+  let %38: Span = call location.span("test.quest", 0, 3) @98:24
+  do call diagbag.addWarning(bag, %38, "consider explicit type") @98:1
+  let %39: Bool = call diagbag.hasErrors(bag) @99:11
+  do call printBool(%39) @99:1
+  let %40: Int = call diagbag.warningCount(bag) @100:10
+  do call printInt(%40) @100:1
+  let %41: Int = call diagbag.errorCount(bag) @101:10
+  do call printInt(%41) @101:1
+  let %42: Int = call diagbag.count(bag) @102:10
+  do call printInt(%42) @102:1
+  let %43: Span = call location.span("test.quest", 8, 10) @104:22
+  do call diagbag.addError(bag, %43, "invalid literal") @104:1
+  let %44: Bool = call diagbag.hasErrors(bag) @105:11
+  do call printBool(%44) @105:1
+  let %45: Int = call diagbag.warningCount(bag) @106:10
+  do call printInt(%45) @106:1
+  let %46: Int = call diagbag.errorCount(bag) @107:10
+  do call printInt(%46) @107:1
+  let %47: Int = call diagbag.count(bag) @108:10
+  do call printInt(%47) @108:1
   join k1(caughtFatal: Bool) {
-    do call printBool(caughtFatal) @117:1
-    let %48: Int = call diagbag.errorCount(bag) @118:10
-    do call printInt(%48) @118:1
-    let %49: Int = call diagbag.count(bag) @119:10
-    do call printInt(%49) @119:1
-    do call printStr("--- Render All Diagnostics ---") @121:1
-    do call diagbag.renderAll(bag, sm, wOut) @122:1
+    do call printBool(caughtFatal) @119:1
+    let %48: Int = call diagbag.errorCount(bag) @120:10
+    do call printInt(%48) @120:1
+    let %49: Int = call diagbag.count(bag) @121:10
+    do call printInt(%49) @121:1
+    do call printStr("--- Render All Diagnostics ---") @123:1
+    do call diagbag.renderAll(bag, sm, wOut) @124:1
+    let %50: Array(Int) = array(1, 2, 3) @130:22
+    let %51: String = call pyRepr.ints(%50, "(", ")") @130:10
+    do call printStr(%51) @130:1
+    let %52: Array(Int) = array(7) @131:22
+    let %53: String = call pyRepr.ints(%52, "(", ")") @131:10
+    do call printStr(%53) @131:1
+    let %54: Array(Int) = array(-4, 0, -12) @132:22
+    let %55: String = call pyRepr.ints(%54, "[", "]") @132:10
+    do call printStr(%55) @132:1
+    let %56: String = call conv.int(-5) @133:24
+    let %57: String = call pyRepr.number(%56) @133:10
+    do call printStr(%57) @133:1
+    let %58: String = call conv.real(-2.5) @134:24
+    let %59: String = call pyRepr.number(%58) @134:10
+    do call printStr(%59) @134:1
   } in {
-    let %50: Exception(diagnostics.Diagnostic) = member diagbag.fatalError @113:10
-    try catching (%50) {
-      let %51: Span = call location.span("test.quest", 24, 39) @111:30
-      do call diagbag.addFatal(bag, %51, "unrecoverable syntax failure") @111:9
-      jump k1(false) @110:5
+    let %60: Exception(diagnostics.Diagnostic) = member diagbag.fatalError @115:10
+    try catching (%60) {
+      let %61: Span = call location.span("test.quest", 24, 39) @113:34
+      do call diagbag.addFatal [Ok](bag, %61, "unrecoverable syntax failure") @113:9
+      jump k1(false) @112:5
     } handle (e: Exception) {
-      let %52: Bool = prim is(e, %50) @110:5
-      if %52 { @110:5
-        let fatalDiag: diagnostics.Diagnostic = exception_payload(e) @110:5
-        let %53: String = call diagnostics.message(fatalDiag) @114:18
-        do call printStr(%53) @114:9
-        jump k1(true) @110:5
+      let %62: Bool = prim is(e, %60) @112:5
+      if %62 { @112:5
+        let fatalDiag: diagnostics.Diagnostic = exception_payload(e) @112:5
+        let %63: String = call diagnostics.message(fatalDiag) @116:18
+        do call printStr(%63) @116:9
+        jump k1(true) @112:5
       } else {
-        reraise e @110:5
+        reraise e @112:5
       }
     }
   }

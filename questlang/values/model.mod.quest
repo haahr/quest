@@ -18,6 +18,7 @@ import
 
     questlang/common/location : questlang/common/Location
     questlang/common/maps : questlang/common/Maps
+    questlang/common/pyRepr : questlang/common/PyRepr
     questlang/modules/graph : questlang/modules/Graph
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
     tm = questlang/types/model : questlang/types/Model
@@ -74,7 +75,7 @@ export
     end
     and Cell = Tuple var value: Value end
     and AutoValue = Tuple value: Value type: tm.Type end
-    and ExceptionValue = Tuple name: String payload: maybe.T(Value) end
+    and ExceptionValue = Tuple name: String end
     and TypeValue = Tuple type: tm.Type bound: maybe.T(tm.Kind) name: maybe.T(String) end
     and Frame = Tuple
         parent: maybe.T(Frame)
@@ -153,7 +154,7 @@ export
             let r = tuple let form = option cell of RefForm with let c = tuple let var value = v end end end
         end
 
-    let exceptionValue(name: String): ExceptionValue = tuple let name = name let payload = maybe.none() end
+    let exceptionValue(name: String): ExceptionValue = tuple let name = name end
 
     let builtinValue(name: String fn: All(args: Array(Value)) Value): Value =
         option vBuiltin of Value with let b = tuple let name = name let fn = fn end end
@@ -324,16 +325,8 @@ export
             stringBuilder.toString(b)
         end
 
-    (* A number as conv writes it, with Python's - for Cardelli's ~ *)
-    let signed(s: String): String =
-        if {stringOp.length(s) > 0} andif {stringOp.getChar(s 0) is '~'} then
-            "-" <> stringOp.getSub(s 1 {stringOp.length(s) - 1})
-        else
-            s
-        end
-
     (* A real as Python's repr writes it *)
-    let realString(r: Real): String = signed(conv.real(r))
+    let realString(r: Real): String = pyRepr.number(conv.real(r))
 
     (* A word as 16#digits#, in lowercase hexadecimal without leading zeros *)
     let wordString(w: word.T): String =
@@ -380,7 +373,7 @@ export
         case v
             when vOk then "ok"
             when vBool with x then if x.b then "true" else "false" end
-            when vInt with x then signed(conv.int(x.n))
+            when vInt with x then pyRepr.number(conv.int(x.n))
             when vWord with x then wordString(x.w)
             when vReal with x then realString(x.r)
             when vChar with x then charString(x.c)
@@ -431,12 +424,7 @@ export
                     "ref(" <> shown <> ")"
                 end
             when vAuto with x then "auto(" <> show(x.a.value visited) <> " : " <> tm.show(x.a.type) <> ")"
-            when vException with x then
-                if maybe.isSome(x.e.payload) then
-                    "exception " <> x.e.name <> " with " <> show(maybe.unwrap(x.e.payload) visited)
-                else
-                    "exception " <> x.e.name
-                end
+            when vException with x then "exception " <> x.e.name
             when vWriter then "<writer>"
             when vReader then "<reader>"
             when vStringBuilder then "<string builder>"

@@ -125,7 +125,7 @@ export
             found
         end
 
-    let wordOf(t: Type): Passed = case t when typeInt, typePtr, typeVal then passWord when typeReal then passReal end
+    let passOf(t: Type): Passed = case t when typeInt, typePtr, typeVal then passWord when typeReal then passReal end
 
     let signature(params: Array(Type) results: Array(Type) pairs: Array(Int) narrow: Array(Int)): Signature =
         begin
@@ -134,11 +134,11 @@ export
                 ps[k] := if contains(pairs k) then passPair
                     elsif contains(pairs k - 1) then passPairRest
                     elsif contains(narrow k) then passByte
-                    else wordOf(params[k]) end
+                    else passOf(params[k]) end
             end
             let rs = array of(extent results passWord)
             if extent results is 2 then begin rs[0] := passPair rs[1] := passPairRest end
-            else for k = 0 upto {extent results - 1} do rs[k] := wordOf(results[k]) end
+            else for k = 0 upto {extent results - 1} do rs[k] := passOf(results[k]) end
             end
             tuple let params = ps let results = rs end
         end
@@ -445,6 +445,12 @@ export
         terminate(f b option termTailCall of Terminator with let call = callInst(f symbol args s results) end)
 
     let target(b: Int args: Array(Int)): Target = tuple let block = b let var args = args end
+
+    let jump(block: Int args: Array(Int)): Terminator =
+        begin
+            let to = target(block args)
+            option termJump of Terminator with let target = to end
+        end
 
     let concat(a: Array(Int) b: Array(Int)): Array(Int) =
         begin
@@ -856,6 +862,18 @@ export
             maybe.some(maybe.unwrap(defs[v]).imm)
         else
             maybe.none()
+        end
+
+    let wordOf(defs: Array(maybe.T(Inst)) v: Int): maybe.T(Word) =
+        if maybe.isNone(defs[v]) then
+            maybe.none()
+        else
+            let i = maybe.unwrap(defs[v])
+            if isOp(i opConst) then maybe.some(option wordInt of Word with let n = i.imm end)
+            elsif isOp(i opSymbol) then
+                maybe.some(option wordSymbol of Word with let symbol = i.symbol let addend = i.imm end)
+            else maybe.none()
+            end
         end
 
     let useCounts(f: Function): Array(Int) =

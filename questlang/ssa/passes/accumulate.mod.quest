@@ -51,9 +51,6 @@ export
             r
         end
 
-    let jump(block: Int args: Array(Int)): ssa.Terminator =
-        option termJump of ssa.Terminator with let target = ssa.target(block args) end
-
     (* The function's recursive sites: blocks that return a self-call, or that
      * return op applied to a self-call, where op is the first combining
      * operation found *)
@@ -125,13 +122,13 @@ export
                     let blk = ssa.block(f b)
                     let ignored = vector.pop(blk.insts)
                     if s.other < 0 then
-                        blk.term := jump(header withLast(s.call.args acc))
+                        blk.term := ssa.jump(header withLast(s.call.args acc))
                         blk.termLoc := s.call.loc
                     else
                         let ignoredCall = vector.pop(blk.insts)
                         f.at := s.op.loc
                         let next = ssa.binary(f b s.op.op acc replace(s.other))
-                        blk.term := jump(header withLast(s.call.args next))
+                        blk.term := ssa.jump(header withLast(s.call.args next))
                         blk.termLoc := s.op.loc
                     end
                 end
@@ -149,7 +146,7 @@ export
                 end
                 f.at := entry.termLoc
                 let start = ssa.constant(f 0 identity(op))
-                entry.term := jump(header withLast(params start))
+                entry.term := ssa.jump(header withLast(params start))
                 f.at := ssa.noLoc
             end
         end

@@ -674,19 +674,16 @@ class QAutoVal(QValue):
 
 
 class QExceptionVal(QValue):
-    """Runtime exception value with tag name and optional payload."""
+    """Runtime exception value: its tag name."""
 
-    def __init__(self, name: str, payload: Optional[QValue] = None):
+    def __init__(self, name: str):
         self.name = name
-        self.payload = payload
 
     @property
     def type_name(self) -> str:
         return "Exception"
 
     def to_str(self, visited: Optional[set[int]] = None) -> str:
-        if self.payload is not None:
-            return f"exception {self.name} with {self.payload.to_str(visited)}"
         return f"exception {self.name}"
 
 
@@ -971,12 +968,8 @@ def qvalue_structural_eq(
                 return False
             return qvalue_structural_eq(val1, val2, visited)
 
-        case (QExceptionVal(name=n1, payload=p1), QExceptionVal(name=n2, payload=p2)):
-            if n1 != n2 or (p1 is None) != (p2 is None):
-                return False
-            if p1 is not None and p2 is not None:
-                return qvalue_structural_eq(p1, p2, visited)
-            return True
+        case (QExceptionVal(name=n1), QExceptionVal(name=n2)):
+            return n1 == n2
 
         case _:
             # Closures and Builtins fallback to pointer identity

@@ -20,6 +20,7 @@ import
     util/strutil : util/Strutil
 
     questlang/common/maps : questlang/common/Maps
+    questlang/common/strings : questlang/common/Strings
     questlang/ir/describe : questlang/ir/Describe
     ir = questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/walk : questlang/ir/Walk
@@ -2720,11 +2721,7 @@ export
                     else stringOp.getSub(inner 0 at) <> "." <> stringOp.getSub(inner {at + 1}
                             {{stringOp.length(inner) - at} - 1})
                     end
-                let var known = false
-                for k = 0 upto extent runtime.builtinExceptions - 1 do
-                    if stringOp.equal(runtime.builtinExceptions[k] name) then known := true end
-                end
-                if known then
+                if strings.isOneOf(name runtime.builtinExceptions) then
                     emit(f i1(ops.globalGet builtinException(name)))
                 else
                     (* one the base does not define: made here, once, as the
@@ -3606,12 +3603,7 @@ export
             hashMap.find(g.builtins name)
         else
             let named = fun(n: String): Bool stringOp.equal(name n)
-            let isOneOf = fun(ns: Array(String)): Bool
-                begin
-                    let var found = false
-                    for k = 0 upto extent ns - 1 do if named(ns[k]) then found := true end end
-                    found
-                end
+            let isOneOf = fun(ns: Array(String)): Bool strings.isOneOf(name ns)
             let intCompares = isOneOf(array of "<" "<=" ">" ">=" end)
             let intArithmetic = isOneOf(array of "+" "-" "*" "/" "%" "mod" end)
             let realCompares = isOneOf(array of "<<" "<<=" ">>" ">>=" end)

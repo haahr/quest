@@ -12,6 +12,7 @@ import
     util/strutil : util/Strutil
 
     questlang/common/maps : questlang/common/Maps
+    questlang/common/strings : questlang/common/Strings
     questlang/syntax/tokenizer : questlang/syntax/Tokenizer
     questlang/syntax/tokens : questlang/syntax/Tokens
 export
@@ -148,9 +149,11 @@ export
                 maybe.some("parameters and arguments are separated by spaces, not commas (a comma joins names that "
                     <> "share a type, as in a, b: Int)")
             when equal then
-                let var assigns = false
-                for i = 0 upto {extent names - 1} do if stringOp.equal(names[i] "ASSIGN") then assigns := true end end
-                if assigns then maybe.some("a variable is assigned with ':=', not '='") else maybe.none() end
+                if strings.isOneOf("ASSIGN" names) then
+                    maybe.some("a variable is assigned with ':=', not '='")
+                else
+                    maybe.none()
+                end
             else maybe.none()
         end
 end

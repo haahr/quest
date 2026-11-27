@@ -5,7 +5,6 @@ module checker : Checker
 import
     conv : Conv
     raised : Raised
-    stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
@@ -207,17 +206,8 @@ export
         begin
             vector.append(c.errors err)
             if vector.length(c.errors) >= maxErrors then
-                diagnostics.raiseError(:Ok tuple
-                    let message = "Too many errors (" <> conv.int(maxErrors) <> "); stopping"
-                    let offset = err.offset
-                    let length = err.length
-                    let isFatal = true
-                    let help = maybe.none()
-                    let notes = vector.new()
-                    let file = err.file
-                    let silent = false
-                    let labels = vector.new()
-                end)
+                let stop = diagnostics.fatalAt("Too many errors (" <> conv.int(maxErrors) <> "); stopping" err.offset)
+                diagnostics.raiseError(:Ok diagnostics.locatedAt(stop err.offset err.length err.file))
             end
         end
 

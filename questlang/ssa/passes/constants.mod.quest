@@ -165,20 +165,6 @@ export
             clear
         end
 
-    (* The value a store of v stores, as a word of static data, if an
-     * opConst or an opSymbol defines v *)
-    let wordOf(defs: Defs v: Int): maybe.T(ssa.Word) =
-        if maybe.isNone(defs[v]) then
-            maybe.none()
-        else
-            let i = maybe.unwrap(defs[v])
-            if ssa.isOp(i ssa.opConst) then maybe.some(option wordInt of ssa.Word with let n = i.imm end)
-            elsif ssa.isOp(i ssa.opSymbol) then
-                maybe.some(option wordSymbol of ssa.Word with let symbol = i.symbol let addend = i.imm end)
-            else maybe.none()
-            end
-        end
-
     (* The instruction a load of a constant global becomes: the value w as
      * result, at the load's position *)
     let valueInst(w: ssa.Word result: Int loc: ssa.Loc): ssa.Inst =
@@ -289,7 +275,7 @@ export
                                 elsif word andif ssa.isOp(i ssa.opStore) then
                                     c.stores := c.stores + 1
                                     c.store := site
-                                    let w = wordOf(defs i.args[1])
+                                    let w = ssa.wordOf(defs i.args[1])
                                     if maybe.isSome(w) then c.value := maybe.unwrap(w)
                                     else c.ruledOut := true
                                     end

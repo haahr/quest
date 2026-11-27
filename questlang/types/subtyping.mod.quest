@@ -254,21 +254,11 @@ export
     and step(sub0: Type sup0: Type env: Env trail: Trail fuel0: Int): Bool =
         begin
             if fuel0 <= 0 then
-                diagnostics.raiseError(:Ok tuple
-                    let message = "Fatal compiler error: Subtyping proof exceeded step limit of "
-                        <> conv.int(maxSubtypeFuel) <> " steps while checking (" <> model.show(sub0) <> " <: "
-                        <> model.show(sup0) <> ")"
-                    let offset = 0
-                    let length = 1
-                    let isFatal = true
-                    let help = maybe.none()
-                    let notes = vector.fromArray(array of
-                        "Compiler terminated to prevent infinite recursion during typechecking."
-                    end)
-                    let file = maybe.none()
-                    let silent = false
-                    let labels = vector.new()
-                end)
+                let err = diagnostics.fatalAt("Fatal compiler error: Subtyping proof exceeded step limit of "
+                    <> conv.int(maxSubtypeFuel) <> " steps while checking (" <> model.show(sub0) <> " <: "
+                    <> model.show(sup0) <> ")" 0)
+                diagnostics.raiseError(:Ok diagnostics.withNotes(err
+                        array of "Compiler terminated to prevent infinite recursion during typechecking." end))
             end
             let fuel = fuel0 - 1
             (* 0. Coinductive cycle detection for recursive types before lazy

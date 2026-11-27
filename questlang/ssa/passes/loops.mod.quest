@@ -4,7 +4,6 @@ module loops : Loops
 import
     conv : Conv
     stringOp = string : StringOp
-    system : System
 
     collections/vector : collections/Vector
     util/maybe : util/Maybe
@@ -62,9 +61,6 @@ export
             when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable then false
         end
 
-    let jump(block: Int args: Array(Int)): ssa.Terminator =
-        option termJump of ssa.Terminator with let target = ssa.target(block args) end
-
     (* Makes f's one self tail call a loop: a call followed by its return
      * before tailCalls (marked false), or a tail call after it (marked true) *)
     let loopSites(f: Function marked: Bool): Bool =
@@ -107,10 +103,10 @@ export
                     let s = vector.get(sites k)
                     let blk = ssa.block(f if s is 0 then header else s end)
                     let call = vector.pop(blk.insts)
-                    blk.term := jump(header call.args)
+                    blk.term := ssa.jump(header call.args)
                     blk.termLoc := call.loc
                 end
-                entry.term := jump(header params)
+                entry.term := ssa.jump(header params)
                 entry.termLoc := h.termLoc
                 true
             end
@@ -138,23 +134,6 @@ export
                 end
             end
             known
-        end
-
-    (* Whether h heads a natural loop: a back edge (from a block h dominates)
-     * enters it. It is cheap, where body allocates for every block of the
-     * function, so the passes ask it of each block first: asking body of
-     * each makes a pass quadratic in a function's blocks, which a whole
-     * program's largest functions make seconds *)
-    let isHeader(g: cfg.Graph h: Int): Bool =
-        begin
-            let var found = false
-            if cfg.reached(g h) then
-                for k = 0 upto {extent g.preds[h] - 1} do
-                    let p = g.preds[h][k]
-                    if cfg.reached(g p) andif cfg.dominates(g h p) then found := true end
-                end
-            end
-            found
         end
 
     (* The blocks of the natural loop whose header is h: those that reach one
@@ -362,7 +341,7 @@ export
                             let w = ssa.newBlock(f)
                             let v = ssa.load(f w slotAt 0 8 false cell.type)
                             ssa.store(f w cellAddress(f w cell) cell.offset 8 v)
-                            ssa.terminate(f w jump(t.block t.args))
+                            ssa.terminate(f w ssa.jump(t.block t.args))
                             ssa.target(w array of :Int end)
                         end)
                 end
@@ -382,7 +361,7 @@ export
                 let g = cfg.graph(f)
                 let defs = ssa.definitions(f)
                 for r = 0 upto {extent g.order - 1} do
-                    if not(again) andif isHeader(g g.order[r]) then
+                    if not(again) andif cfg.isLoopHeader(g g.order[r]) then
                         let h = g.order[r]
                         let inside = body(g h)
                         if inside[h] then
@@ -1002,7 +981,7 @@ export
                 when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then ok
             end
             if not(guarded) then
-                ssa.block(f pre).term := jump(h preParams)
+                ssa.block(f pre).term := ssa.jump(h preParams)
                 ssa.block(f pre).termLoc := hb.termLoc
             end
             removeMoved(f inside moved)
@@ -1023,7 +1002,7 @@ export
             let var k = vector.length(headers) - 1
             while k >= 0 do
                 let h = vector.get(headers k)
-                if isHeader(now h) then
+                if cfg.isLoopHeader(now h) then
                     let inside = body(now h)
                     if inside[h] then
                         if hoistLoop(f now h inside rotateAll) then any := true end
@@ -1033,15 +1012,6 @@ export
                 k := k - 1
             end
             any
-        end
-
-    (* Drops the block parameters that nothing uses, but jumps to them,
-     * which promotion leaves where slots met (at a loop's header, where a
-     * parameter would be moved on every pass) *)
-    let dropDeadParams(f: Function): Ok =
-        begin
-            let dead = blockParams.deadParams(f)
-            let ignored = blockParams.dropParams(f fun(p: Int): Bool dead[p])
         end
 
     (* =========================================================================
@@ -1392,7 +1362,7 @@ export
                 let hoisted = hoistLoops(f p.rotateAll)
                 if hoisted then
                     let ignored = promote.promoteFunction(f)
-                    dropDeadParams(f)
+                    begin let ignored = blockParams.dropDeadParams(f) end
                 end
                 if looped orif kept orif hoisted then
                     valueNumbers.numberFunction(f p)
@@ -1411,7 +1381,7 @@ export
             if loopSites(f true) then
                 (* The header's parameters that nothing reads go, as the
                  * closure's, which the back edge passes as null *)
-                dropDeadParams(f)
+                begin let ignored = blockParams.dropDeadParams(f) end
                 valueNumbers.numberFunction(f p)
             end
         end

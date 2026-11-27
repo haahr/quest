@@ -17,7 +17,6 @@ import
     questlang/typechecker/typedAst : questlang/typechecker/TypedAST
     questlang/types/dump : questlang/types/Dump
     questlang/types/model : questlang/types/Model
-    questlang/types/symbols : questlang/types/Symbols
 export
     Let Expr = typedAst.Expr
     Let Binding = typedAst.Binding
@@ -45,25 +44,12 @@ export
 
     (* Python's repr of a str, an int, and a float *)
     let pyStr(s: String): String = pyRepr.str(s)
-    let pyInt(n: Int): String = strutil.replace(conv.int(n) "~" "-")
-    let pyReal(r: Real): String =
-        begin
-            let s = conv.real(r)
-            if {stringOp.length(s) > 0} andif {stringOp.getChar(s 0) is '~'} then
-                "-" <> stringOp.getSub(s 1 {stringOp.length(s) - 1})
-            else
-                s
-            end
-        end
+    let pyInt(n: Int): String = pyRepr.number(conv.int(n))
+    let pyReal(r: Real): String = pyRepr.number(conv.real(r))
     let quoted(name: String): String = "'" <> name <> "'"
 
     (* Python's repr of a list of ints *)
-    let pyIntList(items: Array(Int)): String =
-        begin
-            let parts = vector.new(:String)
-            for i = 0 upto {extent items - 1} do vector.append(parts pyInt(items[i])) end
-            "[" <> strutil.join(", " parts) <> "]"
-        end
+    let pyIntList(items: Array(Int)): String = pyRepr.ints(items "[" "]")
 
     let joinSpaced(parts: vector.T(String)): String = strutil.join(" " parts)
 

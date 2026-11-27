@@ -54,24 +54,17 @@ export
             let bag = diagbag.new()
             try
                 let toks = tokenizer.tokenizeAll(tokenizer.new(sm bag))
-                if diagbag.hasErrors(bag) then diagbag.addStoppingError(:Ok bag location.span(location.file(sm) 0 1) "") end
+                if diagbag.hasErrors(bag) then
+                    diagbag.addStoppingError(:Ok bag location.span(location.file(sm) 0 1) "")
+                end
                 desugar.program(parser.parseProgram(toks sm bag))
             when diagbag.fatalError with d then
                 (* The first error, as the bootstrap raises it *)
                 let first = if diagbag.count(bag) > 0 then diagbag.get(bag 0) else d end
                 let sp = diagnostics.span(first)
                 let err = diagnostics.errorAt(diagnostics.message(first) sp.startOffset)
-                diagnostics.raiseError(tuple
-                    let message = err.message
-                    let offset = sp.startOffset
-                    let length = if sp.endOffset > sp.startOffset then sp.endOffset - sp.startOffset else 1 end
-                    let isFatal = false
-                    let help = err.help
-                    let notes = err.notes
-                    let file = maybe.some(location.file(sm))
-                    let silent = false
-                    let labels = err.labels
-                end)
+                let length = if sp.endOffset > sp.startOffset then sp.endOffset - sp.startOffset else 1 end
+                diagnostics.raiseError(diagnostics.locatedAt(err sp.startOffset length maybe.some(location.file(sm))))
             end
         end
 

@@ -268,63 +268,49 @@ export
 
     let compilerError: Exception(CompilerError) = exception compilerError: CompilerError end
 
-    let errorAt(message: String offset: Int): CompilerError =
+    (* The one place a CompilerError is built, so that a new field touches
+     * only this function and the build workers' encoding of errors *)
+    let errorOf(message: String offset: Int length: Int isFatal: Bool help: maybe.T(String) notes: vector.T(String)
+            file: maybe.T(String) silent: Bool labels: vector.T(Label)): CompilerError =
         tuple
             let message = message
             let offset = offset
-            let length = 1
-            let isFatal = false
-            let help = maybe.none()
-            let notes = vector.new()
-            let file = maybe.none()
-            let silent = false
-            let labels = vector.new()
+            let length = length
+            let isFatal = isFatal
+            let help = help
+            let notes = notes
+            let file = file
+            let silent = silent
+            let labels = labels
         end
 
-    let silentError: CompilerError =
-        tuple
-            let message = ""
-            let offset = 0
-            let length = 1
-            let isFatal = false
-            let help = maybe.none()
-            let notes = vector.new()
-            let file = maybe.none()
-            let silent = true
-            let labels = vector.new()
-        end
+    let errorAt(message: String offset: Int): CompilerError =
+        errorOf(message offset 1 false maybe.none() vector.new() maybe.none() false vector.new())
+
+    let fatalAt(message: String offset: Int): CompilerError =
+        errorOf(message offset 1 true maybe.none() vector.new() maybe.none() false vector.new())
+
+    let silentError: CompilerError = errorOf("" 0 1 false maybe.none() vector.new() maybe.none() true vector.new())
+
+    let withHelp(e: CompilerError help: maybe.T(String)): CompilerError =
+        errorOf(e.message e.offset e.length e.isFatal help e.notes e.file e.silent e.labels)
+
+    let withNotes(e: CompilerError notes: Array(String)): CompilerError =
+        errorOf(e.message e.offset e.length e.isFatal e.help vector.fromArray(notes) e.file e.silent e.labels)
+
+    let locatedAt(e: CompilerError offset: Int length: Int file: maybe.T(String)): CompilerError =
+        errorOf(e.message offset length e.isFatal e.help e.notes file e.silent e.labels)
 
     let inFile(e: CompilerError file: String): CompilerError =
-        if maybe.isSome(e.file) then
-            e
-        else
-            tuple
-                let message = e.message
-                let offset = e.offset
-                let length = e.length
-                let isFatal = e.isFatal
-                let help = e.help
-                let notes = e.notes
-                let file = maybe.some(file)
-                let silent = e.silent
-                let labels = e.labels
-            end
-        end
+        if maybe.isSome(e.file) then e else locatedAt(e e.offset e.length maybe.some(file)) end
 
     let atImport(e: CompilerError offset: Int length: Int file: String): CompilerError =
         if maybe.isNone(e.file) then
             (* Raised before the unit was read: located at the import *)
-            let located = if e.offset is 0 then offset else e.offset end
-            tuple
-                let message = e.message
-                let offset = located
-                let length = if e.offset is 0 then length else e.length end
-                let isFatal = e.isFatal
-                let help = e.help
-                let notes = e.notes
-                let file = maybe.some(file)
-                let silent = e.silent
-                let labels = e.labels
+            if e.offset is 0 then
+                locatedAt(e offset length maybe.some(file))
+            else
+                locatedAt(e e.offset e.length maybe.some(file))
             end
         elsif stringOp.equal(maybe.unwrap(e.file) file) then
             e
@@ -343,20 +329,7 @@ export
 
     let fail(A::TYPE message: String offset: Int): A = raise compilerError with errorAt(message offset) end
     let failWithHelp(A::TYPE message: String offset: Int help: maybe.T(String)): A =
-        begin
-            let err = errorAt(message offset)
-            raise compilerError with tuple
-                let message = err.message
-                let offset = err.offset
-                let length = err.length
-                let isFatal = err.isFatal
-                let help = help
-                let notes = err.notes
-                let file = err.file
-                let silent = err.silent
-                let labels = err.labels
-            end end
-        end
+        raise compilerError with withHelp(errorAt(message offset) help) end
 
     let mainFrame = "<main>"
     let initFrameSuffix = ".<init>"

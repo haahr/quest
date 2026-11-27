@@ -70,20 +70,6 @@ export
             result
         end
 
-    (* The word of static data that is v, if an opConst or an opSymbol
-     * defines it *)
-    let wordOf(defs: Defs v: Int): maybe.T(ssa.Word) =
-        if maybe.isNone(defs[v]) then
-            maybe.none()
-        else
-            let i = maybe.unwrap(defs[v])
-            if ssa.isOp(i ssa.opConst) then maybe.some(option wordInt of ssa.Word with let n = i.imm end)
-            elsif ssa.isOp(i ssa.opSymbol) then
-                maybe.some(option wordSymbol of ssa.Word with let symbol = i.symbol let addend = i.imm end)
-            else maybe.none()
-            end
-        end
-
     (* A switch's plan: the join, the least case and the range's size, and for
      * each of the join's parameters either a table's words (varies) or the
      * value every arm passes (same) *)
@@ -163,14 +149,14 @@ export
                     for p = 0 upto {n - 1} do
                         if varies[p] then
                             (* The default's word fills the gaps *)
-                            let filler = if gaps then wordOf(defs maybe.unwrap(other).args[p])
+                            let filler = if gaps then ssa.wordOf(defs maybe.unwrap(other).args[p])
                                 else maybe.some(option wordInt of ssa.Word with let n = 0 end) end
                             if maybe.isNone(filler) then
                                 fits := false
                             else
                                 let ws = array of(size maybe.unwrap(filler))
                                 for k = 0 upto {extent cases - 1} do
-                                    let w = wordOf(defs maybe.unwrap(arms[k]).args[p])
+                                    let w = ssa.wordOf(defs maybe.unwrap(arms[k]).args[p])
                                     if maybe.isNone(w) then fits := false
                                     else ws[cases[k] - least] := maybe.unwrap(w)
                                     end
@@ -232,7 +218,7 @@ export
             if p.join is returns then
                 ssa.terminate(f load option termReturn of ssa.Terminator with let values = args end)
             else
-                ssa.terminate(f load option termJump of ssa.Terminator with let target = ssa.target(p.join args) end)
+                ssa.terminate(f load ssa.jump(p.join args))
             end
         end
 

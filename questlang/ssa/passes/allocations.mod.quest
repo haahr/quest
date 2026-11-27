@@ -10,6 +10,7 @@ import
     util/strutil : util/Strutil
 
     questlang/common/maps : questlang/common/Maps
+    questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
 export
@@ -94,40 +95,19 @@ export
             let at = call.loc
             f.at := at
             let total = 8 + {{{sz + 7} / 8} * 8}
-            (* The rest of the block, after the call *)
-            let tail = vector.new(:ssa.Inst)
-            for j = k + 1 upto {vector.length(blk.insts) - 1} do
-                vector.append(tail vector.get(blk.insts j))
-            end
-            let term = blk.term
-            let termLoc = blk.termLoc
-            while vector.length(blk.insts) > k do begin let ignored = vector.pop(blk.insts) end end
-            let put = fun(b2: Int i: ssa.Inst): Ok begin i.loc := at ssa.append(f b2 i) end
-            let value = fun(b2: Int op: ssa.Opcode args: Array(Int) t: ssa.Type imm: Int symbol: String width: Int
-                    signed: Bool): Int
-                begin
-                    let v = ssa.newValue(f t)
-                    put(b2 ssa.instruction(op args array of v end imm symbol width signed ssa.emptySignature))
-                    v
-                end
+            (* The rest of the block, after the call, which goes; the
+             * instructions made here are at the call's position, f.at *)
+            let tail = cfg.cutTail(f b k + 1)
+            begin let ignored = vector.pop(blk.insts) end
             let none = array of :Int end
-            let unary = fun(b2: Int op: ssa.Opcode x: Int t: ssa.Type): Int value(b2 op array of x end t 0 "" 0 false)
-            let binary = fun(b2: Int op: ssa.Opcode x: Int y: Int): Int
-                value(b2 op array of x y end ssa.typeInt 0 "" 0 false)
-            let constant = fun(b2: Int n: Int): Int value(b2 ssa.opConst none ssa.typeInt n "" 0 false)
-            let address = fun(b2: Int symbol: String offset: Int): Int
-                value(b2 ssa.opSymbol none ssa.typePtr offset symbol 0 false)
-            let loadWord = fun(b2: Int p: Int t: ssa.Type): Int value(b2 ssa.opLoad array of p end t 0 "" 8 true)
-            let store = fun(b2: Int p: Int v: Int width: Int): Ok
-                put(b2 ssa.instruction(ssa.opStore array of p v end none 0 "" width false ssa.emptySignature))
             (* The test: no room in the hole (a checking mode, like a cycle,
              * hides the limits, so that this fails) *)
-            let cursorAt = address(b "quest_gc_cursor" 8 * space)
-            let limitAt = address(b "quest_gc_limit" 8 * space)
-            let cursor = loadWord(b cursorAt ssa.typeInt)
-            let limit = loadWord(b limitAt ssa.typeInt)
-            let bytes = constant(b total)
-            let slowPath = binary(b ssa.opUlt binary(b ssa.opSub limit cursor) bytes)
+            let cursorAt = ssa.symbolPlus(f b "quest_gc_cursor" 8 * space)
+            let limitAt = ssa.symbolPlus(f b "quest_gc_limit" 8 * space)
+            let cursor = ssa.load(f b cursorAt 0 8 true ssa.typeInt)
+            let limit = ssa.load(f b limitAt 0 8 true ssa.typeInt)
+            let bytes = ssa.constant(f b total)
+            let slowPath = ssa.binary(f b ssa.opUlt ssa.binary(f b ssa.opSub limit cursor) bytes)
             let fast = ssa.newBlock(f)
             let slow = ssa.newBlock(f)
             let rest = ssa.newBlock(f)
@@ -141,20 +121,18 @@ export
              * layout header word. The slow path writes that header itself,
              * adding any collector flags needed during incremental marking
              * (runtime/quest_gc.c). *)
-            store(fast cursorAt binary(fast ssa.opAdd cursor bytes) 8)
-            store(fast unary(fast ssa.opIntToPtr cursor ssa.typePtr) layout 8)
+            ssa.store(f fast cursorAt 0 8 ssa.binary(f fast ssa.opAdd cursor bytes))
+            ssa.store(f fast ssa.emit(f fast ssa.opIntToPtr array of cursor end ssa.typePtr) 0 8 layout)
             let fastBlk = ssa.block(f fast)
-            fastBlk.term := option termJump of ssa.Terminator with let target = ssa.target(rest array of cursor end) end
+            fastBlk.term := ssa.jump(rest array of cursor end)
             fastBlk.termLoc := at
             (* The slow path asks the runtime *)
             let r = runtimeFunctions.function("quest_gc_alloc_slow")
             let base = ssa.call(f slow "quest_gc_alloc_slow" array of bytes layout end runtimeFunctions.signature(r)
                     runtimeFunctions.resultTypes(r))[0]
-            let baseInt = unary(slow ssa.opPtrToInt base ssa.typeInt)
+            let baseInt = ssa.emit(f slow ssa.opPtrToInt array of base end ssa.typeInt)
             let slowBlk = ssa.block(f slow)
-            slowBlk.term := option termJump of ssa.Terminator with
-                let target = ssa.target(rest array of baseInt end)
-            end
+            slowBlk.term := ssa.jump(rest array of baseInt end)
             slowBlk.termLoc := at
             (* The rest: the object and its start bit, then what followed the
              * call *)
@@ -170,23 +148,22 @@ export
              * collector would mistake a header pointer in a stack frame for
              * an end-of-object pointer to that preceding object (docs/arm64.md
              * section 3.13). *)
-            put(rest ssa.instruction(ssa.opIntToPtr array of binary(rest ssa.opAdd baseParam constant(rest 8)) end
-                    array of obj end 0 "" 0 false ssa.emptySignature))
+            let header = ssa.binary(f rest ssa.opAdd baseParam ssa.constant(f rest 8))
+            ssa.append(f rest ssa.inst(ssa.opIntToPtr array of header end array of obj end))
             (* The start bit: its byte the base's plus the address >> 6, its
              * bit the address >> 3 & 7 (quest_gc_note_start) *)
-            let startBase = loadWord(rest address(rest "quest_gc_start_base" 0) ssa.typeInt)
-            let at8 = unary(rest ssa.opPtrToInt obj ssa.typeInt)
-            let byteAt = unary(rest ssa.opIntToPtr binary(rest ssa.opAdd startBase binary(rest ssa.opLshr at8
-                    constant(rest 6))) ssa.typePtr)
-            let mask = binary(rest ssa.opShl constant(rest 1) binary(rest ssa.opAnd binary(rest ssa.opLshr at8
-                    constant(rest 3)) constant(rest 7)))
-            let old = value(rest ssa.opLoad array of byteAt end ssa.typeInt 0 "" 1 false)
-            store(rest byteAt binary(rest ssa.opOr old mask) 1)
-            for j = 0 upto {vector.length(tail) - 1} do
-                vector.append(moved.insts vector.get(tail j))
-            end
-            moved.term := term
-            moved.termLoc := termLoc
+            let startBase = ssa.load(f rest ssa.symbolAddress(f rest "quest_gc_start_base") 0 8 true ssa.typeInt)
+            let at8 = ssa.emit(f rest ssa.opPtrToInt array of obj end ssa.typeInt)
+            let byteOffset = ssa.binary(f rest ssa.opLshr at8 ssa.constant(f rest 6))
+            let byteAt = ssa.emit(f rest ssa.opIntToPtr array of ssa.binary(f rest ssa.opAdd startBase byteOffset) end
+                    ssa.typePtr)
+            let one = ssa.constant(f rest 1)
+            let bit = ssa.binary(f rest ssa.opAnd ssa.binary(f rest ssa.opLshr at8 ssa.constant(f rest 3))
+                    ssa.constant(f rest 7))
+            let mask = ssa.binary(f rest ssa.opShl one bit)
+            let old = ssa.load(f rest byteAt 0 1 false ssa.typeInt)
+            ssa.store(f rest byteAt 0 1 ssa.binary(f rest ssa.opOr old mask))
+            cfg.appendTail(f rest tail)
         end
 
     let inlineFunction(f: Function spaces: maps.StringMap(Int)): Ok =

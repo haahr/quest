@@ -26,6 +26,7 @@ import
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/location : questlang/common/Location
     questlang/common/maps : questlang/common/Maps
+    questlang/common/strings : questlang/common/Strings
     questlang/interpreter/builtins : questlang/interpreter/Builtins
     questlang/interpreter/formatting : questlang/interpreter/Formatting
     questlang/interpreter/literals : questlang/interpreter/Literals
@@ -428,13 +429,6 @@ export
     (* Whether a is the variable v *)
     let isVariable(a: Atom v: Variable): Bool = case a when atomVar with x then x.v.id is v.id else false end
 
-    let hasLabel(labels: Array(String) label: String): Bool =
-        begin
-            let var found = false
-            for i = 0 upto {extent labels - 1} do if eq(labels[i] label) then found := true end end
-            found
-        end
-
     (* Whether statements, from the i-th on, return v: through Converts of it,
      * to a return of it or a jump with it to a join that returns it (one of
      * returning, by label) *)
@@ -461,7 +455,7 @@ export
                             end
                         when sReturn with x then answer := maybe.some(isVariable(x.value value))
                         when sJump with x then
-                            answer := maybe.some(hasLabel(returning x.label) andif {extent x.args is 1}
+                            answer := maybe.some(strings.isOneOf(x.label returning) andif {extent x.args is 1}
                                 andif isVariable(x.args[0] value))
                         else answer := maybe.some(false)
                     end

@@ -174,6 +174,18 @@ export
     let dominates(g: Graph a: Int b: Int): Bool =
         reached(g a) andif reached(g b) andif {g.pre[a] <= g.pre[b]} andif {g.post[b] <= g.post[a]}
 
+    let isLoopHeader(g: Graph h: Int): Bool =
+        begin
+            let var found = false
+            if reached(g h) then
+                for k = 0 upto {extent g.preds[h] - 1} do
+                    let p = g.preds[h][k]
+                    if reached(g p) andif dominates(g h p) then found := true end
+                end
+            end
+            found
+        end
+
     (* Computes dominance frontiers using Cooper, Harvey, and Kennedy's
      * algorithm, walking from each predecessor of a join block up the
      * dominator tree to the join's immediate dominator *)
@@ -233,6 +245,28 @@ export
                 end
             end
             depth
+        end
+
+    Def Tail = Tuple insts: vector.T(ssa.Inst) term: ssa.Terminator termLoc: ssa.Loc end
+
+    let cutTail(f: ssa.Function b: Int k: Int): Tail =
+        begin
+            let blk = ssa.block(f b)
+            let insts = vector.new(:ssa.Inst)
+            for j = k upto {vector.length(blk.insts) - 1} do vector.append(insts vector.get(blk.insts j)) end
+            while vector.length(blk.insts) > k do begin let ignored = vector.pop(blk.insts) end end
+            let t = tuple let insts = insts let term = blk.term let termLoc = blk.termLoc end
+            blk.term := ssa.termNone
+            blk.termLoc := ssa.noLoc
+            t
+        end
+
+    let appendTail(f: ssa.Function b: Int t: Tail): Ok =
+        begin
+            let blk = ssa.block(f b)
+            for j = 0 upto {vector.length(t.insts) - 1} do vector.append(blk.insts vector.get(t.insts j)) end
+            blk.term := t.term
+            blk.termLoc := t.termLoc
         end
 
     let dropUnreached(f: ssa.Function): Ok =

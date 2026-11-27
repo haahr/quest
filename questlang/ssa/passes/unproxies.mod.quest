@@ -5,6 +5,7 @@ import
     collections/vector : collections/Vector
 
     questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
+    questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Let Function = ssa.Function
@@ -18,14 +19,9 @@ export
             let p = i.args[0]
             let at = i.loc
             f.at := at
-            (* The rest of the block, after the instruction *)
-            let tail = vector.new(:ssa.Inst)
-            for j = k + 1 upto {vector.length(blk.insts) - 1} do
-                vector.append(tail vector.get(blk.insts j))
-            end
-            let term = blk.term
-            let termLoc = blk.termLoc
-            while vector.length(blk.insts) > k do begin let ignored = vector.pop(blk.insts) end end
+            (* The rest of the block, after the instruction, which goes *)
+            let tail = cfg.cutTail(f b k + 1)
+            begin let ignored = vector.pop(blk.insts) end
             let none = array of :Int end
             let tag = runtimeLayout.constant("QUEST_PROXY_TAG")
             let tested = ssa.binary(f b ssa.opAnd ssa.emit(f b ssa.opPtrToInt array of p end ssa.typeInt)
@@ -42,21 +38,15 @@ export
             let orig = runtimeLayout.offset("QProxy" "orig") - tag
             let original = ssa.invariantLoad(f proxy p orig 8 false ssa.typePtr)
             let proxyBlk = ssa.block(f proxy)
-            proxyBlk.term := option termJump of ssa.Terminator with
-                let target = ssa.target(rest array of original end)
-            end
+            proxyBlk.term := ssa.jump(rest array of original end)
             proxyBlk.termLoc := at
             let plainBlk = ssa.block(f plain)
-            plainBlk.term := option termJump of ssa.Terminator with let target = ssa.target(rest array of p end) end
+            plainBlk.term := ssa.jump(rest array of p end)
             plainBlk.termLoc := at
             (* The rest: the object is the instruction's result *)
             let moved = ssa.block(f rest)
             vector.append(moved.params i.results[0])
-            for j = 0 upto {vector.length(tail) - 1} do
-                vector.append(moved.insts vector.get(tail j))
-            end
-            moved.term := term
-            moved.termLoc := termLoc
+            cfg.appendTail(f rest tail)
         end
 
     let lowerFunction(f: Function): Ok =

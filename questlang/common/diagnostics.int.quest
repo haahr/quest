@@ -137,10 +137,21 @@ export
 
     compilerError: Exception(CompilerError)
 
+    (* An error with every field given, as a build worker's error is read back
+     * (build/workers); the others below are made by it *)
+    errorOf(message: String offset: Int length: Int isFatal: Bool help: maybe.T(String) notes: vector.T(String)
+            file: maybe.T(String) silent: Bool labels: vector.T(Label)): CompilerError
     (* An error, of length 1 and without help or notes *)
     errorAt(message: String offset: Int): CompilerError
+    (* A fatal error, otherwise as errorAt's *)
+    fatalAt(message: String offset: Int): CompilerError
     (* A silent error *)
     silentError: CompilerError
+    (* e with this help, these notes, or this place, which is in file if
+     * there is one *)
+    withHelp(e: CompilerError help: maybe.T(String)): CompilerError
+    withNotes(e: CompilerError notes: Array(String)): CompilerError
+    locatedAt(e: CompilerError offset: Int length: Int file: maybe.T(String)): CompilerError
     (* Raises an error (of any type, as raise has) *)
     raiseError(A::TYPE e: CompilerError): A
     (* Raises errorAt(message offset) *)

@@ -317,6 +317,8 @@ export
     tailCall(f: Function b: Int symbol: String args: Array(Int) s: Signature results: Array(Type)): Ok
     terminate(f: Function b: Int t: Terminator): Ok
     target(block: Int args: Array(Int)): Target
+    (* A jump to block, binding args to its parameters *)
+    jump(block: Int args: Array(Int)): Terminator
     isTerminated(f: Function b: Int): Bool
 
     (* The values a terminator uses, the blocks it may go to, and its
@@ -401,6 +403,10 @@ export
     definitions(f: Function): Array(maybe.T(Inst))
     (* The integer v is, if defs (definitions') says a const defines it *)
     constantOf(defs: Array(maybe.T(Inst)) v: Int): maybe.T(Int)
+    (* The word of static data that v is, if defs says an opConst or an
+     * opSymbol defines it: an integer, or a symbol's address plus the
+     * immediate *)
+    wordOf(defs: Array(maybe.T(Inst)) v: Int): maybe.T(Word)
     (* How many times each of f's values is used, as an instruction's argument
      * or by a terminator, its targets' arguments included *)
     useCounts(f: Function): Array(Int)

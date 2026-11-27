@@ -26,6 +26,8 @@
 
 interface CFG
 import
+    collections/vector : collections/Vector
+
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
 export
     Def Graph = Tuple
@@ -60,11 +62,28 @@ export
     (* Whether block a dominates block b (both reached): a block dominates
      * itself *)
     dominates(g: Graph a: Int b: Int): Bool
+    (* Whether h (reached) heads a natural loop: a back edge, from a reached
+     * block h dominates, enters it. It is cheap, where finding a loop's body
+     * allocates for every block of the function, so ssa/passes/loops asks it
+     * of each block first: finding the body of each would make a pass
+     * quadratic in a function's blocks, which a whole program's largest
+     * functions make seconds. *)
+    isLoopHeader(g: Graph h: Int): Bool
     (* Each block's dominance frontier: the blocks where its dominance ends *)
     frontiers(g: Graph): Array(Array(Int))
     (* Each block's loop depth: the number of natural loops (of back edges to
      * a block that dominates their source) it is in *)
     loopDepths(g: Graph): Array(Int)
+    (* What cutTail takes from a block: its instructions from an index on,
+     * its terminator, and the terminator's position *)
+    Def Tail = Tuple insts: vector.T(ssa.Inst) term: ssa.Terminator termLoc: ssa.Loc end
+    (* Splitting a block in two, as a pass that puts a branch in a block's
+     * middle does: cutTail removes block b's instructions from index k on and
+     * its terminator, leaving it unterminated (and its terminator without a
+     * position), and returns them; appendTail appends them to block b, which
+     * has no terminator yet, and ends it with their terminator *)
+    cutTail(f: ssa.Function b: Int k: Int): Tail
+    appendTail(f: ssa.Function b: Int t: Tail): Ok
     (* Drops the blocks the entry does not reach, renumbering the rest in
      * order, as a pass that makes blocks unreachable must, since their
      * instructions may use values it removed *)

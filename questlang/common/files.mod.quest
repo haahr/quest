@@ -20,21 +20,18 @@ export
     let join(a: String b: String): String = pathLib.join(a b)
     let normalize(p: String): String = pathLib.normalize(p)
     let absolute(p: String): String = pathLib.resolve(p)
-    (* The components between separators, without empty ones (so without an
-     * absolute path's root) *)
+    (* The components between separators, without empty ones: util/path's
+     * parts without an absolute path's root *)
     let components(p: String): vector.T(String) =
         begin
-            let result = vector.new(:String)
-            let n = stringOp.length(p)
-            let var start = 0
-            for i = 0 upto n do
-                if {i is n} orif {stringOp.getChar(p i) is '/'} then
-                    if i > start then vector.append(result stringOp.getSub(p start {i - start})) end
-                    start := i + 1
-                end
-            end
+            let result = pathLib.parts(p)
+            if isAbsolute(p) then vector.delete(result 0) end
             result
         end
+    (* Not util/path's dirName, which keeps repeated separators before the
+     * last component (a//b for a//b/c, where this gives a/b, as Python's
+     * Path.parent does): callers pass paths as the command line and imports
+     * spell them, unnormalized, and name directories by the result *)
     let parent(p: String): String =
         begin
             let cs = components(p)
@@ -51,19 +48,17 @@ export
                 sb.toString(b)
             end
         end
+    (* The root has no name here, as in Python's Path.name, where util/path's
+     * baseName gives "/" *)
     let baseName(p: String): String =
         begin
-            let cs = components(p)
-            if vector.empty(cs) then "" else vector.last(cs) end
+            let name = pathLib.baseName(p)
+            if stringOp.equal(name "/") then "" else name end
         end
-    let parts(p: String): Array(String) =
-        begin
-            let result = vector.new(:String)
-            if isAbsolute(p) then vector.append(result "/") end
-            let cs = components(p)
-            for i = 0 upto {vector.length(cs) - 1} do vector.append(result vector.get(cs i)) end
-            vector.toArray(result)
-        end
+    let parts(p: String): Array(String) = vector.toArray(pathLib.parts(p))
+    (* Not util/path's relativeTo, which climbs out of root with .. and
+     * raises path.error for an absolute and a relative path: a path outside
+     * root has none here *)
     let relativeTo(p: String root: String): maybe.T(String) =
         begin
             let ps = parts(p)
@@ -158,11 +153,6 @@ export
             writer.close(w)
             system.renameFile(temporary file)
         end
-    let stem(file: String): String =
-        begin
-            let name = baseName(file)
-            let var dot = ~1
-            for i = 1 upto {stringOp.length(name) - 1} do if stringOp.getChar(name i) is '.' then dot := i end end
-            if dot < 0 then name else stringOp.getSub(name 0 dot) end
-        end
+    (* Of baseName's name, so that the root's stem is "" as its name is *)
+    let stem(file: String): String = pathLib.stem(baseName(file))
 end
