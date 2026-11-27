@@ -186,15 +186,16 @@ export
      * The interpreter
      * ====================================================================== *)
 
-    (* An IR function value: its function, the frame it was made in, the types
-     * bound to its type parameters, and after closure conversion, the values it
-     * captured. It is a builtin to the tree-walking interpreter, so that
-     * library functions written in Quest can call it. *)
+    (* An IR function value: its function, the frame its calls run in, and the
+     * types bound to its type parameters. After closure conversion, the frame
+     * binds the function's environment variable to the values it captured
+     * (closureFrame), as model.Closure's frame holds a tree-walker closure's.
+     * It is a builtin to the tree-walking interpreter, so that library
+     * functions written in Quest can call it. *)
     Let IrClosure = Tuple
         function: nodes.Function
         frame: Frame
         typeBindings: maps.IntMap(Type)
-        env: maybe.T(Array(Value))
     end
 
     Let Signal = Option
@@ -245,11 +246,10 @@ export
      * in fixups, and the let rec fills them in once its body has bound the
      * variables. *)
     Let Interpreter = Tuple
-        (* The tree-walking interpreter's frame, whose root has the call stack
-         * and runs imported modules *)
+        (* The tree-walking interpreter's frame, whose root has the call stack,
+         * runs imported modules, and binds the builtins (opBuiltin): true,
+         * false, ok, and the operators as functions *)
         renv: model.Frame
-        (* The builtins: true, false, ok, and the operators as functions *)
-        root: model.Frame
         (* The unit's modules and those it imports (by id), as records of their
          * members *)
         modules: maps.IntMap(Value)
@@ -439,7 +439,18 @@ export
                     next := next + 1
                 end
             end
-            tuple let function = c.function let frame = c.frame let typeBindings = bindings let env = c.env end
+            tuple let function = c.function let frame = c.frame let typeBindings = bindings end
+        end
+
+    (* The frame code's closures run their calls in: parent, with code's
+     * environment variable, if it has one, bound to the values captured *)
+    let closureFrame(code: nodes.Function captures: Array(Value) parent: Frame): Frame =
+        if maybe.isSome(code.env) then
+            let f = childFrame(parent)
+            setValue(f maybe.unwrap(code.env) option vArray of Value with let a = captures end)
+            f
+        else
+            parent
         end
 
     let holeUse = option hole of tm.ReservedSymbolUse end
@@ -568,11 +579,6 @@ export
             hashMap.forEach(c.typeBindings fun(k: Int t: Type): Ok begin hashMap.insert(types k t) ok end)
             let f = newFrame(maybe.some(c.frame) types)
             let fn = c.function
-            if maybe.isSome(fn.env) then
-                setValue(f maybe.unwrap(fn.env) option vArray of Value with
-                    let a = maybe.unwrapOr(c.env array of :Value end)
-                end)
-            end
             for i = 0 upto {extent fn.params - 1} do if i < extent args then setValue(f fn.params[i].v args[i]) end end
             if not(hashSet.contains(it.analyzed fn.id)) then
                 hashSet.insert(it.analyzed fn.id)
@@ -693,9 +699,8 @@ export
             end
             closureValue(it tuple
                 let function = code
-                let frame = topOf(f)
+                let frame = closureFrame(code values topOf(f))
                 let typeBindings = bindings
-                let env = maybe.some(values)
             end)
         end
 
@@ -859,7 +864,7 @@ export
                 if maybe.isNone(x.member) then moduleValue(it x.moduleRef)
                 else member(it x.moduleRef maybe.unwrap(x.member))
                 end
-            when opBuiltin with x then treewalk.lookup(it.root x.name none)
+            when opBuiltin with x then treewalk.lookup(it.renv x.name none)
             when opMakeClosure with x then
                 checkDescriptors(it x.descriptors x.typeArgs f)
                 makeClosure(it x.code x.captures x.typeArgs f)
@@ -1111,9 +1116,8 @@ export
                     setValue(f fn.v
                             closureValue(it tuple
                                 let function = fn
-                                let frame = f
+                                let frame = closureFrame(fn array of :Value end f)
                                 let typeBindings = newTypes()
-                                let env = maybe.none()
                             end))
                 end
                 noSignal
@@ -1321,7 +1325,6 @@ export
             end
             let it: Interpreter = tuple
                 let renv = renv
-                let root = treewalk.newRoot(renv.root.units)
                 let modules = maps.newIntMap()
                 let declared = maps.newIntSet()
                 let fixups = vector.new()
