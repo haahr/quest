@@ -7,6 +7,7 @@ import
     word : Word
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
@@ -105,13 +106,13 @@ export
     let typeVars(t0: Type): Array(Type) =
         begin
             let found = vector.new(:Type)
-            let foundIds = maps.newIntMap(:Bool)
+            let foundIds = maps.newIntSet()
             let rec visit(p: model.Part): Ok =
                 case p
                     when partType with x then
                         if x.t.form?typeVariable then
-                            if not(hashMap.contains(foundIds x.t.id)) then
-                                hashMap.insert(foundIds x.t.id true)
+                            if not(hashSet.contains(foundIds x.t.id)) then
+                                hashSet.insert(foundIds x.t.id)
                                 vector.append(found x.t)
                             end
                         elsif extent x.t.fv > 0 then
@@ -119,8 +120,8 @@ export
                             if maybe.isSome(memo) then
                                 let vars = maybe.unwrap(memo)
                                 for i = 0 upto {extent vars - 1} do
-                                    if not(hashMap.contains(foundIds vars[i].id)) then
-                                        hashMap.insert(foundIds vars[i].id true)
+                                    if not(hashSet.contains(foundIds vars[i].id)) then
+                                        hashSet.insert(foundIds vars[i].id)
                                         vector.append(found vars[i])
                                     end
                                 end
@@ -300,8 +301,8 @@ export
     (* The pairs of shapes being planned (with their layouts), and of function
      * types being adapted, for recursive types, which are compared
      * coinductively *)
-    let planning = maps.newStringMap(:Bool)
-    let adapting = maps.newStringMap(:Bool)
+    let planning = maps.newStringSet()
+    let adapting = maps.newStringSet()
 
     (* Returns lay's contribution to a planning key: "-" for none, or its
      * substitution's object identity and direction. Identity suffices because
@@ -378,14 +379,14 @@ export
         else
             let key =
                 conv.int(shapes.shape(source).id) <> "," <> conv.int(shapes.shape(target).id) <> "," <> layoutKey(lay)
-            if hashMap.contains(planning key) then
+            if hashSet.contains(planning key) then
                 (* A pair being planned (a recursive type's component): needs no
                  * conversion of its own *)
                 none
             else
-                hashMap.insert(planning key true)
+                hashSet.insert(planning key)
                 let result = unproxied(planInner(source target lay))
-                hashMap.delete(planning key)
+                hashSet.delete(planning key)
                 result
             end
         end
@@ -416,7 +417,7 @@ export
             let toGeneric = maybe.isSome(lay) andif maybe.unwrap(lay).toGeneric
             let key = conv.int(shapes.shape(source).id) <> "," <> conv.int(shapes.shape(target).id) <> ","
                 <> if toGeneric then "t" else "f" end
-            if hashMap.contains(adapting key) then
+            if hashSet.contains(adapting key) then
                 none
             else
                 let shared = sharedSignatures(source target)
@@ -431,7 +432,7 @@ export
                     else
                         noLayout
                     end
-                hashMap.insert(adapting key true)
+                hashSet.insert(adapting key)
                 let fields = array of({extent shared.sParams + 1} none)
                 for i = 0 upto {extent shared.sParams - 1} do
                     let tp = shared.tParams[i]
@@ -439,7 +440,7 @@ export
                         if tp.isVar orif tp.isOut then none else plan(tp.type shared.sParams[i].type flipped) end
                 end
                 fields[extent shared.sParams] := plan(shared.sResult shared.tResult lay)
-                hashMap.delete(adapting key)
+                hashSet.delete(adapting key)
                 let var allNone = true
                 for i = 0 upto {extent fields - 1} do if maybe.isSome(fields[i]) then allNone := false end end
                 if allNone

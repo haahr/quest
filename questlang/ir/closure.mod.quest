@@ -3,6 +3,7 @@
 module closure : Closure
 import
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -21,7 +22,7 @@ export
     (* The unit, to whose functions lifted ones are added, and its globals
      * (walk.globalVariables), which lifted functions read directly rather
      * than capture *)
-    Let Converter = Tuple unit: nodes.Unit globals: maps.IntMap(Bool) end
+    Let Converter = Tuple unit: nodes.Unit globals: maps.IntSet end
 
     let concat(a: Array(nodes.TypeParam) b: Array(nodes.TypeParam)): Array(nodes.TypeParam) =
         begin
@@ -83,8 +84,8 @@ export
             end
             let lets = vector.new(:Stmt)
             let var capturesGroup = false
-            let group = maps.newIntMap(:Bool)
-            for i = 0 upto {extent functions - 1} do hashMap.insert(group functions[i].v.id true) end
+            let group = maps.newIntSet()
+            for i = 0 upto {extent functions - 1} do hashSet.insert(group functions[i].v.id) end
             let all = array of(extent functions tuple
                 let code = functions[0]
                 let captures = array of :Variable end
@@ -95,7 +96,7 @@ export
             for i = 0 upto {extent functions - 1} do
                 all[i] := lift(c functions[i] typeParams)
                 for j = 0 upto {extent all[i].captures - 1} do
-                    if hashMap.contains(group all[i].captures[j].id) then capturesGroup := true
+                    if hashSet.contains(group all[i].captures[j].id) then capturesGroup := true
                     else closed := false
                     end
                 end
@@ -161,21 +162,21 @@ export
     and lift(c: Converter f: nodes.Function typeParams: Array(nodes.TypeParam)): Lifted =
         begin
             convertBody(c f.body concat(typeParams f.typeParams))
-            let bound = maps.newIntMap(:Bool)
-            for i = 0 upto {extent f.params - 1} do hashMap.insert(bound f.params[i].v.id true) end
+            let bound = maps.newIntSet()
+            for i = 0 upto {extent f.params - 1} do hashSet.insert(bound f.params[i].v.id) end
             let used = vector.new(:Variable)
-            let usedIds = maps.newIntMap(:Bool)
+            let usedIds = maps.newIntSet()
             let stmts = walk.walkStatements(f.body false)
             for i = 0 upto {vector.length(stmts) - 1} do
                 let s = vector.get(stmts i)
                 let binders = walk.statementBinders(s)
-                for j = 0 upto {extent binders - 1} do hashMap.insert(bound binders[j].id true) end
+                for j = 0 upto {extent binders - 1} do hashSet.insert(bound binders[j].id) end
                 let uses = walk.statementUses(s)
                 for j = 0 upto {extent uses - 1} do
                     case uses[j]
                         when atomVar with x then
-                            if not(hashMap.contains(usedIds x.v.id)) then
-                                hashMap.insert(usedIds x.v.id true)
+                            if not(hashSet.contains(usedIds x.v.id)) then
+                                hashSet.insert(usedIds x.v.id)
                                 vector.append(used x.v)
                             end
                         else ok
@@ -185,7 +186,7 @@ export
             let captures = vector.new(:Variable)
             for i = 0 upto {vector.length(used) - 1} do
                 let v = vector.get(used i)
-                if not(hashMap.contains(bound v.id)) andif not(hashMap.contains(c.globals v.id)) then
+                if not(hashSet.contains(bound v.id)) andif not(hashSet.contains(c.globals v.id)) then
                     vector.append(captures v)
                 end
             end

@@ -4,7 +4,7 @@ module engine : Engine
 import
     stringOp = string : StringOp
 
-    collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -216,7 +216,7 @@ export
          * what failed there *)
         var farthest: Int
         expected: vector.T(String)
-        expectedSet: maps.StringMap(Bool)
+        expectedSet: maps.StringSet
     end
 
     (* The secondary label of a syntax error located at what was left open,
@@ -259,7 +259,7 @@ export
                 var memo = array of :Memo end
                 var farthest = 0
                 let expected = vector.new()
-                let expectedSet = maps.newStringMap()
+                let expectedSet = maps.newStringSet()
             end
         end
 
@@ -270,13 +270,13 @@ export
         if pos > ps.farthest then
             ps.farthest := pos
             vector.clear(ps.expected)
-            hashMap.clear(ps.expectedSet)
+            hashSet.clear(ps.expectedSet)
             vector.append(ps.expected expected)
-            hashMap.insert(ps.expectedSet expected true)
+            hashSet.insert(ps.expectedSet expected)
             ok
-        elsif {pos is ps.farthest} andif not(hashMap.contains(ps.expectedSet expected)) then
+        elsif {pos is ps.farthest} andif not(hashSet.contains(ps.expectedSet expected)) then
             vector.append(ps.expected expected)
-            hashMap.insert(ps.expectedSet expected true)
+            hashSet.insert(ps.expectedSet expected)
             ok
         end
 
@@ -469,7 +469,7 @@ export
             spare.memo := array of :Memo end
             ps.farthest := 0
             vector.clear(ps.expected)
-            hashMap.clear(ps.expectedSet)
+            hashSet.clear(ps.expectedSet)
             (* The start target itself does not count as expected *)
             let outcome = case start when target with x then parseTarget(ps x.target 0) else evaluate(ps start 0) end
             spare.memo := ps.memo

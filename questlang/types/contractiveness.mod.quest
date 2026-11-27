@@ -5,7 +5,7 @@ module contractiveness : Contractiveness
 import
     conv : Conv
 
-    collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -16,30 +16,27 @@ import
     questlang/types/symbols : questlang/types/Symbols
 export
     Let Type = model.Type
-    Let Ids = maps.IntMap(Bool)
+    Let Ids = maps.IntSet
 
     let maxTypeExpansionDepth = 500
 
-    let newIds(): Ids = maps.newIntMap()
-
-    (* A copy of ids *)
-    let copy(ids: Ids): Ids = hashMap.filter(ids fun(k: Int v: Bool): Bool true)
+    let newIds(): Ids = maps.newIntSet()
 
     let plus(ids: Ids id: Int): Ids =
         begin
-            let more = copy(ids)
-            hashMap.insert(more id true)
+            let more = hashSet.copy(ids)
+            hashSet.insert(more id)
             more
         end
 
     let union(a: Ids b: Ids): Ids =
         begin
-            let both = copy(a)
-            hashMap.forEach(b fun(k: Int v: Bool): Ok begin hashMap.insert(both k true) ok end)
+            let both = hashSet.copy(a)
+            hashSet.forEach(b fun(k: Int): Ok begin hashSet.insert(both k) ok end)
             both
         end
 
-    let has(ids: Ids id: Int): Bool = hashMap.contains(ids id)
+    let has(ids: Ids id: Int): Bool = hashSet.contains(ids id)
 
     (* Returns whether t is contractive in ids (Cardelli and Longo 1991,
      * section 2.4). Primitive types and type constructors are contractive; a
@@ -89,7 +86,7 @@ export
                     begin
                         let groupIds = newIds()
                         for i = 0 upto {extent x.bindings - 1} do
-                            hashMap.insert(groupIds x.bindings[i].symbolId true)
+                            hashSet.insert(groupIds x.bindings[i].symbolId)
                         end
                         contractive(x.bindings[x.activeIndex].body union(ids groupIds) e {depth + 1})
                     end

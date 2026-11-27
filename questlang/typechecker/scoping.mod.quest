@@ -6,9 +6,8 @@ import
     stringOp = string : StringOp
     system : System
 
-    collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
-    util/iter : util/Iter
     util/maybe : util/Maybe
 
     questlang/common/maps : questlang/common/Maps
@@ -19,22 +18,16 @@ import
 export
     Let Expr = typedAst.Expr
     Let Binding = typedAst.Binding
-    Let Ids = maps.IntMap(Bool)
+    Let Ids = maps.IntSet
 
     let scopeChecksEnabled(): Bool = stringOp.equal(system.getEnv("QUEST_CHECK_SCOPES") "1")
 
-    let newIds(): Ids = maps.newIntMap()
-    let copyIds(ids: Ids): Ids =
-        begin
-            let copy = newIds()
-            let keys = hashMap.keyIter(ids)
-            while iter.more(keys) do hashMap.insert(copy iter.next(keys) true) end
-            copy
-        end
+    let newIds(): Ids = maps.newIntSet()
+    let copyIds(ids: Ids): Ids = hashSet.copy(ids)
     let withIds(ids: Ids more: Array(Int)): Ids =
         begin
             let copy = copyIds(ids)
-            for i = 0 upto {extent more - 1} do hashMap.insert(copy more[i] true) end
+            for i = 0 upto {extent more - 1} do hashSet.insert(copy more[i]) end
             copy
         end
 
@@ -112,12 +105,12 @@ export
                 when exprFun with x then
                     begin
                         for i = 0 upto {extent x.params - 1} do
-                            hashMap.insert(st.localIds x.params[i].symbol.symbolId true)
+                            hashSet.insert(st.localIds x.params[i].symbol.symbolId)
                         end
                         let quants = quantifierIds(e)
-                        for i = 0 upto {extent quants - 1} do hashMap.insert(st.paramIds quants[i] true) end
+                        for i = 0 upto {extent quants - 1} do hashSet.insert(st.paramIds quants[i]) end
                         for i = 0 upto {extent x.typeParamIds - 1} do
-                            hashMap.insert(st.paramIds x.typeParamIds[i] true)
+                            hashSet.insert(st.paramIds x.typeParamIds[i])
                         end
                         let var same = extent x.typeParamIds is extent quants
                         if same then
@@ -136,15 +129,15 @@ export
                     for i = 0 upto {extent x.bindings - 1} do
                         let lets = typedAst.letValues(x.bindings[i])
                         for j = 0 upto {extent lets - 1} do
-                            hashMap.insert(st.localIds lets[j].symbol.symbolId true)
+                            hashSet.insert(st.localIds lets[j].symbol.symbolId)
                         end
                     end
-                when exprFor with x then begin hashMap.insert(st.localIds x.symbol.symbolId true) ok end
+                when exprFor with x then begin hashSet.insert(st.localIds x.symbol.symbolId) ok end
                 when exprCase with x then
                     for i = 0 upto {extent x.branches - 1} do
                         let binder = x.branches[i].binder
                         if maybe.isSome(binder) then
-                            hashMap.insert(st.localIds maybe.unwrap(binder).symbolId true)
+                            hashSet.insert(st.localIds maybe.unwrap(binder).symbolId)
                         end
                     end
                 when exprTry with x then
@@ -152,20 +145,18 @@ export
                         for i = 0 upto {extent x.branches - 1} do
                             let binder = x.branches[i].binder
                             if maybe.isSome(binder) then
-                                hashMap.insert(st.localIds maybe.unwrap(binder).symbolId
-                                        true)
+                                hashSet.insert(st.localIds maybe.unwrap(binder).symbolId)
                             end
                         end
                         if maybe.isSome(x.elseBinder) then
-                            hashMap.insert(st.localIds maybe.unwrap(x.elseBinder).symbolId
-                                    true)
+                            hashSet.insert(st.localIds maybe.unwrap(x.elseBinder).symbolId)
                         end
                     end
                 when exprInspect with x then
                     for i = 0 upto {extent x.branches - 1} do
                         let binders = x.branches[i].binders
                         for j = 0 upto {extent binders - 1} do
-                            hashMap.insert(st.localIds binders[j].symbolId true)
+                            hashSet.insert(st.localIds binders[j].symbolId)
                         end
                     end
                 else ok
@@ -189,7 +180,7 @@ export
             let stray = vector.new(:Int)
             for i = 0 upto {extent t.fv - 1} do
                 let id = t.fv[i]
-                if hashMap.contains(st.paramIds id) andif not(hashMap.contains(typeScope id)) then
+                if hashSet.contains(st.paramIds id) andif not(hashSet.contains(typeScope id)) then
                     vector.append(stray id)
                 end
             end
@@ -238,7 +229,7 @@ export
                 when exprVar with x then
                     begin
                         let symId = x.symbol.symbolId
-                        if hashMap.contains(st.localIds symId) andif not(hashMap.contains(values symId)) then
+                        if hashSet.contains(st.localIds symId) andif not(hashSet.contains(values symId)) then
                             vector.append(st.problems "variable '" <> x.name <> "' (#" <> conv.int(symId)
                                 <> ") at offset " <> conv.int(e.offset) <> " is used outside the scope of its binder")
                         end
@@ -268,7 +259,7 @@ export
                             if isRec then
                                 (* Recursive members see one another *)
                                 for j = 0 upto {extent lets - 1} do
-                                    hashMap.insert(scope lets[j].symbol.symbolId true)
+                                    hashSet.insert(scope lets[j].symbol.symbolId)
                                 end
                                 walkBinding(st b copyIds(scope) types)
                             else
@@ -276,7 +267,7 @@ export
                                  * the declaration, not its members *)
                                 walkBinding(st b copyIds(scope) types)
                                 for j = 0 upto {extent lets - 1} do
-                                    hashMap.insert(scope lets[j].symbol.symbolId true)
+                                    hashSet.insert(scope lets[j].symbol.symbolId)
                                 end
                             end
                         end

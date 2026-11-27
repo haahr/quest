@@ -8,6 +8,7 @@ import
     word : Word
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/json : util/JSON
     util/maybe : util/Maybe
@@ -101,12 +102,12 @@ export
         types: maps.IntMap(Type)
         (* The nodes whose types are being made, and those of them reached
          * again while being made, which become recursive types *)
-        active: maps.IntMap(Bool)
+        active: maps.IntSet
         recursive: maps.IntMap(Bool)
         (* A fresh symbol id for each node, the binder of its recursive type
          * if it becomes one, and the same ids as a set *)
         binderIds: Array(Int)
-        binderIdSet: maps.IntMap(Bool)
+        binderIdSet: maps.IntSet
         (* The objects read so far, by their @id *)
         objects: maps.IntMap(Seen)
         (* The type parameters of the auto types being built, innermost last,
@@ -268,11 +269,11 @@ export
         begin
             let entries = vector.toArray(items(table))
             let binderIds = array of(extent entries 0)
-            let binderIdSet = maps.newIntMap(:Bool)
+            let binderIdSet = maps.newIntSet()
             let rd: Reader = tuple
                 let table = entries
                 let types = maps.newIntMap()
-                let active = maps.newIntMap()
+                let active = maps.newIntSet()
                 let recursive = maps.newIntMap()
                 let binderIds = binderIds
                 let binderIdSet = binderIdSet
@@ -283,7 +284,7 @@ export
             for i = 0 upto {extent entries - 1} do checkNode(rd entries[i]) end
             for i = 0 upto {extent entries - 1} do
                 binderIds[i] := symbols.allocateSymbolId()
-                hashMap.insert(binderIdSet binderIds[i] true)
+                hashSet.insert(binderIdSet binderIds[i])
             end
             rd
         end
@@ -332,10 +333,10 @@ export
             end
             r
         end
-    let mentionsAny(t: Type ids: maps.IntMap(Bool)): Bool =
+    let mentionsAny(t: Type ids: maps.IntSet): Bool =
         begin
             let var found = false
-            for i = 0 upto {extent t.fv - 1} do if hashMap.contains(ids t.fv[i]) then found := true end end
+            for i = 0 upto {extent t.fv - 1} do if hashSet.contains(ids t.fv[i]) then found := true end end
             found
         end
     (* The module abstract type name (applied to args), whose recorded
@@ -390,14 +391,14 @@ export
                 let count = vector.length(rd.autoParams)
                 if n >= count then fail(:Ok) end
                 vector.get(rd.autoParams {{count - 1} - n})
-            elsif hashMap.contains(rd.active r.index) then
+            elsif hashSet.contains(rd.active r.index) then
                 hashMap.insert(rd.recursive r.index true)
                 tm.typeVariable("T" <> intKey(r.index) rd.binderIds[r.index] maybe.some(tm.typeKind))
             else
                 let binder = rd.binderIds[r.index]
-                hashMap.insert(rd.active r.index true)
+                hashSet.insert(rd.active r.index)
                 let t0 = build(rd e)
-                hashMap.delete(rd.active r.index)
+                hashSet.delete(rd.active r.index)
                 let t =
                     if hashMap.contains(rd.recursive r.index) then
                         tm.recType("T" <> intKey(r.index) binder tm.typeKind t0)

@@ -10,6 +10,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/iter : util/Iter
     util/maybe : util/Maybe
@@ -72,6 +73,8 @@ export
             hashMap.insert(m key value)
             ok
         end
+    (* Adds x to a set *)
+    let mark(A::TYPE s: hashSet.T(A) x: A): Ok = begin hashSet.insert(s x) ok end
     let shapeOf(t: Type): Shape = shapes.shape(t)
     let isOk(t: Type): Bool = shapes.kindIs(shapeOf(t) shapes.shapeOk)
     (* Whether a value of type t contains a word that may be a heap pointer,
@@ -160,13 +163,13 @@ export
         locals: vector.T(Local)
         (* Labels used by jumps, breaks, and continues (only used labels are
          * printed) *)
-        usedLabels: maps.StringMap(Bool)
+        usedLabels: maps.StringSet
         (* The try handlers entered, innermost last, and for each label the
          * number entered where it is defined *)
         handlers: vector.T(String)
         labelDepth: maps.StringMap(Int)
         joinParams: maps.StringMap(Array(Variable))
-        var volatile: maps.IntMap(Bool)
+        var volatile: maps.IntSet
         (* Statements fused into the following statement, keyed by variable id
          * (fusedTuples): a tuple built only as an option's payload, or an
          * option payload extracted only to read one component *)
@@ -178,11 +181,11 @@ export
         tuple
             let function = f
             let locals = vector.new()
-            let usedLabels = maps.newStringMap()
+            let usedLabels = maps.newStringSet()
             let handlers = vector.new()
             let labelDepth = maps.newStringMap()
             let joinParams = maps.newStringMap()
-            let var volatile = maps.newIntMap()
+            let var volatile = maps.newIntSet()
             let var fused = maps.newIntMap()
             let inits = vector.new()
         end
@@ -217,7 +220,7 @@ export
      * even's environment is made before odd's closure exists, and its
      * capture of odd is stored once both are made. *)
     Let DeferredCapture = Tuple env: String index: Int a: Atom end
-    Let Deferred = Tuple vars: maps.IntMap(Bool) captures: vector.T(DeferredCapture) end
+    Let Deferred = Tuple vars: maps.IntSet captures: vector.T(DeferredCapture) end
 
     (* The state of printing one unit (printC) *)
     Let P = Tuple
@@ -229,12 +232,12 @@ export
          * main body and the modules' initializers that a function or another
          * of those bodies names, or that are a module's members, exports, or
          * record (walk.globalVariables) *)
-        globals: maps.IntMap(Bool)
+        globals: maps.IntSet
         (* The C name of each variable, by id, and of each function's code
          * (codeNames, by function id); every name given (usedNames), and for
          * each base name the count its next fresh name starts at (freshName) *)
         names: maps.IntMap(String)
-        usedNames: maps.StringMap(Bool)
+        usedNames: maps.StringSet
         nameCounts: maps.StringMap(Int)
         codeNames: maps.IntMap(String)
         (* The closure each variable is known to hold, by id, so that its
@@ -244,7 +247,7 @@ export
         closures: maps.IntMap(nodes.OpMakeClosure)
         (* The variables that hold a caught exception (a try's exc), by id,
          * which C declares as the whole exception state, QExceptionState *)
-        handlerVars: maps.IntMap(Bool)
+        handlerVars: maps.IntSet
         (* The pairs of tuple types converted by casts (whose layouts agree,
          * which the C asserts), in the order first cast *)
         tupleCastKeys: vector.T(String)
@@ -288,12 +291,12 @@ export
              * stopped: every name before it is taken *)
             let var n = maybe.unwrapOr(hashMap.get(p.nameCounts base) 1)
             let var name = if n is 1 then base else base <> "_" <> cInt(n) end
-            while hashMap.contains(p.usedNames name) do
+            while hashSet.contains(p.usedNames name) do
                 n := n + 1
                 name := base <> "_" <> cInt(n)
             end
             put(p.nameCounts base n)
-            put(p.usedNames name true)
+            mark(p.usedNames name)
             name
         end
 
@@ -307,7 +310,7 @@ export
             end
             if not(hashMap.contains(p.names v.id)) then
                 let base = symbols.mangleIdent(if stringOp.length(v.hint) > 0 then v.hint else "t" end)
-                let prefix = if hashMap.contains(p.globals v.id) then "g_" else "l_" end
+                let prefix = if hashSet.contains(p.globals v.id) then "g_" else "l_" end
                 put(p.names v.id freshName(p prefix <> removePrefix(base "qv_")))
             end
             hashMap.find(p.names v.id)
@@ -549,7 +552,7 @@ export
     let unboxedCType(t: Type): String = begin cType(t) layout.shapeTag(shapeOf(t)) end
 
     let varCType(p: P v: Variable): String =
-        if hashMap.contains(p.handlerVars v.id) then "QExceptionState"
+        if hashSet.contains(p.handlerVars v.id) then "QExceptionState"
         elsif v.boxed then slotCType(shapeOf(v.type))
         elsif v.unboxed then unboxedCType(v.type)
         else cType(v.type)
@@ -558,12 +561,12 @@ export
     (* Whether varCType(p v) is a QVal, and whether it is a pointer (neither
      * QExceptionState nor an unboxed tuple's struct is) *)
     let varIsQVal(p: P v: Variable): Bool =
-        if hashMap.contains(p.handlerVars v.id) orif v.unboxed then false
+        if hashSet.contains(p.handlerVars v.id) orif v.unboxed then false
         elsif v.boxed then layout.slotIsQVal(shapeOf(v.type))
         else layout.isQVal(shapeOf(v.type))
         end
     let varIsPointer(p: P v: Variable): Bool =
-        if hashMap.contains(p.handlerVars v.id) orif v.unboxed then false
+        if hashSet.contains(p.handlerVars v.id) orif v.unboxed then false
         elsif v.boxed then layout.slotIsPointer(shapeOf(v.type))
         else layout.isPointer(shapeOf(v.type))
         end
@@ -654,7 +657,7 @@ export
                     "Q_OK_VAL"
                 else
                     let n = name(p v)
-                    if hashMap.contains(p.handlerVars v.id) then n <> ".exc"
+                    if hashSet.contains(p.handlerVars v.id) then n <> ".exc"
                     elsif v.isMutable andif isPointerParam(p v) then
                         if v.boxed then "(*(*" <> n <> "))" else "(*" <> n <> ")" end
                     elsif v.boxed andif v.isMutable then
@@ -1329,8 +1332,8 @@ export
                                         else false
                                     end
                                     if {{paysFor andif fusable(p x next)} orif payloadRead} andif not(x.v.unboxed)
-                                            andif not(hashMap.contains(p.globals x.v.id))
-                                            andif not(hashMap.contains(p.fs.volatile x.v.id))
+                                            andif not(hashSet.contains(p.globals x.v.id))
+                                            andif not(hashSet.contains(p.fs.volatile x.v.id))
                                             andif {maybe.unwrapOr(hashMap.get(uses x.v.id) 0) is 1} then
                                         put(found x.v.id st)
                                     end
@@ -1709,7 +1712,7 @@ export
                     let var t = maybe.some(atomType(first))
                     case first
                         when atomVar with x then
-                            if hashMap.contains(p.handlerVars x.v.id) then t := maybe.none() end
+                            if hashSet.contains(p.handlerVars x.v.id) then t := maybe.none() end
                         else ok
                     end
                     if maybe.isSome(t) andif layout.isQVal(shapeOf(maybe.unwrap(t))) then
@@ -1954,7 +1957,7 @@ export
                     let var isDeferred = false
                     if maybe.isSome(p.deferred) andif maybe.isSome(v) then
                         let d = maybe.unwrap(p.deferred)
-                        if hashMap.contains(d.vars maybe.unwrap(v).id) then
+                        if hashSet.contains(d.vars maybe.unwrap(v).id) then
                             (* A variable of the let rec being made, which holds
                              * its value once the let rec's body has run *)
                             vector.append(d.captures tuple let env = env let index = i let a = a end)
@@ -2084,7 +2087,7 @@ export
             when opCaughtException with x then syntax.call("quest_raised_capture" one("&" <> atomName(p x.exc)))
             when opAddrVar with x then
                 if isPointerParam(p x.v) then name(p x.v)
-                elsif hashMap.contains(p.fs.volatile x.v.id) then
+                elsif hashSet.contains(p.fs.volatile x.v.id) then
                     "((" <> locationCType(x.v.type) <> " *)&" <> name(p x.v) <> ")"
                 else "(&" <> name(p x.v) <> ")"
                 end
@@ -2418,8 +2421,8 @@ export
             when sInspect with x then inspectAuto(p x)
             when sLetRec with x then
                 let saved = p.deferred
-                let vars = maps.newIntMap(:Bool)
-                for i = 0 upto {extent x.vars - 1} do put(vars x.vars[i].id true) end
+                let vars = maps.newIntSet()
+                for i = 0 upto {extent x.vars - 1} do mark(vars x.vars[i].id) end
                 let d = tuple let vars = vars let captures = vector.new(:DeferredCapture) end
                 p.deferred := maybe.some(d)
                 body(p x.body)
@@ -2442,11 +2445,11 @@ export
                 put(p.fs.labelDepth x.label vector.length(p.fs.handlers))
                 emit(p "for (;;) {")
                 block(p x.body)
-                if hashMap.contains(p.fs.usedLabels x.label <> "_continue") then
+                if hashSet.contains(p.fs.usedLabels x.label <> "_continue") then
                     emit(p "    " <> x.label <> "_continue:;")
                 end
                 emit(p "}")
-                if hashMap.contains(p.fs.usedLabels x.label <> "_break") then emit(p x.label
+                if hashSet.contains(p.fs.usedLabels x.label <> "_break") then emit(p x.label
                     <> "_break:;") end
             when sBreak with x then jumpOut(p x.label "break")
             when sContinue with x then jumpOut(p x.label "continue")
@@ -2460,14 +2463,14 @@ export
                 emit(p "}")
                 let finish = x.label <> "_end"
                 if not(nodes.terminated(x.body)) then
-                    put(p.fs.usedLabels finish true)
+                    mark(p.fs.usedLabels finish)
                     emit(p "goto " <> finish <> ";")
                 end
                 emit(p x.label <> ":;")
                 emit(p "{")
                 block(p x.continuation)
                 emit(p "}")
-                if hashMap.contains(p.fs.usedLabels finish) then emit(p finish <> ":;") end
+                if hashSet.contains(p.fs.usedLabels finish) then emit(p finish <> ":;") end
             when sJump with x then
                 let params = hashMap.find(p.fs.joinParams x.label)
                 let n = if extent params < extent x.args then extent params else extent x.args end
@@ -2529,7 +2532,7 @@ export
     and jumpOut(p: P label: String which: String): Ok =
         begin
             leaveTo(p hashMap.find(p.fs.labelDepth label))
-            put(p.fs.usedLabels label <> "_" <> which true)
+            mark(p.fs.usedLabels label <> "_" <> which)
             emit(p "goto " <> label <> "_" <> which <> ";")
         end
 
@@ -2772,24 +2775,24 @@ export
 
     (* The C declarations of the variables a function (or a top level) binds,
      * but for exclude's *)
-    let declareLocals(p: P b: nodes.Body exclude: maps.IntMap(Bool)): vector.T(Local) =
+    let declareLocals(p: P b: nodes.Body exclude: maps.IntSet): vector.T(Local) =
         begin
             let decls = vector.new(:Local)
-            let seen = maps.newIntMap(:Bool)
+            let seen = maps.newIntSet()
             let statements = walk.walkStatements(b false)
             for i = 0 upto {vector.length(statements) - 1} do
                 let s = vector.get(statements i)
-                case s when sTry with x then put(p.handlerVars x.exc.id true) else ok end
+                case s when sTry with x then mark(p.handlerVars x.exc.id) else ok end
                 let binders = walk.statementBinders(s)
                 for j = 0 upto {extent binders - 1} do
                     let v = binders[j]
                     (* A let rec's variable is bound by the let rec and by the
                      * let in it that computes its value *)
-                    if not(hashMap.contains(seen v.id)) andif not(hashMap.contains(exclude v.id))
+                    if not(hashSet.contains(seen v.id)) andif not(hashSet.contains(exclude v.id))
                             andif not(isOk(v.type)) then
-                        put(seen v.id true)
+                        mark(seen v.id)
                         let c = varCType(p v)
-                        let typed = if hashMap.contains(p.fs.volatile v.id) then c <> " volatile" else c end
+                        let typed = if hashSet.contains(p.fs.volatile v.id) then c <> " volatile" else c end
                         vector.append(decls tuple let cType = typed let name = name(p v) end)
                     end
                 end
@@ -2801,12 +2804,12 @@ export
      * handler to read them after longjmp; and those it stores through, since
      * clang may keep the fields of an object allocated in the function, whose
      * address does not escape, in registers that longjmp restores *)
-    let volatileVars(b: nodes.Body): maps.IntMap(Bool) =
+    let volatileVars(b: nodes.Body): maps.IntSet =
         begin
-            let found = maps.newIntMap(:Bool)
+            let found = maps.newIntSet()
             let through = fun(a: nodes.Atom): Ok
                 case a
-                    when atomVar with v then put(found v.v.id true)
+                    when atomVar with v then mark(found v.v.id)
                     else ok
                 end
             let statements = walk.walkStatements(b false)
@@ -2816,7 +2819,7 @@ export
                         let inner = walk.walkStatements(x.body false)
                         for j = 0 upto {vector.length(inner) - 1} do
                             case vector.get(inner j)
-                                when sAssign with y then put(found y.v.id true)
+                                when sAssign with y then mark(found y.v.id)
                                 when sStoreField with y then through(y.base)
                                 when sStoreComponent with y then through(y.base)
                                 when sStoreElement with y then through(y.base)
@@ -2910,8 +2913,8 @@ export
                 add(prologue "const QViewMap *" <> name(p m.v) <> " = quest_view_map(" <> name(p m.descriptor) <> ", "
                     <> descriptor(p m.bound) <> ");")
             end
-            let exclude = maps.newIntMap(:Bool)
-            for i = 0 upto {extent f.params - 1} do put(exclude f.params[i].v.id true) end
+            let exclude = maps.newIntSet()
+            for i = 0 upto {extent f.params - 1} do mark(exclude f.params[i].v.id) end
             let decls = declareLocals(p f.body exclude)
             p.lines := vector.new()
             p.indent := 1
@@ -3042,11 +3045,11 @@ export
     let importDeclarations(p: P): Lines =
         begin
             let imports = vector.new(:nodes.Import)
-            let seen = maps.newStringMap(:Bool)
+            let seen = maps.newStringSet()
             for i = 0 upto {extent p.unit.imports - 1} do
                 let imp = p.unit.imports[i]
-                if not(hashMap.contains(seen imp.canonicalPath)) then
-                    put(seen imp.canonicalPath true)
+                if not(hashSet.contains(seen imp.canonicalPath)) then
+                    mark(seen imp.canonicalPath)
                     vector.append(imports imp)
                 end
             end
@@ -3073,7 +3076,7 @@ export
     let globalDeclarations(p: P): vector.T(GlobalDecl) =
         begin
             let found = vector.new(:GlobalDecl)
-            let seen = maps.newIntMap(:Bool)
+            let seen = maps.newIntSet()
             let bodies = vector.new(:nodes.Body)
             vector.append(bodies p.unit.main)
             for i = 0 upto {vector.length(p.unit.modules) - 1} do
@@ -3085,11 +3088,11 @@ export
                     let binders = walk.statementBinders(vector.get(statements i))
                     for j = 0 upto {extent binders - 1} do
                         let v = binders[j]
-                        if hashMap.contains(p.globals v.id) andif not(hashMap.contains(seen v.id))
+                        if hashSet.contains(p.globals v.id) andif not(hashSet.contains(seen v.id))
                                 andif not(isOk(v.type)) then
-                            put(seen v.id true)
+                            mark(seen v.id)
                             let words =
-                                if hashMap.contains(p.handlerVars v.id) then
+                                if hashSet.contains(p.handlerVars v.id) then
                                     maybe.unwrap(runtimeLayout.struct("QExceptionState")).bytes / 8
                                 elsif holdsPointer(v.type) then
                                     extent objectLayout.representationKinds(shapeOf(v.type))
@@ -3420,14 +3423,14 @@ export
             if not(vector.empty(funcs)) then
                 add(res "    quest_register_funcs(qr_funcs, sizeof qr_funcs / sizeof qr_funcs[0]);")
             end
-            let registered = maps.newStringMap(:Bool)
+            let registered = maps.newStringSet()
             let tables = staticData(p).offsetTables
             for i = 0 upto {vector.length(tables) - 1} do
                 let table = vector.get(tables i)
                 let dictName = staticdata.offsetDictInstanceName(p.ctx table.view table.layout)
                 if maybe.isSome(table.registered)
-                        andif not(hashMap.contains(registered dictName)) then
-                    put(registered dictName true)
+                        andif not(hashSet.contains(registered dictName)) then
+                    mark(registered dictName)
                     let r = maybe.unwrap(table.registered)
                     let viewD = staticDescriptorOf(p r.view)
                     let layoutD = staticDescriptorOf(p r.layout)
@@ -3471,11 +3474,11 @@ export
             let ctx = staticdata.newRecordNaming()
             let globals = walk.globalVariables(unit)
             let names = maps.newIntMap()
-            let usedNames = maps.newStringMap()
+            let usedNames = maps.newStringSet()
             let nameCounts = maps.newStringMap()
             let codeNames = maps.newIntMap()
             let closures = maps.newIntMap()
-            let handlerVars = maps.newIntMap()
+            let handlerVars = maps.newIntSet()
             let tupleCastKeys = vector.new()
             let tupleCasts = maps.newStringMap()
             let optionTables = maps.newStringMap()

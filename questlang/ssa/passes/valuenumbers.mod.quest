@@ -6,6 +6,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -192,18 +193,18 @@ export
                  * (codegen/arm64/peephole's pairs). Replacing one half of a
                  * pair breaks ldp formation (which slowed psdes-random's loop
                  * from 1.39x to 1.90x of C's time). *)
-                let words = maps.newStringMap(:Bool)
+                let words = maps.newStringSet()
                 for k = 0 upto {vector.length(blk.insts) - 1} do
                     let i = vector.get(blk.insts k)
                     if ssa.isOp(i ssa.opLoad) andif {i.width is 8} then
-                        let ignored = hashMap.insert(words addressKey(i.args[0] i.imm) true)
+                        let ignored = hashSet.insert(words addressKey(i.args[0] i.imm))
                     end
                 end
                 let paired(i: ssa.Inst): Bool =
                     if ssa.isOp(i ssa.opLoad) andif {i.width is 8} then
                         let a = address(i.args[0] i.imm)
-                        hashMap.contains(words a.base <> " " <> conv.int(a.offset + 8))
-                            orif hashMap.contains(words a.base <> " " <> conv.int(a.offset - 8))
+                        hashSet.contains(words a.base <> " " <> conv.int(a.offset + 8))
+                            orif hashSet.contains(words a.base <> " " <> conv.int(a.offset - 8))
                     else
                         false
                     end

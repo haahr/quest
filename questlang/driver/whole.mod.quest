@@ -5,6 +5,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -104,11 +105,11 @@ export
             (* The modules known only through their interfaces and objects (the
              * library's), which stay imported *)
             let kept = vector.new(:nodes.Import)
-            let keptNames = maps.newStringMap(:Bool)
+            let keptNames = maps.newStringSet()
             let keptByKey = maps.newStringMap(:nodes.Import)
             let rec visit(i: nodes.Import): Ok =
                 if hashMap.contains(merged key(i.canonicalPath)) then ok
-                elsif hashMap.contains(keptNames key(i.canonicalPath)) then
+                elsif hashSet.contains(keptNames key(i.canonicalPath)) then
                     (* One import of a kept module stands for all, the one
                      * with its interface's record type if any has it *)
                     let held = hashMap.find(keptByKey key(i.canonicalPath))
@@ -151,7 +152,7 @@ export
                                                     maybe.none(:String))) i.libPath)
                                 end
                             end
-                        hashMap.insert(keptNames key(i.canonicalPath) true)
+                        hashSet.insert(keptNames key(i.canonicalPath))
                         begin hashMap.insert(keptByKey key(i.canonicalPath) i) ok end
                         vector.append(kept i)
                     else

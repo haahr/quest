@@ -5,6 +5,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
 
     questlang/common/maps : questlang/common/Maps
@@ -61,7 +62,7 @@ export
              * setChar or a call that may write) that could mutate its parts. *)
             let partsOf = maps.newIntMap(:vector.T(Int))
             let memoryOf = maps.newIntMap(:Int)
-            let absorbed = maps.newIntMap(:Bool)
+            let absorbed = maps.newIntSet()
             let var merged = false
             let var memory = 0
             for k = 0 upto {vector.length(blk.insts) - 1} do
@@ -74,7 +75,7 @@ export
                                 andif {hashMap.find(memoryOf a) is memory} then
                             let inner = hashMap.find(partsOf a)
                             for p = 0 upto {vector.length(inner) - 1} do vector.append(parts vector.get(inner p)) end
-                            hashMap.insert(absorbed a true)
+                            hashSet.insert(absorbed a)
                             merged := true
                         else
                             vector.append(parts a)
@@ -92,7 +93,7 @@ export
                 for k = 0 upto {vector.length(blk.insts) - 1} do
                     let i = vector.get(blk.insts k)
                     if not(isConcat(i)) then vector.append(emitted i)
-                    elsif hashMap.contains(absorbed i.results[0]) then ok
+                    elsif hashSet.contains(absorbed i.results[0]) then ok
                     else
                         let var parts = hashMap.find(partsOf i.results[0])
                         if vector.length(parts) is 2 then

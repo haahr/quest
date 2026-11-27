@@ -32,7 +32,6 @@ export
     let isTypeEqual(a: Type b: Type e: env.T): Bool = subtyping.isTypeEqual(a b env.lookupOf(e))
     let expr(offset: Int t: Type form: typedAst.ExprForm): typedAst.Expr = typedAst.expr(offset t form)
     let internal(A::TYPE what: String x: ast.Expr): A = diagnostics.fail("internal: not " <> what x.span.startOffset)
-    let newIntMap(V::TYPE): maps.IntMap(V) = maps.newIntMap()
 
     (* A component of a tuple after flattening declarations' members: a type
      * binding of a type declaration (its index in typeGroups), a member of a
@@ -94,18 +93,18 @@ export
             let elems = vector.new(:typedAst.Expr)
             (* The components of a synthesized tuple's type *)
             let qFields = vector.new(:model.TupleComponent)
-            let witnesses = newIntMap(:Array(elaborateTypes.TupleTypeBinding))
+            let witnesses = maps.newIntMap(:Array(elaborateTypes.TupleTypeBinding))
             (* The symbols of recursive value members, declared once the first
              * member of their declaration is reached (checking), or their typed
              * declarations, elaborated then (synthesizing), by group *)
-            let recSymbols = newIntMap(:vector.T(symbols.ValueSymbol))
-            let recTyped = newIntMap(:Array(typedAst.Binding))
+            let recSymbols = maps.newIntMap(:vector.T(symbols.ValueSymbol))
+            let recTyped = maps.newIntMap(:Array(typedAst.Binding))
             let recGroups = vector.new(:Array(Int))
             let simultaneousGroups = vector.new(:Array(Int))
             Let Pending = Tuple index: Int name: String type: Type isVar: Bool label: maybe.T(symbols.ValueSymbol) end
             let pendingLabels = vector.new(:Pending)
             (* The symbol of each labeled element's label, by element index *)
-            let labels = newIntMap(:symbols.ValueSymbol)
+            let labels = maps.newIntMap(:symbols.ValueSymbol)
             let groupIndices = vector.new(:Int)
 
             let declareKinds(index: Int): Ok =
@@ -507,7 +506,7 @@ export
             let typeGroups = vector.new(:TypeGroup)
             let recGroupsAst = vector.new(:RecGroup)
             let simGroups = vector.new(:vector.T(ast.TupleFieldBinding))
-            let kindsBefore = newIntMap(:vector.T(KindDecl))
+            let kindsBefore = maps.newIntMap(:vector.T(KindDecl))
             let addKind(k: KindDecl): Ok =
                 begin
                     let index = vector.length(items)

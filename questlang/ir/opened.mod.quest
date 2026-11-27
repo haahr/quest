@@ -5,6 +5,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -78,13 +79,13 @@ export
      * copy *)
     let holdsFunction(t0: model.Type): Bool =
         begin
-            let seen = maps.newIntMap(:Bool)
+            let seen = maps.newIntSet()
             let var found = false
             let rec visit(t0: model.Type): Ok =
                 begin
                     let t = model.prune(t0)
-                    if not(found) andif not(hashMap.contains(seen t.id)) then
-                        hashMap.insert(seen t.id true)
+                    if not(found) andif not(hashSet.contains(seen t.id)) then
+                        hashSet.insert(seen t.id)
                         if t.form?typeFun then
                             found := true
                         else
@@ -183,7 +184,7 @@ export
     (* Whether a top-level let's value may be made again in a copy: a scalar
      * constant, whose identity nothing can see, or a copy of a variable that
      * is one (by id, in kept) *)
-    let remade(o: nodes.Op kept: maps.IntMap(Bool)): Bool =
+    let remade(o: nodes.Op kept: maps.IntSet): Bool =
         case o
             when opAtom with x then
                 case x.atom
@@ -192,17 +193,17 @@ export
                             when constString then false
                             else true
                         end
-                    when atomVar with v then hashMap.contains(kept v.v.id)
+                    when atomVar with v then hashSet.contains(kept v.v.id)
                 end
             else false
         end
 
     (* The ids of the variables a function's body uses, its callees', the
      * variables it assigns, and those whose addresses it takes included *)
-    let usedIds(f: nodes.Function): maps.IntMap(Bool) =
+    let usedIds(f: nodes.Function): maps.IntSet =
         begin
-            let ids = maps.newIntMap(:Bool)
-            let note = fun(v: nodes.Variable): Ok begin hashMap.insert(ids v.id true) ok end
+            let ids = maps.newIntSet()
+            let note = fun(v: nodes.Variable): Ok begin hashSet.insert(ids v.id) ok end
             let all = walk.walkStatements(f.body true)
             for i = 0 upto {vector.length(all) - 1} do
                 let s = vector.get(all i)
@@ -246,8 +247,8 @@ export
             end
             (* The variables the copy binds (kept), and those it does not,
              * which a function using them cannot be copied for (lost) *)
-            let kept = maps.newIntMap(:Bool)
-            let lost = maps.newIntMap(:Bool)
+            let kept = maps.newIntSet()
+            let lost = maps.newIntSet()
             let lets = vector.new(:nodes.Stmt)
             let groups = vector.new(:nodes.Stmt)
             let ref = option refImport of nodes.ModuleRef with let i = i end
@@ -257,7 +258,7 @@ export
                     when sLet with x then
                         let name = hashMap.get(exportedAs x.v.id)
                         if remade(x.value kept) then
-                            hashMap.insert(kept x.v.id true)
+                            hashSet.insert(kept x.v.id)
                             vector.append(lets st)
                         elsif maybe.isSome(name) then
                             (* The compiled module's own member *)
@@ -265,12 +266,12 @@ export
                                 let var moduleRef = ref
                                 let var member = name
                             end
-                            hashMap.insert(kept x.v.id true)
+                            hashSet.insert(kept x.v.id)
                             vector.append(lets st)
                         else
-                            begin hashMap.insert(lost x.v.id true) ok end
+                            begin hashSet.insert(lost x.v.id) ok end
                         end
-                    when sVarDecl with x then begin hashMap.insert(lost x.v.id true) ok end
+                    when sVarDecl with x then begin hashSet.insert(lost x.v.id) ok end
                     when sFuns then vector.append(groups st)
                     (* What the initializer does is the compiled module's to
                      * do, once *)
@@ -280,15 +281,15 @@ export
             (* A group is copied unless one of its functions uses a variable
              * the copy does not bind, or a function not copied *)
             let live = vector.new(:Bool)
-            let uses = vector.new(:Array(maps.IntMap(Bool)))
+            let uses = vector.new(:Array(maps.IntSet))
             for k = 0 upto {vector.length(groups) - 1} do
                 vector.append(live true)
                 case vector.get(groups k)
                     when sFuns with x then
-                        let u = vector.new(:maps.IntMap(Bool))
+                        let u = vector.new(:maps.IntSet)
                         for j = 0 upto {extent x.functions - 1} do vector.append(u usedIds(x.functions[j])) end
                         vector.append(uses vector.toArray(u))
-                    else vector.append(uses array of :maps.IntMap(Bool) end)
+                    else vector.append(uses array of :maps.IntSet end)
                 end
             end
             (* A function larger than its bound is left out, with the functions
@@ -311,7 +312,7 @@ export
                             if large then
                                 vector.set(live k false)
                                 for j = 0 upto {extent x.functions - 1} do
-                                    begin hashMap.insert(lost x.functions[j].v.id true) ok end
+                                    begin hashSet.insert(lost x.functions[j].v.id) ok end
                                 end
                             end
                         else ok
@@ -326,9 +327,9 @@ export
                         let u = vector.get(uses k)
                         let var reaches = false
                         for j = 0 upto {extent u - 1} do
-                            let ids = hashMap.keys(u[j])
+                            let ids = hashSet.elements(u[j])
                             for n = 0 upto {vector.length(ids) - 1} do
-                                if hashMap.contains(lost vector.get(ids n)) then reaches := true end
+                                if hashSet.contains(lost vector.get(ids n)) then reaches := true end
                             end
                         end
                         if reaches then
@@ -337,7 +338,7 @@ export
                             case vector.get(groups k)
                                 when sFuns with x then
                                     for j = 0 upto {extent x.functions - 1} do
-                                        begin hashMap.insert(lost x.functions[j].v.id true) ok end
+                                        begin hashSet.insert(lost x.functions[j].v.id) ok end
                                     end
                                 else ok
                             end
@@ -353,7 +354,7 @@ export
                     case st
                         when sFuns with x then
                             for j = 0 upto {extent x.functions - 1} do
-                                begin hashMap.insert(kept x.functions[j].v.id true) ok end
+                                begin hashSet.insert(kept x.functions[j].v.id) ok end
                             end
                         else ok
                     end
@@ -367,7 +368,7 @@ export
             for k = 0 upto {vector.length(m.members.names) - 1} do
                 let name = vector.get(m.members.names k)
                 let v = hashMap.find(m.members.vars name)
-                if hashMap.contains(kept v.id) then nodes.addMember(members name v) end
+                if hashSet.contains(kept v.id) then nodes.addMember(members name v) end
             end
             m.init.statements := statements
             tuple
@@ -480,13 +481,13 @@ export
             end
             (* The variables reached, by id, and the modules whose records are
              * read, by their ids *)
-            let reached = maps.newIntMap(:Bool)
-            let records = maps.newIntMap(:Bool)
+            let reached = maps.newIntSet()
+            let records = maps.newIntSet()
             let pending = vector.new(:nodes.Stmt)
             let reach = fun(v: nodes.Variable): Ok
-                if not(hashMap.contains(reached v.id)) then
+                if not(hashSet.contains(reached v.id)) then
                     begin
-                        hashMap.insert(reached v.id true)
+                        hashSet.insert(reached v.id)
                         let st = hashMap.get(binding v.id)
                         if maybe.isSome(st) then vector.append(pending maybe.unwrap(st)) end
                     end
@@ -498,8 +499,8 @@ export
                             if maybe.isSome(member) then
                                 let v = nodes.member(x.m.members maybe.unwrap(member))
                                 if maybe.isSome(v) then reach(maybe.unwrap(v)) end
-                            elsif not(hashMap.contains(records x.m.id)) then
-                                hashMap.insert(records x.m.id true)
+                            elsif not(hashSet.contains(records x.m.id)) then
+                                hashSet.insert(records x.m.id)
                                 if maybe.isSome(x.m.recordVar) then
                                     reach(maybe.unwrap(x.m.recordVar))
                                 end
@@ -538,7 +539,7 @@ export
             for k = 0 upto {vector.length(roots) - 1} do visit(vector.get(roots k)) end
             (* A funs statement is visited once, whichever function reaches
              * it, and reaches all its functions *)
-            let visited = maps.newIntMap(:Bool)
+            let visited = maps.newIntSet()
             while not(vector.empty(pending)) do
                 let st = vector.pop(pending)
                 let key =
@@ -547,8 +548,8 @@ export
                         when sFuns with x then x.functions[0].v.id
                         else 0
                     end
-                if not(hashMap.contains(visited key)) then
-                    hashMap.insert(visited key true)
+                if not(hashSet.contains(visited key)) then
+                    hashSet.insert(visited key)
                     visit(st)
                 end
             end
@@ -558,7 +559,7 @@ export
                     for i = 0 upto {vector.length(ms.names) - 1} do
                         let name = vector.get(ms.names i)
                         let v = hashMap.find(ms.vars name)
-                        if hashMap.contains(reached v.id) orif not(hashMap.contains(binding v.id)) then
+                        if hashSet.contains(reached v.id) orif not(hashMap.contains(binding v.id)) then
                             nodes.addMember(result name v)
                         end
                     end
@@ -573,9 +574,9 @@ export
                         let live =
                             case st
                                 when sLet with x then
-                                    hashMap.contains(reached x.v.id)
+                                    hashSet.contains(reached x.v.id)
                                         orif not(hashMap.contains(binding x.v.id))
-                                when sFuns with x then hashMap.contains(visited x.functions[0].v.id)
+                                when sFuns with x then hashSet.contains(visited x.functions[0].v.id)
                                 else true
                             end
                         if live then vector.append(left st) end
@@ -585,7 +586,7 @@ export
                     if maybe.isSome(m.exports) then
                         m.exports := maybe.some(kept(maybe.unwrap(m.exports)))
                     end
-                    if not(hashMap.contains(records m.id)) then m.recordVar := maybe.none() end
+                    if not(hashSet.contains(records m.id)) then m.recordVar := maybe.none() end
                 end
             end
             unit
@@ -598,7 +599,7 @@ export
         begin
             vector.clear(lastSources)
             let copies = maps.newStringMap(:Module)
-            let visiting = maps.newStringMap(:Bool)
+            let visiting = maps.newStringSet()
             (* The copies, each after those it calls into *)
             let order = vector.new(:Module)
             let functions = vector.new(:nodes.Function)
@@ -627,8 +628,8 @@ export
                         else
                             maybe.unwrap(held)
                         end
-                    if inlined.isInlined(i.canonicalPath) andif not(hashMap.contains(visiting k)) then
-                        hashMap.insert(visiting k true)
+                    if inlined.isInlined(i.canonicalPath) andif not(hashSet.contains(visiting k)) then
+                        hashSet.insert(visiting k)
                         let typed = graph.typedModule(e.units i.canonicalPath)
                         let fromSource = if maybe.isNone(typed) then false
                             else case maybe.unwrap(typed).form

@@ -6,6 +6,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -142,15 +143,15 @@ export
                 end
             end
             let found = vector.new(:Variable)
-            let seen = maps.newIntMap(:Bool)
+            let seen = maps.newIntSet()
             for i = 0 upto {vector.length(stmts) - 1} do
                 let used = walk.statementUses(vector.get(stmts i))
                 for k = 0 upto {extent used - 1} do
                     case used[k]
                         when atomVar with x then
                             if not(hashMap.contains(bound x.v.id))
-                                    andif not(hashMap.contains(seen x.v.id)) then
-                                hashMap.insert(seen x.v.id true)
+                                    andif not(hashSet.contains(seen x.v.id)) then
+                                hashSet.insert(seen x.v.id)
                                 vector.append(found x.v)
                             end
                         when atomConst then ok

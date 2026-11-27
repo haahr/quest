@@ -6,6 +6,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -30,7 +31,7 @@ export
     let declare(e: env.T sym: symbols.TypeSymbol): symbols.TypeSymbol = symbols.declareType(e.currentScope sym)
     let declareVariable(e: env.T name: String symbolId: Int kind: Kind): Ok =
         begin declare(e symbols.newTypeSymbol(name symbolId kind maybe.none())) ok end
-    let newIds(): maps.IntMap(Bool) = maps.newIntMap()
+    let newIds(): maps.IntSet = maps.newIntSet()
     let joinPath(path: vector.T(String)): String =
         begin
             let var s = ""
@@ -251,13 +252,13 @@ export
                 when typeVariant with x then
                     begin
                         let variants = vector.new(:model.VariantField)
-                        let seen = maps.newStringMap(:Bool)
+                        let seen = maps.newStringSet()
                         for i = 0 upto {vector.length(x.fields) - 1} do
                             let v = vector.get(x.fields i)
-                            if hashMap.contains(seen v.tag) then
+                            if hashSet.contains(seen v.tag) then
                                 diagnostics.fail(:Ok "Duplicate variant tag '" <> v.tag <> "'" v.offset)
                             end
-                            hashMap.insert(seen v.tag true)
+                            hashSet.insert(seen v.tag)
                             vector.append(variants tuple
                                 let name = v.tag
                                 let type = maybe.some(elaborateType(v.typeSig e))
@@ -346,7 +347,7 @@ export
                             declareVariable(e x.varName symbolId bound)
                             let body = elaborateType(x.body e)
                             let ids = newIds()
-                            hashMap.insert(ids symbolId true)
+                            hashSet.insert(ids symbolId)
                             contractiveness.checkTypeContractive(body ids x.varName x.body.span.startOffset some(e))
                             model.recType(x.varName symbolId bound body)
                         end)
@@ -688,15 +689,15 @@ export
     (* Rejects a simultaneous declaration that declares one name twice *)
     and checkDistinctMemberNames(members: vector.T(ast.TypeBinding)): Ok =
         begin
-            let seen = maps.newStringMap(:Bool)
+            let seen = maps.newStringSet()
             for i = 0 upto {vector.length(members) - 1} do
                 let m = vector.get(members i)
-                if hashMap.contains(seen m.name) then
+                if hashSet.contains(seen m.name) then
                     diagnostics.fail(:Ok "Type '" <> m.name
                         <> "' is declared more than once in one simultaneous declaration"
                             m.offset)
                 end
-                hashMap.insert(seen m.name true)
+                hashSet.insert(seen m.name)
             end
         end
 
@@ -867,7 +868,7 @@ export
                                         maybe.none(:Type)))
                         vector.append(operators operator)
                         vector.append(recVars recVar)
-                        hashMap.insert(recIds recId true)
+                        hashSet.insert(recIds recId)
                     end
 
                     let entries = vector.new(:Entry)
@@ -995,7 +996,7 @@ export
                             let body = elaborateType(b.typeVal e)
                             checkKind(body targetBound e)
                             let ids = newIds()
-                            hashMap.insert(ids symbolId true)
+                            hashSet.insert(ids symbolId)
                             contractiveness.checkTypeContractive(body ids b.name b.offset some(e))
                             tuple let type = model.recType(b.name symbolId targetBound body) let kind = targetBound end
                         end)
@@ -1074,7 +1075,7 @@ export
                             for i = 0 upto {n - 1} do
                                 let p = vector.get(pre i)
                                 declareVariable(e p.name p.symbolId p.bound)
-                                hashMap.insert(ids p.symbolId true)
+                                hashSet.insert(ids p.symbolId)
                             end
                             let entries = vector.new(:model.RecBinding)
                             for i = 0 upto {n - 1} do

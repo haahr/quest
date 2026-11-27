@@ -4,7 +4,7 @@ module checks : Checks
 import
     stringOp = string : StringOp
 
-    collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -32,14 +32,14 @@ export
 
     let checkDistinctNames(members: Array(Named)): Ok =
         begin
-            let seen = maps.newStringMap(:Bool)
+            let seen = maps.newStringSet()
             for i = 0 upto {extent members - 1} do
                 let m = members[i]
-                if hashMap.contains(seen m.name) then
+                if hashSet.contains(seen m.name) then
                     diagnostics.fail(:Ok "'" <> m.name
                         <> "' is declared more than once in one simultaneous declaration" m.offset)
                 end
-                hashMap.insert(seen m.name true)
+                hashSet.insert(seen m.name)
             end
         end
 

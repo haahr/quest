@@ -6,6 +6,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -93,7 +94,7 @@ export
     Let Pair = Tuple sub: Type sup: Type end
     Let Result = Tuple sub: Type sup: Type result: Bool end
     Let Trail = Tuple
-        assumed: maps.StringMap(Bool)
+        assumed: maps.StringSet
         (* The pairs assumed, in order *)
         pairs: vector.T(Pair)
         (* The metavariable-free pairs decided during the proof *)
@@ -102,7 +103,7 @@ export
 
     let newTrail(): Trail =
         tuple
-            let assumed = maps.newStringMap()
+            let assumed = maps.newStringSet()
             let pairs = vector.new()
             let results = vector.new()
         end
@@ -133,11 +134,11 @@ export
 
     let pairKey(sub: Type sup: Type): String = key(sub) <> "|" <> key(sup)
 
-    let isAssumed(trail: Trail k: String): Bool = hashMap.contains(trail.assumed k)
+    let isAssumed(trail: Trail k: String): Bool = hashSet.contains(trail.assumed k)
 
     let assume(trail: Trail k: String sub: Type sup: Type): Ok =
         begin
-            hashMap.insert(trail.assumed k true)
+            hashSet.insert(trail.assumed k)
             vector.append(trail.pairs tuple let sub = sub let sup = sup end)
         end
 

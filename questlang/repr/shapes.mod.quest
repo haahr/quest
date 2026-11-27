@@ -5,6 +5,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/sort : util/Sort
@@ -190,14 +191,14 @@ export
 
     let shapesReachable(s: Shape): Array(Shape) =
         begin
-            let seen = maps.newIntMap(:Bool)
+            let seen = maps.newIntSet()
             let found = vector.new(:Shape)
             let stack = vector.new(:Shape)
             vector.append(stack s)
             while not(vector.empty(stack)) do
                 let n = vector.pop(stack)
-                if not(hashMap.contains(seen n.id)) then
-                    hashMap.insert(seen n.id true)
+                if not(hashSet.contains(seen n.id)) then
+                    hashSet.insert(seen n.id)
                     vector.append(found n)
                     let kids = children(n)
                     for i = 0 upto {extent kids - 1} do vector.append(stack kids[i]) end
@@ -250,15 +251,15 @@ export
                         end
                         found
                     end
-                let seen = maps.newIntMap(:Bool)
+                let seen = maps.newIntSet()
                 let pending = mentioned(x.activeIndex)
                 let var result = false
                 while not(result) andif not(vector.empty(pending)) do
                     let index = vector.pop(pending)
                     if index is x.activeIndex then
                         result := true
-                    elsif not(hashMap.contains(seen index)) then
-                        hashMap.insert(seen index true)
+                    elsif not(hashSet.contains(seen index)) then
+                        hashSet.insert(seen index)
                         let more = mentioned(index)
                         for k = 0 upto {vector.length(more) - 1} do vector.append(pending vector.get(more k)) end
                     end

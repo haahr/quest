@@ -5,7 +5,7 @@ import
     conv : Conv
     stringOp = string : StringOp
 
-    collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/sort : util/Sort
@@ -26,8 +26,8 @@ export
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
     Let JoinPoint = Tuple label: String arity: Int end
-    Let Ids = maps.IntMap(Bool)
-    let newIds(): Ids = maps.newIntMap()
+    Let Ids = maps.IntSet
+    let newIds(): Ids = maps.newIntSet()
     Let Scope = Tuple
         vars: Ids
         var joins: vector.T(JoinPoint)
@@ -57,9 +57,9 @@ export
         end
     (* Adds a variable to the scope (one already in it stays, as it was) *)
     let withVar(scope: Scope v: Variable): Ok =
-        if not(hashMap.contains(scope.vars v.id)) then
-            hashMap.insert(scope.vars v.id true)
-            if v.isMutable then hashMap.insert(scope.localMutables v.id true) end
+        if not(hashSet.contains(scope.vars v.id)) then
+            hashSet.insert(scope.vars v.id)
+            if v.isMutable then hashSet.insert(scope.localMutables v.id) end
             if not(vector.empty(scope.logs)) then
                 vector.append(vector.last(scope.logs) v)
             end
@@ -73,15 +73,13 @@ export
             let log = vector.pop(scope.logs)
             for i = 0 upto {vector.length(log) - 1} do
                 let v = vector.get(log i)
-                hashMap.delete(scope.vars v.id)
-                hashMap.delete(scope.localMutables v.id)
+                hashSet.delete(scope.vars v.id)
+                hashSet.delete(scope.localMutables v.id)
             end
         end
     let copyIds(ids: Ids): Ids =
         begin
-            let copy = newIds()
-            hashMap.forEach(ids fun(k: Int v: Bool): Ok begin hashMap.insert(copy k v) ok end)
-            copy
+            hashSet.copy(ids)
         end
     Let Verifier = Tuple
         problems: vector.T(String)
@@ -97,10 +95,10 @@ export
     let problem(v: Verifier text: String): Ok = vector.append(v.problems text)
     let bind(v: Verifier x: Variable where: String): Ok =
         begin
-            if hashMap.contains(v.bound x.id) then
+            if hashSet.contains(v.bound x.id) then
                 problem(v where <> ": variable '" <> x.hint <> "' is bound more than once")
             end
-            hashMap.insert(v.bound x.id true)
+            hashSet.insert(v.bound x.id)
             (* Every variable has a shape (computing it raises if not) *)
             shapes.shape(x.type)
             ok
@@ -108,9 +106,9 @@ export
     let use(v: Verifier a: Atom scope: Scope where: String): Ok =
         case a
             when atomVar with x then
-                if not(hashMap.contains(scope.vars x.v.id)) then
+                if not(hashSet.contains(scope.vars x.v.id)) then
                     problem(v where <> ": variable '" <> x.v.hint <> "' is used outside its scope")
-                elsif hashMap.contains(scope.outerMutables x.v.id) then
+                elsif hashSet.contains(scope.outerMutables x.v.id) then
                     problem(v where <> ": function uses mutable variable '" <> x.v.hint <> "' of an enclosing function")
                 end
             else ok
@@ -123,7 +121,7 @@ export
                     when refModule with x then x.m.id
                     when refImport with x then x.i.id
                 end
-            if not(hashMap.contains(v.modules id)) then
+            if not(hashSet.contains(v.modules id)) then
                 problem(v where <> ": reference to a module that is not the unit's or imported by it")
             end
         end
@@ -135,7 +133,7 @@ export
                 when opMakeClosure with x then
                     if maybe.isNone(v.functions) then
                         problem(v where <> ": MakeClosure before closure conversion")
-                    elsif not(hashMap.contains(maybe.unwrap(v.functions) x.code.id)) then
+                    elsif not(hashSet.contains(maybe.unwrap(v.functions) x.code.id)) then
                         problem(v where <> ": a closure of a function that is not the unit's")
                     end
                 when opEnvField then
@@ -219,7 +217,7 @@ export
             let savedTop = scope.topLevel
             let outer = copyIds(scope.outerMutables)
             if not(scope.topLevel) then
-                hashMap.forEach(scope.localMutables fun(k: Int b: Bool): Ok begin hashMap.insert(outer k b) ok end)
+                hashSet.forEach(scope.localMutables fun(k: Int): Ok begin hashSet.insert(outer k) ok end)
             end
             scope.joins := vector.new()
             scope.loops := vector.new()

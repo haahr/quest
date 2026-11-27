@@ -5,6 +5,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -31,7 +32,6 @@ export
     let isTypeEqual(a: Type b: Type e: env.T): Bool = subtyping.isTypeEqual(a b env.lookupOf(e))
     let expr(offset: Int t: Type form: typedAst.ExprForm): typedAst.Expr = typedAst.expr(offset t form)
     let internal(A::TYPE what: String x: ast.Expr): A = diagnostics.fail("internal: not " <> what x.span.startOffset)
-    let newIntMap(V::TYPE): maps.IntMap(V) = maps.newIntMap()
 
     (* ======================================================================
      * Variants and options
@@ -237,8 +237,8 @@ export
                             <> "' as a value expression" offset)
                 end
             let formals = model.tupleTypeFormals(fields)
-            let formalIds = newIntMap(:Bool)
-            for i = 0 upto {extent formals - 1} do hashMap.insert(formalIds formals[i].symbolId true) end
+            let formalIds = maps.newIntSet()
+            for i = 0 upto {extent formals - 1} do hashSet.insert(formalIds formals[i].symbolId) end
             let selected =
                 if model.typeMentionsSymbolIds(fieldType formalIds) then
                     let rootName =

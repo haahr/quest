@@ -6,6 +6,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/iter : util/Iter
     util/maybe : util/Maybe
@@ -37,7 +38,7 @@ export
     let okExpr(offset: Int): typedAst.Expr = expr(offset model.okType option exprOk of typedAst.ExprForm end)
     let notDesugared(A::TYPE className: String x: ast.Expr): A =
         diagnostics.raiseError(checks.notDesugared(className x.span.startOffset))
-    let newIds(): maps.IntMap(Bool) = maps.newIntMap()
+    let newIds(): maps.IntSet = maps.newIntSet()
 
     (* ======================================================================
      * Case
@@ -128,7 +129,7 @@ export
                 end
             let available = maps.newStringMap(:Tag)
             for i = 0 upto {extent tags - 1} do hashMap.insert(available tags[i].name tags[i]) end
-            let covered = maps.newStringMap(:Bool)
+            let covered = maps.newStringSet()
             let typed = vector.new(:typedAst.CaseBranch)
             for i = 0 upto {vector.length(branches) - 1} do
                 let branch = vector.get(branches i)
@@ -139,7 +140,7 @@ export
                             <> model.show(targetType)
                             <> "'" branch.offset)
                     end
-                    hashMap.insert(covered tag true)
+                    hashSet.insert(covered tag)
                 end
                 Let Arm = Tuple body: typedAst.Expr binder: maybe.T(symbols.ValueSymbol) end
                 let arm: Arm =
@@ -190,7 +191,7 @@ export
                                 let body = checker.elaborateSubexpr(c branch.body expected e loopDepth)
                                 if maybe.isNone(expected) then
                                     let ids = newIds()
-                                    hashMap.insert(ids sym.symbolId true)
+                                    hashSet.insert(ids sym.symbolId)
                                     escape.checkNoEscapingPathTypes(body.type ids "case branch scope"
                                             branch.body.span.startOffset)
                                 end
@@ -212,7 +213,7 @@ export
             if maybe.isNone(elseBranch) then
                 let missing = vector.new(:String)
                 for i = 0 upto {extent tags - 1} do
-                    if not(hashMap.contains(covered tags[i].name)) then
+                    if not(hashSet.contains(covered tags[i].name)) then
                         vector.append(missing tags[i].name)
                     end
                 end
@@ -613,7 +614,7 @@ export
                             else
                                 let ids = newIds()
                                 let values = hashMap.valueIter(blockScope.values)
-                                while iter.more(values) do hashMap.insert(ids iter.next(values).symbolId true) end
+                                while iter.more(values) do hashSet.insert(ids iter.next(values).symbolId) end
                                 escape.checkNoEscapingPathTypes(resultExpr.type ids "its scope" resultExpr.offset)
                                 resultExpr.type
                             end

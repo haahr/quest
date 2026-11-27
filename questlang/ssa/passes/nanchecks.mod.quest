@@ -5,6 +5,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -146,14 +147,14 @@ export
                         if allowed(vector.get(first.insts start - 1)) then start := start - 1 else scanning := false end
                     end
                     (* Whether a value is made in the region *)
-                    let madeIn = maps.newIntMap(:Bool)
+                    let madeIn = maps.newIntSet()
                     for r = 0 upto {vector.length(blocks) - 1} do
                         let blk = ssa.block(f vector.get(blocks r))
                         let from = if r is 0 then start else 0 end
                         for k = from upto {vector.length(blk.insts) - 1} do
                             let i = vector.get(blk.insts k)
                             for q = 0 upto {extent i.results - 1} do
-                                let ignored = hashMap.insert(madeIn i.results[q] true)
+                                let ignored = hashSet.insert(madeIn i.results[q])
                             end
                         end
                     end
@@ -165,7 +166,7 @@ export
                             let d = defs[c.value]
                             let users = hashMap.get(usedBy c.value)
                             if maybe.isNone(d) orif not(propagates(maybe.unwrap(d).op)) orif bad[c.value]
-                                    orif maybe.isNone(hashMap.get(madeIn c.value)) orif maybe.isNone(users) then
+                                    orif not(hashSet.contains(madeIn c.value)) orif maybe.isNone(users) then
                                 false
                             else
                                 let var all = true

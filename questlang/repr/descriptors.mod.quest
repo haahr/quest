@@ -4,6 +4,7 @@
 module descriptors : Descriptors
 import
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -80,18 +81,18 @@ export
     let boundVarsIn(start: model.Part): vector.T(Type) =
         begin
             let found = vector.new(:Type)
-            let foundIds = maps.newIntMap(:Bool)
-            let seen = maps.newIntMap(:Bool)
+            let foundIds = maps.newIntSet()
+            let seen = maps.newIntSet()
             let rec visit(p: model.Part): Ok =
                 case p
                     when partType with x then
-                        if not(hashMap.contains(seen x.t.id)) then
-                            hashMap.insert(seen x.t.id true)
+                        if not(hashSet.contains(seen x.t.id)) then
+                            hashSet.insert(seen x.t.id)
                             case x.t.form
                                 when typeVariable with v then
                                     if maybe.isSome(boundVarIndex(x.t))
-                                            andif not(hashMap.contains(foundIds v.symbolId)) then
-                                        hashMap.insert(foundIds v.symbolId true)
+                                            andif not(hashSet.contains(foundIds v.symbolId)) then
+                                        hashSet.insert(foundIds v.symbolId)
                                         vector.append(found x.t)
                                     end
                                 else ok
@@ -99,8 +100,8 @@ export
                             vector.forEach(model.typeParts(x.t) visit)
                         end
                     when partKind with x then
-                        if not(hashMap.contains(seen x.k.id)) then
-                            hashMap.insert(seen x.k.id true)
+                        if not(hashSet.contains(seen x.k.id)) then
+                            hashSet.insert(seen x.k.id)
                             vector.forEach(model.kindParts(x.k) visit)
                         end
                 end

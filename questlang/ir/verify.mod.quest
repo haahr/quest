@@ -7,6 +7,7 @@ import
     system : System
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -271,8 +272,8 @@ export
             let vars = verifyCore.copyIds(scope.vars)
             let symbols = verifyCore.copyIds(scope.symbols)
             for i = 0 upto {extent params - 1} do
-                hashMap.insert(vars params[i].v.id true)
-                for j = 0 upto {extent params[i].symbols - 1} do hashMap.insert(symbols params[i].symbols[j] true) end
+                hashSet.insert(vars params[i].v.id)
+                for j = 0 upto {extent params[i].symbols - 1} do hashSet.insert(symbols params[i].symbols[j]) end
             end
             tuple let vars = vars let symbols = symbols end
         end
@@ -286,18 +287,18 @@ export
                 let data = maybe.unwrap(unit.staticData)
                 let staticKey = fun(echo: Bool t: model.Type): String
                     if echo then "e" <> conv.int(t.id) else "s" <> conv.int(shapes.shape(t).id) end
-                let staticKeys = maps.newStringMap(:Bool)
+                let staticKeys = maps.newStringSet()
                 for i = 0 upto {vector.length(data.descriptors) - 1} do
                     let d = vector.get(data.descriptors i)
-                    hashMap.insert(staticKeys staticKey(d.echo d.type) true)
+                    hashSet.insert(staticKeys staticKey(d.echo d.type))
                 end
                 let offsetTables = verifyCore.newIds()
                 for i = 0 upto {vector.length(data.offsetTables) - 1} do
-                    hashMap.insert(offsetTables vector.get(data.offsetTables i).id true)
+                    hashSet.insert(offsetTables vector.get(data.offsetTables i).id)
                 end
                 let tagMaps = verifyCore.newIds()
                 for i = 0 upto {vector.length(data.tagMaps) - 1} do
-                    hashMap.insert(tagMaps vector.get(data.tagMaps i).id true)
+                    hashSet.insert(tagMaps vector.get(data.tagMaps i).id)
                 end
                 let bound = verifyCore.newIds()
                 let handlerVars = verifyCore.newIds()
@@ -305,17 +306,17 @@ export
                 let bind = fun(params: Array(nodes.DescriptorParam) where: String): Ok
                     for i = 0 upto {extent params - 1} do
                         let p = params[i]
-                        if hashMap.contains(bound p.v.id) then
+                        if hashSet.contains(bound p.v.id) then
                             problem(where <> ": descriptor variable '" <> p.v.hint <> "' is bound more than once")
                         end
-                        hashMap.insert(bound p.v.id true)
+                        hashSet.insert(bound p.v.id)
                         if not(model.same(p.v.type nodes.descriptorType)) then
                             problem(where <> ": descriptor variable '" <> p.v.hint <> "' is not of the descriptor type")
                         end
                     end
                 let closed = fun(t: model.Type scope: DescriptorScope where: String): Ok
                     begin
-                        let mentioned = describe.freeTypeVars(t fun(sid: Int): Bool hashMap.contains(scope.symbols sid))
+                        let mentioned = describe.freeTypeVars(t fun(sid: Int): Bool hashSet.contains(scope.symbols sid))
                         if extent mentioned > 0 then
                             let names = vector.new(:String)
                             for i = 0 upto {extent mentioned - 1} do
@@ -336,13 +337,13 @@ export
                     else
                         case maybe.unwrap(d)
                             when descVar with x then
-                                if not(hashMap.contains(scope.vars x.v.id)) then
+                                if not(hashSet.contains(scope.vars x.v.id)) then
                                     problem(where <> ": descriptor variable '" <> x.v.hint
                                         <> "' is used outside its scope")
                                 end
                             when descStatic with x then
                                 begin
-                                    if not(hashMap.contains(staticKeys staticKey(x.d.echo x.d.type))) then
+                                    if not(hashSet.contains(staticKeys staticKey(x.d.echo x.d.type))) then
                                         problem(where <> ": the static descriptor of " <> model.show(x.d.type)
                                             <> " is not in the unit's static data")
                                     end
@@ -350,7 +351,7 @@ export
                                 end
                             when descInstantiate with x then
                                 begin
-                                    if not(hashMap.contains(staticKeys staticKey(false x.template))) then
+                                    if not(hashSet.contains(staticKeys staticKey(false x.template))) then
                                         problem(where <> ": the template " <> model.show(x.template)
                                             <> " is not in the unit's static data")
                                     end
@@ -389,7 +390,7 @@ export
                             descriptor(maybe.some(p.descriptors[i]) scope where)
                         end
                         if nodes.planIs(p nodes.planVariantTags) andif {maybe.isNone(p.tagMap)
-                                orif not(hashMap.contains(tagMaps maybe.unwrap(p.tagMap).id))} then
+                                orif not(hashSet.contains(tagMaps maybe.unwrap(p.tagMap).id))} then
                             problem(where <> ": a variant_tags plan whose tag map is not in the unit's static data")
                         end
                         (* An adapt plan's thunk parameters and fields are its
@@ -419,7 +420,7 @@ export
                             if nodes.comparesIdentity(x.op) andif {extent x.args > 0} then
                                 let a = x.args[0]
                                 let isHandler =
-                                    case a when atomVar with y then hashMap.contains(handlerVars y.v.id) else false end
+                                    case a when atomVar with y then hashSet.contains(handlerVars y.v.id) else false end
                                 if not(isHandler) andif layout.isQVal(shapes.shape(nodes.atomType(a))) then
                                     descriptor(x.descriptor scope where)
                                 end
@@ -431,7 +432,7 @@ export
                             if x.runtimeOffsets then
                                 descriptor(x.viewDescriptor scope where)
                             elsif maybe.isNone(x.offsets)
-                                    orif not(hashMap.contains(offsetTables maybe.unwrap(x.offsets).id)) then
+                                    orif not(hashSet.contains(offsetTables maybe.unwrap(x.offsets).id)) then
                                 problem(where <> ": a record whose offset table is not in the unit's static data")
                             end
                         else ok
@@ -442,7 +443,7 @@ export
                         case s
                             when sLet with x then operation(x.value scope where)
                             when sDo with x then operation(x.value scope where)
-                            when sTry with x then begin hashMap.insert(handlerVars x.exc.id true) ok end
+                            when sTry with x then begin hashSet.insert(handlerVars x.exc.id) ok end
                             when sEcho with x then
                                 if maybe.isSome(x.descriptor) then descriptor(x.descriptor scope where) end
                             when sInspect with x then
@@ -535,17 +536,17 @@ export
                      * declared on the function *)
                     let own = verifyCore.newIds()
                     for j = 0 upto {extent f.descriptorParams - 1} do
-                        hashMap.insert(own f.descriptorParams[j].v.id true)
+                        hashSet.insert(own f.descriptorParams[j].v.id)
                     end
                     let maps = verifyCore.newIds()
                     for j = 0 upto {extent f.viewMaps - 1} do
                         let m = f.viewMaps[j]
                         if not(model.same(m.v.type nodes.viewMapType))
-                                orif not(hashMap.contains(own m.descriptor.id)) then
+                                orif not(hashSet.contains(own m.descriptor.id)) then
                             problem(where <> ": view map " <> m.v.hint <> " is not of one of its type parameters")
                         end
                         descriptor(maybe.some(m.bound) inner where)
-                        hashMap.insert(maps m.v.id true)
+                        hashSet.insert(maps m.v.id)
                     end
                     let stmts = walk.walkStatements(f.body false)
                     for j = 0 upto {vector.length(stmts) - 1} do
@@ -558,7 +559,7 @@ export
                                 else maybe.none(:Variable)
                             end
                         let check = fun(vm: maybe.T(Variable)): Ok
-                            if maybe.isSome(vm) andif not(hashMap.contains(maps maybe.unwrap(vm).id)) then
+                            if maybe.isSome(vm) andif not(hashSet.contains(maps maybe.unwrap(vm).id)) then
                                 problem(where <> ": an operation reads through a view map that is not the function's")
                             end
                         check(maps0)
@@ -583,14 +584,14 @@ export
         begin
             let modules = verifyCore.newIds()
             for i = 0 upto {vector.length(unit.modules) - 1} do
-                hashMap.insert(modules vector.get(unit.modules i).id true)
+                hashSet.insert(modules vector.get(unit.modules i).id)
             end
-            for i = 0 upto {extent unit.imports - 1} do hashMap.insert(modules unit.imports[i].id true) end
+            for i = 0 upto {extent unit.imports - 1} do hashSet.insert(modules unit.imports[i].id) end
             let functions =
                 if nodes.atLeast(unit stages.closed) then
                     let ids = verifyCore.newIds()
                     for i = 0 upto {vector.length(unit.functions) - 1} do
-                        hashMap.insert(ids vector.get(unit.functions i).id true)
+                        hashSet.insert(ids vector.get(unit.functions i).id)
                     end
                     maybe.some(ids)
                 else

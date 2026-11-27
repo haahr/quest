@@ -16,6 +16,7 @@ import
     writer : Writer
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/sort : util/Sort
@@ -702,7 +703,7 @@ export
         component: Array(Int)
         cyclic: Array(Bool)
         reachesCycle: Array(Bool)
-        refers: Array(maps.IntMap(Bool))
+        refers: Array(maps.IntSet)
         (* Step 3's memos: by class, its canonical form (term); by the number
          * of its key (a class and the context it is built in), a node built
          * (build); by component, aggregateCycles's answer *)
@@ -913,7 +914,7 @@ export
             let component = array of(classCount ~1)
             let cyclic = vector.new(:Bool)
             let reachesCycle = vector.new(:Bool)
-            let refers = vector.new(:maps.IntMap(Bool))
+            let refers = vector.new(:maps.IntSet)
             let order = array of(classCount ~1)
             let low = array of(classCount 0)
             let stack = vector.new(:Int)
@@ -968,22 +969,21 @@ export
                                 for j = 0 upto {extent kids - 1} do if kids[j] is k then selfLoop := true end end
                                 let isCyclic = {vector.length(members) > 1} orif selfLoop
                                 let var reaches = isCyclic
-                                let referred = maps.newIntMap(:Bool)
+                                let referred = maps.newIntSet()
                                 for mi = 0 upto {vector.length(members) - 1} do
                                     let m = vector.get(members mi)
-                                    if qScope[m] >= 0 then hashMap.insert(referred qScope[m] true) end
+                                    if qScope[m] >= 0 then hashSet.insert(referred qScope[m]) end
                                     for j = 0 upto {extent qChildren[m] - 1} do
                                         case qChildren[m][j]
                                             when refClass with x then
                                                 if component[x.k] isnot comp then
                                                     if vector.get(reachesCycle component[x.k]) then reaches := true end
-                                                    hashMap.forEach(vector.get(refers component[x.k])
-                                                            fun(b: Int v: Bool): Ok
-                                                                begin hashMap.insert(referred b true) ok end)
+                                                    hashSet.forEach(vector.get(refers component[x.k])
+                                                            fun(b: Int): Ok begin hashSet.insert(referred b) ok end)
                                                 end
                                             when refLeaf with x then
                                                 for f = 0 upto {extent x.leaf.bound - 1} do
-                                                    hashMap.insert(referred x.leaf.bound[f].binder true)
+                                                    hashSet.insert(referred x.leaf.bound[f].binder)
                                                 end
                                         end
                                     end
@@ -1159,15 +1159,15 @@ export
                         else
                             let scope = maps.newIntMap(:vector.T(Param))
                             hashMap.forEach(ctx0.scope fun(b: Int p: vector.T(Param)): Ok
-                                if hashMap.contains(refers b) then
+                                if hashSet.contains(refers b) then
                                     begin hashMap.insert(scope b p) ok end
                                 end)
                             let e = emptyContext()
-                            contextWith(e scope if hashMap.empty(refers) then 0 else ctx0.depth end)
+                            contextWith(e scope if hashSet.empty(refers) then 0 else ctx0.depth end)
                         end
                     let binders = vector.new(:Int)
                     hashMap.forEach(ctx.scope fun(b: Int p: vector.T(Param)): Ok
-                        if hashMap.contains(refers b) then vector.append(binders b) end)
+                        if hashSet.contains(refers b) then vector.append(binders b) end)
                     sort.sortVector(binders sort.intCompare)
                     keys.start(g.built)
                     keys.int(g.built k)

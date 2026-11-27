@@ -6,6 +6,7 @@ import
     system : System
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     os/fileStats : os/FileStats
     util/maybe : util/Maybe
@@ -75,7 +76,7 @@ export
         end
 
     (* visited holds the recursive types being written, by id *)
-    and formatType(t0: Type visited: maps.IntMap(Bool)): String =
+    and formatType(t0: Type visited: maps.IntSet): String =
         begin
             let t = model.prune(t0)
             let fmt(u: Type): String = formatType(u visited)
@@ -217,18 +218,18 @@ export
                     when typeVar with x then "Var(" <> fmt(x.element) <> ")"
                     when typeOut with x then "Out(" <> fmt(x.element) <> ")"
                     when typeRec with x then
-                        if hashMap.contains(visited t.id) then
+                        if hashSet.contains(visited t.id) then
                             x.varName
                         else
-                            hashMap.insert(visited t.id true)
+                            hashSet.insert(visited t.id)
                             "Rec(" <> x.varName <> " :: " <> formatKindForQi(x.bound) <> ") " <> fmt(x.body)
                         end
                     when typeRecGroup with x then
-                        if hashMap.contains(visited t.id) then
+                        if hashSet.contains(visited t.id) then
                             "RecType"
                         else
                             (* The active recursive type definition *)
-                            hashMap.insert(visited t.id true)
+                            hashSet.insert(visited t.id)
                             let b = x.bindings[x.activeIndex]
                             "Rec(" <> b.name <> " :: " <> formatKindForQi(b.bound) <> ") " <> fmt(b.body)
                         end
@@ -237,7 +238,7 @@ export
             end
         end
 
-    and formatTypeForQi(t: Type): String = formatType(t maps.newIntMap())
+    and formatTypeForQi(t: Type): String = formatType(t maps.newIntSet())
 
     (* Formats one member of a mutually recursive group of type operators as
      * Fun(A::K) Body, replacing the group's internal recursion variables with
@@ -764,10 +765,10 @@ export
         begin
             let roots = graph.rootsOf(includePaths programDir)
             let refs = vector.new(:manifest.ImportedInterfaceRef)
-            let seen = maps.newStringMap(:Bool)
+            let seen = maps.newStringSet()
             for i = 0 upto {extent direct - 1} do
                 if stringOp.length(direct[i].source) > 0 then
-                    hashMap.insert(seen direct[i].source true)
+                    hashSet.insert(seen direct[i].source)
                 end
             end
             for i = 0 upto {extent direct - 1} do
@@ -776,10 +777,10 @@ export
                     for j = 0 upto {extent deps - 1} do
                         let dep = deps[j]
                         let known = {stringOp.length(dep.source) > 0}
-                            andif hashMap.contains(seen dep.source)
+                            andif hashSet.contains(seen dep.source)
                         if not(known) then
                             if stringOp.length(dep.source) > 0 then
-                                hashMap.insert(seen dep.source true)
+                                hashSet.insert(seen dep.source)
                             end
                             let name =
                                 graph.interfaceName(graph.resolveInterface(res dep.path maybe.some(dep.dir)

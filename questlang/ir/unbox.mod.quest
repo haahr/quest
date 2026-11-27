@@ -3,6 +3,7 @@
 module unbox : Unbox
 import
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -32,7 +33,7 @@ export
         defs: maps.IntMap(Op)
         closures: maps.IntMap(vector.T(Variable))
         calls: vector.T(Stmt)
-        pinned: maps.IntMap(Bool)
+        pinned: maps.IntSet
     end
 
     let bump(m: maps.IntMap(Int) id: Int): Ok =
@@ -139,7 +140,7 @@ export
                 let defs = maps.newIntMap(:Op)
                 let closures = maps.newIntMap(:vector.T(Variable))
                 let calls = vector.new(:Stmt)
-                let pinned = maps.newIntMap(:Bool)
+                let pinned = maps.newIntSet()
             end
             walk.countUses(unit f.uses f.pinned)
             let all = walk.unitBodies(unit)
@@ -153,7 +154,7 @@ export
                     andif unboxable(shapes.shape(fun1.resultType))
                 for k = 0 upto {vector.length(closures) - 1} do
                     let c = vector.get(closures k)
-                    if hashMap.contains(f.pinned c.id) orif {countOf(f.uses c) isnot countOf(f.callees c)} then
+                    if hashSet.contains(f.pinned c.id) orif {countOf(f.uses c) isnot countOf(f.callees c)} then
                         known := false
                     end
                 end
@@ -180,7 +181,7 @@ export
                             case st
                                 when sLet with x then
                                     if nodes.sameType(x.v.type fun1.resultType) andif not(x.v.isMutable)
-                                            andif not(hashMap.contains(f.pinned x.v.id))
+                                            andif not(hashSet.contains(f.pinned x.v.id))
                                             andif {countOf(f.uses x.v) is countOf(f.reads x.v)} then
                                         vector.append(results x.v)
                                     else

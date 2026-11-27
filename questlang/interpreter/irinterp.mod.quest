@@ -18,6 +18,7 @@ import
     writer : Writer
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
@@ -239,7 +240,7 @@ export
          * value may run in a nested frame (a loop body's), so statement binds
          * these variables with bindDeclared, which fills the slot where the
          * let rec and its fixups look, rather than in the current frame. *)
-        declared: maps.IntMap(Bool)
+        declared: maps.IntSet
         fixups: vector.T(vector.T(Fixup))
         var sourceMap: maybe.T(location.SourceMap)
         (* The symbols of the type parameters the unit's functions' descriptor
@@ -249,8 +250,8 @@ export
         closures: hashMap.T(model.Builtin IrClosure)
         (* The calls in tail position (by their result variables' ids) of the
          * functions analyzed so far (by id), found by findTailCalls *)
-        tailCalls: maps.IntMap(Bool)
-        analyzed: maps.IntMap(Bool)
+        tailCalls: maps.IntSet
+        analyzed: maps.IntSet
     end
 
     let stack(it: Interpreter): vector.T(String) = it.renv.root.callStack
@@ -474,12 +475,12 @@ export
      * returns, directly or through Converts and jumps to joins (returning, by
      * label) that return their parameter. A call in a try's body or handler
      * is not one, nor one in another function's body. *)
-    let rec findTailCalls(b: Body returning: Array(String) found: maps.IntMap(Bool)): Ok =
+    let rec findTailCalls(b: Body returning: Array(String) found: maps.IntSet): Ok =
         for i = 0 upto {vector.length(b.statements) - 1} do
             case vector.get(b.statements i)
                 when sLet with x then
                     if x.value?opCall andif returns(b.statements {i + 1} x.v returning) then
-                        hashMap.insert(found x.v.id true)
+                        hashSet.insert(found x.v.id)
                     end
                 when sIf with x then
                     findTailCalls(x.thenBody returning found)
@@ -561,8 +562,8 @@ export
                 end)
             end
             for i = 0 upto {extent fn.params - 1} do if i < extent args then setValue(f fn.params[i].v args[i]) end end
-            if not(hashMap.contains(it.analyzed fn.id)) then
-                hashMap.insert(it.analyzed fn.id true)
+            if not(hashSet.contains(it.analyzed fn.id)) then
+                hashSet.insert(it.analyzed fn.id)
                 findTailCalls(fn.body array of :String end it.tailCalls)
             end
             let s =
@@ -1073,11 +1074,11 @@ export
     and statement(it: Interpreter s: Stmt f: Frame): Signals =
         case s
             when sLet with x then
-                if hashMap.contains(it.tailCalls x.v.id) andif not(hashMap.contains(it.declared x.v.id)) then
+                if hashSet.contains(it.tailCalls x.v.id) andif not(hashSet.contains(it.declared x.v.id)) then
                     tailCall(it x.v x.value f)
                 else
                     let v = operation(it x.value f maybe.some(x.v))
-                    if hashMap.contains(it.declared x.v.id) then bindDeclared(f x.v v) else setValue(f x.v v) end
+                    if hashSet.contains(it.declared x.v.id) then bindDeclared(f x.v v) else setValue(f x.v v) end
                     noSignal
                 end
             when sVarDecl with x then
@@ -1113,7 +1114,7 @@ export
                 noSignal
             when sLetRec with x then
                 for i = 0 upto {extent x.vars - 1} do
-                    hashMap.insert(it.declared x.vars[i].id true)
+                    hashSet.insert(it.declared x.vars[i].id)
                     hashMap.insert(f.values x.vars[i].id maybe.none(:Value))
                 end
                 vector.append(it.fixups vector.new(:Fixup))
@@ -1317,13 +1318,13 @@ export
                 let renv = renv
                 let root = treewalk.newRoot(renv.root.units)
                 let modules = maps.newIntMap()
-                let declared = maps.newIntMap()
+                let declared = maps.newIntSet()
                 let fixups = vector.new()
                 let var sourceMap = unit.sourceMap
                 let descriptorSymbols = symbols
                 let closures = hashMap.new(builtinEqual builtinHash)
-                let tailCalls = maps.newIntMap()
-                let analyzed = maps.newIntMap()
+                let tailCalls = maps.newIntSet()
+                let analyzed = maps.newIntSet()
             end
             (* Everything runs in the program's frame, imported modules'
              * initializers included *)

@@ -6,6 +6,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -311,7 +312,7 @@ export
             for fi = 0 upto {nFunctions - 1} do
                 let ignored = hashMap.insert(byName vector.get(u.functions fi).symbol fi)
             end
-            let dropped = maps.newStringMap(:Bool)
+            let dropped = maps.newStringSet()
             for e = 0 upto {vector.length(u.data) - 1} do
                 let symbol = vector.get(u.data e).symbol
                 let found = hashMap.get(candidates symbol)
@@ -323,13 +324,13 @@ export
                         let i = vector.get(insts s.index)
                         vector.set(insts s.index valueInst(c.value i.results[0] i.loc))
                     end
-                    let ignored = hashMap.insert(dropped siteKey(c.store) true)
+                    let ignored = hashSet.insert(dropped siteKey(c.store))
                     vector.set(u.data c.datum ssa.words(symbol false false array of c.value end))
                 end
             end
             (* Remove all dropped stores in a final pass per block so that
              * earlier instruction indices in Site records stay valid *)
-            if not(hashMap.empty(dropped)) then
+            if not(hashSet.empty(dropped)) then
                 for fi = 0 upto {nFunctions - 1} do
                     let f = vector.get(u.functions fi)
                     for b = 0 upto {vector.length(f.blocks) - 1} do
@@ -337,7 +338,7 @@ export
                         let kept = vector.new(:ssa.Inst)
                         for k = 0 upto {vector.length(insts) - 1} do
                             let site = tuple let function = fi let block = b let index = k end
-                            if not(hashMap.contains(dropped siteKey(site))) then
+                            if not(hashSet.contains(dropped siteKey(site))) then
                                 vector.append(kept vector.get(insts k))
                             end
                         end

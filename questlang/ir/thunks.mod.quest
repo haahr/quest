@@ -6,6 +6,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/sort : util/Sort
@@ -106,8 +107,8 @@ export
         closures: maps.IntMap(nodes.OpMakeClosure)
         uses: maps.IntMap(Int)
         madeInto: maps.IntMap(Int)
-        dropped: maps.IntMap(Bool)
-        droppedFunctions: maps.IntMap(Bool)
+        dropped: maps.IntSet
+        droppedFunctions: maps.IntSet
         (* For conversions of immutable globals, made once: where each such
          * global is bound, by id; the global holding each conversion, by the
          * global's id and the plan's types; and the lets of those, each to go
@@ -336,7 +337,7 @@ export
                 let s = vector.get(b.statements i)
                 let bodies = walk.statementBodies(s)
                 for j = 0 upto {extent bodies - 1} do dropLets(t bodies[j]) end
-                let drop = case s when sLet with x then hashMap.contains(t.dropped x.v.id) else false end
+                let drop = case s when sLet with x then hashSet.contains(t.dropped x.v.id) else false end
                 if not(drop) then vector.append(kept s) end
             end
             b.statements := kept
@@ -372,7 +373,7 @@ export
             let copied = clone.copyBody(cl f.body)
             (* Count uses of the copy's fresh variables so conversions inside
              * the copy can detect single-use closures *)
-            walk.countBodyUses(copied t.uses maps.newIntMap(:Bool))
+            walk.countBodyUses(copied t.uses maps.newIntSet())
             let last = if extent a.fields > 0 then a.fields[extent a.fields - 1] else maybe.none(:Plan) end
             if maybe.isSome(last) then convertReturns(copied maybe.unwrap(last)) end
             for i = 0 upto {vector.length(copied.statements) - 1} do
@@ -611,9 +612,9 @@ export
         end
 
     (* Whether a descriptor mentions only the descriptor variables own holds *)
-    let rec ownDescriptor(d: Descriptor own: maps.IntMap(Bool)): Bool =
+    let rec ownDescriptor(d: Descriptor own: maps.IntSet): Bool =
         case d
-            when descVar with x then hashMap.contains(own x.v.id)
+            when descVar with x then hashSet.contains(own x.v.id)
             when descStatic then true
             when descInstantiate with x then
                 begin
@@ -628,10 +629,10 @@ export
     (* Whether a plan (with descriptors descs and fields/thunk parameters a)
      * uses only static descriptors and its own thunk parameters, so the
      * conversion can be hoisted out of the local scope where it appears *)
-    let rec planOwnDescriptors(descs: Array(Descriptor) a: Adapted own: maps.IntMap(Bool)): Bool =
+    let rec planOwnDescriptors(descs: Array(Descriptor) a: Adapted own: maps.IntSet): Bool =
         begin
             for i = 0 upto {extent a.thunkParams - 1} do
-                begin hashMap.insert(own a.thunkParams[i].v.id true) ok end
+                begin hashSet.insert(own a.thunkParams[i].v.id) ok end
             end
             let var ok1 = true
             for i = 0 upto {extent descs - 1} do if not(ownDescriptor(descs[i] own)) then ok1 := false end end
@@ -656,7 +657,7 @@ export
                 let isAdapt = case x.plan.kind when planAdapt then true else false end
                 if isAdapt andif not(v.v.isMutable) andif hashMap.contains(t.topLets v.v.id)
                         andif planOwnDescriptors(x.plan.descriptors adaptedOf(t x.plan)
-                                maps.newIntMap(:Bool)) then
+                                maps.newIntSet()) then
                     let key = conv.int(v.v.id) <> "\n" <> typeKey(x.plan.target) <> "\n" <> layoutKey(x.plan.layout)
                     let found = hashMap.get(t.globalConversions key)
                     if maybe.isSome(found) then
@@ -691,8 +692,8 @@ export
                 if maybe.isSome(lambda) then
                     let c = maybe.unwrap(lambda)
                     let g = lambdaAdapter(t x.plan adaptedOf(t x.plan) c)
-                    case x.value when atomVar with v then begin hashMap.insert(t.dropped v.v.id true) ok end else ok end
-                    let ignored = hashMap.insert(t.droppedFunctions c.code.id true)
+                    case x.value when atomVar with v then begin hashSet.insert(t.dropped v.v.id) ok end else ok end
+                    let ignored = hashSet.insert(t.droppedFunctions c.code.id)
                     maybe.some(closureOp(g c.captures array of :Type end array of :Descriptor end))
                 elsif maybe.isSome(known) andif {case x.plan.kind when planAdapt then true else false end} then
                     let f = adapter(t x.plan adaptedOf(t x.plan) known)
@@ -837,8 +838,8 @@ export
                 let closures = maps.newIntMap(:nodes.OpMakeClosure)
                 let uses = maps.newIntMap(:Int)
                 let madeInto = maps.newIntMap(:Int)
-                let dropped = maps.newIntMap(:Bool)
-                let droppedFunctions = maps.newIntMap(:Bool)
+                let dropped = maps.newIntSet()
+                let droppedFunctions = maps.newIntSet()
                 let topLets = maps.newIntMap(:Site)
                 let globalConversions = maps.newStringMap(:Variable)
                 let pending = vector.new(:Tuple after: Int stmt: Stmt end)
@@ -851,12 +852,12 @@ export
                     let st = vector.get(b.statements k)
                     case st
                         when sLet with x then
-                            if hashMap.contains(globals x.v.id) then
+                            if hashSet.contains(globals x.v.id) then
                                 begin hashMap.insert(t.topLets x.v.id tuple let body = b let atStart = false end) ok end
                             end
                         when sJoin with x then
                             for j = 0 upto {extent x.params - 1} do
-                                if hashMap.contains(globals x.params[j].id) then
+                                if hashSet.contains(globals x.params[j].id) then
                                     begin
                                         hashMap.insert(t.topLets x.params[j].id
                                                 tuple let body = x.continuation let atStart = true end)
@@ -875,7 +876,7 @@ export
                 end
             sites(unit.main)
             for i = 0 upto {vector.length(unit.modules) - 1} do sites(vector.get(unit.modules i).init) end
-            walk.countUses(unit t.uses maps.newIntMap(:Bool))
+            walk.countUses(unit t.uses maps.newIntSet())
             let bodies = vector.new(:Body)
             vector.append(bodies unit.main)
             for i = 0 upto {vector.length(unit.modules) - 1} do
@@ -909,7 +910,7 @@ export
                  * copies were cloned from the original body and are walked
                  * instead *)
                 let f = vector.get(unit.functions i)
-                if not(hashMap.contains(t.droppedFunctions f.id)) then body(t f.body) end
+                if not(hashSet.contains(t.droppedFunctions f.id)) then body(t f.body) end
                 i := i + 1
             end
             (* Insert each hoisted global conversion right after its global is
@@ -932,13 +933,13 @@ export
             end
             (* Remove dead lets and functions left behind by fused lambda
              * closures *)
-            if not(hashMap.empty(t.dropped)) then
+            if not(hashSet.empty(t.dropped)) then
                 dropLets(t unit.main)
                 for k = 0 upto {vector.length(unit.modules) - 1} do dropLets(t vector.get(unit.modules k).init) end
                 let kept = vector.new(:Function)
                 for k = 0 upto {vector.length(unit.functions) - 1} do
                     let f = vector.get(unit.functions k)
-                    if not(hashMap.contains(t.droppedFunctions f.id)) then
+                    if not(hashSet.contains(t.droppedFunctions f.id)) then
                         dropLets(t f.body)
                         vector.append(kept f)
                     end

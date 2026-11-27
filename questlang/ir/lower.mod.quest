@@ -6,6 +6,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -200,7 +201,7 @@ export
         (* The local var variables that closures capture (capturedMutables),
          * and the boxes that hold those bound so far: a tuple of one var
          * component, which the frame and the closures share *)
-        captured: maps.IntMap(Bool)
+        captured: maps.IntSet
         boxes: maps.IntMap(Variable)
         (* In a phrase unit, the earlier inputs' bindings it may name, by
          * symbol, and the imports of those inputs' records, by number *)
@@ -238,7 +239,7 @@ export
                 let labelCounts = maps.newStringMap()
                 let imports = vector.new()
                 let moduleRefs = maps.newIntMap()
-                let captured = maps.newIntMap()
+                let captured = maps.newIntSet()
                 let boxes = maps.newIntMap()
                 let earlier = maps.newIntMap()
                 let earlierImports = maps.newStringMap()
@@ -1948,7 +1949,7 @@ export
                 if show then emit(l funText(lv.name symbol.type)) end
             else
                 let v =
-                    if symbol.isVar andif hashMap.contains(l.captured symbol.symbolId) then
+                    if symbol.isVar andif hashSet.contains(l.captured symbol.symbolId) then
                         (* Held in a box that closures capture
                          * (capturedMutables) *)
                         let init = value(l lv.value none)

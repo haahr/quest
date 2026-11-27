@@ -6,6 +6,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -35,20 +36,19 @@ export
      * generic: polymorphic recursion would otherwise specialize without end *)
     let maxDepth = 16
 
-    Let Ids = maps.IntMap(Bool)
-    let newIds(): Ids = maps.newIntMap()
+    Let Ids = maps.IntSet
+    let newIds(): Ids = maps.newIntSet()
     let withIds(ids: Ids more: Array(nodes.TypeParam)): Ids =
         begin
-            let result = newIds()
-            hashMap.forEach(ids fun(k: Int b: Bool): Ok begin hashMap.insert(result k b) ok end)
-            for i = 0 upto {extent more - 1} do hashMap.insert(result more[i].symbolId true) end
+            let result = hashSet.copy(ids)
+            for i = 0 upto {extent more - 1} do hashSet.insert(result more[i].symbolId) end
             result
         end
 
     let mentionsAny(t: Type ids: Ids): Bool =
         begin
             let var found = false
-            for i = 0 upto {extent t.fv - 1} do if hashMap.contains(ids t.fv[i]) then found := true end end
+            for i = 0 upto {extent t.fv - 1} do if hashSet.contains(ids t.fv[i]) then found := true end end
             found
         end
 
@@ -59,12 +59,12 @@ export
         begin
             let seen = newIds()
             let rec holds(s: Shape): Bool =
-                if hashMap.contains(seen s.id) then
+                if hashSet.contains(seen s.id) then
                     false
                 elsif wanted(s) then
                     true
                 else
-                    hashMap.insert(seen s.id true)
+                    hashSet.insert(seen s.id)
                     let kind = s.kind
                     case kind
                         when shapeRecord, shapeVariant then

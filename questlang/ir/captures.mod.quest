@@ -3,6 +3,7 @@
 module captures : Captures
 import
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     util/maybe : util/Maybe
 
     questlang/common/maps : questlang/common/Maps
@@ -12,7 +13,7 @@ export
      * nested in their scope. A qualifying variable is any let var not declared
      * directly at a unit's or module's top level (where it is global) that is
      * referenced inside an inner function. *)
-    let capturedMutables(prog: typedAst.Program captured: maps.IntMap(Bool)): Ok =
+    let capturedMutables(prog: typedAst.Program captured: maps.IntSet): Ok =
         begin
             (* Maps each local var's symbol id to the function-nesting depth
              * where it is declared. A reference at a greater depth is inside a
@@ -39,7 +40,7 @@ export
                         when exprVar with x then
                             let d = hashMap.get(declared x.symbol.symbolId)
                             if maybe.isSome(d) andif {maybe.unwrap(d) < depth} then
-                                hashMap.insert(captured x.symbol.symbolId true)
+                                hashSet.insert(captured x.symbol.symbolId)
                             end
                         else ok
                     end

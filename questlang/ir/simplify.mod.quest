@@ -8,6 +8,7 @@ import
     system : System
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -76,7 +77,7 @@ export
          * counts do not see may name them: modules' members, exports, and
          * record variables, which are named from outside the unit's bodies,
          * and let rec's variables, whose values its body makes *)
-        pinned: maps.IntMap(Bool)
+        pinned: maps.IntSet
         (* The operation each immutable variable is bound to by a let, by id,
          * for those met so far *)
         defs: maps.IntMap(Op)
@@ -115,7 +116,7 @@ export
     let count(s: Simplifier unit: nodes.Unit): Ok = walk.countUses(unit s.uses s.pinned)
 
     let usesOf(s: Simplifier v: Variable): Int = maybe.unwrapOr(hashMap.get(s.uses v.id) 0)
-    let pinned(s: Simplifier v: Variable): Bool = hashMap.contains(s.pinned v.id)
+    let pinned(s: Simplifier v: Variable): Bool = hashSet.contains(s.pinned v.id)
 
     (* The operation an atom's variable is bound to, if it is an immutable
      * one bound by a let met so far *)
@@ -1286,7 +1287,7 @@ export
         begin
             let s = tuple
                 let uses = maps.newIntMap(:Int)
-                let pinned = maps.newIntMap(:Bool)
+                let pinned = maps.newIntSet()
                 let defs = maps.newIntMap(:Op)
                 let renames = maps.newIntMap(:Variable)
                 let consts = maps.newIntMap(:Atom)

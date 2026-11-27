@@ -5,6 +5,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/sort : util/Sort
@@ -24,7 +25,7 @@ export
     end
 
     let symbolIds = maps.newStringMap(:Int)
-    let abstractSymbolIds = maps.newIntMap(:Bool)
+    let abstractSymbolIds = maps.newIntSet()
     let globalNames = maps.newIntMap(:String)
     let bySymbol = maps.newIntMap(:ModuleAbstractType)
     let byName = maps.newStringMap(:ModuleAbstractType)
@@ -37,13 +38,13 @@ export
             else
                 let symbolId = symbols.allocateSymbolId()
                 hashMap.insert(symbolIds globalName symbolId)
-                hashMap.insert(abstractSymbolIds symbolId true)
+                hashSet.insert(abstractSymbolIds symbolId)
                 hashMap.insert(globalNames symbolId globalName)
                 symbolId
             end
         end
 
-    let isAbstractTypeSymbol(symbolId: Int): Bool = hashMap.contains(abstractSymbolIds symbolId)
+    let isAbstractTypeSymbol(symbolId: Int): Bool = hashSet.contains(abstractSymbolIds symbolId)
 
     let abstractTypeGlobalName(symbolId: Int): maybe.T(String) = hashMap.get(globalNames symbolId)
 
@@ -93,14 +94,14 @@ export
         begin recordType(globalName typeVar true) ok end
 
     let represented = tuple let var count = 0 let var apart = false end
-    let apartNames = maps.newStringMap(:Bool)
+    let apartNames = maps.newStringSet()
     let setRegisteringApart(on: Bool): Ok = represented.apart := on
     let registeringApart(): Bool = represented.apart
 
     let registerAbstractTypeRepresentation(globalName: String typeVar: model.Type rep: model.Type): Ok =
         begin
             represented.count := represented.count + 1
-            if represented.apart then begin hashMap.insert(apartNames globalName true) ok end end
+            if represented.apart then begin hashSet.insert(apartNames globalName) ok end end
             recordType(globalName typeVar true).rep := maybe.some(rep)
         end
 
@@ -122,7 +123,7 @@ export
             let s = model.newSubst()
             hashMap.forEach(bySymbol fun(k: Int e: ModuleAbstractType): Ok
                 if maybe.isSome(e.rep) andif unbounded(e)
-                        andif not(hashMap.contains(apartNames e.globalName)) then
+                        andif not(hashSet.contains(apartNames e.globalName)) then
                     begin hashMap.insert(s k maybe.unwrap(e.rep)) ok end
                 end)
             s

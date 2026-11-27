@@ -8,6 +8,7 @@ import
     word : Word
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -36,6 +37,7 @@ export
     let eq(a: String b: String): Bool = stringOp.equal(a b)
     let fail(A::TYPE what: String): A = raise unsupported with what end
     let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(m k v) ok end
+    let mark(A::TYPE s: hashSet.T(A) x: A): Ok = begin hashSet.insert(s x) ok end
 
     let tInt = ssa.typeInt
     let tPtr = ssa.typePtr
@@ -142,13 +144,13 @@ export
         (* The unit's global variables, by id (walk.globalVariables): those its
          * top-level bodies bind that functions or other bodies name, which
          * live in static data rather than in values or slots *)
-        globals: maps.IntMap(Bool)
+        globals: maps.IntSet
         (* The symbols of the unit's global variables and functions, by id,
          * each made the first time it is asked for (globalSymbol, codeName),
          * and every symbol so far made, so that a fresh one is unique *)
         globalSymbols: maps.IntMap(String)
         codeNames: maps.IntMap(String)
-        usedNames: maps.StringMap(Bool)
+        usedNames: maps.StringSet
         (* The closure each lifted function is made by, by function id, and
          * the closures variables are bound to, by variable id *)
         closuresOf: maps.IntMap(ir.OpMakeClosure)
@@ -176,7 +178,7 @@ export
      * captures of them made so far. A closure of a let rec captures
      * variables that the let rec has not bound yet (its own, or a sibling's),
      * so the closure's words for them are stored after the body. *)
-    Def Deferred = Tuple vars: maps.IntMap(Bool) captures: vector.T(DeferredCapture) end
+    Def Deferred = Tuple vars: maps.IntSet captures: vector.T(DeferredCapture) end
 
     (* How a variable of the function being built is held: as SSA values (an
      * immutable variable), in a stack slot (a mutable one), at the location a
@@ -227,11 +229,11 @@ export
         begin
             let var n = 1
             let var name = base
-            while hashMap.contains(u.usedNames name) do
+            while hashSet.contains(u.usedNames name) do
                 n := n + 1
                 name := base <> "_" <> conv.int(n)
             end
-            put(u.usedNames name true)
+            mark(u.usedNames name)
             name
         end
 
@@ -518,7 +520,7 @@ export
      * Variables
      * ====================================================================== *)
 
-    let isGlobal(fn: Fn v: Variable): Bool = hashMap.contains(fn.u.globals v.id)
+    let isGlobal(fn: Fn v: Variable): Bool = hashSet.contains(fn.u.globals v.id)
 
     (* How a variable is held, if anything holds it *)
     let binding(fn: Fn v: Variable): maybe.T(Binding) =

@@ -16,6 +16,7 @@ import
     writer : Writer
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     osFiles = os/files : os/Files
     util/maybe : util/Maybe
@@ -466,7 +467,7 @@ export
     let indent(ls: vector.T(Line) st: structure.T): Ok =
         begin
             let lineOf = maps.newIntMap(:Int)
-            let startsLine = maps.newIntMap(:Bool)
+            let startsLine = maps.newIntSet()
             for i = 0 upto {vector.length(ls) - 1} do
                 let l = vector.get(ls i)
                 let var firstToken = true
@@ -474,7 +475,7 @@ export
                     let e = vector.get(l.elems j)
                     if not(e.comment) then
                         hashMap.insert(lineOf e.start i)
-                        if firstToken then hashMap.insert(startsLine e.start true) end
+                        if firstToken then hashSet.insert(startsLine e.start) end
                         firstToken := false
                     end
                 end
@@ -521,7 +522,7 @@ export
                         else
                             let x = maybe.unwrap(r)
                             (* An if's parts depend on whether it is compact here *)
-                            let compact = {x.ifToken >= 0} andif not(hashMap.contains(startsLine x.ifToken))
+                            let compact = {x.ifToken >= 0} andif not(hashSet.contains(startsLine x.ifToken))
                                 andif {maybe.unwrapOr(hashMap.get(lineOf x.ifToken) ~1)
                                     is maybe.unwrapOr(hashMap.get(lineOf x.armToken) ~2)}
                             let anchor = if compact then x.compactAnchor else x.anchor end
@@ -576,7 +577,7 @@ export
                             0
                         else
                             let line = vector.get(ls maybe.unwrapOr(hashMap.get(lineOf maybe.unwrap(c)) 0))
-                            if line.continues andif not(hashMap.contains(startsLine maybe.unwrap(c))) then
+                            if line.continues andif not(hashSet.contains(startsLine maybe.unwrap(c))) then
                                 maybe.unwrap(base)
                             else
                                 maybe.unwrap(base) + step
@@ -636,7 +637,7 @@ export
                 orif {{x is '.'} andif isA(b "INT_LIT")}
         end
 
-    let marked(m: maps.IntMap(Bool) e: Elem): Bool = not(e.comment) andif hashMap.contains(m e.start)
+    let marked(m: maps.IntSet e: Elem): Bool = not(e.comment) andif hashSet.contains(m e.start)
 
     (* Whether the colon b after a is a type annotation's (x: T), which is
      * written against what it follows: one after a name or a bracket, unless

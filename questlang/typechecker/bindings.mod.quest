@@ -5,6 +5,7 @@ import
     conv : Conv
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/iter : util/Iter
     util/maybe : util/Maybe
@@ -38,14 +39,14 @@ export
     let showParam(p: model.Param): String =
         {if p.isVar then "var " elsif p.isOut then "out " else "" end} <> p.name <> ": " <> model.show(p.type)
 
-    let newIds(): maps.IntMap(Bool) = maps.newIntMap()
+    let newIds(): maps.IntSet = maps.newIntSet()
 
     (* The ids of the values declared in a scope *)
-    let valueIds(s: symbols.Scope): maps.IntMap(Bool) =
+    let valueIds(s: symbols.Scope): maps.IntSet =
         begin
             let ids = newIds()
             let values = hashMap.valueIter(s.values)
-            while iter.more(values) do hashMap.insert(ids iter.next(values).symbolId true) end
+            while iter.more(values) do hashSet.insert(ids iter.next(values).symbolId) end
             ids
         end
 

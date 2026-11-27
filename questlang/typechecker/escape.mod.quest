@@ -3,7 +3,7 @@
 
 module escape : Escape
 import
-    collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/sort : util/Sort
 
@@ -18,11 +18,11 @@ export
         begin
             let paths = model.findPathTypes(model.stripAliases(t))
             if extent paths > 0 then
-                let seen = maps.newStringMap(:Bool)
+                let seen = maps.newStringSet()
                 let names = vector.new(:String)
                 for i = 0 upto {extent paths - 1} do
                     let name = pathName(paths[i])
-                    if hashMap.insert(seen name true) then vector.append(names name) end
+                    if hashSet.insert(seen name) then vector.append(names name) end
                 end
                 sort.sortVector(names sort.stringCompare)
                 let var joined = ""
@@ -34,14 +34,14 @@ export
             end
         end
 
-    let checkNoEscapingPathTypes(t: model.Type localSymbolIds: maps.IntMap(Bool) contextDesc: String
+    let checkNoEscapingPathTypes(t: model.Type localSymbolIds: maps.IntSet contextDesc: String
             offset: Int): Ok =
         begin
             let paths = model.findPathTypes(t)
             for i = 0 upto {extent paths - 1} do
                 case paths[i].form
                     when typePath with p then
-                        if hashMap.contains(localSymbolIds p.rootSymbolId) then
+                        if hashSet.contains(localSymbolIds p.rootSymbolId) then
                             diagnostics.fail(:Ok "Abstract type '" <> p.rootName <> "." <> p.fieldName
                                 <> "' cannot escape " <> contextDesc <> " in type '" <> model.show(t) <> "'" offset)
                         end

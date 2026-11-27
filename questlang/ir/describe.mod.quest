@@ -6,6 +6,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -90,22 +91,22 @@ export
             if not(any) then
                 array of :Type end
             else
-                let isFree = maps.newIntMap(:Bool)
-                for i = 0 upto {extent free - 1} do hashMap.insert(isFree free[i] true) end
+                let isFree = maps.newIntSet()
+                for i = 0 upto {extent free - 1} do hashSet.insert(isFree free[i]) end
                 let found = vector.new(:Type)
-                let foundIds = maps.newIntMap(:Bool)
-                let seen = maps.newIntMap(:Bool)
+                let foundIds = maps.newIntSet()
+                let seen = maps.newIntSet()
                 let note = fun(node: Type symbolId: Int): Ok
-                    if hashMap.contains(isFree symbolId) andif wanted(symbolId)
-                            andif not(hashMap.contains(foundIds symbolId)) then
-                        hashMap.insert(foundIds symbolId true)
+                    if hashSet.contains(isFree symbolId) andif wanted(symbolId)
+                            andif not(hashSet.contains(foundIds symbolId)) then
+                        hashSet.insert(foundIds symbolId)
                         vector.append(found node)
                     end
                 let rec visit(p: model.Part): Ok =
                     case p
                         when partType with x then
-                            if not(hashMap.contains(seen x.t.id)) then
-                                hashMap.insert(seen x.t.id true)
+                            if not(hashSet.contains(seen x.t.id)) then
+                                hashSet.insert(seen x.t.id)
                                 case x.t.form
                                     when typeVariable with v then note(x.t v.symbolId)
                                     when typeAbstract with v then note(x.t v.symbolId)
@@ -114,8 +115,8 @@ export
                                 vector.forEach(model.typeParts(x.t) visit)
                             end
                         when partKind with x then
-                            if not(hashMap.contains(seen x.k.id)) then
-                                hashMap.insert(seen x.k.id true)
+                            if not(hashSet.contains(seen x.k.id)) then
+                                hashSet.insert(seen x.k.id)
                                 vector.forEach(model.kindParts(x.k) visit)
                             end
                     end
@@ -188,7 +189,7 @@ export
         var viewMaps: maps.IntMap(nodes.ViewMapParam)
         var viewMapOrder: vector.T(nodes.ViewMapParam)
         (* Handlers' exception variables, which is compares as exceptions *)
-        handlerVars: maps.IntMap(Bool)
+        handlerVars: maps.IntSet
         (* How many descriptor operands (and view maps) name each descriptor
          * variable, by its id (unusedEnclosing) *)
         uses: maps.IntMap(Int)
@@ -525,7 +526,7 @@ export
                     if nodes.comparesIdentity(x.op) andif {extent x.args > 0} then
                         let a = x.args[0]
                         let isHandler =
-                            case a when atomVar with y then hashMap.contains(d.handlerVars y.v.id) else false end
+                            case a when atomVar with y then hashSet.contains(d.handlerVars y.v.id) else false end
                         (* A QVal word, an option is compares by case, or a
                          * variant, which is compares by case and value *)
                         if not(isHandler) andif {layout.isQVal(shapes.shape(typeOf(a))) orif comparesAsOption(typeOf(a))
@@ -706,7 +707,7 @@ export
                 when sLet with x then operation(d x.value maybe.some(x.v))
                 when sDo with x then operation(d x.value maybe.none())
                 when sInspect with x then describeInspect(d x)
-                when sTry with x then begin hashMap.insert(d.handlerVars x.exc.id true) ok end
+                when sTry with x then begin hashSet.insert(d.handlerVars x.exc.id) ok end
                 when sStoreField with x then x.viewMap := viewMap(d x.base)
                 when sStoreComponent with x then x.viewMap := viewMap(d x.base)
                 when sSwitch with x then x.viewMap := viewMap(d x.value)
@@ -853,14 +854,14 @@ export
      * share the same numeric id *)
     Let Collector = Tuple
         found: vector.T(Type)
-        seenTypes: maps.IntMap(Bool)
-        seenNodes: maps.IntMap(Bool)
-        seenKinds: maps.IntMap(Bool)
+        seenTypes: maps.IntSet
+        seenNodes: maps.IntSet
+        seenKinds: maps.IntSet
     end
 
     let add(c: Collector t: Type): Ok =
-        if not(hashMap.contains(c.seenTypes t.id)) then
-            hashMap.insert(c.seenTypes t.id true)
+        if not(hashSet.contains(c.seenTypes t.id)) then
+            hashSet.insert(c.seenTypes t.id)
             vector.append(c.found t)
         end
 
@@ -868,13 +869,13 @@ export
 
     (* A node seen for the first time: its id noted *)
     let first(c: Collector id: Int): Bool =
-        if hashMap.contains(c.seenNodes id) then false
-        else begin hashMap.insert(c.seenNodes id true) true end
+        if hashSet.contains(c.seenNodes id) then false
+        else begin hashSet.insert(c.seenNodes id) true end
         end
 
     let rec kindTypes(c: Collector k: model.Kind): Ok =
-        if not(hashMap.contains(c.seenKinds k.id)) then
-            hashMap.insert(c.seenKinds k.id true)
+        if not(hashSet.contains(c.seenKinds k.id)) then
+            hashSet.insert(c.seenKinds k.id)
             case k.form
                 when kindPower with x then add(c x.bound)
                 when kindAll with x then begin kindTypes(c x.paramKind) kindTypes(c x.resultKind) end
@@ -1031,9 +1032,9 @@ export
         begin
             let c = tuple
                 let found = vector.new(:Type)
-                let seenTypes = maps.newIntMap(:Bool)
-                let seenNodes = maps.newIntMap(:Bool)
-                let seenKinds = maps.newIntMap(:Bool)
+                let seenTypes = maps.newIntSet()
+                let seenNodes = maps.newIntSet()
+                let seenKinds = maps.newIntSet()
             end
             for i = 0 upto {vector.length(unit.modules) - 1} do moduleTypes(c vector.get(unit.modules i)) end
             bodyTypes(c unit.main)
@@ -1155,7 +1156,7 @@ export
                 let var unavailable = maps.newIntMap(:Bool)
                 let var viewMaps = maps.newIntMap(:nodes.ViewMapParam)
                 let var viewMapOrder = vector.new(:nodes.ViewMapParam)
-                let handlerVars = maps.newIntMap(:Bool)
+                let handlerVars = maps.newIntSet()
                 let uses = maps.newIntMap(:Int)
             end
             for i = 0 upto {vector.length(unit.modules) - 1} do

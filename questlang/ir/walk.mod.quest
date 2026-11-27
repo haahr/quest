@@ -3,6 +3,7 @@
 module walk : Walk
 import
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -660,7 +661,7 @@ export
     let replaceVarsInOp(o: Op f: Rename): Ok = mapInOp(o f fun(a: Atom): Atom atom(a f))
     let replaceVarsInStmt(s: Stmt f: Rename): Ok = mapInStmt(s f fun(a: Atom): Atom atom(a f))
 
-    let globalVariables(unit: nodes.Unit): maps.IntMap(Bool) =
+    let globalVariables(unit: nodes.Unit): maps.IntSet =
         begin
             (* The variables each top level binds outside loops and functions,
              * by the index of the top level (a module's initializer, or the
@@ -681,12 +682,12 @@ export
             visit(unit.main n)
             (* Of those, the ones named where they are not bound: by a function
              * (where is ~1), or by another top level *)
-            let found = maps.newIntMap(:Bool)
+            let found = maps.newIntSet()
             let note(v: Variable where: Int): Ok =
                 begin
                     let b = hashMap.get(bound v.id)
                     if maybe.isSome(b) andif {{where < 0} orif {maybe.unwrap(b) isnot where}} then
-                        hashMap.insert(found v.id true)
+                        hashSet.insert(found v.id)
                     end
                 end
             let rec names(b: Body where: Int): Ok =
@@ -709,7 +710,7 @@ export
             end
             (* And a module's members, exports, and record, which other units
              * and the module's exported functions read *)
-            let member(v: Variable): Ok = if hashMap.contains(bound v.id) then hashMap.insert(found v.id true) end
+            let member(v: Variable): Ok = if hashMap.contains(bound v.id) then hashSet.insert(found v.id) end
             let members(ms: nodes.Members): Ok =
                 for j = 0 upto {vector.length(ms.names) - 1} do
                     member(hashMap.find(ms.vars vector.get(ms.names j)))
@@ -902,7 +903,7 @@ export
             end
         end
 
-    let countBodyUses(b: Body uses: maps.IntMap(Int) pinned: maps.IntMap(Bool)): Ok =
+    let countBodyUses(b: Body uses: maps.IntMap(Int) pinned: maps.IntSet): Ok =
         begin
             let stmts = walkStatements(b true)
             for i = 0 upto {vector.length(stmts) - 1} do
@@ -921,18 +922,18 @@ export
                 case st
                     when sLetRec with x then
                         for j = 0 upto {extent x.vars - 1} do
-                            begin hashMap.insert(pinned x.vars[j].id true) ok end
+                            begin hashSet.insert(pinned x.vars[j].id) ok end
                         end
                     else ok
                 end
             end
         end
 
-    let countUses(unit: nodes.Unit uses: maps.IntMap(Int) pinned: maps.IntMap(Bool)): Ok =
+    let countUses(unit: nodes.Unit uses: maps.IntMap(Int) pinned: maps.IntSet): Ok =
         begin
             hashMap.clear(uses)
-            hashMap.clear(pinned)
-            let pin(id: Int): Ok = begin hashMap.insert(pinned id true) ok end
+            hashSet.clear(pinned)
+            let pin(id: Int): Ok = begin hashSet.insert(pinned id) ok end
             let pinMembers(m: nodes.Members): Ok =
                 for i = 0 upto {vector.length(m.names) - 1} do
                     let v = nodes.member(m vector.get(m.names i))

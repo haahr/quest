@@ -5,6 +5,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -629,10 +630,10 @@ export
 
     (* Returns the number of scalar values that replace an object in group g
      * (recursing into nested groups), or ~1 if a group nests inside itself *)
-    let rec leafCount(ls: maps.IntMap(Layout) g: Int visiting: maps.IntMap(Bool)): Int =
-        if hashMap.contains(visiting g) then ~1
+    let rec leafCount(ls: maps.IntMap(Layout) g: Int visiting: maps.IntSet): Int =
+        if hashSet.contains(visiting g) then ~1
         else begin
-            let ignored = hashMap.insert(visiting g true)
+            let ignored = hashSet.insert(visiting g)
             let l = hashMap.find(ls g)
             let var n = 0
             for w = 0 upto {extent l.kind - 1} do
@@ -645,7 +646,7 @@ export
                     end
                 end
             end
-            hashMap.delete(visiting g)
+            hashSet.delete(visiting g)
             n
         end
         end
@@ -674,7 +675,7 @@ export
                         if not(s.dead[a]) then
                             let l = hashMap.find(ls g)
                             if not(l.valid) then kill(s a "its objects' words differ")
-                            elsif leafCount(ls g maps.newIntMap()) < 0 then
+                            elsif leafCount(ls g maps.newIntSet()) < 0 then
                                 kill(s a "it holds a pointer of its own group")
                             end
                         end
@@ -739,7 +740,7 @@ export
             for k = 0 upto {w - 1} do
                 if l.kind[k] is wordScalar then n := n + 1
                 elsif l.kind[k] is wordNested then
-                    n := n + leafCount(ls l.group[k] maps.newIntMap())
+                    n := n + leafCount(ls l.group[k] maps.newIntSet())
                 end
             end
             n
@@ -765,7 +766,7 @@ export
                 let nBlocks = vector.length(f.blocks)
                 let isPointer(v: Int): Bool = {v < nValues} andif live(s v)
                 let groupOf(v: Int): Int = find(s s.ptr[v])
-                let countOf(g: Int): Int = leafCount(ls g maps.newIntMap())
+                let countOf(g: Int): Int = leafCount(ls g maps.newIntSet())
                 (* Maps each replaced object's base pointer (base[v]) to its
                  * flattened scalar values, and maps each replaced load result
                  * (renamed[v]) to its replacement value *)

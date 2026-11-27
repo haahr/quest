@@ -6,6 +6,7 @@ import
     system : System
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/iter : util/Iter
     util/maybe : util/Maybe
@@ -207,9 +208,9 @@ export
         begin
             let roots = rootsOf(searchPaths maybe.none())
             let deps = vector.new(:paths.InterfaceDependency)
-            let seen = maps.newStringMap(:Bool)
-            let visited = maps.newStringMap(:Bool)
-            hashMap.insert(visited files.absolute(source) true)
+            let seen = maps.newStringSet()
+            let visited = maps.newStringSet()
+            hashSet.insert(visited files.absolute(source))
             let rec visit(importer: String): Ok =
                 begin
                     let importerDir = files.absolute(files.parent(importer))
@@ -217,8 +218,8 @@ export
                     for i = 0 upto {extent imported - 1} do
                         let path = imported[i]
                         let key = importerDir <> "\n" <> path
-                        if not(hashMap.contains(seen key)) then
-                            hashMap.insert(seen key true)
+                        if not(hashSet.contains(seen key)) then
+                            hashSet.insert(seen key)
                             let depSource = resolveInterface(res path maybe.some(files.parent(importer)) roots).source
                             vector.append(deps tuple
                                 let path = path
@@ -226,10 +227,8 @@ export
                                 let source = maybe.unwrapOr(depSource "")
                             end)
                             if maybe.isSome(depSource)
-                                    andif not(hashMap.contains(visited
-                                            files.absolute(maybe.unwrap(depSource)))) then
-                                hashMap.insert(visited files.absolute(maybe.unwrap(depSource))
-                                        true)
+                                    andif not(hashSet.contains(visited files.absolute(maybe.unwrap(depSource)))) then
+                                hashSet.insert(visited files.absolute(maybe.unwrap(depSource)))
                                 visit(maybe.unwrap(depSource))
                             end
                         end

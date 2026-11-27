@@ -3,6 +3,7 @@
 module symbols : Symbols
 import
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -49,19 +50,19 @@ export
      * judgments go stale only when one of these ids gains a meaning. *)
     let typesById = maps.newIntMap(:TypeSymbol)
     let kindsById = maps.newIntMap(:KindSymbol)
-    let typeIdsSeenUndefined = maps.newIntMap(:Bool)
-    let kindIdsSeenUndefined = maps.newIntMap(:Bool)
+    let typeIdsSeenUndefined = maps.newIntSet()
+    let kindIdsSeenUndefined = maps.newIntSet()
 
     let meaningsChanged(): Ok = counters.generation := counters.generation + 1
 
     (* The symbols failed declarations bound, by id: value ids have a counter of
      * their own *)
-    let poisonedValues = maps.newIntMap(:Bool)
-    let poisonedTypes = maps.newIntMap(:Bool)
-    let poisonValue(symbolId: Int): Ok = begin hashMap.insert(poisonedValues symbolId true) ok end
-    let isPoisonedValue(symbolId: Int): Bool = hashMap.contains(poisonedValues symbolId)
-    let poison(symbolId: Int): Ok = begin hashMap.insert(poisonedTypes symbolId true) ok end
-    let isPoisoned(symbolId: Int): Bool = hashMap.contains(poisonedTypes symbolId)
+    let poisonedValues = maps.newIntSet()
+    let poisonedTypes = maps.newIntSet()
+    let poisonValue(symbolId: Int): Ok = begin hashSet.insert(poisonedValues symbolId) ok end
+    let isPoisonedValue(symbolId: Int): Bool = hashSet.contains(poisonedValues symbolId)
+    let poison(symbolId: Int): Ok = begin hashSet.insert(poisonedTypes symbolId) ok end
+    let isPoisoned(symbolId: Int): Bool = hashSet.contains(poisonedTypes symbolId)
     let meaningGeneration(): Int = counters.generation
 
     let newValueSymbol(
@@ -97,7 +98,7 @@ export
                 raise redefined with "Type symbol '" <> sym.name <> "' is already defined" end
             end
         else
-            if hashMap.contains(typeIdsSeenUndefined sym.symbolId) then meaningsChanged() end
+            if hashSet.contains(typeIdsSeenUndefined sym.symbolId) then meaningsChanged() end
             sym.definition := maybe.some(definition)
         end
 
@@ -167,7 +168,7 @@ export
             hashMap.insert(s.typesById sym.symbolId sym)
             let previous = hashMap.get(typesById sym.symbolId)
             if maybe.isSome(sym.definition)
-                    andif {hashMap.contains(typeIdsSeenUndefined sym.symbolId)
+                    andif {hashSet.contains(typeIdsSeenUndefined sym.symbolId)
                             orif {maybe.isSome(previous)
                                     andif not(sameDefinition(maybe.unwrap(previous).definition sym.definition))}} then
                 meaningsChanged()
@@ -186,7 +187,7 @@ export
             hashMap.insert(s.kinds sym.name sym)
             hashMap.insert(s.kindsById sym.symbolId sym)
             let previous = hashMap.get(kindsById sym.symbolId)
-            if hashMap.contains(kindIdsSeenUndefined sym.symbolId)
+            if hashSet.contains(kindIdsSeenUndefined sym.symbolId)
                     orif {maybe.isSome(previous)
                             andif not(model.sameKind(maybe.unwrap(previous).kind sym.kind))} then
                 meaningsChanged()
@@ -236,7 +237,7 @@ export
         begin
             let sym = hashMap.get(typesById symbolId)
             if maybe.isNone(sym) orif isAbstract(maybe.unwrap(sym)) then
-                hashMap.insert(typeIdsSeenUndefined symbolId true)
+                hashSet.insert(typeIdsSeenUndefined symbolId)
             end
             sym
         end
@@ -244,7 +245,7 @@ export
     let kindSymbolById(symbolId: Int): maybe.T(KindSymbol) =
         begin
             let sym = hashMap.get(kindsById symbolId)
-            if maybe.isNone(sym) then hashMap.insert(kindIdsSeenUndefined symbolId true) end
+            if maybe.isNone(sym) then hashSet.insert(kindIdsSeenUndefined symbolId) end
             sym
         end
 

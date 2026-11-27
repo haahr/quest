@@ -6,6 +6,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/iter : util/Iter
     util/maybe : util/Maybe
@@ -183,7 +184,7 @@ export
                 let d = vector.get(data.descriptors i)
                 vector.append(if d.echo then echoed else plain end d.type)
             end
-            let collected = staticdata.collectDescriptors(plain echoed ctx maps.newStringMap())
+            let collected = staticdata.collectDescriptors(plain echoed ctx maps.newStringSet())
             let formOf(t: Type): staticdata.DescriptorForm = staticdata.descriptorForm(t ctx)
             let text(s: String): String = vals.stringSymbol(u s)
             for k = 0 upto {extent staticdata.descriptorKinds - 1} do
@@ -198,12 +199,12 @@ export
                     end
                 end
             end
-            let seen = maps.newStringMap(:Bool)
+            let seen = maps.newStringSet()
             for i = 0 upto {vector.length(data.offsetTables) - 1} do
                 let t = vector.get(data.offsetTables i)
                 let table = staticdata.describeOffsetTable(u.naming t.view t.layout)
-                if not(hashMap.contains(seen table.symbol)) then
-                    vals.put(seen table.symbol true)
+                if not(hashSet.contains(seen table.symbol)) then
+                    vals.mark(seen table.symbol)
                     (* Each field's byte offset, followed by a null stored_types
                      * pointer slot *)
                     let ws = array of({extent table.offsets + 1} wordOf(0))
@@ -214,8 +215,8 @@ export
             for i = 0 upto {vector.length(data.tagMaps) - 1} do
                 let t = vector.get(data.tagMaps i)
                 let map = staticdata.describeTagMap(t.target t.source)
-                if not(hashMap.contains(seen map.symbol)) then
-                    vals.put(seen map.symbol true)
+                if not(hashSet.contains(seen map.symbol)) then
+                    vals.mark(seen map.symbol)
                     let ws = array of({if extent map.entries > 0 then extent map.entries else 1 end} wordOf(0))
                     for j = 0 upto {extent map.entries - 1} do ws[j] := wordOf(map.entries[j]) end
                     addData(u ssa.words(map.symbol false false ws))
@@ -280,13 +281,13 @@ export
             end
             if maybe.isSome(unit.staticData) then
                 let tables = maybe.unwrap(unit.staticData).offsetTables
-                let registered = maps.newStringMap(:Bool)
+                let registered = maps.newStringSet()
                 for i = 0 upto {vector.length(tables) - 1} do
                     let table = vector.get(tables i)
                     let dict = staticdata.describeOffsetTable(u.naming table.view table.layout).symbol
                     if maybe.isSome(table.registered)
-                            andif not(hashMap.contains(registered dict)) then
-                        vals.put(registered dict true)
+                            andif not(hashSet.contains(registered dict)) then
+                        vals.mark(registered dict)
                         let r = maybe.unwrap(table.registered)
                         vals.callVoid(fn "quest_register_record_dict"
                                 array of descriptors.formAddress(fn descriptors.staticFormOf(u r.view))
@@ -315,7 +316,7 @@ export
                 let globals = walk.globalVariables(unit)
                 let globalSymbols = maps.newIntMap(:String)
                 let codeNames = maps.newIntMap(:String)
-                let usedNames = maps.newStringMap(:Bool)
+                let usedNames = maps.newStringSet()
                 let closuresOf = maps.newIntMap(:ir.OpMakeClosure)
                 let closureVars = maps.newIntMap(:ir.OpMakeClosure)
                 let strings = maps.newStringMap(:String)

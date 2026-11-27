@@ -13,6 +13,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
@@ -61,7 +62,7 @@ export
     Def G = Tuple
         unit: ir.Unit
         m: model.Module
-        globalIds: maps.IntMap(Bool)
+        globalIds: maps.IntSet
         globals: maps.IntMap(Int)
         functions: maps.IntMap(Int)
         known: maps.IntMap(ir.OpMakeClosure)
@@ -89,7 +90,7 @@ export
         trapNatives: maps.IntMap(Int)
         captureTypes: maps.IntMap(Array(ir.Type))
         byId: maps.IntMap(ir.Function)
-        declaredFns: maps.IntMap(Bool)
+        declaredFns: maps.IntSet
         noClosure: Int
         builtins: maps.StringMap(Int)
         (* Other units (section 5.1): the functions imported from each, by
@@ -116,7 +117,7 @@ export
          * parameters, given their location, and the variables whose address
          * is taken, each held in a slot array of its own from its
          * declaration; by id (locatedVariables) *)
-        located: maps.IntMap(Bool)
+        located: maps.IntSet
         (* The names of record types' descriptors, as the C backend gives
          * them: each ends with a digest of the record's shape, so that two
          * records whose fields lay out alike are not one descriptor *)
@@ -125,7 +126,7 @@ export
          * named from outside the bodies (walk.countUses), for joining chains
          * of <> (concatSite) *)
         uses: maps.IntMap(Int)
-        pinned: maps.IntMap(Bool)
+        pinned: maps.IntSet
     end
 
     (* A name not given before among names: base, or base.k *)
@@ -258,7 +259,7 @@ export
          * recursive value's body is binding, and the captures of theirs to
          * fill in once it has (sLetRec) *)
         fnId: Int
-        deferred: maps.IntMap(Bool)
+        deferred: maps.IntSet
         patches: vector.T(Patch)
         (* Whether a call of the function itself in tail position branched
          * to the loop around its code (selfLabel) *)
@@ -294,7 +295,7 @@ export
                 let returning = maps.newStringMap()
                 let joins = maps.newStringMap()
                 let fnId = fnId
-                let deferred = maps.newIntMap()
+                let deferred = maps.newIntSet()
                 let patches = vector.new()
                 let var selfTail = false
                 let var after = maybe.none()
@@ -341,7 +342,7 @@ export
             found
         end
 
-    let isGlobal(f: F v: ir.Variable): Bool = hashMap.contains(f.g.globalIds v.id)
+    let isGlobal(f: F v: ir.Variable): Bool = hashSet.contains(f.g.globalIds v.id)
 
     (* The shape of a value of type t, through its bound, if it has one *)
     let shapeOf(t: ir.Type): shapes.Shape = layout.resolvedShape(shapes.shape(t))
@@ -371,7 +372,7 @@ export
      * unboxed tuple's components, a boxed record's box, or its type's
      * parts *)
     let varParts(g: G v: ir.Variable): Array(ValType) =
-        if hashMap.contains(g.located v.id) then locationParts
+        if hashSet.contains(g.located v.id) then locationParts
         elsif v.unboxed then componentTypes(v.type)
         elsif v.boxed then array of model.eqref end
         else parts(v.type)
@@ -611,8 +612,8 @@ export
      * function's code take a reference only to a function the module
      * declares (model.Module.declared) *)
     let declare(g: G index: Int): Ok =
-        if not(hashMap.contains(g.declaredFns index)) then
-            hashMap.insert(g.declaredFns index true)
+        if not(hashSet.contains(g.declaredFns index)) then
+            hashSet.insert(g.declaredFns index)
             vector.append(g.m.declared index)
         end
 
@@ -631,7 +632,7 @@ export
             n
         end
 
-    let isLocated(f: F v: ir.Variable): Bool = hashMap.contains(f.g.located v.id)
+    let isLocated(f: F v: ir.Variable): Bool = hashSet.contains(f.g.located v.id)
 
     (* Stores the values on the stack in v's own parts: a located variable's
      * location itself *)
@@ -1007,11 +1008,11 @@ export
             let collected =
                 try
                     staticdata.collectDescriptors(plain echoed maybe.some(g.naming)
-                            maps.newStringMap())
+                            maps.newStringSet())
                 when staticdata.missingDescriptor with msg then
                     fail("a descriptor: " <> msg)
                     staticdata.collectDescriptors(vector.new() vector.new()
-                            maybe.some(g.naming) maps.newStringMap())
+                            maybe.some(g.naming) maps.newStringSet())
                 end
             let forms = vector.new(:staticdata.DescriptorForm)
             for k = 0 upto extent staticdata.descriptorKinds - 1 do
@@ -3977,7 +3978,7 @@ export
                     let a = x.captures[k]
                     let pending =
                         case a
-                            when atomVar with v then hashMap.contains(f.deferred v.v.id)
+                            when atomVar with v then hashSet.contains(f.deferred v.v.id)
                             else false
                         end
                     if pending then
@@ -4937,8 +4938,8 @@ export
             else
                 let once = fun(v: ir.Variable): Bool
                     {maybe.unwrapOr(hashMap.get(f.g.uses v.id) 0) is 1} andif not(isLocated(f v))
-                        andif not(hashMap.contains(f.g.pinned v.id))
-                        andif not(hashMap.contains(f.g.globalIds v.id))
+                        andif not(hashSet.contains(f.g.pinned v.id))
+                        andif not(hashSet.contains(f.g.globalIds v.id))
                 let start = maybe.unwrap(first)
                 let var parts = vector.fromArray(start.args)
                 let var last = start.v
@@ -5184,10 +5185,10 @@ export
                 (* The body makes the values, whose closures' captures of them
                  * are filled in once it has *)
                 let first = vector.length(f.patches)
-                for k = 0 upto extent x.vars - 1 do hashMap.insert(f.deferred x.vars[k].id true) end
+                for k = 0 upto extent x.vars - 1 do hashSet.insert(f.deferred x.vars[k].id) end
                 f.after := maybe.none()
                 body(f x.body)
-                for k = 0 upto extent x.vars - 1 do hashMap.delete(f.deferred x.vars[k].id) end
+                for k = 0 upto extent x.vars - 1 do hashSet.delete(f.deferred x.vars[k].id) end
                 while vector.length(f.patches) > first do
                     let pt = vector.pop(f.patches)
                     let n = extent pt.parts
@@ -5651,14 +5652,14 @@ export
 
     (* The unit's variables held in a location (section 2.6): each var and
      * out parameter, and each variable whose address is taken (@x) *)
-    let locatedVariables(unit: ir.Unit): maps.IntMap(Bool) =
+    let locatedVariables(unit: ir.Unit): maps.IntSet =
         begin
-            let found = maps.newIntMap(:Bool)
+            let found = maps.newIntSet()
             for k = 0 upto vector.length(unit.functions) - 1 do
                 let fn = vector.get(unit.functions k)
                 for j = 0 upto extent fn.params - 1 do
                     if not(stringOp.equal(fn.params[j].mode "value")) then
-                        hashMap.insert(found fn.params[j].v.id true)
+                        hashSet.insert(found fn.params[j].v.id)
                     end
                 end
             end
@@ -5670,7 +5671,7 @@ export
                         when sLet with x then
                             case x.value
                                 when opAddrVar with y then
-                                    hashMap.insert(found y.v.id true)
+                                    hashSet.insert(found y.v.id)
                                     ok
                                 else ok
                             end
@@ -5777,7 +5778,7 @@ export
                 let trapNatives = maps.newIntMap(:Int)
                 let captureTypes = maps.newIntMap(:Array(ir.Type))
                 let byId = maps.newIntMap(:ir.Function)
-                let declaredFns = maps.newIntMap(:Bool)
+                let declaredFns = maps.newIntSet()
                 let noClosure = noClosure
                 let builtins = maps.newStringMap(:Int)
                 let importFunctions = maps.newStringMap(:Int)
@@ -5791,7 +5792,7 @@ export
                 let located = locatedVariables(unit)
                 let naming = staticdata.newRecordNaming()
                 let uses = maps.newIntMap(:Int)
-                let pinned = maps.newIntMap(:Bool)
+                let pinned = maps.newIntSet()
             end
             walk.countUses(unit g.uses g.pinned)
             (* Each function, and the types of what its closures capture: an

@@ -15,6 +15,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/sort : util/Sort
@@ -44,8 +45,8 @@ export
     Let T = Tuple
         rules: maps.IntMap(Rule)
         continuations: maps.IntMap(Int)
-        spacedColons: maps.IntMap(Bool)
-        pathSlashes: maps.IntMap(Bool)
+        spacedColons: maps.IntSet
+        pathSlashes: maps.IntSet
         imports: vector.T(ImportList)
         ends: maps.IntMap(Int)
         runs: vector.T(Run)
@@ -69,8 +70,8 @@ export
         byEnd: maps.IntMap(Int)
         rules: maps.IntMap(Rule)
         phrases: vector.T(Range)
-        spacedColons: maps.IntMap(Bool)
-        pathSlashes: maps.IntMap(Bool)
+        spacedColons: maps.IntSet
+        pathSlashes: maps.IntSet
         imports: vector.T(ImportList)
         ends: maps.IntMap(Int)
         runs: vector.T(Run)
@@ -212,7 +213,7 @@ export
                     lastTok := limit - 1
                     done := true
                 else
-                    hashMap.insert(st.spacedColons offset(st j) true)
+                    hashSet.insert(st.spacedColons offset(st j))
                     j := j + 1
                     if isKind(st j "IDENT") then
                         j := j + 1
@@ -261,7 +262,7 @@ export
                 let e = importItemEnd(st j limit)
                 for s = j upto e do
                     if isKind(st s "SYMBOLIC_INFIX") andif stringOp.equal(vector.get(st.toks s).lexeme "/") then
-                        hashMap.insert(st.pathSlashes offset(st s) true)
+                        hashSet.insert(st.pathSlashes offset(st s))
                     end
                 end
                 rule(st j anchor 4)
@@ -292,7 +293,7 @@ export
             let exp = find(st f limit "KW_EXPORT")
             let headerEnd = if {imp >= 0} andif {{exp < 0} orif {imp < exp}} then imp else exp end
             for j = f upto {headerEnd - 1} do
-                if isKind(st j "COLON") then hashMap.insert(st.spacedColons offset(st j) true) end
+                if isKind(st j "COLON") then hashSet.insert(st.spacedColons offset(st j)) end
             end
             if {imp >= 0} andif {exp > imp} then
                 rule(st imp f 0)
@@ -1144,8 +1145,8 @@ export
                 let byEnd = byEnd
                 let rules = maps.newIntMap(:Rule)
                 let phrases = vector.new(:Range)
-                let spacedColons = maps.newIntMap(:Bool)
-                let pathSlashes = maps.newIntMap(:Bool)
+                let spacedColons = maps.newIntSet()
+                let pathSlashes = maps.newIntSet()
                 let imports = vector.new(:ImportList)
                 let ends = maps.newIntMap(:Int)
                 let runs = vector.new(:Run)

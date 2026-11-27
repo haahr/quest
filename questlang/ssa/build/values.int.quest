@@ -10,6 +10,7 @@
 interface Values
 import
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -30,6 +31,8 @@ export
     unsupported: Exception(String)
     eq(a: String b: String): Bool
     put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok
+    (* Adds x to the set s *)
+    mark(A::TYPE s: hashSet.T(A) x: A): Ok
     tInt: ssa.Type
     tPtr: ssa.Type
     tReal: ssa.Type
@@ -67,13 +70,13 @@ export
         (* The unit's global variables, by id (walk.globalVariables): those its
          * top-level bodies bind that functions or other bodies name, which
          * live in static data rather than in values or slots *)
-        globals: maps.IntMap(Bool)
+        globals: maps.IntSet
         (* The symbols of the unit's global variables and functions, by id,
          * each made the first time it is asked for (globalSymbol, codeName),
          * and every symbol so far made, so that a fresh one is unique *)
         globalSymbols: maps.IntMap(String)
         codeNames: maps.IntMap(String)
-        usedNames: maps.StringMap(Bool)
+        usedNames: maps.StringSet
         (* The closure each lifted function is made by, by function id, and
          * the closures variables are bound to, by variable id *)
         closuresOf: maps.IntMap(ir.OpMakeClosure)
@@ -108,7 +111,7 @@ export
      * captures of them made so far. A closure of a let rec captures
      * variables that the let rec has not bound yet (its own, or a sibling's),
      * so the environment's words for them are stored after the body. *)
-    Def Deferred = Tuple vars: maps.IntMap(Bool) captures: vector.T(DeferredCapture) end
+    Def Deferred = Tuple vars: maps.IntSet captures: vector.T(DeferredCapture) end
     (* How a variable of the function being built is held: as SSA values (an
      * immutable variable), in a stack slot (a mutable one), at the location a
      * var or out parameter points to, in a handler's copy of the exception

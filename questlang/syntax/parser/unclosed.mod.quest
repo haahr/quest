@@ -5,7 +5,7 @@ import
     conv : Conv
     stringOp = string : StringOp
 
-    collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -16,13 +16,13 @@ import
 export
     Let Finding = Tuple tok: tokens.Token message: String note: maybe.T(String) closesNothing: Bool end
 
-    Let Set = maps.StringMap(Bool)
+    Let Set = maps.StringSet
 
     let setOf(names: String): Set =
         begin
-            let s = maps.newStringMap(:Bool)
+            let s = maps.newStringSet()
             let v = strutil.split(names " ")
-            for i = 0 upto {vector.length(v) - 1} do hashMap.insert(s vector.get(v i) true) end
+            for i = 0 upto {vector.length(v) - 1} do hashSet.insert(s vector.get(v i)) end
             s
         end
 
@@ -116,7 +116,7 @@ export
                 let startsLine = p.line > previousLine
                 previousLine := p.line
                 if startsLine then indent := p.col end
-                if startsLine andif hashMap.contains(declarations name) andif not(vector.empty(stack))
+                if startsLine andif hashSet.contains(declarations name) andif not(vector.empty(stack))
                         andif {p.col <= top().indent} then
                     result := notClosed(top() maybe.some(described(tok) <> " starts another declaration"))
                 elsif stringOp.equal(name "KW_END") then
@@ -167,7 +167,7 @@ export
                     if not(vector.empty(stack)) andif isKind(top().tok "KW_OPTION_TYPE") then
                         vector.append(stack tuple let tok = tok let indent = indent var awaitingOf = false end)
                     end
-                elsif hashMap.contains(openers name) then
+                elsif hashSet.contains(openers name) then
                     let awaiting = stringOp.equal(name "KW_OPTION") orif stringOp.equal(name "KW_VARIANT")
                     vector.append(stack tuple let tok = tok let indent = indent var awaitingOf = awaiting end)
                 end

@@ -7,6 +7,7 @@ import
 
     collections/bitset : collections/Bitset
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
@@ -22,6 +23,7 @@ export
     let unsupported: Exception(String) = exception unsupported: String end
     let eq(a: String b: String): Bool = stringOp.equal(a b)
     let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(m k v) ok end
+    let mark(A::TYPE s: hashSet.T(A) x: A): Ok = begin hashSet.insert(s x) ok end
 
     let cFlags = array of
         "-std=gnu11" "-Wno-pedantic" "-fno-strict-aliasing" "-fno-builtin" "-Wno-unused" "-Wno-unused-parameter"
@@ -589,28 +591,28 @@ export
     let printUnit(u: ssa.Unit): String =
         begin
             let buf = sb.new()
-            let defined = maps.newStringMap(:Bool)
+            let defined = maps.newStringSet()
             for k = 0 upto {vector.length(u.functions) - 1} do
-                put(defined vector.get(u.functions k).symbol true)
+                mark(defined vector.get(u.functions k).symbol)
             end
-            for k = 0 upto {vector.length(u.data) - 1} do put(defined vector.get(u.data k).symbol true) end
+            for k = 0 upto {vector.length(u.data) - 1} do mark(defined vector.get(u.data k).symbol) end
             (* The symbols the unit refers to but does not define, in order *)
             let externs = vector.new(:String)
-            let seen = maps.newStringMap(:Bool)
+            let seen = maps.newStringSet()
             let refer(symbol: String): Ok =
-                if {stringOp.length(symbol) > 0} andif not(hashMap.contains(defined symbol))
-                        andif not(hashMap.contains(seen symbol)) then
-                    put(seen symbol true)
+                if {stringOp.length(symbol) > 0} andif not(hashSet.contains(defined symbol))
+                        andif not(hashSet.contains(seen symbol)) then
+                    mark(seen symbol)
                     vector.append(externs symbol)
                 end
             (* The sizes of the composites passed through memory *)
-            let memorySizes = maps.newIntMap(:Bool)
+            let memorySizes = maps.newIntSet()
             let referInst(f: Function i: ssa.Inst): Ok =
                 begin
                     if ssa.isOp(i ssa.opSymbol) orif ssa.isOp(i ssa.opCall) then refer(i.symbol) end
                     for k = 0 upto {extent i.signature.params - 1} do
                         case i.signature.params[k]
-                            when passMemory with x then put(memorySizes x.bytes true)
+                            when passMemory with x then mark(memorySizes x.bytes)
                             when passWord, passReal, passPair, passPairRest, passByte, passInt32 then ok
                         end
                     end
@@ -639,7 +641,7 @@ export
             sb.str(buf "/* Emitted by the Quest SSA's C printer (ssac) */\n")
             sb.str(buf "#include <stdint.h>\n\n")
             sb.str(buf "typedef struct { uint64_t w0, w1; } QSsaPair;\n")
-            let sizes = hashMap.keys(memorySizes)
+            let sizes = hashSet.elements(memorySizes)
             for k = 0 upto {vector.length(sizes) - 1} do
                 let n = vector.get(sizes k)
                 sb.str(buf "typedef struct { unsigned char b[" <> conv.int(n) <> "]; } " <> memoryType(n) <> ";\n")

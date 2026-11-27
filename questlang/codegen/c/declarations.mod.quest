@@ -4,7 +4,7 @@ module declarations : Declarations
 import
     stringOp = string : StringOp
 
-    collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/sort : util/Sort
@@ -131,15 +131,15 @@ export
             let result = vector.new(:Aggregate)
             let variantTypes = vector.new(:Type)
             let allTypes = vector.new(:Type)
-            let names = maps.newStringMap(:Bool)
-            let visitedTypes = maps.newIntMap(:Bool)
-            let visitedNodes = maps.newIntMap(:Bool)
-            let visitedKinds = maps.newIntMap(:Bool)
-            let visitedShapes = maps.newIntMap(:Bool)
-            let variantShapes = maps.newIntMap(:Bool)
+            let names = maps.newStringSet()
+            let visitedTypes = maps.newIntSet()
+            let visitedNodes = maps.newIntSet()
+            let visitedKinds = maps.newIntSet()
+            let visitedShapes = maps.newIntSet()
+            let variantShapes = maps.newIntSet()
             let addAggregate(name: String t: Type): Ok =
-                if not(hashMap.contains(names name)) then
-                    hashMap.insert(names name true)
+                if not(hashSet.contains(names name)) then
+                    hashSet.insert(names name)
                     vector.append(result tuple let name = name let type = t end)
                 end
             (* Walk canonical shapes rather than types as written: equal types
@@ -147,9 +147,9 @@ export
              * records their names *)
             let rec visitShape(ms: maybe.T(Shape)): Ok =
                 if maybe.isSome(ms)
-                        andif not(hashMap.contains(visitedShapes maybe.unwrap(ms).id)) then
+                        andif not(hashSet.contains(visitedShapes maybe.unwrap(ms).id)) then
                     let s = maybe.unwrap(ms)
-                    hashMap.insert(visitedShapes s.id true)
+                    hashSet.insert(visitedShapes s.id)
                     let t = s.structure
                     vector.append(allTypes t)
                     let held = layout.resolvedShape(s)
@@ -169,8 +169,8 @@ export
                          * layout *)
                         visitType(model.autoPayloadType(t maybe.none()))
                     elsif shapes.kindIs(s shapes.shapeVariant) then
-                        if not(hashMap.contains(variantShapes s.id)) then
-                            hashMap.insert(variantShapes s.id true)
+                        if not(hashSet.contains(variantShapes s.id)) then
+                            hashSet.insert(variantShapes s.id)
                             vector.append(variantTypes t)
                         end
                         for i = 0 upto {extent s.cases - 1} do visitShape(s.cases[i].shape) end
@@ -184,13 +184,13 @@ export
                     end
                 end
             and visitType(t: Type): Ok =
-                if not(hashMap.contains(visitedTypes t.id)) then
-                    hashMap.insert(visitedTypes t.id true)
+                if not(hashSet.contains(visitedTypes t.id)) then
+                    hashSet.insert(visitedTypes t.id)
                     visitShape(maybe.some(shapes.shape(t)))
                 end
             let rec visitNode(t: Type): Ok =
-                if not(hashMap.contains(visitedNodes t.id)) then
-                    hashMap.insert(visitedNodes t.id true)
+                if not(hashSet.contains(visitedNodes t.id)) then
+                    hashSet.insert(visitedNodes t.id)
                     visitType(t)
                     (* A recursive type's bodies mention its variables free;
                      * visitType has visited its unfolding *)
@@ -198,8 +198,8 @@ export
                     if not(recursive) then visitParts(model.typeParts(t)) end
                 end
             and visitKind(k: model.Kind): Ok =
-                if not(hashMap.contains(visitedKinds k.id)) then
-                    hashMap.insert(visitedKinds k.id true)
+                if not(hashSet.contains(visitedKinds k.id)) then
+                    hashSet.insert(visitedKinds k.id)
                     visitParts(model.kindParts(k))
                 end
             and visitParts(parts: vector.T(model.Part)): Ok =
@@ -267,8 +267,8 @@ export
         ctx: staticdata.RecordNaming
         var emittedDescriptorTags: vector.T(String)
         var emittedFunTypes: vector.T(Aggregate)
-        emittedBefore: maps.StringMap(Bool)
-        definedStructs: maps.StringMap(Bool)
+        emittedBefore: maps.StringSet
+        definedStructs: maps.StringSet
     end
 
     let newEmitter(ctx: staticdata.RecordNaming): Emitter =
@@ -276,8 +276,8 @@ export
             let ctx = ctx
             let var emittedDescriptorTags = vector.new()
             let var emittedFunTypes = vector.new()
-            let emittedBefore = maps.newStringMap()
-            let definedStructs = maps.newStringMap()
+            let emittedBefore = maps.newStringSet()
+            let definedStructs = maps.newStringSet()
         end
 
     let emitForwardTypedefs(e: Emitter aggregates: vector.T(Aggregate)): Lines =
@@ -285,11 +285,11 @@ export
             let lines = vector.new(:String)
             if not(vector.empty(aggregates)) then
                 add(lines "/* Forward declarations for aggregate types */")
-                let seen = maps.newStringMap(:Bool)
+                let seen = maps.newStringSet()
                 for i = 0 upto {vector.length(aggregates) - 1} do
                     let name = vector.get(aggregates i).name
-                    if not(hashMap.contains(seen name)) then
-                        hashMap.insert(seen name true)
+                    if not(hashSet.contains(seen name)) then
+                        hashSet.insert(seen name)
                         add(lines "#ifndef QUEST_TYPE_" <> name <> "_TYPEDEF")
                         add(lines "#define QUEST_TYPE_" <> name <> "_TYPEDEF")
                         add(lines "typedef struct " <> name <> " " <> name <> ";")
@@ -367,12 +367,12 @@ export
             let lines = vector.new(:String)
             if not(vector.empty(aggregates)) then
                 add(lines "/* Aggregate struct definitions */")
-                let seen = maps.newStringMap(:Bool)
+                let seen = maps.newStringSet()
                 for i = 0 upto {vector.length(aggregates) - 1} do
                     let a = vector.get(aggregates i)
                     let name = a.name
-                    if not(hashMap.contains(seen name)) then
-                        hashMap.insert(seen name true)
+                    if not(hashSet.contains(seen name)) then
+                        hashSet.insert(seen name)
                         add(lines "#ifndef QUEST_TYPE_" <> name <> "_DEFINED")
                         add(lines "#define QUEST_TYPE_" <> name <> "_DEFINED")
                         add(lines "struct " <> name <> " {")
@@ -899,7 +899,7 @@ export
                 lines
             else
                 for i = 0 upto {vector.length(seenTags) - 1} do
-                    hashMap.insert(e.emittedBefore vector.get(seenTags i) true)
+                    hashSet.insert(e.emittedBefore vector.get(seenTags i))
                 end
 
                 (* Descriptors of unfolded recursive types may name tuple,
@@ -907,12 +907,12 @@ export
                  * not; their layouts are the same, but the structs must be
                  * defined for offsetof and sizeof *)
                 for i = 0 upto {vector.length(definedStructs) - 1} do
-                    hashMap.insert(e.definedStructs vector.get(definedStructs i) true)
+                    hashSet.insert(e.definedStructs vector.get(definedStructs i))
                 end
                 let missing = vector.new(:Aggregate)
                 let need(name: String t: Type): Ok =
-                    if not(hashMap.contains(e.definedStructs name)) then
-                        hashMap.insert(e.definedStructs name true)
+                    if not(hashSet.contains(e.definedStructs name)) then
+                        hashSet.insert(e.definedStructs name)
                         vector.append(missing tuple let name = name let type = t end)
                     end
                 let structOr(f: DescriptorForm otherwise: String): String =

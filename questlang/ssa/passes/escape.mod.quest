@@ -5,7 +5,7 @@ import
     conv : Conv
     stringOp = string : StringOp
 
-    collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
 
     questlang/common/maps : questlang/common/Maps
@@ -545,12 +545,12 @@ export
      * passed to its own code need not escape *)
     let escapeUnit(u: ssa.Unit): Int =
         begin
-            let loadOnly = maps.newStringMap(:Bool)
+            let loadOnly = maps.newStringSet()
             for i = 0 upto {vector.length(u.functions) - 1} do
                 let f = vector.get(u.functions i)
-                if firstLoadOnly(f) then begin hashMap.insert(loadOnly f.symbol true) ok end end
+                if firstLoadOnly(f) then begin hashSet.insert(loadOnly f.symbol) ok end end
             end
-            let known(symbol: String): Bool = hashMap.contains(loadOnly symbol)
+            let known(symbol: String): Bool = hashSet.contains(loadOnly symbol)
             let var count = 0
             for i = 0 upto {vector.length(u.functions) - 1} do
                 (* Skip the load-only closure optimization when passing a slot

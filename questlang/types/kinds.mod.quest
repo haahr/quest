@@ -6,6 +6,7 @@ import
     raised : Raised
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
@@ -421,8 +422,8 @@ export
      * revisits a head it already unfolded or a variable it already followed. *)
     let resolveBound(t: Type e: Env wanted: All(u: Type) Bool): maybe.T(Type) =
         begin
-            let visited = maps.newIntMap(:Bool)
-            let unfolded = maps.newIntMap(:Bool)
+            let visited = maps.newIntSet()
+            let unfolded = maps.newIntSet()
             let var current = t
             let var result = maybe.none(:Type)
             let var searching = true
@@ -440,10 +441,10 @@ export
                             else false
                         end
                     if isHead then
-                        if hashMap.contains(unfolded lazy.id) then
+                        if hashSet.contains(unfolded lazy.id) then
                             searching := false
                         else
-                            hashMap.insert(unfolded lazy.id true)
+                            hashSet.insert(unfolded lazy.id)
                             let next = unfoldHead(lazy)
                             if maybe.isNone(next) then
                                 searching := false
@@ -457,10 +458,10 @@ export
                             searching := false
                         else
                             let b = maybe.unwrap(bounded)
-                            if hashMap.contains(visited b.id) then
+                            if hashSet.contains(visited b.id) then
                                 searching := false
                             else
-                                hashMap.insert(visited b.id true)
+                                hashSet.insert(visited b.id)
                                 current := b.bound
                             end
                         end
@@ -512,7 +513,7 @@ export
      * and in not unfolding mutually recursive groups. *)
     let resolveOptionBound(t: Type e: Env): maybe.T(Type) =
         begin
-            let visited = maps.newIntMap(:Bool)
+            let visited = maps.newIntSet()
             let var current = t
             let var result = maybe.none(:Type)
             let var searching = true
@@ -577,10 +578,10 @@ export
                     let bounded = boundedVariable(current)
                     if maybe.isSome(bounded) then
                         let b = maybe.unwrap(bounded)
-                        if hashMap.contains(visited b.id) then
+                        if hashSet.contains(visited b.id) then
                             searching := false
                         else
-                            hashMap.insert(visited b.id true)
+                            hashSet.insert(visited b.id)
                             current := b.bound
                         end
                     elsif maybe.isSome(e) then

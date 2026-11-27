@@ -5,6 +5,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -129,11 +130,11 @@ export
         var boxes: maps.IntMap(Variable)
         (* The tuples and options the function made (by variable), which are not
          * proxies *)
-        var fresh: maps.IntMap(Bool)
+        var fresh: maps.IntSet
     end
 
     let isFresh(st: SlotState a: Atom): Bool =
-        case a when atomVar with x then hashMap.contains(st.fresh x.v.id) else false end
+        case a when atomVar with x then hashSet.contains(st.fresh x.v.id) else false end
 
     (* A record or variant atom in its slot form: its box (remembered, or a new
      * one, made by a let added to before) *)
@@ -491,7 +492,7 @@ export
                         when opAtom with y then isFresh(st y.atom)
                         else false
                     end
-                if freshValue then hashMap.insert(st.fresh v.id true) end
+                if freshValue then hashSet.insert(st.fresh v.id) end
                 if isAtom then
                     case x.value
                         when opAtom with y then
@@ -653,7 +654,7 @@ export
             for i = 0 upto {extent bodies - 1} do
                 let st = tuple
                     let var boxes = maps.newIntMap(:Variable)
-                    let var fresh = maps.newIntMap(:Bool)
+                    let var fresh = maps.newIntSet()
                 end
                 body(st bodies[i])
             end

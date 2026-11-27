@@ -5,6 +5,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -302,7 +303,7 @@ export
                         case a
                             when atomVar with y then
                                 maybe.isSome(fn.deferred)
-                                    andif hashMap.contains(maybe.unwrap(fn.deferred).vars y.v.id)
+                                    andif hashSet.contains(maybe.unwrap(fn.deferred).vars y.v.id)
                             else false
                         end
                     if isDeferred then
@@ -590,8 +591,8 @@ export
                     vals.terminate(fn ssa.termUnreachable)
                 when sLetRec with x then
                     let saved = fn.deferred
-                    let vars = maps.newIntMap(:Bool)
-                    for i = 0 upto {extent x.vars - 1} do vals.put(vars x.vars[i].id true) end
+                    let vars = maps.newIntSet()
+                    for i = 0 upto {extent x.vars - 1} do vals.mark(vars x.vars[i].id) end
                     let d = tuple let vars = vars let captures = vector.new(:vals.DeferredCapture) end
                     fn.deferred := maybe.some(d)
                     body(fn x.body)

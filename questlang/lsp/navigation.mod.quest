@@ -11,6 +11,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -328,11 +329,11 @@ export
      * where the typed bindings put nothing *)
     let addLoose(ix: T made: Array(typedAst.Expr)): Ok =
         if extent made > 0 then
-            let taken = maps.newStringMap(:Bool)
+            let taken = maps.newStringSet()
             for i = 0 upto {vector.length(ix.occurrences) - 1} do
-                hashMap.insert(taken conv.int(vector.get(ix.occurrences i).start) true)
+                hashSet.insert(taken conv.int(vector.get(ix.occurrences i).start))
             end
-            let free = fun(t: tokens.Token): Bool not(hashMap.contains(taken conv.int(t.span.startOffset)))
+            let free = fun(t: tokens.Token): Bool not(hashSet.contains(taken conv.int(t.span.startOffset)))
             for i = 0 upto {extent made - 1} do
                 let e = made[i]
                 case e.form
@@ -340,7 +341,7 @@ export
                         let at = tokenExactly(ix.toks e.offset x.name)
                         if maybe.isSome(at) andif free(vector.get(ix.toks maybe.unwrap(at))) then
                             addValue(ix e.offset x.name x.symbol false)
-                            hashMap.insert(taken conv.int(e.offset) true)
+                            hashSet.insert(taken conv.int(e.offset))
                         end
                     when exprSelect with x then
                         case x.target.form
@@ -352,7 +353,7 @@ export
                                     if stringOp.equal(vector.get(ix.toks j + 1).lexeme ".")
                                             andif stringOp.equal(field.lexeme x.field) andif free(field) then
                                         addMember(ix e x.target x.field)
-                                        hashMap.insert(taken conv.int(field.span.startOffset) true)
+                                        hashSet.insert(taken conv.int(field.span.startOffset))
                                     end
                                 end
                             else ok
@@ -959,14 +960,14 @@ export
                 end
             end
             (* Those that start with the prefix, once each, the first kept *)
-            let seen = maps.newStringMap(:Bool)
+            let seen = maps.newStringSet()
             let items = vector.new(:Completion)
             for i = 0 upto {vector.length(all) - 1} do
                 let c = vector.get(all i)
                 let typable = {stringOp.length(c.label) > 0}
                     andif {strutil.isAlpha(stringOp.getChar(c.label 0)) orif {stringOp.getChar(c.label 0) is '_'}}
-                if typable andif strutil.startsWith(c.label prefix) andif not(hashMap.contains(seen c.label)) then
-                    hashMap.insert(seen c.label true)
+                if typable andif strutil.startsWith(c.label prefix) andif not(hashSet.contains(seen c.label)) then
+                    hashSet.insert(seen c.label)
                     vector.append(items c)
                 end
             end

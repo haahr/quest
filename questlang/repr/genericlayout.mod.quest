@@ -21,6 +21,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
@@ -39,8 +40,8 @@ export
     Let Shape = shapes.Shape
     let eq(a: String b: String): Bool = stringOp.equal(a b)
     let endsWith(s: String suffix: String): Bool = strutil.endsWith(s suffix)
-    Let Seen = maps.IntMap(Bool)
-    let newSeen(): Seen = maps.newIntMap()
+    Let Seen = maps.IntSet
+    let newSeen(): Seen = maps.newIntSet()
 
     (* The C types of scalar values, which a slot holds in a word of its own *)
     let wordScalars = array of "QInt" "QReal" "QBool" "QChar" "QVal" "void" end
@@ -111,10 +112,10 @@ export
             elsif maybe.isSome(symbol) then
                 let arg = hashMap.get(subst maybe.unwrap(symbol))
                 if maybe.isSome(arg) then storedValueAgrees(s maybe.unwrap(arg) place) else true end
-            elsif shapes.isRecursive(s) andif hashMap.contains(seen s.id) then
+            elsif shapes.isRecursive(s) andif hashSet.contains(seen s.id) then
                 true
             else
-                if shapes.isRecursive(s) then hashMap.insert(seen s.id true) end
+                if shapes.isRecursive(s) then hashSet.insert(seen s.id) end
                 let slot = fun(component: Shape): Bool agrees(component subst slotPlace seen)
                 case s.kind
                     (* An application of an abstract operator, whose values are
@@ -170,10 +171,10 @@ export
             let rec visit(s: Shape): Bool =
                 if not(mentions(s subst)) then
                     false
-                elsif shapes.isRecursive(s) andif hashMap.contains(seen s.id) then
+                elsif shapes.isRecursive(s) andif hashSet.contains(seen s.id) then
                     false
                 else
-                    if shapes.isRecursive(s) then hashMap.insert(seen s.id true) end
+                    if shapes.isRecursive(s) then hashSet.insert(seen s.id) end
                     case s.kind
                         when shapeArray then disagrees(shapes.element(s) slotPlace) orif visit(shapes.element(s))
                         when shapeCell, shapeOut then disagrees(shapes.element(s) cellPlace)
@@ -279,10 +280,10 @@ export
         begin
             let seen = newSeen()
             let rec visit(s: Shape): Bool =
-                if hashMap.contains(seen s.id) then
+                if hashSet.contains(seen s.id) then
                     false
                 else
-                    hashMap.insert(seen s.id true)
+                    hashSet.insert(seen s.id)
                     (* An abstract application with a known representation
                      * differs when its generic and native layouts disagree;
                      * any other shape differs when one of its parts does *)

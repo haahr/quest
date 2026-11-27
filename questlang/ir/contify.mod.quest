@@ -6,6 +6,7 @@ import
     stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
@@ -97,9 +98,9 @@ export
 
     (* Records the ids of b and all nested bodies (including inside nested
      * functions) in ids *)
-    let rec bodyIds(b: Body ids: maps.IntMap(Bool)): Ok =
+    let rec bodyIds(b: Body ids: maps.IntSet): Ok =
         begin
-            hashMap.insert(ids b.id true)
+            hashSet.insert(ids b.id)
             for i = 0 upto {vector.length(b.statements) - 1} do
                 let st = vector.get(b.statements i)
                 case st
@@ -363,7 +364,7 @@ export
      * functions, uses, and call sites afresh each round because each
      * transformation moves bodies and statements, invalidating earlier
      * sites. *)
-    let contifyOne(all: Array(Body) recursive: maps.IntMap(Bool) pinned: maps.IntMap(Bool) labels: clone.Labels)
+    let contifyOne(all: Array(Body) recursive: maps.IntMap(Bool) pinned: maps.IntSet labels: clone.Labels)
             : Bool =
         begin
             let u = tuple
@@ -382,16 +383,16 @@ export
                 end
                 let sites = maybe.unwrapOr(hashMap.get(u.sites f.v.id) vector.new(:Site))
                 let uses = maybe.unwrapOr(hashMap.get(u.uses f.v.id) 0)
-                if not(done) andif values andif not(hashMap.contains(pinned f.v.id))
+                if not(done) andif values andif not(hashSet.contains(pinned f.v.id))
                         andif {uses is vector.length(sites)} andif {uses > 0} andif endsControl(f.body) then
                     let sc = tuple let tails = vector.new(:Tail) let var calls = 0 end
                     scan(f sc f.body true false)
-                    let inside = maps.newIntMap(:Bool)
+                    let inside = maps.newIntSet()
                     bodyIds(f.body inside)
                     let outside = vector.new(:Site)
                     for k = 0 upto {vector.length(sites) - 1} do
                         let s = vector.get(sites k)
-                        if not(hashMap.contains(inside s.body.id)) then vector.append(outside s) end
+                        if not(hashSet.contains(inside s.body.id)) then vector.append(outside s) end
                     end
                     (* A function that never calls itself and is not
                      * recursive through others is left to the inliner: as a
@@ -410,7 +411,7 @@ export
             done
         end
 
-    let contify(all: Array(Body) recursive: maps.IntMap(Bool) pinned: maps.IntMap(Bool) labels: clone.Labels)
+    let contify(all: Array(Body) recursive: maps.IntMap(Bool) pinned: maps.IntSet labels: clone.Labels)
             : Bool =
         begin
             let var any = false
