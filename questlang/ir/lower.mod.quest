@@ -37,9 +37,9 @@ export
     Let Stmt = nodes.Stmt
     Let Op = nodes.Op
 
-    let loweringError: Exception(String) = exception loweringError: String end
-
-    let fail(A::TYPE message: String): A = raise loweringError with message end
+    (* A typed program the lowering does not handle: a gap in the lowering,
+     * not an error in the program *)
+    let fail(A::TYPE message: String): A = nodes.internal(message)
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
     let isOk(t: Type): Bool = model.same(t model.okType)
@@ -316,7 +316,7 @@ export
             try
                 f()
                 l.body := saved
-            when loweringError with message then
+            when nodes.irError with message then
                 l.body := saved
                 fail(message)
             end
@@ -497,7 +497,7 @@ export
         end
 
     (* The position among tupleType's components of the one named field, if
-     * one is, or else of the one at index; raises loweringError if there is
+     * one is, or else of the one at index; raises nodes.irError if there is
      * none *)
     let tupleIndex(tupleType: Type index: Int field: maybe.T(String)): Int =
         begin

@@ -20,6 +20,9 @@ export
     Let Type = model.Type
     Let Shape = shapes.Shape
 
+    let irError: Exception(String) = exception irError: String end
+    let internal(A::TYPE message: String): A = raise irError with message end
+
     Def Prim = Option primAdd primSub primMul primDiv primRem primMod primLt primLe primGt primGe primRealAdd
         primRealSub primRealMul primRealDiv primRealPow primRealLt primRealLe primRealGt primRealGe primConcat primAnd
         primOr primIs primIsnot primNot primExtent end
@@ -790,15 +793,13 @@ export
         primNot primExtent
     end
 
-    let noSuchPrim: Exception(String) = exception noSuchPrim: String end
-
     let primNamed(name: String): Prim =
         begin
             let var found = maybe.none(:Prim)
             for i = 0 upto {extent prims - 1} do
                 if stringOp.equal(primName(prims[i]) name) then found := maybe.some(prims[i]) end
             end
-            if maybe.isNone(found) then raise noSuchPrim with name end end
+            if maybe.isNone(found) then internal(:Ok "no primitive named " <> name) end
             maybe.unwrap(found)
         end
 

@@ -34,7 +34,11 @@ export
     Let Plan = nodes.Plan
     Let Descriptor = nodes.Descriptor
 
-    let unsupportedDescriptor: Exception(String) = exception unsupportedDescriptor: String end
+    (* Raised, as nodes.irError, when the pass cannot build a descriptor, such
+     * as inside a generated adapter thunk for a type that mentions an
+     * enclosing function's type parameter whose descriptor the thunk does not
+     * receive *)
+    let unsupported(A::TYPE message: String): A = nodes.internal(message)
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
@@ -49,13 +53,14 @@ export
             maybe.isSome(rule) andif {extent maybe.unwrap(:reduce.OptionIdentity rule).empty > 0}
         end
 
-    (* The structure of layout.heldShape(t kind), raising unsupportedDescriptor
+    (* The structure of layout.heldShape(t kind), raising nodes.irError
      * if t is not held at a shape of kind *)
     let heldStructure(t: Type kind: shapes.ShapeKind): Type =
         begin
             let h = layout.heldShape(t kind)
-            if maybe.isNone(h) then raise unsupportedDescriptor with "not a " <> shapes.kindName(kind) <> ": "
-                <> model.show(t) end end
+            if maybe.isNone(h) then
+                unsupported(:Ok "not a " <> shapes.kindName(kind) <> ": " <> model.show(t))
+            end
             maybe.unwrap(h).structure
         end
 
@@ -222,7 +227,7 @@ export
             nodes.newStaticDescriptor(t echo)
         end
 
-    (* Raises unsupportedDescriptor if t mentions a type parameter whose
+    (* Raises nodes.irError if t mentions a type parameter whose
      * descriptor is unavailable here (in a thunk, one of the enclosing
      * function's, which the thunk is not passed) *)
     let checkAvailable(d: Describer t: Type): Ok =
@@ -238,11 +243,10 @@ export
                         else ""
                     end)
                 end
-                raise unsupportedDescriptor with
-                    "C code generation: a thunk converts by the descriptor of '" <> model.show(t)
-                        <> "', which mentions the type parameter " <> strutil.join(", " names)
-                        <> " of the function it is made in, whose descriptor it is not passed"
-                end
+                unsupported(:Ok
+                        "C code generation: a thunk converts by the descriptor of '" <> model.show(t)
+                    <> "', which mentions the type parameter " <> strutil.join(", " names)
+                    <> " of the function it is made in, whose descriptor it is not passed")
             end
         end
 

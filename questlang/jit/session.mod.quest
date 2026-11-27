@@ -176,7 +176,7 @@ export
     let compileAndLoad(s: T unit: nodes.Unit): Ok =
         begin
             if verify.irChecksEnabled() then
-                try verify.checkUnit(unit) when verify.verifyError with x then fail(:Ok x) end
+                try verify.checkUnit(unit) when nodes.irError with x then fail(:Ok x) end
             end
             for i = 0 upto {extent unit.imports - 1} do checkImport(s unit.imports[i]) end
             target.load(s.target unit)
@@ -340,7 +340,7 @@ export
             let unit =
                 try lower.lowerPhrases(program s.e maybe.some(compiled) number s.earlier echo
                         printResult capture)
-                when lower.loweringError with m then fail(:nodes.Unit m)
+                when nodes.irError with m then fail(:nodes.Unit m)
                 end
             for i = 0 upto {extent unit.imports - 1} do
                 loadImported(s unit.imports[i] program location.file(sourceMap))

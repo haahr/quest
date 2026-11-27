@@ -17,8 +17,6 @@ export
     Let Body = nodes.Body
     Let Stmt = nodes.Stmt
 
-    let capturesMutable: Exception(String) = exception capturesMutable: String end
-
     (* The unit, to whose functions lifted ones are added, and its globals
      * (walk.globalVariables), which lifted functions read directly rather
      * than capture *)
@@ -202,9 +200,10 @@ export
                 for i = 0 upto {vector.length(captures) - 1} do
                     let captured = vector.get(captures i)
                     if captured.isMutable then
-                        raise capturesMutable with
-                            "function '" <> f.v.hint <> "' captures mutable variable '" <> captured.hint <> "'"
-                        end
+                        (* The type checker rejects such a capture, so this is
+                         * the compiler's failure (the bootstrap's ValueError) *)
+                        nodes.internal(:Ok
+                                "function '" <> f.v.hint <> "' captures mutable variable '" <> captured.hint <> "'")
                     end
                     let local = nodes.newVar(captured.hint captured.type false)
                     hashMap.insert(renamed captured.id local)

@@ -35,10 +35,15 @@ export
     Let Plan = nodes.Plan
     Let Layout = maybe.T(nodes.PlanLayout)
 
-    let unsupportedConversion: Exception(String) = exception unsupportedConversion: String end
+    (* A conversion that would copy mutable data laid out differently, which
+     * would then not share its updates: the program's error, which plan
+     * raises and body reports as diagnostics.compilerError, located at the
+     * statement whose conversion it is *)
     let rejectedConversion: Exception(String) = exception rejectedConversion: String end
 
-    let unsupported(A::TYPE message: String): A = raise unsupportedConversion with message end
+    (* A change of representation the pass does not handle: the compiler's
+     * failure, raised as nodes.irError *)
+    let unsupported(A::TYPE message: String): A = nodes.internal(message)
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
     let none: maybe.T(Plan) = maybe.none()
@@ -372,7 +377,7 @@ export
      * 11. The same representation (but for functions, options, and arrays),
      *     or arrays whose elements need at most boxing either way: nothing.
      *
-     * Anything else raises unsupportedConversion, rather than leave the C
+     * Anything else raises nodes.irError (unsupported), rather than leave the C
      * printer to print it wrong. A pair met again while it is being planned (a
      * recursive type's component) needs nothing of its own, and a cast to a
      * tuple or option type that cannot be a proxy, from one that may be,

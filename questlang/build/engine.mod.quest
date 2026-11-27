@@ -25,6 +25,7 @@ import
     questlang/common/location : questlang/common/Location
     questlang/common/maps : questlang/common/Maps
     questlang/config/abi : questlang/config/ABI
+    questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/opened : questlang/ir/Opened
     passes = questlang/ir/pipeline : questlang/ir/Pipeline
     questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
@@ -438,7 +439,14 @@ export
                     if extent result.errors > 0 then diagnostics.raiseError(:Ok result.errors[0]) end
                     let typed = maybe.unwrap(result.program)
                     let backend = choice.forUnit(eng.backends choice.programUnit)
-                    let translated = cBackend.programToC(typed e maybe.some(sm) false false backend)
+                    (* The backend's and the IR passes' failures become the
+                     * unit's error, as moduleCompiler makes them *)
+                    let translated =
+                        try cBackend.programToC(typed e maybe.some(sm) false false backend)
+                        when cBackend.unsupported with m then
+                            diagnostics.fail(:Tuple c: String unit: nodes.Unit end m 0)
+                        when nodes.irError with m then diagnostics.fail(:Tuple c: String unit: nodes.Unit end m 0)
+                        end
                     let modules = unitModuleRefs(vector.toArray(imports)
                             passes.implicitImports(translated.unit typed) e.currentDir
                             vector.toArray(e.includePaths)

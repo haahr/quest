@@ -29,11 +29,8 @@ import
     questlang/common/files : questlang/common/Files
     questlang/common/location : questlang/common/Location
     questlang/common/maps : questlang/common/Maps
-    questlang/ir/closure : questlang/ir/Closure
-    irDescribe = questlang/ir/describe : questlang/ir/Describe
     questlang/ir/nodes : questlang/ir/Nodes
     passes = questlang/ir/pipeline : questlang/ir/Pipeline
-    questlang/ir/represent : questlang/ir/Represent
     questlang/jit/debugObject : questlang/jit/DebugObject
     questlang/jit/loader : questlang/jit/Loader
     questlang/modules/elaboration : questlang/modules/Elaboration
@@ -326,10 +323,7 @@ export
                     arm64.encodeUnit(built)
                 (* Convert IR, SSA, arm64, and encoding failures into
                  * unsupported *)
-                when closure.capturesMutable with x then fail(:encode.Encoded x)
-                when represent.unsupportedConversion with x then fail(:encode.Encoded x)
-                when represent.rejectedConversion with x then fail(:encode.Encoded x)
-                when irDescribe.unsupportedDescriptor with x then fail(:encode.Encoded x)
+                when nodes.irError with x then fail(:encode.Encoded x)
                 when ssaBuild.unsupported with x then fail(:encode.Encoded "ssa: unsupported: " <> x)
                 when ssaVerify.verifyError with x then fail(:encode.Encoded x)
                 when arm64.unsupported with x then fail(:encode.Encoded x)
