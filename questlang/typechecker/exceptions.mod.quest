@@ -26,13 +26,13 @@ export
      * that is one (declares) binds Name in the scope; in any other expression,
      * as in Cardelli's Quest, the name only labels the exception, for its
      * messages (docs/type-system.md section 6.15) *)
-    let synthException(c: checker.T expr: ast.Expr e: env.T loopDepth: Int declares: Bool): typedAst.Expr =
+    let synthException(c: checker.T expr: ast.Expr declares: Bool): typedAst.Expr =
         case expr.form
             when exprException with x then
                 begin
                     let payloadType =
                         if maybe.isSome(x.typeAnnot) then
-                            elaborateTypes.elaborateType(maybe.unwrap(x.typeAnnot) e)
+                            elaborateTypes.elaborateType(maybe.unwrap(x.typeAnnot) c.env)
                         else
                             model.okType
                         end
@@ -40,7 +40,7 @@ export
                     let sym =
                         if declares then
                             let s = symbols.newValueSymbol(x.name excType false false false c.functionDepth 0)
-                            symbols.declareValue(e.currentScope s)
+                            symbols.declareValue(c.env.currentScope s)
                             maybe.some(s)
                         else
                             maybe.none(:symbols.ValueSymbol)
@@ -54,13 +54,13 @@ export
             else checks.unexpected("an exception" expr.span.startOffset)
         end
 
-    let elaborateRaise(c: checker.T expr: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
+    let elaborateRaise(c: checker.T expr: ast.Expr expected: maybe.T(Type)): typedAst.Expr =
         case expr.form
             when exprRaise with x then
                 begin
                     let asType =
                         if maybe.isSome(x.asType) then
-                            maybe.some(elaborateTypes.elaborateType(maybe.unwrap(x.asType) e))
+                            maybe.some(elaborateTypes.elaborateType(maybe.unwrap(x.asType) c.env))
                         else
                             maybe.none(:Type)
                         end
@@ -97,7 +97,7 @@ export
             else checks.unexpected("a raise" expr.span.startOffset)
         end
 
-    let elaborateTry(c: checker.T expr: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
+    let elaborateTry(c: checker.T expr: ast.Expr expected: maybe.T(Type)): typedAst.Expr =
         case expr.form
             when exprTry with x then
                 begin
@@ -117,11 +117,11 @@ export
                         let handled: Handled =
                             if maybe.isSome(branch.binder) then
                                 let name = maybe.unwrap(branch.binder)
-                                env.localScoped(e "try_" <> name fun(s: symbols.Scope): Handled
+                                env.localScoped(c.env "try_" <> name fun(s: symbols.Scope): Handled
                                     begin
                                         let binderSym = symbols.newValueSymbol(name maybe.unwrap(payloadType)
                                                 false false false c.functionDepth 0)
-                                        symbols.declareValue(e.currentScope binderSym)
+                                        symbols.declareValue(c.env.currentScope binderSym)
                                         tuple
                                             let body = checker.elaborateSubexpr(c branch.body expected)
                                             let binder = maybe.some(binderSym)
@@ -148,8 +148,8 @@ export
                             let name = maybe.unwrap(x.elseBinder)
                             if maybe.isSome(x.elseBinderType) then
                                 let annot = maybe.unwrap(x.elseBinderType)
-                                let annotated = elaborateTypes.elaborateType(annot e)
-                                if not(subtyping.isTypeEqual(annotated model.raisedType env.lookupOf(e))) then
+                                let annotated = elaborateTypes.elaborateType(annot c.env)
+                                if not(subtyping.isTypeEqual(annotated model.raisedType env.lookupOf(c.env))) then
                                     diagnostics.fail(:Ok "The else branch's binder '" <> name <> "' has type '"
                                         <> model.show(model.raisedType) <> "', not '" <> model.show(annotated) <> "'"
                                             annot.span.startOffset)
@@ -163,10 +163,10 @@ export
                     let elseTyped =
                         if maybe.isSome(elseBinder) then
                             let binderSym = maybe.unwrap(elseBinder)
-                            env.localScoped(e "try_" <> binderSym.name
+                            env.localScoped(c.env "try_" <> binderSym.name
                                     fun(s: symbols.Scope): maybe.T(typedAst.Expr)
                                         begin
-                                            symbols.declareValue(e.currentScope binderSym)
+                                            symbols.declareValue(c.env.currentScope binderSym)
                                             checker.elaborateOptionalBranch(c x.elseBranch expected)
                                         end)
                         else
@@ -181,7 +181,7 @@ export
                                 let elseBranch = elseTyped
                             end
                         else
-                            checker.joinBodies(maybe.some(bodyTyped) vector.toArray(bodies) elseTyped e
+                            checker.joinBodies(maybe.some(bodyTyped) vector.toArray(bodies) elseTyped c.env
                                     expr.span.startOffset
                                     "Cannot find common supertype join for try expression branch types '{t1}' and '{t2}'")
                         end
