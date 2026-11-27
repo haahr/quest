@@ -640,18 +640,16 @@ export
             end
         end
 
-    (* The variable a call of a member of one of the unit's modules calls (a
-     * placeholder, which names no function, for any other call) *)
-    let noVariable = nodes.newVar("" model.okType false)
-    let memberOf(x: nodes.OpCall): Variable =
+    (* The variable a call of a member of one of the unit's modules calls, if
+     * it is one *)
+    let memberOf(x: nodes.OpCall): maybe.T(Variable) =
         if maybe.isSome(x.moduleRef) andif maybe.isSome(x.member) then
             case maybe.unwrap(x.moduleRef)
-                when refModule with r then
-                    maybe.unwrapOr(nodes.member(r.m.members maybe.unwrap(x.member)) noVariable)
-                when refImport then noVariable
+                when refModule with r then nodes.member(r.m.members maybe.unwrap(x.member))
+                when refImport then maybe.none()
             end
         else
-            noVariable
+            maybe.none()
         end
 
     (* The name of the member of a module's that a variable of its is, if it is
@@ -731,7 +729,7 @@ export
     (* A call to inline: its function, the variables passed by address for its
      * var and out parameters, what the copy reads for the variables it names
      * of the function's module, the function's size, and, for a recursive
-     * function specialized to the call (inline.specialize), its static
+     * function specialized to the call (inline.staticArgumentTransform), its static
      * parameters *)
     Let Choice = Tuple
         function: nodes.Function
@@ -745,11 +743,18 @@ export
      * is its one use *)
     let calleeOf(s: Simplifier x: nodes.OpCall): maybe.T(Tuple f: nodes.Function once: Bool end) =
         begin
-            let callee = if maybe.isSome(x.callee) then resolve(s maybe.unwrap(x.callee))
-                else tuple let v = memberOf(x) let once = false end end
-            let found = hashMap.get(s.analysis.functions callee.v.id)
+            let member = memberOf(x)
+            let callee =
+                if maybe.isSome(x.callee) then maybe.some(resolve(s maybe.unwrap(x.callee)))
+                elsif maybe.isSome(member) then maybe.some(tuple let v = maybe.unwrap(member) let once = false end)
+                else maybe.none(:Resolved)
+                end
+            let found =
+                if maybe.isSome(callee) then hashMap.get(s.analysis.functions maybe.unwrap(callee).v.id)
+                else maybe.none(:nodes.Function)
+                end
             if maybe.isSome(found) then
-                maybe.some(tuple let f = maybe.unwrap(found) let once = callee.once end)
+                maybe.some(tuple let f = maybe.unwrap(found) let once = maybe.unwrap(callee).once end)
             else
                 maybe.none()
             end
@@ -1068,7 +1073,7 @@ export
                         vector.append(rest vector.get(ss k))
                     end
                     ss := vector.fromArray(if maybe.isSome(ch.static) then
-                        inline.specialize(ch.function maybe.unwrap(ch.static) c.typeArgs c.args ch.reads
+                        inline.staticArgumentTransform(ch.function maybe.unwrap(ch.static) c.typeArgs c.args ch.reads
                                 intoOf(st) nodes.stmtPos(st) vector.toArray(rest) s.labels)
                     else
                         inline.expand(ch.function c.typeArgs c.args ch.byRef ch.reads intoOf(st) nodes.stmtPos(st)

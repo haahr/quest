@@ -768,7 +768,7 @@ inside and outside its module.
 **Specialization on a known function.** A function recursive through itself alone has *static parameters*: the
 value parameters that every call it makes of itself passes unchanged, at its own type parameters, when it names itself
 in no other way (`lists.app`'s `f`, `foldl`'s, but not its accumulator). A call of one whose argument for a static
-parameter is a function the round knows is specialized (`inline.specialize`) by the inliner's rules but recursion, its
+parameter is a function the round knows is specialized (`inline.staticArgumentTransform`) by the inliner's rules but recursion, its
 size less its bonuses at most the threshold and without the unit's growth bound: a local function of the other
 parameters, whose body is the callee's copied with its type parameters substituted and the static parameters replaced
 by their arguments, its calls of itself calls of the local function, is bound at the call, and called. The known

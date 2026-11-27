@@ -73,15 +73,17 @@ export
     expand(f: nodes.Function typeArgs: Array(model.Type) args: Array(nodes.Atom)
             byRef: Array(maybe.T(nodes.Variable)) reads: Array(Read) into: maybe.T(nodes.Variable) pos: Int
             rest: Array(nodes.Stmt) labels: clone.Labels): Array(nodes.Stmt)
-    (* Specializes a self-recursive function f to the call's arguments for its
-     * static parameters, followed by rest (docs/ir.md section 8.6). Emits
+    (* The static argument transformation: specializes a self-recursive
+     * function f to the call's arguments for its static parameters, followed
+     * by rest (docs/ir.md section 8.6); not the specialize pass's type
+     * specialization (ir/specialize). Emits
      * bindings for reads (and any constant static arguments), then a recursive
      * funs statement defining a local function over only f's non-static
      * parameters, with typeArgs substituted, static parameters replaced by
      * their call-site arguments, and recursive calls rewritten to target the
      * local function. Finally binds into (or a fresh variable) to a call to
      * the local function on the remaining arguments, followed by rest. *)
-    specialize(f: nodes.Function static: Array(Bool) typeArgs: Array(model.Type) args: Array(nodes.Atom)
+    staticArgumentTransform(f: nodes.Function static: Array(Bool) typeArgs: Array(model.Type) args: Array(nodes.Atom)
             reads: Array(Read) into: maybe.T(nodes.Variable) pos: Int rest: Array(nodes.Stmt) labels: clone.Labels)
             : Array(nodes.Stmt)
 end

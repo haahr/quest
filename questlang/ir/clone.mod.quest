@@ -79,7 +79,7 @@ export
             hashMap.insert(c.labels label label <> "_" <> conv.int(l.count))
             ok
         end
-    let label1(c: Cloner label: String): String = maybe.unwrapOr(hashMap.get(c.labels label) label)
+    let labelFor(c: Cloner label: String): String = maybe.unwrapOr(hashMap.get(c.labels label) label)
 
     let bindVar(c: Cloner v: Variable to: Variable): Ok = begin hashMap.insert(c.vars v.id to) ok end
 
@@ -101,19 +101,19 @@ export
         end
 
     (* The variable the copy uses in v's place *)
-    let var1(c: Cloner v: Variable): Variable = maybe.unwrapOr(hashMap.get(c.vars v.id) v)
+    let varFor(c: Cloner v: Variable): Variable = maybe.unwrapOr(hashMap.get(c.vars v.id) v)
     let optVar(c: Cloner v: maybe.T(Variable)): maybe.T(Variable) =
-        if maybe.isSome(v) then maybe.some(var1(c maybe.unwrap(v))) else v end
+        if maybe.isSome(v) then maybe.some(varFor(c maybe.unwrap(v))) else v end
     let vars(c: Cloner vs: Array(Variable)): Array(Variable) =
         begin
             let result = vector.new(:Variable)
-            for i = 0 upto {extent vs - 1} do vector.append(result var1(c vs[i])) end
+            for i = 0 upto {extent vs - 1} do vector.append(result varFor(c vs[i])) end
             vector.toArray(result)
         end
 
     let atom(c: Cloner a: Atom): Atom =
         case a
-            when atomVar with x then nodes.atomOfVar(var1(c x.v))
+            when atomVar with x then nodes.atomOfVar(varFor(c x.v))
             when atomConst with x then nodes.atomOfConst(tuple let value = x.c.value let shape = x.c.shape end)
         end
     let atoms(c: Cloner items: Array(Atom)): Array(Atom) =
@@ -130,7 +130,7 @@ export
 
     let rec descriptor(c: Cloner d: nodes.Descriptor): nodes.Descriptor =
         case d
-            when descVar with x then option descVar of nodes.Descriptor with let v = var1(c x.v) end
+            when descVar with x then option descVar of nodes.Descriptor with let v = varFor(c x.v) end
             when descStatic with x then option descStatic of nodes.Descriptor with let d = staticDescriptor(c x.d) end
             when descInstantiate with x then
                 option descInstantiate of nodes.Descriptor with
@@ -153,7 +153,7 @@ export
         begin
             let result = vector.new(:nodes.DescriptorParam)
             for i = 0 upto {extent ps - 1} do
-                vector.append(result tuple let v = var1(c ps[i].v) let symbols = ps[i].symbols end)
+                vector.append(result tuple let v = varFor(c ps[i].v) let symbols = ps[i].symbols end)
             end
             vector.toArray(result)
         end
@@ -280,9 +280,9 @@ export
         begin
             let params = array of(extent f.params tuple let v = f.v let mode = "" end)
             for i = 0 upto {extent f.params - 1} do
-                params[i] := tuple let v = var1(c f.params[i].v) let mode = f.params[i].mode end
+                params[i] := tuple let v = varFor(c f.params[i].v) let mode = f.params[i].mode end
             end
-            nodes.newFunction(var1(c f.v) f.typeParams params ty(c f.resultType) copyBody(c f.body) f.traceName)
+            nodes.newFunction(varFor(c f.v) f.typeParams params ty(c f.resultType) copyBody(c f.body) f.traceName)
         end
 
     and moduleRef(r: maybe.T(nodes.ModuleRef)): maybe.T(nodes.ModuleRef) = r
@@ -448,8 +448,8 @@ export
                 option opMakeException of Op with let name = x.name let payloadType = optTy(c x.payloadType) end
             when opExceptionPayload with x then option opExceptionPayload of Op with let var exc = atom(c x.exc) end
             when opCaughtException with x then option opCaughtException of Op with let var exc = atom(c x.exc) end
-            when opAddrVar with x then option opAddrVar of Op with let var v = var1(c x.v) end
-            when opIsSet with x then option opIsSet of Op with let var v = var1(c x.v) end
+            when opAddrVar with x then option opAddrVar of Op with let var v = varFor(c x.v) end
+            when opIsSet with x then option opIsSet of Op with let var v = varFor(c x.v) end
             when opAddrCell with x then option opAddrCell of Op with let var init = atom(c x.init) end
             when opAddrField with x then
                 option opAddrField of Op with
@@ -525,19 +525,19 @@ export
             when sLet with x then
                 option sLet of Stmt with
                     let var pos = x.pos
-                    let var v = var1(c x.v)
+                    let var v = varFor(c x.v)
                     let var value = copyOp(c x.value)
                 end
             when sVarDecl with x then
                 option sVarDecl of Stmt with
                     let var pos = x.pos
-                    let var v = var1(c x.v)
+                    let var v = varFor(c x.v)
                     let var init = optAtom(c x.init)
                 end
             when sAssign with x then
                 option sAssign of Stmt with
                     let var pos = x.pos
-                    let var v = var1(c x.v)
+                    let var v = varFor(c x.v)
                     let var value = atom(c x.value)
                 end
             when sStoreAt with x then
@@ -610,24 +610,24 @@ export
                     let var witness =
                         if maybe.isSome(x.witness) then
                             let w = maybe.unwrap(x.witness)
-                            maybe.some(tuple let v = var1(c w.v) let symbols = w.symbols end)
+                            maybe.some(tuple let v = varFor(c w.v) let symbols = w.symbols end)
                         else
                             x.witness
                         end
                 end
             when sLoop with x then
-                option sLoop of Stmt with let label = label1(c x.label) let var body = copyBody(c x.body) end
+                option sLoop of Stmt with let label = labelFor(c x.label) let var body = copyBody(c x.body) end
             when sTry with x then
                 option sTry of Stmt with
                     let var body = copyBody(c x.body)
-                    let var exc = var1(c x.exc)
+                    let var exc = varFor(c x.exc)
                     let var handler = copyBody(c x.handler)
                     let catching = x.catching
                     let var catches = atoms(c x.catches)
                 end
             when sJoin with x then
                 option sJoin of Stmt with
-                    let label = label1(c x.label)
+                    let label = labelFor(c x.label)
                     let var params = vars(c x.params)
                     let var continuation = copyBody(c x.continuation)
                     let var body = copyBody(c x.body)
@@ -645,12 +645,12 @@ export
             when sJump with x then
                 option sJump of Stmt with
                     let var pos = x.pos
-                    let label = label1(c x.label)
+                    let label = labelFor(c x.label)
                     let var args = atoms(c x.args)
                 end
-            when sBreak with x then option sBreak of Stmt with let var pos = x.pos let label = label1(c x.label) end
+            when sBreak with x then option sBreak of Stmt with let var pos = x.pos let label = labelFor(c x.label) end
             when sContinue with x then
-                option sContinue of Stmt with let var pos = x.pos let label = label1(c x.label) end
+                option sContinue of Stmt with let var pos = x.pos let label = labelFor(c x.label) end
             when sRaise with x then
                 option sRaise of Stmt with
                     let var pos = x.pos
@@ -660,7 +660,7 @@ export
                     let payloadText = x.payloadText
                     let var descriptor = optDescriptor(c x.descriptor)
                 end
-            when sReraise with x then option sReraise of Stmt with let var pos = x.pos let var exc = var1(c x.exc) end
+            when sReraise with x then option sReraise of Stmt with let var pos = x.pos let var exc = varFor(c x.exc) end
             when sUnreachable then s
         end
 
