@@ -937,14 +937,15 @@ export
      * statement converts the result from the one to the other *)
     Def GenericResult = Tuple generic: Type instantiated: Type instantiation: Instantiation end
 
+    (* What call returns: its callee's result type, and for a polymorphic
+     * call, the generic result statement converts *)
+    Def CallResult = Tuple type: Type generic: maybe.T(GenericResult) end
+
     (* The pass's state: joins, each join point's parameters by label, for
-     * the jumps to it, which pass their arguments at the parameters' types;
-     * and genericResults, which call leaves empty, or holding the
-     * GenericResult of the polymorphic call it converted, for statement *)
+     * the jumps to it, which pass their arguments at the parameters' types *)
     Let Representer = Tuple
         unit: nodes.Unit
         joins: maps.StringMap(Array(Variable))
-        var genericResults: vector.T(GenericResult)
         (* The position of the statement being represented, or of the nearest
          * before it that has one, in its function or initializer *)
         var pos: Int
@@ -993,8 +994,6 @@ export
                 s.v := r
             end
         end
-
-    let memberType(m: nodes.Module name: String): Type = hashMap.find(m.members.vars name).type
 
     (* The address passed for a var or out argument: the location's own, or that
      * of a temporary of the parameter's representation, copied in from the
@@ -1092,29 +1091,11 @@ export
         end
 
     (* Converts a call's arguments to its callee's parameter types, returning
-     * its callee's result type *)
-    let call(r: Representer c: nodes.OpCall before: vector.T(Stmt) after: vector.T(Stmt)): Type =
+     * its callee's result type and, for a polymorphic call, its generic
+     * result *)
+    let call(c: nodes.OpCall before: vector.T(Stmt) after: vector.T(Stmt)): CallResult =
         begin
-            r.genericResults := vector.new()
-            let calleeType =
-                if maybe.isSome(c.callee) then
-                    maybe.some(maybe.unwrap(c.callee).type)
-                else
-                    let fromModule =
-                        if maybe.isSome(c.moduleRef) then
-                            case maybe.unwrap(c.moduleRef)
-                                (* A member of one of the unit's modules, called from
-                                 * outside it at its interface's types, works at the
-                                 * module's own: its arguments and result convert at the
-                                 * boundary *)
-                                when refModule with m then maybe.some(memberType(m.m maybe.unwrapOr(c.member "")))
-                                else maybe.none(:Type)
-                            end
-                        else
-                            maybe.none(:Type)
-                        end
-                    if maybe.isSome(fromModule) then fromModule else c.calleeType end
-                end
+            let calleeType = nodes.calleeType(c.callee c.moduleRef c.member c.calleeType)
             if maybe.isNone(calleeType) then
                 unsupported(:Ok "a call of " <> maybe.unwrapOr(c.member "") <> " whose type is unknown")
             end
@@ -1148,14 +1129,19 @@ export
                 vector.append(args a)
             end
             c.args := vector.toArray(args)
-            if instantiated then
-                vector.append(r.genericResults tuple
-                    let generic = signature.result
-                    let instantiated = model.substitute(signature.result instantiation.subst)
-                    let instantiation = instantiation
-                end)
+            tuple
+                let type = signature.result
+                let generic =
+                    if instantiated then
+                        maybe.some(tuple
+                            let generic = signature.result
+                            let instantiated = model.substitute(signature.result instantiation.subst)
+                            let instantiation = instantiation
+                        end)
+                    else
+                        maybe.none(:GenericResult)
+                    end
             end
-            signature.result
         end
 
     (* The type of record field name, of tuple value component index, or of
@@ -1273,31 +1259,13 @@ export
             when opModuleMember with x then
                 case x.moduleRef
                     when refModule with m then
-                        if maybe.isSome(x.member) then maybe.some(memberType(m.m maybe.unwrap(x.member)))
+                        if maybe.isSome(x.member) then maybe.some(nodes.memberType(m.m maybe.unwrap(x.member)))
                         else maybe.none()
                         end
                     else maybe.none()
                 end
             when opTypeApp with x then
-                let origType =
-                    if maybe.isSome(x.callee) then
-                        maybe.unwrap(x.callee).type
-                    else
-                        let fromModule =
-                            if maybe.isSome(x.moduleRef) then
-                                case maybe.unwrap(x.moduleRef)
-                                    when refModule with m then maybe.some(memberType(m.m maybe.unwrapOr(x.member "")))
-                                    else maybe.none(:Type)
-                                end
-                            else
-                                maybe.none(:Type)
-                            end
-                        if maybe.isSome(fromModule) then
-                            maybe.unwrap(fromModule)
-                        else
-                            maybe.unwrapOr(x.calleeType model.okType)
-                        end
-                    end
+                let origType = maybe.unwrapOr(nodes.calleeType(x.callee x.moduleRef x.member x.calleeType) model.okType)
                 let plans = typeAppPlans(origType x.typeArgs resultType)
                 x.plans := plans.plans
                 x.thunkSymbols := plans.thunkSymbols
@@ -1361,13 +1329,12 @@ export
                             x.value := nodes.opOfAtom(convert(y.atom x.v.type before noLayout))
                         when opCall with c then
                             let writebacks = vector.new(:Stmt)
-                            r.genericResults := vector.new()
-                            let resultType = call(r c before writebacks)
-                            if not(vector.empty(r.genericResults)) then
+                            let called = call(c before writebacks)
+                            if maybe.isSome(called.generic) then
                                 (* The callee's generic result, converted to its
                                  * type at the type arguments, then to the
                                  * let's *)
-                                let g = vector.get(r.genericResults 0)
+                                let g = maybe.unwrap(called.generic)
                                 let step = plan(g.generic g.instantiated layoutOf(g.instantiation false))
                                 if maybe.isSome(genericLayout.abstractInstance(x.v.type)) then
                                     (* A value of an abstract type's
@@ -1393,7 +1360,7 @@ export
                                     result(x g.instantiated after)
                                 end
                             else
-                                result(x resultType after)
+                                result(x called.type after)
                             end
                             for i = 0 upto {vector.length(writebacks) - 1} do
                                 vector.append(after vector.get(writebacks i))
@@ -1404,7 +1371,7 @@ export
                     end
                 when sDo with x then
                     case x.value
-                        when opCall with c then begin call(r c before after) ok end
+                        when opCall with c then begin call(c before after) ok end
                         else ok
                     end
                 when sVarDecl with x then
@@ -1509,7 +1476,6 @@ export
             let r = tuple
                 let unit = unit
                 let joins = maps.newStringMap(:Array(Variable))
-                let var genericResults = vector.new(:GenericResult)
                 let var pos = ~1
             end
             for i = 0 upto {vector.length(unit.modules) - 1} do

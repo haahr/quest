@@ -655,6 +655,33 @@ export
 
     let member(m: Members name: String): maybe.T(Variable) = hashMap.get(m.vars name)
 
+    let memberType(m: Module name: String): Type = hashMap.find(m.members.vars name).type
+
+    let memberName(m: Module v: Variable): maybe.T(String) =
+        begin
+            let var found = maybe.none(:String)
+            for i = 0 upto {vector.length(m.members.names) - 1} do
+                let name = vector.get(m.members.names i)
+                if maybe.isNone(found) andif {hashMap.find(m.members.vars name).id is v.id} then
+                    found := maybe.some(name)
+                end
+            end
+            found
+        end
+
+    let calleeType(callee: maybe.T(Variable) moduleRef: maybe.T(ModuleRef) member: maybe.T(String)
+            calleeType: maybe.T(Type)): maybe.T(Type) =
+        if maybe.isSome(callee) then
+            maybe.some(maybe.unwrap(callee).type)
+        elsif maybe.isSome(moduleRef) then
+            case maybe.unwrap(moduleRef)
+                when refModule with r then maybe.some(memberType(r.m maybe.unwrapOr(member "")))
+                when refImport then calleeType
+            end
+        else
+            calleeType
+        end
+
     let newModule(name: String interfaceName: String init: Body members: Members): Module =
         tuple
             let id = nextId()

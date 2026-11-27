@@ -512,8 +512,9 @@ def unit_types(unit: ir.Unit) -> list[QType]:
     the order first met: those of its variables and functions' results, of the
     operations' and plans' types (and those plans convert inside), of the
     records its literals make (their own types, from their fields') and the
-    payloads its inspect arms make, of its imports' interfaces, and of its
-    offset tables."""
+    payloads its inspect arms make, and of its imports' interfaces. It runs
+    before the unit's static data is attached, so it does not visit the offset
+    tables."""
     found: list[QType] = []
     seen_types: set[int] = set()
     seen_nodes: set[int] = set()
@@ -557,9 +558,6 @@ def unit_types(unit: ir.Unit) -> list[QType]:
     visit(unit.main)
     visit(unit.functions)
     visit(unit.imports)
-    for table in unit.static_data.offset_tables if unit.static_data is not None else ():
-        add(table.view)
-        add(table.layout)
     return found
 
 

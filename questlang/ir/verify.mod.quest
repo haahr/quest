@@ -91,17 +91,7 @@ export
                             orif shapes.kindIs(s shapes.shapeOut) then shapes.element(s) else s end
                 end
             let calleeType = fun(c: nodes.OpCall): maybe.T(model.Type)
-                if maybe.isSome(c.callee) then
-                    maybe.some(maybe.unwrap(c.callee).type)
-                elsif maybe.isSome(c.moduleRef) andif maybe.unwrap(c.moduleRef)?refModule then
-                    case maybe.unwrap(c.moduleRef)
-                        when refModule with m then
-                            maybe.some(hashMap.find(m.m.members.vars maybe.unwrapOr(c.member "")).type)
-                        else c.calleeType
-                    end
-                else
-                    c.calleeType
-                end
+                nodes.calleeType(c.callee c.moduleRef c.member c.calleeType)
             let checkCall = fun(c: nodes.OpCall result: maybe.T(Variable) where: String): Ok
                 begin
                     let ct = calleeType(c)

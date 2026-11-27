@@ -510,8 +510,6 @@ export
             end
         end
 
-    let memberType(m: nodes.Module name: String): Type = hashMap.find(m.members.vars name).type
-
     (* Attaches the run-time descriptors and view maps needed by operation o in
      * place, where result is the variable bound by the enclosing let (none for
      * a do statement; docs/ir.md section 8.4):
@@ -562,25 +560,7 @@ export
                 when opTypeApp with x then
                     x.descriptors := describeTypes(d x.typeArgs)
                     let origType =
-                        if maybe.isSome(x.callee) then
-                            maybe.unwrap(x.callee).type
-                        else
-                            let fromModule =
-                                if maybe.isSome(x.moduleRef) then
-                                    case maybe.unwrap(x.moduleRef)
-                                        when refModule with m then
-                                            maybe.some(memberType(m.m maybe.unwrapOr(x.member "")))
-                                        else maybe.none(:Type)
-                                    end
-                                else
-                                    maybe.none(:Type)
-                                end
-                            if maybe.isSome(fromModule) then
-                                maybe.unwrap(fromModule)
-                            else
-                                maybe.unwrapOr(x.calleeType model.okType)
-                            end
-                        end
+                        maybe.unwrapOr(nodes.calleeType(x.callee x.moduleRef x.member x.calleeType) model.okType)
                     if shapes.isFunction(origType) then
                         (* The instance is a thunk, whose plans convert its
                          * arguments and result *)
@@ -1051,7 +1031,8 @@ export
         end
 
     (* The types a unit's C declares the aggregates of, in the order first
-     * met *)
+     * met. It runs before the unit's static data is attached, so it does not
+     * visit the offset tables. *)
     let unitTypes(unit: nodes.Unit): Array(Type) =
         begin
             let c = tuple
@@ -1064,14 +1045,6 @@ export
             bodyTypes(c unit.main)
             for i = 0 upto {vector.length(unit.functions) - 1} do functionTypes(c vector.get(unit.functions i)) end
             for i = 0 upto {extent unit.imports - 1} do importTypes(c unit.imports[i]) end
-            if maybe.isSome(unit.staticData) then
-                let data = maybe.unwrap(unit.staticData)
-                for i = 0 upto {vector.length(data.offsetTables) - 1} do
-                    let table = vector.get(data.offsetTables i)
-                    add(c table.view)
-                    add(c table.layout)
-                end
-            end
             vector.toArray(c.found)
         end
 
