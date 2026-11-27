@@ -30,8 +30,11 @@ export
     let isRecursive(t: Type): Bool = t.form?typeRec orif t.form?typeRecGroup
     (* Exception(T) is written as an application of the builtin Exception, an
      * exception type itself, and so reduces to the exception type of payload
-     * T. An application whose operator takes a different number of arguments
-     * is left as it is, as is anything else at the head. *)
+     * T. An application of an application left as it is, F(A)(B), is F(A B);
+     * an operator given fewer arguments than its parameters reduces to the
+     * operator of the rest, and one given more to its body applied to the
+     * rest (model.applyOperator). Anything else at the head is left as it
+     * is. *)
     let rec betaReduceHead(t0: Type): Type =
         begin
             let var t = t0
@@ -44,21 +47,13 @@ export
                     when typeApp with app then
                         let ctor = betaReduceHead(app.constructor)
                         case ctor.form
+                            when typeApp then t := model.typeApp(ctor app.arguments)
                             when typeException then
                                 if extent app.arguments is 1 then
                                     t := model.exceptionOf(app.arguments[0])
                                 end
                                 done := true
-                            when typeOperator with op then
-                                if extent op.params is extent app.arguments then
-                                    let subst = model.newSubst()
-                                    for i = 0 upto {extent op.params - 1} do
-                                        hashMap.insert(subst op.params[i].symbolId app.arguments[i])
-                                    end
-                                    t := model.substitute(op.body subst)
-                                else
-                                    done := true
-                                end
+                            when typeOperator with op then t := model.applyOperator(op.params op.body app.arguments)
                             else done := true
                         end
                     else done := true

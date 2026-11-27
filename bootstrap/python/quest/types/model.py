@@ -1324,14 +1324,13 @@ class QTypeApp(QType):
 
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
         ctor = self.constructor.evaluate_lazily(env)
+        if isinstance(ctor, QTypeApp):
+            # F(A)(B), with F(A) left as it is, is F(A B)
+            return type_app(ctor, self.arguments).evaluate_lazily(env)
         if isinstance(ctor, QExceptionType) and len(self.arguments) == 1:
             return QExceptionType(payload_type=self.arguments[0].evaluate_lazily(env))
         if isinstance(ctor, QTypeFun):
-            subst = {
-                formal.symbol_id: arg
-                for formal, arg in zip(ctor.params, self.arguments)
-            }
-            return ctor.body.substitute(subst).evaluate_lazily(env)
+            return apply_type_fun(ctor, self.arguments).evaluate_lazily(env)
         return QTypeApp(constructor=ctor, arguments=self.arguments)
 
     def _substitute_full(self, subst: dict[int, QType]) -> QType:
@@ -1339,7 +1338,7 @@ class QTypeApp(QType):
         arguments = tuple(arg.substitute(subst) for arg in self.arguments)
         if constructor is self.constructor and _all_same(arguments, self.arguments):
             return self
-        return QTypeApp(constructor=constructor, arguments=arguments)
+        return type_app(constructor, arguments)
 
     def __str__(self) -> str:
         args_str = " ".join(str(a) for a in self.arguments)
@@ -1348,6 +1347,34 @@ class QTypeApp(QType):
 
 _TYPE_FIELDS[QTypeApp] = lambda node: (node.constructor, node.arguments)
 _REBUILD_TYPE[QTypeApp] = lambda node, values: QTypeApp(constructor=values[0], arguments=values[1])
+
+
+def type_app(constructor: QType, arguments: tuple[QType, ...]) -> QType:
+    """constructor applied to arguments. An operator of several parameters is
+    curried, its kind ALL(A::K1) ALL(B::K2) K, so an application of an
+    application, F(A)(B), is the one application F(A B), even through aliases
+    of F(A) (whose names it does not keep); otherwise the application is as
+    written. Making it one is what lets F(A)(B) be compared with F(A B), and
+    lets the back ends see one constructor and all its arguments."""
+    head = pruned(constructor)
+    while isinstance(head, QAliasType):
+        head = pruned(head.target)
+    if isinstance(head, QTypeApp):
+        return QTypeApp(constructor=head.constructor, arguments=head.arguments + tuple(arguments))
+    return QTypeApp(constructor=constructor, arguments=tuple(arguments))
+
+
+def apply_type_fun(fun: QTypeFun, arguments: tuple[QType, ...]) -> QType:
+    """The operator fun applied to arguments: its body, with them in place of
+    its parameters. Given fewer arguments than parameters, it is the operator of
+    the parameters left; given more, it is its body applied to the rest."""
+    n = min(len(fun.params), len(arguments))
+    body = fun.body.substitute({p.symbol_id: a for p, a in zip(fun.params, arguments)})
+    if len(arguments) < len(fun.params):
+        return QTypeFun(params=fun.params[n:], body=body)
+    if len(arguments) > len(fun.params):
+        return type_app(body, arguments[n:])
+    return body
 
 
 # ============================================================================

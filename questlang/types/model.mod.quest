@@ -637,8 +637,44 @@ export
         end)
     let typeOperator(params: Array(TypeFormal) body: Type): Type =
         make(option typeOperator of TypeForm with let params = params let body = body end)
+    (* constructor applied to arguments. An operator of several parameters is
+     * curried, its kind ALL(A::K1) ALL(B::K2) K, so an application of an
+     * application, F(A)(B), is the one application F(A B), even through
+     * aliases of F(A) (whose names it does not keep); otherwise the
+     * application is as written. Making it one is what lets F(A)(B) be
+     * compared with F(A B), and lets the back ends see one constructor and
+     * all its arguments. *)
     let typeApp(constructor: Type arguments: Array(Type)): Type =
-        make(option typeApp of TypeForm with let constructor = constructor let arguments = arguments end)
+        begin
+            let var head = constructor
+            let var looking = true
+            while looking do
+                case head.form
+                    when typeMeta with x then
+                        if maybe.isSome(x.meta.instance) then
+                            head := maybe.unwrap(x.meta.instance)
+                        else
+                            looking := false
+                        end
+                    when typeAlias with x then head := x.target
+                    else looking := false
+                end
+            end
+            case head.form
+                when typeApp with x then
+                    begin
+                        let n = extent x.arguments
+                        let merged = array of(n + extent arguments constructor)
+                        for i = 0 upto {n - 1} do merged[i] := x.arguments[i] end
+                        for i = 0 upto {extent arguments - 1} do merged[n + i] := arguments[i] end
+                        make(option typeApp of TypeForm with
+                            let constructor = x.constructor
+                            let arguments = merged
+                        end)
+                    end
+                else make(option typeApp of TypeForm with let constructor = constructor let arguments = arguments end)
+            end
+        end
     let recType(varName: String symbolId: Int bound: Kind body: Type): Type =
         make(option typeRec of TypeForm with
             let varName = varName
@@ -1150,32 +1186,46 @@ export
             let kindOf = fun(symbolId: Int): maybe.T(Kind) maybe.none()
         end
 
+    (* The operator Fun(params) body applied to arguments: its body, with them
+     * in place of its parameters. Given fewer arguments than parameters, it is
+     * the operator of the parameters left; given more, it is its body applied
+     * to the rest. *)
+    let applyOperator(params: Array(TypeFormal) body: Type arguments: Array(Type)): Type =
+        begin
+            let np = extent params
+            let na = extent arguments
+            let n = if np < na then np else na end
+            let subst = newSubst()
+            for i = 0 upto {n - 1} do hashMap.insert(subst params[i].symbolId arguments[i]) end
+            let reduced = substitute(body subst)
+            if na < np then
+                let rest = array of(np - n params[0])
+                for i = 0 upto {extent rest - 1} do rest[i] := params[n + i] end
+                typeOperator(rest reduced)
+            elsif na > np then
+                let rest = array of(na - n arguments[0])
+                for i = 0 upto {extent rest - 1} do rest[i] := arguments[n + i] end
+                typeApp(reduced rest)
+            else
+                reduced
+            end
+        end
+
     let rec evaluateLazily(t: Type env: Lookup): Type =
         case t.form
             when typeApp with x then
                 begin
                     let ctor = evaluateLazily(x.constructor env)
                     case ctor.form
+                        (* F(A)(B), with F(A) left as it is, is F(A B) *)
+                        when typeApp then evaluateLazily(typeApp(ctor x.arguments) env)
                         when typeException then
                             if extent x.arguments is 1 then
                                 exceptionOf(evaluateLazily(x.arguments[0] env))
                             else
                                 typeApp(ctor x.arguments)
                             end
-                        when typeOperator with f then
-                            begin
-                                let subst = newSubst()
-                                let n =
-                                    if extent f.params < extent x.arguments then
-                                        extent f.params
-                                    else
-                                        extent x.arguments
-                                    end
-                                for i = 0 upto {n - 1} do
-                                    hashMap.insert(subst f.params[i].symbolId x.arguments[i])
-                                end
-                                evaluateLazily(substitute(f.body subst) env)
-                            end
+                        when typeOperator with f then evaluateLazily(applyOperator(f.params f.body x.arguments) env)
                         else typeApp(ctor x.arguments)
                     end
                 end

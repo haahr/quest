@@ -35,8 +35,10 @@ from quest.types import (
     QTypeVar,
     QVariantType,
     QVarType,
+    apply_type_fun,
     strip_aliases,
     pruned,
+    type_app,
 )
 
 
@@ -51,11 +53,15 @@ def beta_reduce_head(t: QType) -> QType:
         if not isinstance(t, QTypeApp):
             return t
         ctor = beta_reduce_head(t.constructor)
+        if isinstance(ctor, QTypeApp):
+            # F(A)(B), with F(A) left as it is, is F(A B)
+            t = type_app(ctor, t.arguments)
+            continue
         if isinstance(ctor, QExceptionType) and len(t.arguments) == 1:
             return QExceptionType(payload_type=t.arguments[0])
-        if not isinstance(ctor, QTypeFun) or len(ctor.params) != len(t.arguments):
+        if not isinstance(ctor, QTypeFun):
             return t
-        t = ctor.body.substitute({formal.symbol_id: arg for formal, arg in zip(ctor.params, t.arguments)})
+        t = apply_type_fun(ctor, t.arguments)
     return t
 
 

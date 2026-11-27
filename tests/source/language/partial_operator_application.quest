@@ -1,0 +1,47 @@
+(* Language: partial application of type operators
+ *
+ * An operator of several parameters is curried: Fun(A::TYPE B::TYPE) T has
+ * kind ALL(A::TYPE) ALL(B::TYPE) TYPE. So applying it to fewer arguments than
+ * its parameters gives an operator of the rest, F(A)(B) is F(A B), and a
+ * curried operator Fun(A::TYPE) Fun(B::TYPE) T may be applied to both at
+ * once. This holds for an abstract operator, such as hashMap.T, too. *)
+
+import
+    conv : Conv
+    stringOp = string : StringOp
+
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+import writer : Writer
+
+let say(s: String): Ok = writer.putString(writer.output s <> "\n")
+
+(* An operator of two parameters, applied to one *)
+Let Pair = Fun(A::TYPE B::TYPE) Tuple first: A second: B end
+Let IntAnd = Pair(Int)
+let firstOf(A::TYPE B::TYPE)(p: Pair(A B)): A = p.first
+let p: IntAnd(Bool) = tuple let first = 1 let second = true end
+let q: Pair(Int Bool) = p
+say("partial: " <> conv.int(firstOf(:Int :Bool)(p)) <> " " <> conv.int(q.first))
+
+(* A curried operator, applied to both arguments at once *)
+Let Curried = Fun(A::TYPE) Fun(B::TYPE) Tuple first: A second: B end
+let c: Curried(Int String) = tuple let first = 2 let second = "two" end
+let d: Curried(Int)(String) = c
+say("curried: " <> conv.int(d.first) <> " " <> c.second)
+
+(* An abstract operator, applied partially *)
+Let IntMap = hashMap.T(Int)
+let intMap(V::TYPE)(): IntMap(V) = hashMap.new(:Int :V fun(a: Int b: Int): Bool a is b hash.int)
+let m = intMap(:String)()
+hashMap.insert(m 3 "three")
+let n: hashMap.T(Int String) = m
+say("abstract: " <> maybe.unwrap(hashMap.get(n 3)))
+
+(* A partial application passed where an operator is expected *)
+let same(F::ALL(X::TYPE) TYPE)(x: F(Int)): F(Int) = x
+let e = same(:IntAnd)(tuple let first = 4 let second = 4 end)
+let f = same(:hashMap.T(String))(hashMap.new(:String :Int stringOp.equal hash.string))
+hashMap.insert(f "five" 5)
+say("argument: " <> conv.int(e.first) <> " " <> conv.int(maybe.unwrap(hashMap.get(f "five"))))

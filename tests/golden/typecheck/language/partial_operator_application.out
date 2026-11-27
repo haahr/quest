@@ -1,0 +1,226 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+        (TypedImportItem ('stringOp') : 'StringOp')
+        (TypedImportItem ('hashMap') : 'HashMap')
+        (TypedImportItem ('hash') : 'Hash')
+        (TypedImportItem ('maybe') : 'Maybe')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedLetValue 'say' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetType 'Pair' :kind ALL(A :: TYPE) ALL(B :: TYPE) TYPE)
+    (TypedLetType 'IntAnd' :kind ALL(B :: TYPE) TYPE)
+    (TypedLetValue 'firstOf' :type All(A :: TYPE B :: TYPE) Fun(p: Pair(A B)): A
+      :value (TypedFun :params (('p' : Pair(A B))) :type All(A :: TYPE B :: TYPE) Fun(p: Pair(A B)): A
+        :body (TypedSelect 'first' :type A
+          :target (TypedVar 'p' :type Pair(A B)))))
+    (TypedLetValue 'p' :type Pair(Int Bool)
+      :value (TypedTuple :type Tuple first: Int second: Bool end
+        :elements (
+          (TypedInt 1 :type Int)
+          (TypedBool true)
+        )))
+    (TypedLetValue 'q' :type Pair(Int Bool)
+      :value (TypedVar 'p' :type Pair(Int Bool)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'partial: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedTypeApp [Int Bool] :type Fun(p: Pair(Int Bool)): Int
+                      :func (TypedVar 'firstOf' :type All(A :: TYPE B :: TYPE) Fun(p: Pair(A B)): A))
+                    :args (
+                      (TypedVar 'p' :type Pair(Int Bool))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedSelect 'first' :type Int
+                      :target (TypedVar 'q' :type Pair(Int Bool)))
+                  )))))
+        )))
+    (TypedLetType 'Curried' :kind ALL(A :: TYPE) ALL(B :: TYPE) TYPE)
+    (TypedLetValue 'c' :type Curried(Int String)
+      :value (TypedTuple :type Tuple first: Int second: String end
+        :elements (
+          (TypedInt 2 :type Int)
+          (TypedString 'two' :type String)
+        )))
+    (TypedLetValue 'd' :type Curried(Int String)
+      :value (TypedVar 'c' :type Curried(Int String)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'curried: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedSelect 'first' :type Int
+                    :target (TypedVar 'd' :type Curried(Int String)))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedSelect 'second' :type String
+                  :target (TypedVar 'c' :type Curried(Int String))))))
+        )))
+    (TypedLetType 'IntMap' :kind ALL(V :: TYPE) TYPE)
+    (TypedLetValue 'intMap' :type All(V :: TYPE) Fun(): hashMap.T(Int V)
+      :value (TypedFun :params () :type All(V :: TYPE) Fun(): hashMap.T(Int V)
+        :body (TypedApp :type hashMap.T(Int V)
+          :func (TypedTypeApp [Int V] :type Fun(equal: Fun(k1: Int k2: Int): Bool hash: Fun(k: Int): word.T): hashMap.T(Int V)
+            :func (TypedSelect 'new' :type All(K :: TYPE V :: TYPE) Fun(equal: Fun(k1: K k2: K): Bool hash: Fun(k: K): word.T): hashMap.T(K V)
+              :target (TypedVar 'hashMap' :type Module 'hashMap')))
+          :args (
+            (TypedFun :params (('a' : Int) ('b' : Int)) :type Fun(a: Int b: Int): Bool
+              :body (TypedInfix 'is' :type Bool
+                :left (TypedVar 'a' :type Int)
+                :right (TypedVar 'b' :type Int)))
+            (TypedSelect 'int' :type Fun(n: Int): word.T
+              :target (TypedVar 'hash' :type Module 'hash'))
+          ))))
+    (TypedLetValue 'm' :type hashMap.T(Int String)
+      :value (TypedApp :type hashMap.T(Int String)
+        :func (TypedTypeApp [String] :type Fun(): hashMap.T(Int String)
+          :func (TypedVar 'intMap' :type All(V :: TYPE) Fun(): hashMap.T(Int V)))
+        :args ()))
+    (TypedExprStmt
+      :expr (TypedApp :type Bool
+        :func (TypedTypeApp [Int String] :type Fun(m: hashMap.T(Int String) key: Int value: String): Bool
+          :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K value: V): Bool
+            :target (TypedVar 'hashMap' :type Module 'hashMap')))
+        :args (
+          (TypedVar 'm' :type hashMap.T(Int String))
+          (TypedInt 3 :type Int)
+          (TypedString 'three' :type String)
+        )))
+    (TypedLetValue 'n' :type hashMap.T(Int String)
+      :value (TypedVar 'm' :type hashMap.T(Int String)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'abstract: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedTypeApp [String] :type Fun(o: maybe.T(String)): String
+                :func (TypedSelect 'unwrap' :type All(A :: TYPE) Fun(o: maybe.T(A)): A
+                  :target (TypedVar 'maybe' :type Module 'maybe')))
+              :args (
+                (TypedApp :type maybe.T(String)
+                  :func (TypedTypeApp [Int String] :type Fun(m: hashMap.T(Int String) key: Int): maybe.T(String)
+                    :func (TypedSelect 'get' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K): maybe.T(V)
+                      :target (TypedVar 'hashMap' :type Module 'hashMap')))
+                  :args (
+                    (TypedVar 'n' :type hashMap.T(Int String))
+                    (TypedInt 3 :type Int)
+                  ))
+              )))
+        )))
+    (TypedLetValue 'same' :type All(F :: ALL(X :: TYPE) TYPE) Fun(x: F(Int)): F(Int)
+      :value (TypedFun :params (('x' : F(Int))) :type All(F :: ALL(X :: TYPE) TYPE) Fun(x: F(Int)): F(Int)
+        :body (TypedVar 'x' :type F(Int))))
+    (TypedLetValue 'e' :type Pair(Int Int)
+      :value (TypedApp :type Pair(Int Int)
+        :func (TypedTypeApp [IntAnd] :type Fun(x: Pair(Int Int)): Pair(Int Int)
+          :func (TypedVar 'same' :type All(F :: ALL(X :: TYPE) TYPE) Fun(x: F(Int)): F(Int)))
+        :args (
+          (TypedTuple :type Tuple first: Int second: Int end
+            :elements (
+              (TypedInt 4 :type Int)
+              (TypedInt 4 :type Int)
+            ))
+        )))
+    (TypedLetValue 'f' :type hashMap.T(String Int)
+      :value (TypedApp :type hashMap.T(String Int)
+        :func (TypedTypeApp [hashMap.T(String)] :type Fun(x: hashMap.T(String Int)): hashMap.T(String Int)
+          :func (TypedVar 'same' :type All(F :: ALL(X :: TYPE) TYPE) Fun(x: F(Int)): F(Int)))
+        :args (
+          (TypedApp :type hashMap.T(String Int)
+            :func (TypedTypeApp [String Int] :type Fun(equal: Fun(k1: String k2: String): Bool hash: Fun(k: String): word.T): hashMap.T(String Int)
+              :func (TypedSelect 'new' :type All(K :: TYPE V :: TYPE) Fun(equal: Fun(k1: K k2: K): Bool hash: Fun(k: K): word.T): hashMap.T(K V)
+                :target (TypedVar 'hashMap' :type Module 'hashMap')))
+            :args (
+              (TypedSelect 'equal' :type Fun(s1: String s2: String): Bool
+                :target (TypedVar 'stringOp' :type Module 'stringOp'))
+              (TypedSelect 'string' :type Fun(s: String): word.T
+                :target (TypedVar 'hash' :type Module 'hash'))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Bool
+        :func (TypedTypeApp [String Int] :type Fun(m: hashMap.T(String Int) key: String value: Int): Bool
+          :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K value: V): Bool
+            :target (TypedVar 'hashMap' :type Module 'hashMap')))
+        :args (
+          (TypedVar 'f' :type hashMap.T(String Int))
+          (TypedString 'five' :type String)
+          (TypedInt 5 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'argument: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedSelect 'first' :type Int
+                    :target (TypedVar 'e' :type Pair(Int Int)))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Int
+                      :func (TypedTypeApp [Int] :type Fun(o: maybe.T(Int)): Int
+                        :func (TypedSelect 'unwrap' :type All(A :: TYPE) Fun(o: maybe.T(A)): A
+                          :target (TypedVar 'maybe' :type Module 'maybe')))
+                      :args (
+                        (TypedApp :type maybe.T(Int)
+                          :func (TypedTypeApp [String Int] :type Fun(m: hashMap.T(String Int) key: String): maybe.T(Int)
+                            :func (TypedSelect 'get' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K): maybe.T(V)
+                              :target (TypedVar 'hashMap' :type Module 'hashMap')))
+                          :args (
+                            (TypedVar 'f' :type hashMap.T(String Int))
+                            (TypedString 'five' :type String)
+                          ))
+                      ))
+                  )))))
+        )))
+  ))

@@ -1,0 +1,89 @@
+import conv = "conv" : Conv
+import stringOp = "string" : StringOp
+import hashMap = "collections/hashMap" : collections/HashMap
+import hash = "util/hash" : util/Hash
+import maybe = "util/maybe" : util/Maybe
+import writer = "writer" : Writer
+main {
+  funs {
+    fun say(s: String): Ok {
+      let %1: writer.T = member writer.output @18:43
+      let %2: String = prim <>(s, "\n") @18:57
+      let %3: Ok = call writer.putString(%1, %2) @18:26
+      return %3
+    }
+  }
+  funs {
+    fun firstOf [A::TYPE B::TYPE](p: Pair(A B)): A {
+      let %4: A = tuple_field(p, 0) @23:49
+      return %4
+    }
+  }
+  let first: Int = 1 @24:41
+  let second: Bool = true @24:56
+  let p.1: Pair(Int Bool) = tuple(first, second) @24:23
+  let q: Pair(Int Bool) = p.1 @25:25
+  let %5: Int = call firstOf [Int Bool](p.1) @26:29
+  let %6: String = call conv.int(%5) @26:20
+  let %7: Int = tuple_field(q, 0) @26:72
+  let %8: String = call conv.int(%7) @26:63
+  let %9: String = prim <>(" ", %8) @26:56
+  let %10: String = prim <>(%6, %9) @26:20
+  let %11: String = prim <>("partial: ", %10) @26:5
+  do call say(%11) @26:1
+  let first.1: Int = 2 @30:48
+  let second.1: String = "two" @30:63
+  let c: Curried(Int String) = tuple(first.1, second.1) @30:30
+  let d: Curried(Int String) = c @31:31
+  let %12: Int = tuple_field(d, 0) @32:29
+  let %13: String = call conv.int(%12) @32:20
+  let %14: String = tuple_field(c, 1) @32:48
+  let %15: String = prim <>(" ", %14) @32:41
+  let %16: String = prim <>(%13, %15) @32:20
+  let %17: String = prim <>("curried: ", %16) @32:5
+  do call say(%17) @32:1
+  funs {
+    fun intMap [V::TYPE](): hashMap.T(Int V) {
+      funs {
+        fun f(a: Int, b: Int): Bool {
+          let %18: Bool = prim is(a, b) @36:81
+          return %18
+        }
+      }
+      let %19: Fun(n: Int): word.T = member hash.int @36:88
+      let %20: hashMap.T(Int V) = call hashMap.new [Int V](f, %19) @36:36
+      return %20
+    }
+  }
+  let m: hashMap.T(Int String) = call intMap [String]() @37:9
+  let %21: Bool = call hashMap.insert [Int String](m, 3, "three") @38:1
+  let n: hashMap.T(Int String) = m @39:32
+  let %22: maybe.T(String) = call hashMap.get [Int String](n, 3) @40:34
+  let %23: String = call maybe.unwrap [String](%22) @40:21
+  let %24: String = prim <>("abstract: ", %23) @40:5
+  do call say(%24) @40:1
+  funs {
+    fun same [F::ALL(X :: TYPE) TYPE](x: F(Int)): F(Int) {
+      return x
+    }
+  }
+  let first.2: Int = 4 @44:41
+  let second.2: Int = 4 @44:56
+  let %25: Tuple first: Int second: Int end = tuple(first.2, second.2) @44:23
+  let e: Pair(Int Int) = call same [IntAnd](%25) @44:9
+  let %26: Fun(s1: String s2: String): Bool = member stringOp.equal @45:59
+  let %27: Fun(s: String): word.T = member hash.string @45:74
+  let %28: hashMap.T(String Int) = call hashMap.new [String Int](%26, %27) @45:34
+  let f.1: hashMap.T(String Int) = call same [hashMap.T(String)](%28) @45:9
+  let %29: Bool = call hashMap.insert [String Int](f.1, "five", 5) @46:1
+  let %30: Int = tuple_field(e, 0) @47:30
+  let %31: String = call conv.int(%30) @47:21
+  let %32: maybe.T(Int) = call hashMap.get [String Int](f.1, "five") @47:71
+  let %33: Int = call maybe.unwrap [Int](%32) @47:58
+  let %34: String = call conv.int(%33) @47:49
+  let %35: String = prim <>(" ", %34) @47:42
+  let %36: String = prim <>(%31, %35) @47:21
+  let %37: String = prim <>("argument: ", %36) @47:5
+  do call say(%37) @47:1
+}
+

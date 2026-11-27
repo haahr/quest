@@ -63,6 +63,7 @@ from quest.types import (
     check_kind_well_formed,
     check_type_contractive,
     synth_kind,
+    type_app,
 )
 from quest.types.env import (
     Environment,
@@ -447,7 +448,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
                     )
                 check_kind(args[0], TYPE_KIND, env)
                 return QExceptionType(payload_type=args[0])
-            return QTypeApp(constructor=ctor_type, arguments=args)
+            return type_app(ctor_type, args)
 
         # All(...) R lists type parameters (A::K or A <: B) and value parameters
         # (x: T) together, as a function's signature does. The parser makes each

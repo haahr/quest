@@ -137,6 +137,16 @@ Subkinding allows type operators and power kinds to be used wherever broader kin
   $\iff K_1' \le K_1 \land K_2 \le K_2'[Y \mapsto X]$
   (contravariant in parameter kind, covariant in result kind).
 
+**Applications of operators** are curried, as operator kinds are: `Fun(A::TYPE B::TYPE) T` has kind
+`ALL(A::TYPE) ALL(B::TYPE) TYPE`, so it may be applied to fewer arguments than its parameters, and a curried
+`Fun(A::TYPE) Fun(B::TYPE) T` to both at once. `type_app` (`types/model.py`; `model.typeApp` in the self-hosted
+compiler) makes an application of an application, `F(A)(B)`, the one application `F(A B)`, through aliases of
+`F(A)`, so that `hashMap.T(Int)(V)`, an abstract operator applied in two steps, is `hashMap.T(Int V)` to subtyping and
+to the back ends. `apply_type_fun` (`model.applyOperator`) reduces an operator given fewer arguments than its
+parameters to the operator of the rest, and one given more to its body applied to the rest; lazy evaluation and
+`beta_reduce_head` (`types/reduce.py`) both use it, and merge an application whose constructor reduces to an
+application left as it is (`tests/source/language/partial_operator_application.quest`).
+
 **Universal types** follow Cardelli's [TIncl Π] (*A Semantic Basis for Quest* §2):
 $\text{All}(X::K)\,B \le \text{All}(X::K')\,B' \iff K' \le K \land B \le B'$ under $X::K'$, contravariant in
 each quantifier's bound and covariant in the body, so a polymorphic function whose type parameters have weaker bounds
