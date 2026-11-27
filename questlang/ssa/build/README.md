@@ -33,9 +33,9 @@ passes its arguments. No φ placement is needed, because the only values that me
 
 Each IR variable has a `Binding`, defined in [`values.int.quest`](values.int.quest), which says where its value lives:
 
-- An **immutable variable** is bound to SSA values: as many as its representation has parts. An `Ok` has none; an
-  `Int` one `int`; a record two words (a pointer to its fields and its offset table), and a variant two (its tag and
-  its payload).
+- An **immutable variable** is bound to SSA values: as many as its representation has parts
+  ([`parts`](parts.int.quest)). An `Ok` has none; an `Int` one `int`; a record two words (a pointer to its fields and
+  its offset table), and a variant two (its tag and its payload).
 - A **mutable variable** is a stack slot, loaded on every read and stored on every assignment, as C compiled without
   optimization keeps it. This is always correct, needs no analysis, and gives `try` what it needs for free: a handler
   sees what the body last stored. The promotion pass later turns the slots it can into values.
@@ -62,7 +62,7 @@ b0(%0: ptr, %1: int):
 Every slot of a tuple, record, option, or array is one word, so aggregates are word arithmetic: the layout and the
 offsets come from [`../../repr`](../../repr) (`layout`, `runtimeLayout`, `staticdata`), the same modules the C
 backend's declarations are generated from. Reading a field may still take several steps, which
-[`representation.mod.quest`](representation.mod.quest) and [`aggregates.mod.quest`](aggregates.mod.quest) build:
+[`objects.mod.quest`](objects.mod.quest) and [`aggregates.mod.quest`](aggregates.mod.quest) build:
 
 - A record's field is found through its **offset table**, since a record viewed at a supertype has the same data but
   fields at different positions; a value of a bounded type parameter goes through the **view map** its type
@@ -128,8 +128,9 @@ cannot reach are dropped.
 
 ## How the modules depend on one another
 
-The modules form a chain, each using only those before it: `values` (representations, the builder's state, emitting,
-variables, words), `representation` (slots, aggregates' components, proxies, allocation), `descriptors`, `calls`,
+The modules form a chain, each using only those before it: `parts` (representations as SSA words), `values` (the
+builder's state, emitting, variables, words), `objects` (slots, aggregates' components, proxies, allocation),
+`descriptors`, `calls`,
 `aggregates`, `control`, `adapters`, and `unit`. [`../build.mod.quest`](../build.mod.quest) re-exports `unit`'s
 `buildUnit`.
 

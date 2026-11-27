@@ -1,0 +1,99 @@
+(* Quest Self-Hosted Compiler: The SSA Builder's Parts Implementation *)
+
+module parts : Parts
+import
+    collections/vector : collections/Vector
+
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/repr/layout : questlang/repr/Layout
+    questlang/repr/shapes : questlang/repr/Shapes
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/types/model : questlang/types/Model
+export
+    Let Type = model.Type
+    Let Variable = ir.Variable
+    let tInt = ssa.typeInt
+    let tPtr = ssa.typePtr
+    let tReal = ssa.typeReal
+    let tVal = ssa.typeVal
+
+    (* A word of a value's representation: its SSA type, and how it is stored
+     * (its width in bytes, and for a narrow one, whether it is signed) *)
+    Def Part = Tuple type: ssa.Type width: Int signed: Bool end
+    let part(t: ssa.Type width: Int signed: Bool): Part = tuple let type = t let width = width let signed = signed end
+    let wordPart(t: ssa.Type): Part = part(t 8 false)
+
+    (* The parts of a value of t, as a variable holds it
+     * (layout.representation): none for Ok, two for a record or a variant, a
+     * byte for a Bool or a Char stored, and otherwise a word *)
+    let ofType(t: Type): Array(Part) =
+        case layout.representationKind(t)
+            when repVoid then array of :Part end
+            when repInt, repWord then array of wordPart(tInt) end
+            when repQVal then array of wordPart(tVal) end
+            when repBool, repChar then array of part(tInt 1 false) end
+            when repReal then array of wordPart(tReal) end
+            when repRecord then array of wordPart(tPtr) wordPart(tPtr) end
+            when repVariant then array of wordPart(tInt) wordPart(tVal) end
+            when repPointer then array of wordPart(tPtr) end
+        end
+
+    let slotIsQVal(s: shapes.Shape): Bool =
+        case layout.shapeRepresentationKind(s)
+            when repQVal, repVoid then true
+            when repInt, repWord, repBool, repChar, repReal, repRecord, repVariant, repPointer then false
+        end
+
+    let partsHoldPointer(ps: Array(Part)): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent ps - 1} do
+                case ps[i].type when typePtr, typeVal then found := true when typeInt, typeReal then ok end
+            end
+            found
+        end
+    let holdsPointer(t: Type): Bool = partsHoldPointer(ofType(t))
+
+    (* The parts of a value of t in an aggregate's slot or a QVal word: one
+     * word, a record or variant as a pointer to its box
+     * (layout.isBoxedInSlots), a Bool or Char widened to the word *)
+    let slotParts(t: Type): Array(Part) =
+        if layout.isBoxedInSlots(shapes.shape(t)) then
+            array of wordPart(tPtr) end
+        else
+            let ps = ofType(t)
+            let r = array of(extent ps wordPart(tInt))
+            for i = 0 upto {extent ps - 1} do r[i] := wordPart(ps[i].type) end
+            r
+        end
+
+    (* The parts of an unboxed tuple of type t (questlang/ir/unbox): its
+     * components in their slot forms, a word each *)
+    let unboxedParts(t: Type): Array(Part) =
+        begin
+            let rs = shapes.shape(t)
+            let all = vector.new(:Part)
+            for i = 0 upto {extent rs.components - 1} do
+                let ps = slotParts(shapes.componentShape(rs.components[i]).type)
+                for k = 0 upto {extent ps - 1} do vector.append(all ps[k]) end
+            end
+            vector.toArray(all)
+        end
+
+    (* The parts of a variable's value: a boxed record or variant holds its box
+     * pointer, an unboxed tuple holds its components' slot parts, and other
+     * variables hold parts(v.type) *)
+    let varParts(v: Variable): Array(Part) =
+        if v.boxed then slotParts(v.type) elsif v.unboxed then unboxedParts(v.type) else ofType(v.type) end
+
+    let typesOf(ps: Array(Part)): Array(ssa.Type) =
+        begin
+            let r = array of(extent ps tInt)
+            for i = 0 upto {extent ps - 1} do r[i] := ps[i].type end
+            r
+        end
+
+    (* The word offsets of a location's parts: each part of a value in its own
+     * word, as a slot or a C location of the value lays them out *)
+    let partOffset(k: Int): Int = 8 * k
+end

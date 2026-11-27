@@ -22,6 +22,7 @@ import
     questlang/repr/shapes : questlang/repr/Shapes
     questlang/repr/staticdata : questlang/repr/StaticData
     questlang/repr/symbols : questlang/repr/Symbols
+    questlang/ssa/build/parts : questlang/ssa/build/Parts
     questlang/ssa/cfg : questlang/ssa/CFG
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/runtimeFunctions : questlang/ssa/RuntimeFunctions
@@ -45,92 +46,6 @@ export
     let tVal = ssa.typeVal
     let noValues = array of :Int end
     let noValuesTypes = array of :ssa.Type end
-
-    (* =========================================================================
-     * Representations as SSA values
-     * ====================================================================== *)
-
-    (* A word of a value's representation: its SSA type, and how it is stored
-     * (its width in bytes, and for a narrow one, whether it is signed) *)
-    Def Part = Tuple type: ssa.Type width: Int signed: Bool end
-    let part(t: ssa.Type width: Int signed: Bool): Part = tuple let type = t let width = width let signed = signed end
-    let wordPart(t: ssa.Type): Part = part(t 8 false)
-
-    (* The parts of a value of t, as a variable holds it
-     * (layout.representation): none for Ok, two for a record or a variant, a
-     * byte for a Bool or a Char stored, and otherwise a word *)
-    let parts(t: Type): Array(Part) =
-        case layout.representationKind(t)
-            when repVoid then array of :Part end
-            when repInt, repWord then array of wordPart(tInt) end
-            when repQVal then array of wordPart(tVal) end
-            when repBool, repChar then array of part(tInt 1 false) end
-            when repReal then array of wordPart(tReal) end
-            when repRecord then array of wordPart(tPtr) wordPart(tPtr) end
-            when repVariant then array of wordPart(tInt) wordPart(tVal) end
-            when repPointer then array of wordPart(tPtr) end
-        end
-
-    (* Whether a value of shape s is a QVal in a slot (an Ok's is too) *)
-    let slotIsQVal(s: shapes.Shape): Bool =
-        case layout.shapeRepresentationKind(s)
-            when repQVal, repVoid then true
-            when repInt, repWord, repBool, repChar, repReal, repRecord, repVariant, repPointer then false
-        end
-
-    (* Whether a value of parts ps has a word that may be a pointer *)
-    let partsHoldPointer(ps: Array(Part)): Bool =
-        begin
-            let var found = false
-            for i = 0 upto {extent ps - 1} do
-                case ps[i].type when typePtr, typeVal then found := true when typeInt, typeReal then ok end
-            end
-            found
-        end
-    let holdsPointer(t: Type): Bool = partsHoldPointer(parts(t))
-
-    (* The parts of a value of t in an aggregate's slot or a QVal word: one
-     * word, a record or variant as a pointer to its box
-     * (layout.isBoxedInSlots), a Bool or Char widened to the word *)
-    let slotParts(t: Type): Array(Part) =
-        if layout.isBoxedInSlots(shapes.shape(t)) then
-            array of wordPart(tPtr) end
-        else
-            let ps = parts(t)
-            let r = array of(extent ps wordPart(tInt))
-            for i = 0 upto {extent ps - 1} do r[i] := wordPart(ps[i].type) end
-            r
-        end
-
-    (* The parts of an unboxed tuple of type t (questlang/ir/unbox): its
-     * components in their slot forms, a word each *)
-    let unboxedParts(t: Type): Array(Part) =
-        begin
-            let rs = shapes.shape(t)
-            let all = vector.new(:Part)
-            for i = 0 upto {extent rs.components - 1} do
-                let ps = slotParts(shapes.componentShape(rs.components[i]).type)
-                for k = 0 upto {extent ps - 1} do vector.append(all ps[k]) end
-            end
-            vector.toArray(all)
-        end
-
-    (* The parts of a variable's value: a boxed record or variant holds its box
-     * pointer, an unboxed tuple holds its components' slot parts, and other
-     * variables hold parts(v.type) *)
-    let varParts(v: Variable): Array(Part) =
-        if v.boxed then slotParts(v.type) elsif v.unboxed then unboxedParts(v.type) else parts(v.type) end
-
-    let typesOf(ps: Array(Part)): Array(ssa.Type) =
-        begin
-            let r = array of(extent ps tInt)
-            for i = 0 upto {extent ps - 1} do r[i] := ps[i].type end
-            r
-        end
-
-    (* The word offsets of a location's parts: each part of a value in its own
-     * word, as a slot or a C location of the value lays them out *)
-    let partOffset(k: Int): Int = 8 * k
 
     (* =========================================================================
      * The unit's builder and each function's
@@ -268,7 +183,7 @@ export
                     end
                 let symbol = freshName(u "g_" <> bare)
                 put(u.globalSymbols v.id symbol)
-                let ps = varParts(v)
+                let ps = parts.varParts(v)
                 let n = extent ps
                 vector.append(u.built.data tuple
                     let symbol = symbol
@@ -277,7 +192,7 @@ export
                     let contents =
                         option contentsZero of ssa.Contents with let bytes = 8 * {if n > 0 then n else 1 end} end
                 end)
-                if partsHoldPointer(ps) then
+                if parts.partsHoldPointer(ps) then
                     vector.append(u.roots tuple let symbol = symbol let words = n end)
                 end
             end
@@ -349,7 +264,7 @@ export
     let unary(fn: Fn op: ssa.Opcode x: Int t: ssa.Type): Int = emit(fn op array of x end t)
     let symbolAt(fn: Fn symbol: String): Int = ssa.symbolAddress(fn.f fn.cur symbol)
     let symbolPlus(fn: Fn symbol: String addend: Int): Int = ssa.symbolPlus(fn.f fn.cur symbol addend)
-    let load(fn: Fn address: Int offset: Int p: Part): Int =
+    let load(fn: Fn address: Int offset: Int p: parts.Part): Int =
         ssa.load(fn.f fn.cur address offset p.width p.signed p.type)
     let loadWord(fn: Fn address: Int offset: Int t: ssa.Type): Int = ssa.load(fn.f fn.cur address offset 8 false t)
     let invariantWord(fn: Fn address: Int offset: Int t: ssa.Type): Int =
@@ -423,18 +338,21 @@ export
      * reals of its parameters' types, but 16-byte composites starting at
      * pairs and bytes (Bools and Chars) at narrow; and its results' parts, a
      * byte for a Bool or a Char *)
-    let signatureOf(params: Array(ssa.Type) pairs: Array(Int) narrow: Array(Int) results: Array(Part)): ssa.Signature =
+    let signatureOf(params: Array(ssa.Type) pairs: Array(Int) narrow: Array(Int)
+            results: Array(parts.Part)): ssa.Signature =
         begin
-            let s = ssa.signature(params typesOf(results) pairs narrow)
+            let s = ssa.signature(params parts.typesOf(results) pairs narrow)
             if {extent results is 1} andif {results[0].width is 1} then ssa.withResult(s ssa.passByte) else s end
         end
     (* A call of a Quest function: of the unit's or another unit's (or with
      * symbol "", of the code pointer args[0]), its results *)
-    let callQuest(fn: Fn symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int) results: Array(Part))
+    let callQuest(fn: Fn symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int)
+            results: Array(parts.Part))
             : Array(Int) =
         begin
             mayCollect(fn)
-            ssa.call(fn.f fn.cur symbol args signatureOf(typesOfValues(fn args) pairs narrow results) typesOf(results))
+            ssa.call(fn.f fn.cur symbol args signatureOf(typesOfValues(fn args) pairs narrow results)
+                    parts.typesOf(results))
         end
     let terminate(fn: Fn t: ssa.Terminator): Ok = ssa.terminate(fn.f fn.cur t)
     let terminated(fn: Fn): Bool = ssa.isTerminated(fn.f fn.cur)
@@ -476,7 +394,7 @@ export
                 if not(eq(entry.mode "value")) then
                     vector.append(types tPtr)
                 else
-                    let ps = varParts(entry.v)
+                    let ps = parts.varParts(entry.v)
                     if extent ps is 0 then vector.append(types tVal) end
                     for k = 0 upto {extent ps - 1} do vector.append(types ps[k].type) end
                 end
@@ -484,8 +402,8 @@ export
             vector.toArray(types)
         end
 
-    let codeResultParts(f: ir.Function): Array(Part) =
-        if f.unboxedResult then unboxedParts(f.resultType) else parts(f.resultType) end
+    let codeResultParts(f: ir.Function): Array(parts.Part) =
+        if f.unboxedResult then parts.unboxedParts(f.resultType) else parts.ofType(f.resultType) end
 
     (* A pointer n bytes past p *)
     let offsetPtr(fn: Fn p: Int n: Int): Int = if n is 0 then p else ssa.ptrAdd(fn.f fn.cur p constant(fn n)) end
@@ -507,11 +425,12 @@ export
         end
 
     (* The opcode extending a narrow part's byte *)
-    let extension(p: Part): ssa.Opcode = if p.signed then ssa.opSext8 else ssa.opZext8 end
+    let extension(p: parts.Part): ssa.Opcode = if p.signed then ssa.opSext8 else ssa.opZext8 end
 
     (* Extends a 1-byte bool or char returned from a callee to a full word,
      * since the ARM64 ABI (AAPCS64) leaves the upper bytes unspecified *)
-    let narrowed(fn: Fn v: Int p: Part): Int = if p.width is 1 then emit(fn extension(p) array of v end tInt) else v end
+    let narrowed(fn: Fn v: Int p: parts.Part): Int =
+        if p.width is 1 then emit(fn extension(p) array of v end tInt) else v end
 
     (* The source site of a raise or a check, a C string, or NULL *)
     let site(fn: Fn offset: maybe.T(Int)): Int =
@@ -586,40 +505,40 @@ export
                 end
             end
             if s < 0 then
-                let n = extent varParts(v)
+                let n = extent parts.varParts(v)
                 s := ssa.newSlot(fn.f 8 * {if n is 0 then 1 else n end} 8)
                 bind(fn v option bindSlot of Binding with let slot = s end)
             end
             ssa.slotAddress(fn.f fn.cur s)
         end
 
-    let readParts(fn: Fn address: Int ps: Array(Part)): Array(Int) =
+    let readParts(fn: Fn address: Int ps: Array(parts.Part)): Array(Int) =
         begin
             let vs = array of(extent ps 0)
-            for k = 0 upto {extent ps - 1} do vs[k] := load(fn address partOffset(k) ps[k]) end
+            for k = 0 upto {extent ps - 1} do vs[k] := load(fn address parts.partOffset(k) ps[k]) end
             vs
         end
 
     (* Reads a value stored directly in memory (a box or global record) versus
      * a location (a cell or var/out parameter), where records and variants are
      * held as box pointers (layout.shapeLocationRepresentation) *)
-    let readValue(fn: Fn address: Int t: Type): Array(Int) = readParts(fn address parts(t))
-    let locationParts(t: Type): Array(Part) =
-        if layout.isBoxedInSlots(shapes.shape(t)) then array of wordPart(tPtr) end else parts(t) end
+    let readValue(fn: Fn address: Int t: Type): Array(Int) = readParts(fn address parts.ofType(t))
+    let locationParts(t: Type): Array(parts.Part) =
+        if layout.isBoxedInSlots(shapes.shape(t)) then array of parts.wordPart(tPtr) end else parts.ofType(t) end
     let readLocation(fn: Fn address: Int t: Type): Array(Int) = readParts(fn address locationParts(t))
 
     (* A location of no words (an Ok's) holds nothing, whatever is stored: a
      * call at Ok of a function whose result is generic returns a word *)
-    let writeParts(fn: Fn address: Int ps: Array(Part) values: Array(Int)): Ok =
+    let writeParts(fn: Fn address: Int ps: Array(parts.Part) values: Array(Int)): Ok =
         begin
             if {extent ps isnot extent values} andif {extent ps > 0} then
                 raise unsupported with "a store of " <> conv.int(extent values) <> " values to a location of "
                     <> conv.int(extent ps) end
             end
-            for k = 0 upto {extent ps - 1} do store(fn address partOffset(k) ps[k].width values[k]) end
+            for k = 0 upto {extent ps - 1} do store(fn address parts.partOffset(k) ps[k].width values[k]) end
         end
 
-    let writeValue(fn: Fn address: Int t: Type values: Array(Int)): Ok = writeParts(fn address parts(t) values)
+    let writeValue(fn: Fn address: Int t: Type values: Array(Int)): Ok = writeParts(fn address parts.ofType(t) values)
     let writeLocation(fn: Fn address: Int t: Type values: Array(Int)): Ok =
         writeParts(fn address locationParts(t) values)
 
@@ -636,8 +555,8 @@ export
                     array of loadWord(fn x.state runtimeLayout.offset("QExceptionState" "exc") tPtr) end
                 when bindValues with x then x.values
                 when bindPointer with x then readParts(fn x.address locationParts(v.type))
-                when bindGlobal then readParts(fn symbolAt(fn globalSymbol(fn.u v)) varParts(v))
-                when bindSlot then readParts(fn slotOf(fn v) varParts(v))
+                when bindGlobal then readParts(fn symbolAt(fn globalSymbol(fn.u v)) parts.varParts(v))
+                when bindSlot then readParts(fn slotOf(fn v) parts.varParts(v))
             end
         end
 
@@ -646,14 +565,18 @@ export
         begin
             let b = binding(fn v)
             if maybe.isNone(b) then
-                if v.isMutable then writeParts(fn slotOf(fn v) varParts(v) values) else bindToValues(fn v values) end
+                if v.isMutable then
+                    writeParts(fn slotOf(fn v) parts.varParts(v) values)
+                else
+                    bindToValues(fn v values)
+                end
             else
                 case maybe.unwrap(b)
                     when bindPointer with x then
                         writeParts(fn x.address locationParts(v.type) values)
-                        if holdsPointer(v.type) then callVoid(fn "quest_barrier_slot" array of x.address end) end
-                    when bindGlobal then writeParts(fn symbolAt(fn globalSymbol(fn.u v)) varParts(v) values)
-                    when bindSlot then writeParts(fn slotOf(fn v) varParts(v) values)
+                        if parts.holdsPointer(v.type) then callVoid(fn "quest_barrier_slot" array of x.address end) end
+                    when bindGlobal then writeParts(fn symbolAt(fn globalSymbol(fn.u v)) parts.varParts(v) values)
+                    when bindSlot then writeParts(fn slotOf(fn v) parts.varParts(v) values)
                     when bindValues then bindToValues(fn v values)
                     when bindHandler then raise unsupported with "an assignment to a handler's variable" end
                 end
@@ -745,7 +668,7 @@ export
             when wordVariantBox then readValue(fn fromVal(fn w tPtr) t)
             when wordBits then array of fromVal(fn w tInt) end
             when wordInteger then
-                let ps = parts(t)
+                let ps = parts.ofType(t)
                 (* Extract Bool or Char from the word's low byte, matching C *)
                 if ps[0].width is 1 then
                     array of emit(fn extension(ps[0]) array of fromVal(fn w tInt) end tInt) end

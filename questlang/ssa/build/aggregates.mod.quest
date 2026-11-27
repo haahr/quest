@@ -14,7 +14,8 @@ import
     questlang/repr/symbols : questlang/repr/Symbols
     calls = questlang/ssa/build/calls : questlang/ssa/build/Calls
     descriptors = questlang/ssa/build/descriptors : questlang/ssa/build/Descriptors
-    questlang/ssa/build/representation : questlang/ssa/build/Representation
+    questlang/ssa/build/objects : questlang/ssa/build/Objects
+    questlang/ssa/build/parts : questlang/ssa/build/Parts
     vals = questlang/ssa/build/values : questlang/ssa/build/Values
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/types/model : questlang/types/Model
@@ -48,7 +49,7 @@ export
                 when planCast then
                     vs
                 when planUnproxy then
-                    array of representation.unproxy(fn vs[0]) end
+                    array of objects.unproxy(fn vs[0]) end
                 when planSlotBox then
                     if layout.isBoxedInSlots(shapes.shape(plan.source)) then vals.boxed(fn vs plan.source) else vs end
                 when planSlotUnbox then
@@ -74,7 +75,7 @@ export
                     if maybe.isNone(plan.thunk) then
                         raise vals.unsupported with "an adapt plan without its adapter" end
                     end
-                    let clos = representation.alloc(fn maybe.unwrap(runtimeLayout.struct("QAdaptClosure")).bytes
+                    let clos = objects.alloc(fn maybe.unwrap(runtimeLayout.struct("QAdaptClosure")).bytes
                             objectLayout.adaptClosureSymbol)
                     let code = vals.symbolAt(fn vals.codeName(fn.u maybe.unwrap(plan.thunk)))
                     vals.store(fn clos runtimeLayout.offset("QAdaptClosure" "fn") 8 code)
@@ -86,13 +87,13 @@ export
                     let targetS = shapes.shape(plan.target)
                     let n = if extent targetS.components < extent plan.fields then extent targetS.components
                         else extent plan.fields end
-                    let tup = representation.alloc(fn 8 * {if n is 0 then 1 else n end}
+                    let tup = objects.alloc(fn 8 * {if n is 0 then 1 else n end}
                             objectLayout.register(fn.u.layouts objectLayout.tuplePrefixLayout(targetS n)))
                     let mark = vals.beginInit(fn tup)
                     for i = 0 upto {n - 1} do
-                        let tc = representation.componentShape(targetS i)
-                        let sc = representation.componentShape(sourceS i)
-                        let fc = representation.tupleComponent(fn source sourceS i plan.access[i])
+                        let tc = objects.componentShape(targetS i)
+                        let sc = objects.componentShape(sourceS i)
+                        let fc = objects.tupleComponent(fn source sourceS i plan.access[i])
                         let fp = plan.fields[i]
                         let byDescriptor = maybe.isSome(fp) andif ir.planIs(maybe.unwrap(fp) ir.planView)
                         let converted =
@@ -101,20 +102,20 @@ export
                                  * the source slot's QVal word to the target
                                  * slot's representation *)
                                 let f = maybe.unwrap(fp)
-                                let word = representation.slotToWord(fn fc sc.type)
+                                let word = objects.slotToWord(fn fc sc.type)
                                 let w = vals.call1(fn "quest_convert"
                                         array of word
                                             descriptors.descriptor(fn f.descriptors[0])
                                             descriptors.descriptor(fn
                                                     f.descriptors[1])
                                         end)
-                                representation.slotFromWord(fn w tc.type)
+                                objects.slotFromWord(fn w tc.type)
                             elsif maybe.isSome(fp) then
                                 slotStore(fn convert(fn slotLoad(fn fc sc.type) maybe.unwrap(fp)) tc.type)
                             else
-                                representation.slotFromWord(fn representation.slotToWord(fn fc sc.type) tc.type)
+                                objects.slotFromWord(fn objects.slotToWord(fn fc sc.type) tc.type)
                             end
-                        representation.writeSlot(fn vals.offsetPtr(fn tup 8 * i) tc.type converted)
+                        objects.writeSlot(fn vals.offsetPtr(fn tup 8 * i) tc.type converted)
                     end
                     vals.endInit(fn mark tup)
                     array of tup end
@@ -150,7 +151,7 @@ export
                     vals.store(fn base offsets[i] 8 box)
                     k := k + 1
                 else
-                    representation.writeSlot(fn vals.offsetPtr(fn base offsets[i]) types[i] vs)
+                    objects.writeSlot(fn vals.offsetPtr(fn base offsets[i]) types[i] vs)
                 end
             end
         end
@@ -179,10 +180,10 @@ export
             let types = array of(extent x.args model.okType)
             for i = 0 upto {extent x.args - 1} do
                 offsets[i] := 8 * i
-                types[i] := if i < n then representation.componentShape(rs i).type else ir.atomType(x.args[i]) end
+                types[i] := if i < n then objects.componentShape(rs i).type else ir.atomType(x.args[i]) end
             end
             let boxes = embeddedShapes(x.args types x.embedded)
-            let tup = representation.alloc(fn structBytes + 16 * extent boxes
+            let tup = objects.alloc(fn structBytes + 16 * extent boxes
                     objectLayout.register(fn.u.layouts objectLayout.tupleLayout(rs "" boxes)))
             let mark = vals.beginInit(fn tup)
             storeFields(fn tup offsets x.args types x.embedded structBytes)
@@ -226,7 +227,7 @@ export
         begin
             let fs = fieldShape(rs o.name)
             if not(o.stored) then
-                representation.readSlot(fn recordSlot(fn vs rs o.name o.viewMap) fs.type)
+                objects.readSlot(fn recordSlot(fn vs rs o.name o.viewMap) fs.type)
             elsif maybe.isSome(o.viewMap) then
                 let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(o.viewMap)))
                 let w = vals.call1(fn "quest_view_record_field"
@@ -240,13 +241,13 @@ export
                 let slot = recordSlot(fn vs rs o.name maybe.none())
                 let stored = vals.loadWord(fn vs[1] 8 * extent rs.components vals.tPtr)
                 let t = fs.type
-                let types = vals.typesOf(vals.parts(t))
-                let plainRead = fun(): Array(Int) slotLoad(fn representation.readSlot(fn slot t) t)
-                representation.choose(fn vals.binary(fn ssa.opPne stored vals.null(fn)) types
+                let types = parts.typesOf(parts.ofType(t))
+                let plainRead = fun(): Array(Int) slotLoad(fn objects.readSlot(fn slot t) t)
+                objects.choose(fn vals.binary(fn ssa.opPne stored vals.null(fn)) types
                         fun(): Array(Int)
                             begin
                                 let storedType = vals.loadWord(fn stored 8 * k vals.tPtr)
-                                representation.choose(fn vals.binary(fn ssa.opPne storedType vals.null(fn)) types
+                                objects.choose(fn vals.binary(fn ssa.opPne storedType vals.null(fn)) types
                                         fun(): Array(Int) vals.fromWord(fn
                                                 vals.call1(fn "quest_convert"
                                                         array of vals.loadWord(fn slot 0 vals.tVal)
@@ -292,7 +293,7 @@ export
             let offsets = vector.toArray(offsetList)
             let embeddedArray = vector.toArray(embedded)
             let boxes = embeddedShapes(args types embeddedArray)
-            let box = representation.alloc(fn 16 + structBytes + 16 * extent boxes
+            let box = objects.alloc(fn 16 + structBytes + 16 * extent boxes
                     objectLayout.register(fn.u.layouts objectLayout.recordLayout(concrete "" boxes)))
             let mark = vals.beginInit(fn box)
             let payload = vals.offsetPtr(fn box 16)
@@ -371,7 +372,7 @@ export
 
     let makeAllocatedOption(fn: vals.Fn o: ir.OpMakeOption t: Type os: shapes.Shape): Array(Int) =
         begin
-            let opt = representation.alloc(fn layout.optionBytes(os.structure)
+            let opt = objects.alloc(fn layout.optionBytes(os.structure)
                     objectLayout.register(fn.u.layouts objectLayout.optionLayout(os "" o.tag)))
             let mark = vals.beginInit(fn opt)
             let var tag = o.tag
@@ -387,7 +388,7 @@ export
                 vals.check(fn vals.binary(fn ssa.opUlt checked count) true "quest_option_ordinal_error_at"
                         fun(): Array(Int) array of checked vals.constant(fn extent os.cases) vals.site(fn o.offset) end)
                 let tags = array of(extent o.cases 0)
-                for i = 0 upto {extent o.cases - 1} do tags[i] := representation.tagIndex(os o.cases[i]) end
+                for i = 0 upto {extent o.cases - 1} do tags[i] := objects.tagIndex(os o.cases[i]) end
                 vals.store(fn opt runtimeLayout.offset("QOptionHeader" "tag") 8 mapped(fn checked tags))
                 let n =
                     case ordinalAtom
@@ -398,7 +399,7 @@ export
                         andif {n < extent o.cases} then maybe.some(o.cases[n]) else os.cases[0].name end
             else
                 vals.store(fn opt runtimeLayout.offset("QOptionHeader" "tag") 8
-                        vals.constant(fn representation.tagIndex(os maybe.unwrapOr(tag ""))))
+                        vals.constant(fn objects.tagIndex(os maybe.unwrapOr(tag ""))))
             end
             if maybe.isSome(o.payload) andif maybe.isSome(tag) then
                 let tagName = maybe.unwrap(tag)
@@ -410,13 +411,13 @@ export
                     let pts = maybe.unwrap(pt)
                     let ps = shapes.shape(ir.atomType(payloadAtom))
                     for i = 0 upto {extent pts.components - 1} do
-                        let comp = representation.componentShape(pts i)
-                        representation.writeSlot(fn vals.offsetPtr(fn opt 8 + 8 * i) comp.type
-                                representation.tupleComponent(fn pv[0] ps i o.access[i]))
+                        let comp = objects.componentShape(pts i)
+                        objects.writeSlot(fn vals.offsetPtr(fn opt 8 + 8 * i) comp.type
+                                objects.tupleComponent(fn pv[0] ps i o.access[i]))
                     end
                 else
                     let st = if maybe.isSome(pt) then maybe.unwrap(pt).type else ir.atomType(payloadAtom) end
-                    representation.writeSlot(fn vals.offsetPtr(fn opt 8) st pv)
+                    objects.writeSlot(fn vals.offsetPtr(fn opt 8) st pv)
                 end
             end
             vals.endInit(fn mark opt)
@@ -443,7 +444,7 @@ export
             let table = fun(): Int vals.symbolAt(fn vals.optionTable(fn.u layout.shapeTag(os) extent os.cases))
             if maybe.isNone(o.ordinalAtom) andif maybe.isSome(o.tag)
                     andif caseWithoutComponents(os maybe.unwrap(o.tag)) then
-                array of vals.offsetPtr(fn table() 8 * representation.tagIndex(os maybe.unwrap(o.tag))) end
+                array of vals.offsetPtr(fn table() 8 * objects.tagIndex(os maybe.unwrap(o.tag))) end
             elsif maybe.isSome(o.ordinalAtom) andif allWithout then
                 let ordinalAtom = maybe.unwrap(o.ordinalAtom)
                 let checked = vals.atom1(fn ordinalAtom)
@@ -451,7 +452,7 @@ export
                         "quest_option_ordinal_error_at"
                         fun(): Array(Int) array of checked vals.constant(fn extent os.cases) vals.site(fn o.offset) end)
                 let tags = array of(extent o.cases 0)
-                for i = 0 upto {extent o.cases - 1} do tags[i] := representation.tagIndex(os o.cases[i]) end
+                for i = 0 upto {extent o.cases - 1} do tags[i] := objects.tagIndex(os o.cases[i]) end
                 array of vals.indexPtr(fn table()
                         vals.binary(fn ssa.opShl mapped(fn checked tags) vals.constant(fn 3))) end
             else
@@ -469,7 +470,7 @@ export
         begin
             let ts = shapes.shape(tupleType)
             let n = extent ts.components
-            let tup = representation.alloc(fn 8 * {if n is 0 then 1 else n end}
+            let tup = objects.alloc(fn 8 * {if n is 0 then 1 else n end}
                     objectLayout.register(fn.u.layouts objectLayout.tupleLayout(ts "" noBoxes)))
             let mark = vals.beginInit(fn tup)
             let pt = caseShape(os tag)
@@ -478,22 +479,22 @@ export
                 let pts = maybe.unwrap(pt)
                 for i = 0 upto {extent pts.components - 1} do
                     if {i + offset} < n then
-                        let src = representation.optionComponent(fn opt os tag i access[i])
-                        let wanted = representation.componentShape(ts i + offset)
-                        let have = representation.componentShape(pts i)
+                        let src = objects.optionComponent(fn opt os tag i access[i])
+                        let wanted = objects.componentShape(ts i + offset)
+                        let have = objects.componentShape(pts i)
                         let value =
-                            if vals.slotIsQVal(have) andif not(vals.slotIsQVal(wanted)) then
-                                representation.slotFromWord(fn src[0] wanted.type)
+                            if parts.slotIsQVal(have) andif not(parts.slotIsQVal(wanted)) then
+                                objects.slotFromWord(fn src[0] wanted.type)
                             else
                                 src
                             end
-                        representation.writeSlot(fn vals.offsetPtr(fn tup 8 * {i + offset}) wanted.type value)
+                        objects.writeSlot(fn vals.offsetPtr(fn tup 8 * {i + offset}) wanted.type value)
                     end
                 end
             elsif maybe.isSome(pt) then
-                let comp = representation.componentShape(ts offset)
-                representation.writeSlot(fn vals.offsetPtr(fn tup 8 * offset) comp.type
-                        representation.optionComponent(fn opt os tag ~1 access[0]))
+                let comp = objects.componentShape(ts offset)
+                objects.writeSlot(fn vals.offsetPtr(fn tup 8 * offset) comp.type
+                        objects.optionComponent(fn opt os tag ~1 access[0]))
             end
             vals.endInit(fn mark tup)
             tup
@@ -512,9 +513,9 @@ export
             end
             let tagDirect = case tagAccess when direct then true when original, proxy then false end
             if tagDirect then vals.offsetPtr(fn opt 8)
-            elsif not(proxied) then vals.offsetPtr(fn representation.unproxy(fn opt) 8)
+            elsif not(proxied) then vals.offsetPtr(fn objects.unproxy(fn opt) 8)
             else
-                representation.choose(fn vals.isProxy(fn opt) array of vals.tPtr end
+                objects.choose(fn vals.isProxy(fn opt) array of vals.tPtr end
                         fun(): Array(Int) array of vals.call1(fn "quest_proxy_option_payload" array of opt end) end
                         fun(): Array(Int) array of vals.offsetPtr(fn opt 8) end)[0]
             end
@@ -528,7 +529,7 @@ export
      * case ordinal when t has more components than the case). *)
     let viewPayload(fn: vals.Fn vs: Array(Int) ts: shapes.Shape tag: String vm: Int t: Type): Array(Int) =
         begin
-            let b = representation.tagIndex(ts tag)
+            let b = objects.tagIndex(ts tag)
             let cs = caseShape(ts tag)
             case ts.kind
                 when shapeVariant then
@@ -544,7 +545,7 @@ export
                                 array of vs[0] vm vals.constant(fn b) vals.constant(fn 0) end) t)
                     else
                         let n = extent tupleS.components
-                        let tup = representation.alloc(fn 8 * {if n is 0 then 1 else n end}
+                        let tup = objects.alloc(fn 8 * {if n is 0 then 1 else n end}
                                 objectLayout.register(fn.u.layouts objectLayout.tupleLayout(tupleS "" noBoxes)))
                         let mark = vals.beginInit(fn tup)
                         let var count = 0
@@ -557,9 +558,9 @@ export
                         for j = 0 upto {count - 1} do
                             let w = vals.call1(fn "quest_view_option_component"
                                     array of vs[0] vm vals.constant(fn b) vals.constant(fn j) end)
-                            let comp = representation.componentShape(tupleS j + offset)
-                            representation.writeSlot(fn vals.offsetPtr(fn tup 8 * {j + offset}) comp.type
-                                    representation.slotFromWord(fn w comp.type))
+                            let comp = objects.componentShape(tupleS j + offset)
+                            objects.writeSlot(fn vals.offsetPtr(fn tup 8 * {j + offset}) comp.type
+                                    objects.slotFromWord(fn w comp.type))
                         end
                         vals.endInit(fn mark tup)
                         array of tup end
@@ -573,8 +574,8 @@ export
             let vs = vals.atom(fn o.value)
             (* A decided payload's tag is known, and not tested *)
             if not(o.decided) then
-                let index = representation.tagIndex(ts o.tag)
-                let tag = representation.tagOf(fn vs ts o.access o.viewMap)
+                let index = objects.tagIndex(ts o.tag)
+                let tag = objects.tagOf(fn vs ts o.access o.viewMap)
                 let good = ssa.newBlock(fn.f)
                 let bad = ssa.newBlock(fn.f)
                 vals.terminate(fn option termBranch of ssa.Terminator with
@@ -597,7 +598,7 @@ export
             elsif shapes.kindIs(ts shapes.shapeVariant) then
                 let cs = caseShape(ts o.tag)
                 let caseT = if maybe.isSome(cs) then maybe.unwrap(cs).type else t end
-                representation.slotFromWord(fn vs[1] caseT)
+                objects.slotFromWord(fn vs[1] caseT)
             else
                 array of optionCaseTuple(fn vs[0] ts o.tag t 1 o.components maybe.unwrapOr(o.ordinalIndex 0)) end
             end
@@ -627,13 +628,13 @@ export
         begin
             let elem = shapes.element(shapes.shape(t))
             let n = extent args
-            let arr = representation.alloc(fn runtimeLayout.offset("QArray" "data") + 8 * n
+            let arr = objects.alloc(fn runtimeLayout.offset("QArray" "data") + 8 * n
                     objectLayout.arraySymbol(objectLayout.slotKind(elem)))
             let mark = vals.beginInit(fn arr)
             vals.store(fn arr runtimeLayout.offset("QArray" "length") 8 vals.constant(fn n))
             for i = 0 upto {n - 1} do
                 vals.store(fn arr runtimeLayout.offset("QArray" "data") + 8
-                    * i 8 representation.slotToWord(fn vals.atom(fn args[i]) elem.type))
+                    * i 8 objects.slotToWord(fn vals.atom(fn args[i]) elem.type))
             end
             vals.endInit(fn mark arr)
             array of arr end
@@ -644,7 +645,7 @@ export
      * ====================================================================== *)
 
     (* A call of the closure at clos, with the closure itself and args *)
-    let callClosureWith(fn: vals.Fn clos: Int args: Array(Int) results: Array(vals.Part)): Array(Int) =
+    let callClosureWith(fn: vals.Fn clos: Int args: Array(Int) results: Array(parts.Part)): Array(Int) =
         begin
             let code = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
             vals.callQuest(fn "" vals.concat(array of code clos end args) vals.noValues vals.noValues results)

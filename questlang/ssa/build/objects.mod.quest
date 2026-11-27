@@ -1,7 +1,6 @@
-(* Quest Self-Hosted Compiler: The SSA Builder's Representation
- * Implementation *)
+(* Quest Self-Hosted Compiler: The SSA Builder's Objects Implementation *)
 
-module representation : Representation
+module objects : Objects
 import
     util/maybe : util/Maybe
 
@@ -9,6 +8,7 @@ import
     questlang/repr/layout : questlang/repr/Layout
     questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     questlang/repr/shapes : questlang/repr/Shapes
+    questlang/ssa/build/parts : questlang/ssa/build/Parts
     vals = questlang/ssa/build/values : questlang/ssa/build/Values
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/types/model : questlang/types/Model
@@ -18,9 +18,9 @@ export
 
     (* The values of a slot at an address (its slot form: a record or variant
      * as its box's pointer) *)
-    let readSlot(fn: vals.Fn address: Int t: Type): Array(Int) = vals.readParts(fn address vals.slotParts(t))
+    let readSlot(fn: vals.Fn address: Int t: Type): Array(Int) = vals.readParts(fn address parts.slotParts(t))
     let writeSlot(fn: vals.Fn address: Int t: Type values: Array(Int)): Ok =
-        vals.writeParts(fn address vals.slotParts(t) values)
+        vals.writeParts(fn address parts.slotParts(t) values)
     (* Convert between a slot's SSA values and a 64-bit QVal word
      * (shapeSlotToQval and shapeQvalToSlot); a boxed record or variant is its
      * box pointer's word *)
@@ -90,7 +90,7 @@ export
                 when direct then readSlot(fn vals.offsetPtr(fn t offset) comp.type)
                 when original then readSlot(fn vals.offsetPtr(fn unproxy(fn t) offset) comp.type)
                 when proxy then
-                    choose(fn vals.isProxy(fn t) vals.typesOf(vals.slotParts(comp.type))
+                    choose(fn vals.isProxy(fn t) parts.typesOf(parts.slotParts(comp.type))
                             fun(): Array(Int)
                                 slotFromWord(fn vals.call1(fn "quest_proxy_element" array of t vals.constant(fn i) end)
                                         comp.type)
@@ -141,7 +141,7 @@ export
                 when direct then readSlot(fn vals.offsetPtr(fn o offset) comp.type)
                 when original then readSlot(fn vals.offsetPtr(fn unproxy(fn o) offset) comp.type)
                 when proxy then
-                    choose(fn vals.isProxy(fn o) vals.typesOf(vals.slotParts(comp.type))
+                    choose(fn vals.isProxy(fn o) parts.typesOf(parts.slotParts(comp.type))
                             fun(): Array(Int) slotFromWord(fn
                                     vals.call1(fn "quest_proxy_option_element" array of o
                                         vals.constant(fn {if i < 0 then 0 else i end})

@@ -14,7 +14,8 @@ import
     questlang/repr/shapes : questlang/repr/Shapes
     questlang/repr/symbols : questlang/repr/Symbols
     descriptors = questlang/ssa/build/descriptors : questlang/ssa/build/Descriptors
-    questlang/ssa/build/representation : questlang/ssa/build/Representation
+    questlang/ssa/build/objects : questlang/ssa/build/Objects
+    questlang/ssa/build/parts : questlang/ssa/build/Parts
     vals = questlang/ssa/build/values : questlang/ssa/build/Values
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/types/model : questlang/types/Model
@@ -46,7 +47,7 @@ export
                     let a = x()
                     let b = y()
                     vals.check(fn vals.binary(fn ssa.opNe b vals.constant(fn 0)) true "quest_raise_int_error_at" site)
-                    representation.choose(fn vals.binary(fn ssa.opEq b vals.constant(fn ~1)) array of vals.tInt end
+                    objects.choose(fn vals.binary(fn ssa.opEq b vals.constant(fn ~1)) array of vals.tInt end
                             fun(): Array(Int) array of byMinusOne(a) end
                             fun(): Array(Int) array of vals.binary(fn op a b) end)
                 end
@@ -71,7 +72,7 @@ export
                                     vals.atom1(fn o.args[0])
                                     vals.atom1(fn o.args[1])
                                 end
-                            vals.narrowed(fn vals.call1(fn "quest_val_is" args) vals.part(vals.tInt 1 false))
+                            vals.narrowed(fn vals.call1(fn "quest_val_is" args) parts.part(vals.tInt 1 false))
                         elsif maybe.isSome(o.descriptor)
                                 andif vals.eq(layout.representation(ir.atomType(first)) "QVariantVal") then
                             (* Compares variants by tag and payload value (see
@@ -79,7 +80,7 @@ export
                             let a = vals.atom(fn o.args[0])
                             let b = vals.atom(fn o.args[1])
                             let args = array of descriptors.maybeDescriptor(fn o.descriptor) a[0] a[1] b[0] b[1] end
-                            vals.narrowed(fn vals.call1(fn "quest_variant_is" args) vals.part(vals.tInt 1 false))
+                            vals.narrowed(fn vals.call1(fn "quest_variant_is" args) parts.part(vals.tInt 1 false))
                         elsif vals.eq(layout.representation(ir.atomType(first)) "QRecordVal") then
                             (* Record identity compares payload pointers only: a
                              * supertype view (quest_record_view) replaces the
@@ -92,7 +93,7 @@ export
                             let args = array of descriptors.maybeDescriptor(fn o.descriptor) vals.atom1(fn o.args[0])
                                 vals.atom1(fn o.args[1])
                             end
-                            vals.narrowed(fn vals.call1(fn "quest_option_is" args) vals.part(vals.tInt 1 false))
+                            vals.narrowed(fn vals.call1(fn "quest_option_is" args) parts.part(vals.tInt 1 false))
                         else
                             let a = vals.atom(fn o.args[0])
                             let b = vals.atom(fn o.args[1])
@@ -104,8 +105,8 @@ export
                                 when typePtr then
                                     case o.access
                                         when original then
-                                            vals.binary(fn ssa.opPeq representation.unproxy(fn a[0])
-                                                    representation.unproxy(fn b[0]))
+                                            vals.binary(fn ssa.opPeq objects.unproxy(fn a[0])
+                                                    objects.unproxy(fn b[0]))
                                         when direct, proxy then vals.binary(fn ssa.opPeq a[0] b[0])
                                     end
                                 when typeReal then vals.binary(fn ssa.opFeq a[0] b[0])
@@ -160,14 +161,14 @@ export
      * ====================================================================== *)
 
     (* The C ABI result parts for a function type's return type *)
-    let resultParts(t: Type): Array(vals.Part) =
+    let resultParts(t: Type): Array(parts.Part) =
         begin
             let var s = shapes.shape(t)
             while shapes.kindIs(s shapes.shapeAll) do s := shapes.body(s) end
-            if shapes.kindIs(s shapes.shapeFun) then vals.parts(shapes.result(s).type) else vals.parts(s.type) end
+            if shapes.kindIs(s shapes.shapeFun) then parts.ofType(shapes.result(s).type) else parts.ofType(s.type) end
         end
 
-    let resultsOf(fn: vals.Fn ps: Array(vals.Part) results: Array(Int)): Array(Int) =
+    let resultsOf(fn: vals.Fn ps: Array(parts.Part) results: Array(Int)): Array(Int) =
         begin
             let r = array of(extent results 0)
             for i = 0 upto {extent results - 1} do r[i] := vals.narrowed(fn results[i] ps[i]) end
@@ -181,7 +182,7 @@ export
             let starts = vector.new(:Int)
             let var at = lead
             for i = 0 upto {extent args - 1} do
-                let n = extent vals.parts(ir.atomType(args[i]))
+                let n = extent parts.ofType(ir.atomType(args[i]))
                 if n is 2 then vector.append(starts at) end
                 at := at + {if n is 0 then 1 else n end}
             end
@@ -195,7 +196,7 @@ export
             let found = vector.new(:Int)
             let var at = lead
             for i = 0 upto {extent args - 1} do
-                let ps = vals.parts(ir.atomType(args[i]))
+                let ps = parts.ofType(ir.atomType(args[i]))
                 if {extent ps is 1} andif {ps[0].width is 1} then vector.append(found at) end
                 at := at + {if extent ps is 0 then 1 else extent ps end}
             end
@@ -309,11 +310,11 @@ export
                     let w = x()
                     let n = y()
                     let shifted(op: ssa.Opcode by: Int): Array(Int) =
-                        representation.choose(fn vals.binary(fn ssa.opUlt by vals.constant(fn 64))
+                        objects.choose(fn vals.binary(fn ssa.opUlt by vals.constant(fn 64))
                                 array of vals.tInt end
                                 fun(): Array(Int) array of vals.binary(fn op w by) end
                                 fun(): Array(Int) array of vals.constant(fn 0) end)
-                    maybe.some(representation.choose(fn vals.binary(fn ssa.opLt n vals.constant(fn 0))
+                    maybe.some(objects.choose(fn vals.binary(fn ssa.opLt n vals.constant(fn 0))
                             array of vals.tInt end
                             fun(): Array(Int) shifted(ssa.opLshr vals.binary(fn ssa.opSub vals.constant(fn 0) n))
                             fun(): Array(Int) shifted(ssa.opShl n)))
@@ -325,13 +326,13 @@ export
                 one(n)
             elsif named("quest_string_length") then
                 let s = x()
-                maybe.some(representation.choose(fn vals.binary(fn ssa.opPeq s vals.null(fn))
+                maybe.some(objects.choose(fn vals.binary(fn ssa.opPeq s vals.null(fn))
                         array of vals.tInt end
                         fun(): Array(Int) array of vals.constant(fn 0) end
                         fun(): Array(Int)
                             array of vals.invariantWord(fn s runtimeLayout.offset("QString" "length") vals.tInt) end))
             elsif named("quest_string_get_char") then
-                one(vals.load(fn byteAddress(x() y()) 0 vals.part(vals.tInt 1 false)))
+                one(vals.load(fn byteAddress(x() y()) 0 parts.part(vals.tInt 1 false)))
             elsif named("quest_string_set_char") then
                 let s = x()
                 let address = byteAddress(s y())
@@ -339,7 +340,7 @@ export
                  * quest_string_set_char does: its header's bit, in the byte of
                  * the word before the string that holds it *)
                 let bit = runtimeLayout.constant("Q_HEADER_READONLY_BIT")
-                let headerByte = vals.load(fn s {bit / 8} - 8 vals.part(vals.tInt 1 false))
+                let headerByte = vals.load(fn s {bit / 8} - 8 parts.part(vals.tInt 1 false))
                 let var mask = 1
                 for k = 1 upto {bit % 8} do mask := 2 * mask end
                 let clear = vals.binary(fn ssa.opEq vals.binary(fn ssa.opAnd headerByte vals.constant(fn mask))
@@ -353,7 +354,7 @@ export
         end
 
     (* A direct call whose results are ps *)
-    let directCallOf(fn: vals.Fn symbol: String lead: Array(Int) args: Array(Atom) ps: Array(vals.Part)): Array(Int) =
+    let directCallOf(fn: vals.Fn symbol: String lead: Array(Int) args: Array(Atom) ps: Array(parts.Part)): Array(Int) =
         begin
             let vs = vals.callQuest(fn symbol vals.concat(lead vals.callAtoms(fn args)) pairsOf(extent lead args)
                     narrowOf(extent lead args) ps)
@@ -417,7 +418,7 @@ export
                 (* A function returning an unboxed tuple returns its
                  * components (questlang/ir/unbox) *)
                 let ps =
-                    if k.code.unboxedResult then vals.unboxedParts(k.code.resultType) else resultParts(callee.type) end
+                    if k.code.unboxedResult then parts.unboxedParts(k.code.resultType) else resultParts(callee.type) end
                 let thunked = forwardedExternal(k.code)
                 let operation =
                     if maybe.isSome(thunked) then
@@ -445,7 +446,7 @@ export
                     let all = vals.retyped(fn vals.concat(lead vals.callAtoms(fn args)) vals.codeParamTypes(k.code))
                     let vs = vals.callQuest(fn vals.codeName(fn.u k.code) all pairsOf(extent lead args)
                             narrowOf(extent lead args) vals.codeResultParts(k.code))
-                    resultsOf(fn ps vals.retyped(fn vs vals.typesOf(ps)))
+                    resultsOf(fn ps vals.retyped(fn vs parts.typesOf(ps)))
                 end
             else
                 indirectCall(fn callee descs args)
@@ -500,7 +501,7 @@ export
      * Mirrors the C printer's libraryExternal. *)
     let libraryExternal(imp: ir.Import member: String args: Array(Atom) calleeType: Type): maybe.T(String) =
         begin
-            let held(ps: Array(vals.Part)): Bool =
+            let held(ps: Array(parts.Part)): Bool =
                 begin
                     let var any = false
                     for k = 0 upto {extent ps - 1} do
@@ -510,7 +511,7 @@ export
                 end
             let var unheld = not(held(resultParts(calleeType)))
             for i = 0 upto {extent args - 1} do
-                if held(vals.parts(ir.atomType(args[i]))) then unheld := false end
+                if held(parts.ofType(ir.atomType(args[i]))) then unheld := false end
             end
             let var symbol = maybe.none(:String)
             if unheld andif maybe.isSome(imp.libPath) then
@@ -599,7 +600,7 @@ export
             let val = vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") vals.tPtr)
             let dict = vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") vals.tPtr)
             let offset = vals.loadWord(fn dict 8 * index vals.tInt)
-            representation.readSlot(fn vals.indexPtr(fn val offset) fieldType)
+            objects.readSlot(fn vals.indexPtr(fn val offset) fieldType)
         end
 
     (* Loads the two-word QRecordVal for the module named name: its payload

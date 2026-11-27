@@ -1,11 +1,11 @@
 (* Quest Self-Hosted Compiler: The SSA Builder's Values Interface
  *
  * Provides the SSA builder's foundation (docs/ssa.md, docs/arm64.md section
- * 3.2): splitting Quest values into SSA word parts, unit and function builder
- * state, instruction emission, variable bindings (SSA values, stack slots,
- * pointers, globals, and exception handler state), atoms, QVal word and box
- * conversions, runtime error checks, and function lifecycle helpers.
- * ssa/build/representation handles aggregate component access. *)
+ * 3.2): unit and function builder state, instruction emission, variable
+ * bindings (SSA values, stack slots, pointers, globals, and exception handler
+ * state), atoms, QVal word and box conversions, runtime error checks, and
+ * function lifecycle helpers. ssa/build/parts splits Quest values into SSA
+ * word parts, and ssa/build/objects handles aggregate component access. *)
 
 interface Values
 import
@@ -20,6 +20,7 @@ import
     questlang/repr/objectLayout : questlang/repr/ObjectLayout
     questlang/repr/shapes : questlang/repr/Shapes
     questlang/repr/staticdata : questlang/repr/StaticData
+    questlang/ssa/build/parts : questlang/ssa/build/Parts
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/types/model : questlang/types/Model
 export
@@ -39,26 +40,6 @@ export
     tVal: ssa.Type
     noValues: Array(Int)
     noValuesTypes: Array(ssa.Type)
-
-    (* Representations as SSA values *)
-    (* A word of a value's representation: its SSA type, and how it is stored
-     * (its width in bytes, and for a narrow one, whether it is signed) *)
-    Def Part = Tuple type: ssa.Type width: Int signed: Bool end
-    part(t: ssa.Type width: Int signed: Bool): Part
-    (* The parts of a value of t, as a variable holds it
-     * (layout.representation): none for Ok, two for a record or a variant, a
-     * byte for a Bool or a Char stored, and otherwise a word *)
-    parts(t: Type): Array(Part)
-    (* Whether a value of shape s is a QVal in a slot (an Ok's is too) *)
-    slotIsQVal(s: shapes.Shape): Bool
-    (* The parts of a variable's value: a boxed record or variant holds its box
-     * pointer, an unboxed tuple holds its components' slot parts, and other
-     * variables hold parts(v.type) *)
-    varParts(v: Variable): Array(Part)
-    (* The parts of an unboxed tuple of type t (questlang/ir/unbox): its
-     * components in their slot forms, a word each *)
-    unboxedParts(t: Type): Array(Part)
-    typesOf(ps: Array(Part)): Array(ssa.Type)
 
     (* The unit's builder and each function's *)
     (* An entry of a unit's root table: a global's symbol and its words *)
@@ -178,7 +159,7 @@ export
     unary(fn: Fn op: ssa.Opcode x: Int t: ssa.Type): Int
     symbolAt(fn: Fn symbol: String): Int
     symbolPlus(fn: Fn symbol: String addend: Int): Int
-    load(fn: Fn address: Int offset: Int p: Part): Int
+    load(fn: Fn address: Int offset: Int p: parts.Part): Int
     loadWord(fn: Fn address: Int offset: Int t: ssa.Type): Int
     (* A word that nothing writes once the object holding it is made, a
      * closure's code, say (ssa.Inst.invariant) *)
@@ -207,10 +188,10 @@ export
      * reals of its parameters' types, but 16-byte composites starting at
      * pairs and bytes (Bools and Chars) at narrow; and its results' parts, a
      * byte for a Bool or a Char *)
-    signatureOf(params: Array(ssa.Type) pairs: Array(Int) narrow: Array(Int) results: Array(Part)): ssa.Signature
+    signatureOf(params: Array(ssa.Type) pairs: Array(Int) narrow: Array(Int) results: Array(parts.Part)): ssa.Signature
     (* A call of a Quest function: of the unit's or another unit's (or with
      * symbol "", of the code pointer args[0]), its results *)
-    callQuest(fn: Fn symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int) results: Array(Part))
+    callQuest(fn: Fn symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int) results: Array(parts.Part))
             : Array(Int)
     terminate(fn: Fn t: ssa.Terminator): Ok
     terminated(fn: Fn): Bool
@@ -231,7 +212,7 @@ export
      * makes them): its closure, its own type parameters' descriptors, then
      * its parameters' parts; and of its results *)
     codeParamTypes(f: ir.Function): Array(ssa.Type)
-    codeResultParts(f: ir.Function): Array(Part)
+    codeResultParts(f: ir.Function): Array(parts.Part)
     (* A pointer n bytes past p *)
     offsetPtr(fn: Fn p: Int n: Int): Int
     (* A pointer plus a byte count held in a value *)
@@ -242,7 +223,7 @@ export
     concat(a: Array(Int) b: Array(Int)): Array(Int)
     (* Extends a 1-byte bool or char returned from a callee to a full word,
      * since the ARM64 ABI (AAPCS64) leaves the upper bytes unspecified *)
-    narrowed(fn: Fn v: Int p: Part): Int
+    narrowed(fn: Fn v: Int p: parts.Part): Int
     (* The source site of a raise or a check, a C string, or NULL *)
     site(fn: Fn offset: maybe.T(Int)): Int
 
@@ -305,10 +286,6 @@ export
      * calls the runtime's function name, which raises, with the arguments
      * args makes there, so that the common path computes none of them *)
     check(fn: Fn cond: Int holds: Bool name: String args: All() Array(Int)): Ok
-    (* Whether a value of type t has a word that may be a pointer, which a
-     * store of it into an existing object must barrier (docs/collector.md
-     * section 3.5) *)
-    holdsPointer(t: Type): Bool
 
     (* Functions being built *)
     newFn(u: UnitBuilder f: Function closure: maybe.T(ir.OpMakeClosure)): Fn
@@ -317,12 +294,8 @@ export
      * renumbered in order *)
     finish(fn: Fn): Ok
 
-    (* The parts of a value of t in an aggregate's slot or a QVal word: one
-     * word, a record or variant as a pointer to its box
-     * (layout.isBoxedInSlots), a Bool or Char widened to the word *)
-    slotParts(t: model.Type): Array(Part)
     (* The values of parts ps at an address, and their store; a location of no
      * words (an Ok's) holds nothing, whatever is stored *)
-    readParts(fn: Fn address: Int ps: Array(Part)): Array(Int)
-    writeParts(fn: Fn address: Int ps: Array(Part) values: Array(Int)): Ok
+    readParts(fn: Fn address: Int ps: Array(parts.Part)): Array(Int)
+    writeParts(fn: Fn address: Int ps: Array(parts.Part) values: Array(Int)): Ok
 end

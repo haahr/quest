@@ -1,0 +1,48 @@
+(* Quest Self-Hosted Compiler: The SSA Builder's Parts Interface
+ *
+ * A Quest value's representation as SSA words (docs/ssa.md section 4,
+ * docs/arm64.md section 3.2): the parts a value of a type takes as a variable
+ * holds it, in an aggregate's slot, in an unboxed tuple, or in a variable,
+ * each a word's SSA type and how it is stored. ssa/build/values emits the
+ * loads and stores of them. *)
+
+interface Parts
+import
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/repr/shapes : questlang/repr/Shapes
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/types/model : questlang/types/Model
+export
+    (* A word of a value's representation: its SSA type, and how it is stored
+     * (its width in bytes, and for a narrow one, whether it is signed) *)
+    Def Part = Tuple type: ssa.Type width: Int signed: Bool end
+    part(t: ssa.Type width: Int signed: Bool): Part
+    (* A whole word of type t *)
+    wordPart(t: ssa.Type): Part
+    (* The parts of a value of t, as a variable holds it
+     * (layout.representation): none for Ok, two for a record or a variant, a
+     * byte for a Bool or a Char stored, and otherwise a word *)
+    ofType(t: model.Type): Array(Part)
+    (* Whether a value of shape s is a QVal in a slot (an Ok's is too) *)
+    slotIsQVal(s: shapes.Shape): Bool
+    (* Whether a value of parts ps, or of type t, has a word that may be a
+     * pointer, which a store of it into an existing object must barrier
+     * (docs/collector.md section 3.5) *)
+    partsHoldPointer(ps: Array(Part)): Bool
+    holdsPointer(t: model.Type): Bool
+    (* The parts of a value of t in an aggregate's slot or a QVal word: one
+     * word, a record or variant as a pointer to its box
+     * (layout.isBoxedInSlots), a Bool or Char widened to the word *)
+    slotParts(t: model.Type): Array(Part)
+    (* The parts of an unboxed tuple of type t (questlang/ir/unbox): its
+     * components in their slot forms, a word each *)
+    unboxedParts(t: model.Type): Array(Part)
+    (* The parts of a variable's value: a boxed record or variant holds its box
+     * pointer, an unboxed tuple holds its components' slot parts, and other
+     * variables hold ofType(v.type) *)
+    varParts(v: ir.Variable): Array(Part)
+    typesOf(ps: Array(Part)): Array(ssa.Type)
+    (* The word offsets of a location's parts: each part of a value in its own
+     * word, as a slot or a C location of the value lays them out *)
+    partOffset(k: Int): Int
+end
