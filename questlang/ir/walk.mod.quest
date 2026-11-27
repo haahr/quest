@@ -5,6 +5,7 @@ import
     collections/hashMap : collections/HashMap
     collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
+    util/iter : util/Iter
     util/maybe : util/Maybe
 
     questlang/common/maps : questlang/common/Maps
@@ -747,10 +748,11 @@ export
             else maybe.none()
         end
 
-    let knownClosures(unit: nodes.Unit): maps.IntMap(nodes.OpMakeClosure) =
+    (* The statements of the unit's main body, then its modules'
+     * initializers, then its functions, not entering the functions they
+     * bind *)
+    let closureStatements(unit: nodes.Unit): vector.T(nodes.Stmt) =
         begin
-            let same = fun(a: Int b: Int): Bool a is b
-            let known = maps.newIntMap(:nodes.OpMakeClosure)
             let bodies = vector.new(:nodes.Body)
             vector.append(bodies unit.main)
             for i = 0 upto {vector.length(unit.modules) - 1} do
@@ -766,7 +768,12 @@ export
                     vector.append(stmts vector.get(found k))
                 end
             end
-            (* Each function's closures, by its id *)
+            stmts
+        end
+
+    (* Each function's closures, by its id, in the order of stmts *)
+    let allClosuresByFunction(stmts: vector.T(nodes.Stmt)): maps.IntMap(vector.T(nodes.OpMakeClosure)) =
+        begin
             let closuresOf = maps.newIntMap(:vector.T(nodes.OpMakeClosure))
             for k = 0 upto {vector.length(stmts) - 1} do
                 case vector.get(stmts k)
@@ -783,6 +790,26 @@ export
                     else ok
                 end
             end
+            closuresOf
+        end
+
+    let closuresByFunction(unit: nodes.Unit): maps.IntMap(nodes.OpMakeClosure) =
+        begin
+            let first = maps.newIntMap(:nodes.OpMakeClosure)
+            let all = hashMap.entryIter(allClosuresByFunction(closureStatements(unit)))
+            while iter.more(all) do
+                let e = iter.next(all)
+                hashMap.insert(first e.key vector.get(e.value 0))
+            end
+            first
+        end
+
+    let knownClosures(unit: nodes.Unit): maps.IntMap(nodes.OpMakeClosure) =
+        begin
+            let same = fun(a: Int b: Int): Bool a is b
+            let known = maps.newIntMap(:nodes.OpMakeClosure)
+            let stmts = closureStatements(unit)
+            let closuresOf = allClosuresByFunction(stmts)
             (* Each read of a lifted function's environment: the variable it
              * binds, the function, and the index *)
             Let Read = Tuple v: nodes.Variable function: Int index: Int end

@@ -625,6 +625,8 @@ export
             let var unboxedResult = false
         end
 
+    let capturedDescriptors(f: Function): Int = extent f.typeParams - shapes.quantified(shapes.shape(f.v.type)).count
+
     let newMembers(): Members =
         tuple let names = vector.new() let vars = maps.newStringMap() end
 
@@ -1053,6 +1055,17 @@ export
             else
                 maybe.none(:String)
             end
+        end
+
+    let initOrder(unit: Unit exported: Bool): Array(String) =
+        begin
+            let names = vector.new(:String)
+            for i = 0 upto {extent unit.imports - 1} do vector.append(names unit.imports[i].canonicalPath) end
+            for i = 0 upto {vector.length(unit.modules) - 1} do
+                let m = vector.get(unit.modules i)
+                if not(exported) orif maybe.isSome(openedModuleName(m)) then vector.append(names m.name) end
+            end
+            vector.toArray(names)
         end
 
     let atLeast(unit: Unit stage: stages.Stage): Bool = stages.atLeast(unit.stage stage)

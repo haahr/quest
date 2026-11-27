@@ -876,6 +876,10 @@ export
     planIs(p: Plan k: PlanKind): Bool
     newFunction(v: Variable typeParams: Array(TypeParam) params: Array(ParamEntry) resultType: Type body: Body
             traceName: maybe.T(String)): Function
+    (* How many of f's type parameters its closure supplies, as captures (the
+     * enclosing functions'), rather than its callers: those its type's
+     * quantifiers do not bind, which come first *)
+    capturedDescriptors(f: Function): Int
     newMembers(): Members
     addMember(m: Members name: String v: Variable): Ok
     member(m: Members name: String): maybe.T(Variable)
@@ -964,6 +968,13 @@ export
     openedModuleName(m: Module): maybe.T(String)
     (* The name an opened module copying the module named canonical has *)
     openedModuleNameFor(canonical: String): String
+    (* The modules whose initializers a unit runs before its own code, by
+     * name, in order: the modules it imports (by canonical path), then its
+     * own modules. A program's main (and a JIT phrase's entry, exported false)
+     * runs all of its own; a module file's exported initializer (exported
+     * true), which is one of them, runs only the copies of inlined modules
+     * (openedModuleName), which read the modules' members. *)
+    initOrder(unit: Unit exported: Bool): Array(String)
     (* Whether the unit is at the given stage or a later one *)
     atLeast(unit: Unit stage: stages.Stage): Bool
 end

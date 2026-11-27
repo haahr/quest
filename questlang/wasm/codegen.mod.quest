@@ -15,6 +15,7 @@ import
     collections/hashMap : collections/HashMap
     collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
+    util/iter : util/Iter
     util/maybe : util/Maybe
     sb = util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
@@ -488,10 +489,6 @@ export
     let isAdapter(fn: ir.Function): Bool =
         maybe.isSome(fn.env) andif not(layout.representationKind(maybe.unwrap(fn.env).type)?repVoid)
 
-    (* How many of a function's type parameters its closure supplies, as
-     * captures, rather than its callers (the rest) *)
-    let capturedDescriptors(fn: ir.Function): Int = extent fn.typeParams - shapes.quantified(shapeOf(fn.v.type)).count
-
     let withClosure(ts: Array(ValType)): Array(ValType) =
         begin
             let all = array of(extent ts + 1 model.ref(tClos))
@@ -564,7 +561,7 @@ export
             vector.append(fields hashField)
             vector.append(fields fieldOf("uniform" model.ref(uniformType(g n)) false))
             vector.append(fields fieldOf("native" model.ref(nativeType(g sig)) false))
-            for k = 0 upto capturedDescriptors(fn) - 1 do
+            for k = 0 upto ir.capturedDescriptors(fn) - 1 do
                 vector.append(fields fieldOf("d" <> conv.int(k) model.eqref true))
             end
             let captures = maybe.unwrapOr(hashMap.get(g.captureTypes fn.id)
@@ -588,7 +585,7 @@ export
         begin
             let captures = maybe.unwrapOr(hashMap.get(g.captureTypes fn.id)
                     array of :ir.Type end)
-            let var at = 3 + capturedDescriptors(fn)
+            let var at = 3 + ir.capturedDescriptors(fn)
             for k = 0 upto index - 1 do at := at + extent parts(captures[k]) end
             at
         end
@@ -3447,7 +3444,7 @@ export
             when planAdapt then
                 if maybe.isNone(plan.thunk) then fail(:Ok "an adapt plan without its adapter") end
                 let fn = maybe.unwrap(plan.thunk)
-                if capturedDescriptors(fn) > 0 then fail(:Ok "an adapter whose closure supplies descriptors") end
+                if ir.capturedDescriptors(fn) > 0 then fail(:Ok "an adapter whose closure supplies descriptors") end
                 let own = ownType(f.g fn)
                 let u = uniformEntry(f.g fn)
                 let native = hashMap.find(f.g.functions fn.id)
@@ -3503,7 +3500,7 @@ export
                  * closure it adapts *)
                 if maybe.isNone(x.plan.thunk) then fail(:Ok "an adapt plan without its adapter") end
                 let fn = maybe.unwrap(x.plan.thunk)
-                if capturedDescriptors(fn) > 0 then fail(:Ok "an adapter whose closure supplies descriptors") end
+                if ir.capturedDescriptors(fn) > 0 then fail(:Ok "an adapter whose closure supplies descriptors") end
                 let own = ownType(f.g fn)
                 let u = uniformEntry(f.g fn)
                 let native = hashMap.find(f.g.functions fn.id)
@@ -5481,7 +5478,7 @@ export
                 hashMap.insert(f.locals maybe.unwrap(fn.env).id 0)
             end
             let var at = 1
-            let captured = capturedDescriptors(fn)
+            let captured = ir.capturedDescriptors(fn)
             for k = captured upto extent fn.descriptorParams - 1 do
                 hashMap.insert(f.locals fn.descriptorParams[k].v.id at)
                 names[at] := fresh(f.names fn.descriptorParams[k].v.hint)
@@ -5768,26 +5765,13 @@ export
                             array of maybe.unwrap(fn.env).type end)
                 end
             end
-            let bodies = walk.unitBodies(unit)
-            for b = 0 upto extent bodies - 1 do
-                let ss = walk.walkStatements(bodies[b] false)
-                for k = 0 upto vector.length(ss) - 1 do
-                    case vector.get(ss k)
-                        when sLet with x then
-                            case x.value
-                                when opMakeClosure with c then
-                                    if not(hashMap.contains(g.captureTypes c.code.id)) then
-                                        let ts = vector.new(:ir.Type)
-                                        for j = 0 upto extent c.captures - 1 do
-                                            vector.append(ts ir.atomType(c.captures[j]))
-                                        end
-                                        hashMap.insert(g.captureTypes c.code.id
-                                                vector.toArray(ts))
-                                    end
-                                else ok
-                            end
-                        else ok
-                    end
+            let closures = hashMap.entryIter(walk.closuresByFunction(unit))
+            while iter.more(closures) do
+                let e = iter.next(closures)
+                if not(hashMap.contains(g.captureTypes e.key)) then
+                    let ts = vector.new(:ir.Type)
+                    for j = 0 upto extent e.value.captures - 1 do vector.append(ts ir.atomType(e.value.captures[j])) end
+                    hashMap.insert(g.captureTypes e.key vector.toArray(ts))
                 end
             end
             (* The runtime's functions and tag, imported first *)
