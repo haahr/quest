@@ -16,22 +16,26 @@ export
     (* A register's class: integers and pointers, or reals *)
     Def Class = Option classInt classReal end
     Def Register = Tuple name: String class: Class end
+    classInt: Class
+    classReal: Class
+    (* A table with an entry for each class, at the class's index *)
+    Def PerClass = Fun(A::TYPE) Array(A)
 
     Def Target = Tuple
         (* Each register, by its number *)
         registers: Array(Register)
-        (* The allocatable registers, by class (index): those a call
-         * clobbers, and those it preserves, in order of preference *)
-        callerSaved: Array(Array(Int))
-        calleeSaved: Array(Array(Int))
+        (* The allocatable registers, by class: those a call clobbers, and
+         * those it preserves, in order of preference *)
+        callerSaved: PerClass(Array(Int))
+        calleeSaved: PerClass(Array(Int))
         (* The registers arguments and results are passed in, by class, in
          * order *)
-        arguments: Array(Array(Int))
-        results: Array(Array(Int))
+        arguments: PerClass(Array(Int))
+        results: PerClass(Array(Int))
         (* Registers no value is given, by class, in the order the
          * allocator's rewrite uses them for operands in memory
          * (machine.Lowering's scratch) *)
-        scratch: Array(Array(Int))
+        scratch: PerClass(Array(Int))
         (* The stack's alignment at a call, and a word's size, in bytes:
          * each argument passed on the stack takes a word unless the target
          * packs it narrower *)
@@ -39,9 +43,11 @@ export
         wordBytes: Int
     end
 
-    (* The classes, and each one's index into a target's arrays by class *)
+    (* The classes, and each one's index into a table by class *)
     classes: Int
     index(c: Class): Int
+    (* A table's entry for a class *)
+    at(A::TYPE)(table: PerClass(A) c: Class): A
     (* The class of the registers that hold a value of an SSA type *)
     classOfType(t: ssa.Type): Class
     (* A register's name and class *)

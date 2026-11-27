@@ -6,21 +6,27 @@ import
 export
     Def Class = Option classInt classReal end
     Def Register = Tuple name: String class: Class end
+    let classInt: Class = option classInt of Class end
+    let classReal: Class = option classReal of Class end
+    Def PerClass = Fun(A::TYPE) Array(A)
     Def Target = Tuple
-        registers: Array(Register) callerSaved: Array(Array(Int)) calleeSaved: Array(Array(Int))
-        arguments: Array(Array(Int))
-        results: Array(Array(Int))
-        scratch: Array(Array(Int))
+        registers: Array(Register)
+        callerSaved: PerClass(Array(Int))
+        calleeSaved: PerClass(Array(Int))
+        arguments: PerClass(Array(Int))
+        results: PerClass(Array(Int))
+        scratch: PerClass(Array(Int))
         stackAlign: Int
         wordBytes: Int
     end
 
     let classes = 2
     let index(c: Class): Int = case c when classInt then 0 when classReal then 1 end
+    let at(A::TYPE)(table: PerClass(A) c: Class): A = table[index(c)]
     let classOfType(t: ssa.Type): Class =
         case t
-            when typeInt, typePtr, typeVal then option classInt of Class end
-            when typeReal then option classReal of Class end
+            when typeInt, typePtr, typeVal then classInt
+            when typeReal then classReal
         end
     let name(t: Target r: Int): String = t.registers[r].name
     let classOf(t: Target r: Int): Class = t.registers[r].class
