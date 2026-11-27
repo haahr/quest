@@ -80,7 +80,7 @@ export
      * Records
      * ====================================================================== *)
 
-    let elaborateRecord(c: checker.T x0: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
+    let elaborateRecord(c: checker.T x0: ast.Expr expected: maybe.T(Type)): typedAst.Expr =
         case x0.form
             when exprRecord with x then
                 begin
@@ -122,7 +122,7 @@ export
                                         b.offset)
                             end
                             let valTyped = checker.checkExpr(c b.value expF.type)
-                            if expF.isVar andif not(checks.isTypeEqual(valTyped.type expF.type e)) then
+                            if expF.isVar andif not(checks.isTypeEqual(valTyped.type expF.type c.env)) then
                                 diagnostics.fail(:Ok "Mutable record field '" <> expF.name
                                     <> "' is invariant; expected '"
                                     <> model.show(expF.type) <> "', got '" <> model.show(valTyped.type) <> "'" b.offset)
@@ -213,7 +213,7 @@ export
 
     let selectTupleField(
             c: checker.T x0: ast.Expr target: ast.Expr field: String targetTyped: typedAst.Expr targetType: Type
-            fields: Array(model.TupleComponent) e: env.T
+            fields: Array(model.TupleComponent)
             ): typedAst.Expr =
         begin
             let offset = x0.span.startOffset
@@ -287,7 +287,7 @@ export
      * A path type must not outlive its root: a block, function, or case
      * branch whose type mentions a path type rooted at one of its own
      * variables is rejected (escape.checkNoEscapingPathTypes). *)
-    let synthSelect(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
+    let synthSelect(c: checker.T x0: ast.Expr): typedAst.Expr =
         case x0.form
             when exprSelect with x then
                 begin
@@ -296,7 +296,7 @@ export
                     case x.target.form
                         when exprId with id then
                             begin
-                                let moduleScope = env.lookupModule(e id.name)
+                                let moduleScope = env.lookupModule(c.env id.name)
                                 let modSym = checker.lookupValue(c id.name)
                                 (* A value binding that shadows the module is
                                  * selected from as any other value *)
@@ -334,15 +334,16 @@ export
                         let isRecordOrTuple =
                             case targetType.form when typeRecord then true when typeTuple then true else false end
                         if not(isRecordOrTuple)
-                                andif maybe.isNone(kinds.resolveRecordBound(targetType maybe.some(e))) then
+                                andif maybe.isNone(kinds.resolveRecordBound(targetType maybe.some(c.env))) then
                             (* A type parameter bounded by a tuple type is
                              * selected from using its bound *)
-                            targetType := maybe.unwrapOr(kinds.resolveTupleBound(targetType maybe.some(e)) targetType)
+                            targetType :=
+                                    maybe.unwrapOr(kinds.resolveTupleBound(targetType maybe.some(c.env)) targetType)
                         end
                         let recBound =
                             case targetType.form
                                 when typeRecord then maybe.none(:Type)
-                                else kinds.resolveRecordBound(targetType maybe.some(e))
+                                else kinds.resolveRecordBound(targetType maybe.some(c.env))
                             end
                         case targetType.form
                             when typeRecord with r then
@@ -371,7 +372,7 @@ export
                                 else
                                     case targetType.form
                                         when typeTuple with t then
-                                            selectTupleField(c x0 x.target x.field targetTyped targetType t.fields e)
+                                            selectTupleField(c x0 x.target x.field targetTyped targetType t.fields)
                                         else
                                             diagnostics.fail("Cannot select field '" <> x.field
                                                 <> "' from non-record/tuple type '" <> model.show(targetType)
@@ -437,7 +438,7 @@ export
      * tuple payload type; when expected is not a tuple, a single-value-field
      * payload is checked as that value alone, matching the bootstrap's
      * _check_option_payload. *)
-    let checkOptionPayload(c: checker.T payload: ast.Expr expected: Type e: env.T loopDepth: Int): typedAst.Expr =
+    let checkOptionPayload(c: checker.T payload: ast.Expr expected: Type): typedAst.Expr =
         begin
             let expectedLazy = checks.evaluate(expected)
             let isTuple = case expectedLazy.form when typeTuple then true else false end
@@ -471,12 +472,12 @@ export
      * construction by ordinal requires every case to have the same signature
      * so that the payload fits whichever case is chosen (docs/type-system.md
      * §6.8). *)
-    let synthOption(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
+    let synthOption(c: checker.T x0: ast.Expr): typedAst.Expr =
         case x0.form
             when exprOption with x then
                 begin
                     let offset = x0.span.startOffset
-                    let optType = elaborateTypes.elaborateType(x.optionType e)
+                    let optType = elaborateTypes.elaborateType(x.optionType c.env)
                     let optLazy = checks.evaluate(optType)
                     let options =
                         case optLazy.form
@@ -499,7 +500,7 @@ export
                         end
                         let firstPayload = options[0].payload
                         for i = 1 upto {extent options - 1} do
-                            if not(optionSignaturesCompatible(firstPayload options[i].payload e)) then
+                            if not(optionSignaturesCompatible(firstPayload options[i].payload c.env)) then
                                 diagnostics.fail(:Ok
                                         "Option construction by ordinal requires all branches to have identical "
                                     <> "signatures, but variant '" <> options[i].name <> "' differs from '"
@@ -514,7 +515,7 @@ export
                                         <> model.show(maybe.unwrap(firstPayload)) <> "'" offset)
                                 end
                                 maybe.some(checkOptionPayload(c maybe.unwrap(x.payload)
-                                        maybe.unwrap(firstPayload) e loopDepth))
+                                        maybe.unwrap(firstPayload)))
                             else
                                 if maybe.isSome(x.payload) then
                                     diagnostics.fail(:Ok "Option variants do not accept a payload" offset)
@@ -538,7 +539,7 @@ export
                                         <> model.show(maybe.unwrap(payloadType)) <> "'" offset)
                                 end
                                 maybe.some(checkOptionPayload(c maybe.unwrap(x.payload)
-                                        maybe.unwrap(payloadType) e loopDepth))
+                                        maybe.unwrap(payloadType)))
                             else
                                 if maybe.isSome(x.payload) then
                                     diagnostics.fail(:Ok "Option variant '" <> tag
@@ -552,12 +553,12 @@ export
             else checks.unexpected("an option" x0.span.startOffset)
         end
 
-    let synthVariant(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
+    let synthVariant(c: checker.T x0: ast.Expr): typedAst.Expr =
         case x0.form
             when exprVariant with x then
                 begin
                     let offset = x0.span.startOffset
-                    let varType = elaborateTypes.elaborateType(x.variantType e)
+                    let varType = elaborateTypes.elaborateType(x.variantType c.env)
                     let varLazy = checks.evaluate(varType)
                     let variants =
                         case varLazy.form
@@ -595,13 +596,13 @@ export
             else checks.unexpected("a variant" x0.span.startOffset)
         end
 
-    let synthVariantCheck(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
+    let synthVariantCheck(c: checker.T x0: ast.Expr): typedAst.Expr =
         case x0.form
             when exprVariantCheck with x then
                 begin
                     let targetTyped = checker.synthExpr(c x.target)
                     let targetType = checks.evaluate(targetTyped.type)
-                    resolveVariantOrOptionField(targetType x.tag "Variant query '?'" x0.span.startOffset e)
+                    resolveVariantOrOptionField(targetType x.tag "Variant query '?'" x0.span.startOffset c.env)
                     typedAst.expr(x0.span.startOffset model.boolType option exprVariantCheck of typedAst.ExprForm with
                         let target = targetTyped
                         let tag = x.tag
@@ -617,13 +618,14 @@ export
      * followed by the payload's components (or a single component if the
      * payload is not a tuple). See docs/type-system.md §6.8 for why options
      * differ. *)
-    let synthVariantAssert(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
+    let synthVariantAssert(c: checker.T x0: ast.Expr): typedAst.Expr =
         case x0.form
             when exprVariantAssert with x then
                 begin
                     let targetTyped = checker.synthExpr(c x.target)
                     let targetType = checks.evaluate(targetTyped.type)
-                    let tp = resolveVariantOrOptionField(targetType x.tag "Variant assertion '!'" x0.span.startOffset e)
+                    let tp =
+                        resolveVariantOrOptionField(targetType x.tag "Variant assertion '!'" x0.span.startOffset c.env)
                     let resultType =
                         if not(tp.isOption) then
                             maybe.unwrapOr(tp.payload model.okType)
@@ -661,7 +663,7 @@ export
      * Arrays
      * ====================================================================== *)
 
-    let elaborateArray(c: checker.T x0: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
+    let elaborateArray(c: checker.T x0: ast.Expr expected: maybe.T(Type)): typedAst.Expr =
         case x0.form
             when exprArray with x then
                 begin
@@ -683,9 +685,9 @@ export
                     else
                         let elemType =
                             if maybe.isSome(x.elementType) then
-                                let t = elaborateTypes.elaborateType(maybe.unwrap(x.elementType) e)
+                                let t = elaborateTypes.elaborateType(maybe.unwrap(x.elementType) c.env)
                                 if maybe.isSome(expectedElement)
-                                        andif not(checks.isSubtype(t maybe.unwrap(expectedElement) e)) then
+                                        andif not(checks.isSubtype(t maybe.unwrap(expectedElement) c.env)) then
                                     diagnostics.fail(:Ok "Array element type annotation '" <> model.show(t)
                                         <> "' is not a subtype of expected '"
                                         <> model.show(maybe.unwrap(expectedElement))
@@ -713,7 +715,7 @@ export
                                 for i = 0 upto {extent elements - 1} do
                                     vector.append(synthesized checker.synthExpr(c elements[i]))
                                 end
-                                let joined = checks.joinBranches(vector.toArray(synthesized) e offset
+                                let joined = checks.joinBranches(vector.toArray(synthesized) c.env offset
                                         maybe.some("Incompatible array element types '{t1}' and '{t2}'"))
                                 for i = 0 upto {extent joined.parts - 1} do vector.append(typed joined.parts[i]) end
                                 joined.type
@@ -726,7 +728,7 @@ export
             else checks.unexpected("an array" x0.span.startOffset)
         end
 
-    let elaborateArrayRep(c: checker.T x0: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
+    let elaborateArrayRep(c: checker.T x0: ast.Expr expected: maybe.T(Type)): typedAst.Expr =
         case x0.form
             when exprArrayRep with x then
                 begin
@@ -772,7 +774,7 @@ export
             else diagnostics.fail(message offset)
         end
 
-    let synthIndex(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
+    let synthIndex(c: checker.T x0: ast.Expr): typedAst.Expr =
         case x0.form
             when exprIndex with x then
                 begin
@@ -791,7 +793,7 @@ export
             else checks.unexpected("an index" x0.span.startOffset)
         end
 
-    let synthIndexAssign(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
+    let synthIndexAssign(c: checker.T x0: ast.Expr): typedAst.Expr =
         case x0.form
             when exprIndexAssign with x then
                 begin
