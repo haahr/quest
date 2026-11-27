@@ -35,7 +35,6 @@ deleted.
 | Group | Step | What | Size |
 |---|---|---|---|
 | 3. IR structure | 7 | One visitor for IR nodes, with positions in one place | medium |
-| 4. Small and mechanical | 9 | C representations as an option | small |
 
 Group 1 comes first because each of its steps fixes a copy that has already drifted. Group 2 makes the SSA's facts one
 table, after group 1 has removed the copies that would otherwise be converted twice. Group 3 is the largest step taken
@@ -64,15 +63,6 @@ and `positionAt` are 18 identical arms each.
   in one step, it is a step of its own after this one.
 
 **Tests.** IR goldens at every stage, unchanged, and `verify` at every stage as always.
-
-### Step 9: C representations as an option
-
-**Problem.** The C printer decides by comparing type spellings: 11 comparisons with `"QVal"` or `"QVariantVal"`, and
-3 tests of `endsWith(… "*")`, which grew with `opIsSet`.
-
-**Change.** A `CRep` option, made by `layout` and spelled only when printed.
-
-**Tests.** The C goldens, unchanged.
 
 ## 4. Later
 
@@ -123,6 +113,12 @@ Worth doing, but larger or less urgent; each becomes a step when there is time f
   Moving those into `Representer` means passing it to `plan` and `typeVars` and everything that calls them, which
   includes functions that have no `Representer` today. Reentrancy, which the JIT and the kernel would want, needs
   all of it; until then the passes run one unit at a time.
+- **What step 9 left.** The C printer and `codegen/c/types` decide by `layout.Representation`, which already named
+  each representation, and by `isQVal`, `isPointer`, `slotIsQVal`, and `slotIsPointer`; only an external type's
+  pointerness is read from its C name. Still strings: `layout`'s cached representations, slots, and locations, which
+  about 47 sites in 10 modules read (`ir/represent` among them, on a hot path), and `repr/genericlayout`'s lists of
+  C words (`wordScalars`, `registerWords`, `cellWords`). Spelling a representation only when it is printed means
+  caching the option instead, and giving each of those sites the question it asks.
 - **An analysis cache for the SSA passes.** `cfg.graph` is rebuilt once per pass and four times inside `loops`. A
   `changesCfg` flag in `ssa/pipeline`'s table of passes would make a cache per function possible; it was left out of
   that table (step 1) because nothing reads it, and a wrong flag nothing checks would be worse than none. The cache

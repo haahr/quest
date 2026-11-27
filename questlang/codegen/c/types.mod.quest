@@ -59,8 +59,10 @@ export
 
     let shapeSlotStore(e: String s: Shape): String =
         if layout.isBoxedInSlots(s) then
-            let box = if eq(layout.shapeRepresentation(s) "QRecordVal") then "quest_record_box"
-                else "quest_variant_box"
+            let box =
+                case layout.shapeRepresentationKind(s)
+                    when repRecord then "quest_record_box"
+                    else "quest_variant_box"
                 end
             box <> "(" <> e <> ")"
         else
@@ -68,7 +70,7 @@ export
         end
 
     let shapeSlotToQval(e: String s: Shape): String =
-        if eq(layout.shapeSlotRepresentation(s) "QVal") then e
+        if layout.slotIsQVal(s) then e
         elsif layout.isBoxedInSlots(s) then "((QVal){ .p = (void *)(" <> e <> ") })"
         else shapeQvalWrap(e s)
         end
@@ -76,7 +78,7 @@ export
     let shapeQvalToSlot(e: String s: Shape): String =
         begin
             let slot = layout.shapeSlotRepresentation(s)
-            if eq(slot "QVal") then e
+            if layout.slotIsQVal(s) then e
             elsif layout.isBoxedInSlots(s) then "((" <> slot <> ")(" <> e <> ".p))"
             else shapeQvalUnwrap(e s)
             end

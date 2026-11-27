@@ -499,6 +499,8 @@ export
         end
 
     let slotCType(s: Shape): String = layout.shapeSlotRepresentation(s)
+    let isRecord(t: Type): Bool = case layout.representationKind(t) when repRecord then true else false end
+    let isVariant(t: Type): Bool = case layout.representationKind(t) when repVariant then true else false end
     let locationCType(t: Type): String = layout.shapeLocationRepresentation(shapeOf(t))
 
     let held(t: Type kind: shapes.ShapeKind): Shape =
@@ -552,6 +554,19 @@ export
         elsif v.boxed then slotCType(shapeOf(v.type))
         elsif v.unboxed then unboxedCType(v.type)
         else cType(v.type)
+        end
+
+    (* Whether varCType(p v) is a QVal, and whether it is a pointer (neither
+     * QExceptionState nor an unboxed tuple's struct is) *)
+    let varIsQVal(p: P v: Variable): Bool =
+        if hashMap.contains(p.handlerVars v.id) orif v.unboxed then false
+        elsif v.boxed then layout.slotIsQVal(shapeOf(v.type))
+        else layout.isQVal(shapeOf(v.type))
+        end
+    let varIsPointer(p: P v: Variable): Bool =
+        if hashMap.contains(p.handlerVars v.id) orif v.unboxed then false
+        elsif v.boxed then layout.slotIsPointer(shapeOf(v.type))
+        else layout.isPointer(shapeOf(v.type))
         end
 
     (* =========================================================================
@@ -1498,12 +1513,16 @@ export
                 orif {index >= extent maybe.unwrap(:Shape stored).components} then
             src
         else
-            let storedC = slotCType(componentShape(maybe.unwrap(stored) index))
+            let storedShape = componentShape(maybe.unwrap(stored) index)
+            let storedC = slotCType(storedShape)
             let wantedC = slotCType(wanted)
-            if eq(storedC "QVal") andif not(eq(wantedC "QVal")) then types.shapeQvalToSlot(src wanted)
-            elsif strutil.endsWith(storedC "*") andif strutil.endsWith(wantedC "*") andif not(eq(storedC wantedC)) then
+            if layout.slotIsQVal(storedShape) andif not(layout.slotIsQVal(wanted)) then
+                types.shapeQvalToSlot(src wanted)
+            elsif layout.slotIsPointer(storedShape) andif layout.slotIsPointer(wanted)
+                    andif not(eq(storedC wantedC)) then
                 "(" <> wantedC <> ")(" <> src <> ")"
-            else src
+            else
+                src
             end
         end
 
@@ -1650,7 +1669,7 @@ export
         begin
             emit(p "quest_check_array_bounds_at(" <> arr <> ", " <> idx <> ", " <> site(p offset) <> ");")
             let cElem = layout.shapeLocationRepresentation(elem)
-            if eq(cElem "QVal") then "(&(" <> arr <> "->data[" <> idx <> "]))"
+            if layout.isQVal(elem) then "(&(" <> arr <> "->data[" <> idx <> "]))"
             elsif shapes.kindIs(elem shapes.shapeInt) then "(&(" <> arr <> "->data[" <> idx <> "].i))"
             elsif shapes.kindIs(elem shapes.shapeReal) then "(&(" <> arr <> "->data[" <> idx <> "].r))"
             (* A Bool or Char in its word's low byte, a pointer in its word *)
@@ -1694,12 +1713,12 @@ export
                             if hashMap.contains(p.handlerVars x.v.id) then t := maybe.none() end
                         else ok
                     end
-                    if maybe.isSome(t) andif eq(cType(maybe.unwrap(t)) "QVal") then
+                    if maybe.isSome(t) andif layout.isQVal(shapeOf(maybe.unwrap(t))) then
                         let negate = if isIs then "" else "!" end
                         "(" <> negate <> "quest_val_is(" <> maybeDescriptor(p o.descriptor) <> ", " <> left <> ", "
                             <> right() <> "))"
                     elsif maybe.isSome(t) andif maybe.isSome(o.descriptor)
-                            andif eq(cType(maybe.unwrap(t)) "QVariantVal") then
+                            andif isVariant(maybe.unwrap(t)) then
                         (* By case and value (docs/extensions.md, Variants as
                          * Values) *)
                         let negate = if isIs then "" else "!" end
@@ -1721,7 +1740,7 @@ export
                                 maybe.none(:Type)
                             end
                         let viaOriginal = case o.access when original then true when direct, proxy then false end
-                        if maybe.isSome(t) andif eq(cType(maybe.unwrap(t)) "QRecordVal") then
+                        if maybe.isSome(t) andif isRecord(maybe.unwrap(t)) then
                             (* A record is its payload: a view changes only its
                              * offset table (quest_record_view) *)
                             l := "(" <> l <> ").val"
@@ -1732,7 +1751,7 @@ export
                             r := "quest_unproxy(" <> r <> ")"
                         elsif maybe.isSome(t2)
                                 andif not(eq(cType(maybe.unwrap(t)) cType(maybe.unwrap(t2))))
-                                andif strutil.endsWith(cType(maybe.unwrap(t)) "*") then
+                                andif layout.isPointer(shapeOf(maybe.unwrap(t))) then
                             (* Pointers to aggregates of different (subtype-
                              * related) types: compared as addresses *)
                             l := "(const void *)(" <> l <> ")"
@@ -1811,9 +1830,9 @@ export
                 if maybe.isSome(calleeType) then
                     case maybe.unwrap(calleeType).form
                         when typeFun with f then
-                            let var all = not(eq(types.qtypeToCType(f.result) "QVal"))
+                            let var all = not(layout.isQVal(shapeOf(f.result)))
                             for i = 0 upto {extent f.params - 1} do
-                                if eq(types.qtypeToCType(f.params[i].type) "QVal") then all := false end
+                                if layout.isQVal(shapeOf(f.params[i].type)) then all := false end
                             end
                             all
                         else false
@@ -2073,7 +2092,7 @@ export
             (* A cell declared without a value is null until assigned
              * (sVarDecl): a pointer, or a QVal's word *)
             when opIsSet with x then
-                if stringOp.equal(varCType(p x.v) "QVal") then "(" <> name(p x.v) <> ".i != 0)"
+                if varIsQVal(p x.v) then "(" <> name(p x.v) <> ".i != 0)"
                 else "(" <> name(p x.v) <> " != NULL)"
                 end
             when opAddrCell with x then
@@ -2341,8 +2360,8 @@ export
                 if maybe.isSome(x.init) then assign(p x.v atom(p maybe.unwrap(x.init)))
                 (* Without a value, a pointer or QVal is null until assigned
                  * (opIsSet), each time the declaration runs *)
-                elsif stringOp.equal(varCType(p x.v) "QVal") then emit(p name(p x.v) <> ".i = 0;")
-                elsif strutil.endsWith(varCType(p x.v) "*") then emit(p name(p x.v) <> " = NULL;")
+                elsif varIsQVal(p x.v) then emit(p name(p x.v) <> ".i = 0;")
+                elsif varIsPointer(p x.v) then emit(p name(p x.v) <> " = NULL;")
                 end
             when sAssign with x then assign(p x.v atom(p x.value))
             when sStoreAt with x then

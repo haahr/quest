@@ -406,6 +406,23 @@ export
             end
         end
 
+    let isPointer(s0: Shape): Bool =
+        begin
+            let s = resolvedShape(s0)
+            case shapeRepresentationKind(s)
+                when repPointer then not(shapes.kindIs(s shapes.shapeExternal)) orif endsWith(s.name "*")
+                when repVoid, repInt, repWord, repBool, repChar, repReal, repRecord, repVariant, repQVal then false
+            end
+        end
+
+    let slotIsQVal(s: Shape): Bool =
+        case shapeRepresentationKind(s)
+            when repQVal, repVoid then true
+            when repInt, repWord, repBool, repChar, repReal, repRecord, repVariant, repPointer then false
+        end
+
+    let slotIsPointer(s: Shape): Bool = isBoxedInSlots(s) orif isPointer(s)
+
     Def WordForm = Option
         wordItself
         wordOk
