@@ -226,7 +226,7 @@ With all of `lib/` in the driver, the only units a phrase can import that the dr
 files; modules declared in an input (§3.2) are part of it. A unit is never both: if the host links it, the host's copy
 is used (§3.3); otherwise the JIT compiles the module file from source, and loads it once in the session.
 
-- **Compiling.** `modules/artifacts/moduleCompiler.moduleFileUnit` elaborates the file as a separately compiled module
+- **Compiling.** `build/moduleCompiler.moduleFileUnit` elaborates the file as a separately compiled module
   is elaborated (in an environment of its own, its abstract types opaque, its imports known through their interfaces),
   and lowers it to a unit of the module alone; the session compiles that unit as it does an input's, through the passes,
   the SSA, and the arm64 backend, and loads it. Its record, initializer, and exports are the symbols a separately

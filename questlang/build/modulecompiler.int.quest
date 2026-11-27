@@ -1,10 +1,12 @@
 (* Quest Self-Hosted Compiler: The Module Compiler Interface
  *
- * Counterpart to bootstrap/python/quest/modules/module_compiler.py. This unit
+ * Counterpart to bootstrap/python/quest/build/module_compiler.py. This unit
  * compiles module files (.mod.quest) into generated code (typically C in
  * <name>.mod.c, which includes the interface's header and defines the module's
  * record, initializer, and exported functions), an object file (<name>.o), and
- * a build manifest (<name>.qm). *)
+ * a build manifest (<name>.qm). It is part of the build: the build engine and
+ * its workers compile each module with it, and the engine writes a main
+ * routine's artifacts with its writeUnit, the tail the two share. *)
 
 interface ModuleCompiler
 import
@@ -15,6 +17,7 @@ import
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
     questlang/modules/graph : questlang/modules/Graph
+    questlang/types/env : questlang/types/Env
 export
     Def ModuleCompileResult = Tuple c: String o: String qm: String end
 
@@ -52,6 +55,31 @@ export
     Def ModuleUnit = Tuple unit: nodes.Unit sourceMap: location.SourceMap imports: Array(ModuleImport) end
     moduleFileUnit(file: String includePaths: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
             res: maybe.T(graph.Resolver)): ModuleUnit
+
+    (* A unit's generated code, the files it goes in, and what its manifest
+     * records: its canonical name (<main> for a main routine), the interface
+     * it implements (none for a main routine), its source, the backend that
+     * compiled it, and the modules and interfaces it imports itself *)
+    Def UnitCode = Tuple
+        name: String
+        interfaceName: maybe.T(String)
+        source: String
+        backend: String
+        code: String
+        (* Its code file, as choice.codeFile names it for the backend *)
+        codeFile: String
+        object: String
+        qm: String
+        modules: Array(manifest.ImportedModuleRef)
+        interfaces: Array(manifest.ImportedInterfaceRef)
+    end
+    (* The tail of compiling a main routine or a module file: writes u's code
+     * and compiles it to its object, the C compiler searching includePaths (a
+     * WebAssembly module is its own object), and writes its manifest, adding
+     * the interfaces its interfaces import, resolved as in e. log is told of
+     * each step, as the build engine logs them. *)
+    writeUnit(u: UnitCode includePaths: Array(String) nogc: Bool e: env.T log: All(tag: String message: String) Ok)
+            : Ok
 
     (* What a manifest records of an interface a unit imports, resolved, and
      * found at path: its name, its source's absolute path and modification

@@ -17,7 +17,7 @@ from quest.config.abi import built_from
 from quest.build.headers import compile_interface_with_header, ensure_interface_header
 from quest.modules.artifacts.interface_compiler import ensure_interface_artifacts
 from quest.modules.artifacts.manifest import unit_staleness
-from quest.modules.artifacts.module_compiler import compile_module_file
+from quest.build.module_compiler import compile_module_file
 from quest.modules.paths import resolve_interface_file
 
 

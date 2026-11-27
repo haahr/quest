@@ -2,9 +2,8 @@
 
 This directory turns a program and the modules it imports into an executable. It sits after the compiler proper: the
 driver ([`questlang/driver`](../driver/README.md)) hands it a main program when asked for a binary (`quest compile
-FILE`, or `-o`), and it compiles each unit on its own, through the module compiler in
-[`questlang/modules/artifacts`](../modules/artifacts/README.md) and the backends in `questlang/codegen`, recompiling
-only the units whose artifacts are stale, then links the objects with the C runtime (`runtime/`) using the host C
+FILE`, or `-o`), and it compiles each unit on its own, through its module compiler and the backends in
+`questlang/codegen`, recompiling only the units whose artifacts are stale, then links the objects with the C runtime (`runtime/`) using the host C
 compiler. It also holds the pieces every compiled program needs whether or not the engine runs: finding and invoking
 the host C compiler, and keeping interfaces' C headers up to date.
 
@@ -41,6 +40,23 @@ any objects named on the command line. Every step is recorded by [`logger.int.qu
 in the build directory (`.build` by default), and on standard error with `-v`
 ([docs/build-process.md](../../docs/build-process.md) §9).
 
+## The module compiler
+
+[`modulecompiler.int.quest`](modulecompiler.int.quest) compiles a module file in numbered steps that its code
+follows: (1) load the interface it implements; (2) load the interfaces and modules it imports, recording each as the
+unit graph resolved it; (3) elaborate the module; (4) bring its interface's header up to date; (5) translate the
+module through its backend, C, `ssac`, arm64, or wasm by `questlang/codegen/choice`, into `<name>.mod.c`,
+`<name>.mod.s`, or `<name>.mod.wasm`, defining the module's record, its exported functions, and an initializer that
+runs its body once; (6) compile that to `<name>.o` with the host C compiler (a wasm module is its own object); and (7)
+write its manifest. Steps 5 to 7 end a main routine's compilation too: the engine's `compileMainUnit` calls the same
+`writeUnit`. While a module file is compiled, its abstract types stay opaque even inside a whole-program build
+(`compilingApart`), since its importers see it only through its interface. The engine compiles each stale module with
+it, in a child process with `-j`, and so does the driver for `quest -c x.mod.quest`.
+
+The JIT needs the same elaboration without the files: `moduleFileUnit` elaborates a module file and lowers it to an IR
+unit of the module alone, along with the module files it imports, which the JIT compiles and loads first
+([docs/jit.md](../../docs/jit.md) §3.4).
+
 ## Parallel builds
 
 With `-j N`, [`workers.int.quest`](workers.int.quest) compiles up to N modules at once
@@ -76,8 +92,8 @@ does. The module compiler calls `ensureImportedInterfaceHeader` before compiling
 ## Connections
 
 The engine depends on [`questlang/modules`](../modules/README.md): the unit graph's resolver (shared by every unit
-the build compiles, so each import is searched for once), artifact paths under the build directory, and the module
-compiler and manifests in [`artifacts/`](../modules/artifacts/README.md). Which backend compiles each unit comes from
+the build compiles, so each import is searched for once), artifact paths under the build directory, and the
+interface compiler and manifests in [`artifacts/`](../modules/artifacts/README.md). Which backend compiles each unit comes from
 `questlang/codegen/choice`, and the manifest records it. When the driver compiles a program's own unit itself (a run
 through `run_c_compiled`, or `--whole-program`, whose unit has its modules merged into it), it calls `buildModules`
 only for the modules that unit still imports, and links the result with `compileCSource`. The bootstrap counterpart is

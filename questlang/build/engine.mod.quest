@@ -17,6 +17,7 @@ import
 
     questlang/build/compilerRunner : questlang/build/CompilerRunner
     questlang/build/logger : questlang/build/Logger
+    questlang/build/moduleCompiler : questlang/build/ModuleCompiler
     questlang/build/workers : questlang/build/Workers
     cBackend = questlang/codegen/backend : questlang/codegen/Backend
     questlang/codegen/choice : questlang/codegen/Choice
@@ -26,14 +27,10 @@ import
     questlang/common/maps : questlang/common/Maps
     questlang/config/abi : questlang/config/ABI
     questlang/ir/nodes : questlang/ir/Nodes
-    questlang/ir/opened : questlang/ir/Opened
     passes = questlang/ir/pipeline : questlang/ir/Pipeline
-    questlang/modules/artifacts/interfaceCompiler : questlang/modules/artifacts/InterfaceCompiler
     questlang/modules/artifacts/manifest : questlang/modules/artifacts/Manifest
-    questlang/modules/artifacts/moduleCompiler : questlang/modules/artifacts/ModuleCompiler
     questlang/modules/elaboration : questlang/modules/Elaboration
     questlang/modules/graph : questlang/modules/Graph
-    questlang/modules/inlined : questlang/modules/Inlined
     questlang/modules/paths : questlang/modules/Paths
     questlang/modules/stdlib : questlang/modules/Stdlib
     questlang/modules/units : questlang/modules/Units
@@ -431,22 +428,18 @@ export
                             vector.toArray(e.includePaths)
                             e.programDir eng.resolver)
 
-                    let code = choice.codeFile(a.c backend)
-                    log(eng "EMIT C" code)
-                    let w = writer.file(code)
-                    writer.putString(w translated.c)
-                    writer.close(w)
-                    log(eng "HOST COMPILE" "clang -c " <> code <> " -o " <> a.o)
-                    compilerRunner.compileCToObject(code a.o search eng.nogc cBackend.cFlags(backend))
-
-                    let direct = vector.toArray(interfaces)
-                    let indirect = interfaceCompiler.indirectInterfaceRefs(direct vector.toArray(e.includePaths)
-                            e.programDir eng.resolver)
-                    log(eng "WRITE QM" a.qm)
-                    manifest.writeQm(manifest.newManifest("<main>" maybe.none(:String) files.absolute(mainFile)
-                            files.absolute(a.o) modules
-                            vector.toArray(vector.concat(interfaces vector.fromArray(indirect))) backend inlined.names()
-                            opened.lastOpenedSources()) a.qm)
+                    moduleCompiler.writeUnit(tuple
+                        let name = "<main>"
+                        let interfaceName = maybe.none(:String)
+                        let source = mainFile
+                        let backend = backend
+                        let code = translated.c
+                        let codeFile = choice.codeFile(a.c backend)
+                        let object = a.o
+                        let qm = a.qm
+                        let modules = modules
+                        let interfaces = vector.toArray(interfaces)
+                    end search eng.nogc e fun(tag: String message: String): Ok log(eng tag message))
                     modules
                 end)
         end

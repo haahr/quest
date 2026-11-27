@@ -2,12 +2,12 @@
 
 Separate compilation compiles each unit on its own, against the interfaces of the units it imports rather than their
 implementations, and keeps what it produces on disk so that only units whose inputs changed are compiled again. This
-directory produces and reads those files. Its input is a unit file found and elaborated by the parent directory
-([`questlang/modules`](../README.md)); its outputs are an interface's `.qi`, a module's C or assembly, object file,
-and `.qm` manifest. Its callers are the driver (`quest -c x.mod.quest`, or a unit file given alone), the build engine
-([`questlang/build`](../../build/README.md)), which compiles every stale module of a program through it, the loader,
-which reads `.qi` files instead of re-elaborating interface sources, and the JIT, which compiles modules into a
-running process.
+directory produces and reads the files that describe units: an interface's `.qi`, and the `.qm` manifest of a module
+or a program. Its input is a unit file found and elaborated by the parent directory
+([`questlang/modules`](../README.md)). Its callers are the driver (`quest -c x.int.quest`, or a unit file given
+alone), the build ([`questlang/build`](../../build/README.md)), whose module compiler writes modules' C, objects,
+and manifests, the loader, which reads `.qi` files instead of re-elaborating interface sources, and the JIT, which
+compiles modules into a running process.
 
 ## Interfaces compiled: the `.qi`
 
@@ -28,21 +28,6 @@ and is at least as new as it, and no interface it depends on, directly or throug
 would now resolve to a different file. Otherwise the source is compiled again, the interfaces it imports first
 ([docs/build-process.md](../../../docs/build-process.md) §5). An interface's C header (`.int.h`) is not made here; the
 C backend writes it, and [`questlang/build/headers`](../../build/headers.int.quest) keeps it beside the `.qi`.
-
-## Modules compiled: C, object, manifest
-
-[`modulecompiler.int.quest`](modulecompiler.int.quest) compiles a module file in numbered steps that its code
-follows: (1) load the interface it implements; (2) load the interfaces and modules it imports, recording each as the
-unit graph resolved it; (3) elaborate the module; (4) bring its interface's header up to date; (5) translate the
-module through its backend, C, `ssac`, or arm64 by `questlang/codegen/choice`, into `<name>.mod.c` or `<name>.mod.s`,
-defining the module's record, its exported functions, and an initializer that runs its body once; (6) compile that to
-`<name>.o` with the host C compiler; and (7) write its manifest. While a module file is compiled, its abstract types
-stay opaque even inside a whole-program build (`compilingApart`), since its importers see it only through its
-interface.
-
-The JIT needs the same elaboration without the files: `moduleFileUnit` elaborates a module file and lowers it to an IR
-unit of the module alone, along with the module files it imports, which the JIT compiles and loads first
-([docs/jit.md](../../../docs/jit.md) §3.4).
 
 ## Manifests: the `.qm`
 

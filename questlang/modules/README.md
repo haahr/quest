@@ -116,8 +116,8 @@ The type checker ([`../typechecker`](../typechecker)) calls `elaborateImport` fo
 `elaborateBinding` hook; the environment ([`../types/env.int.quest`](../types/env.int.quest)) holds the unit graph and
 resolves imports through it. The driver ([`../driver`](../driver/README.md)) installs the standard library and
 compiles unit files through [`artifacts/`](artifacts/README.md); the build engine ([`../build`](../build/README.md))
-uses the graph's resolver and artifact paths to decide what to compile; the JIT ([`../jit`](../jit)) loads module
-units through the module compiler. The bootstrap counterpart is
+uses the graph's resolver and artifact paths to decide what to compile, and compiles modules with its module
+compiler, through which the JIT ([`../jit`](../jit)) loads module units too. The bootstrap counterpart is
 [`bootstrap/python/quest/modules/`](../../bootstrap/python/quest/modules/README.md), module for module.
 
 ## Further reading

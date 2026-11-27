@@ -29,14 +29,13 @@ COMPILATION = (
 )
 INTERPRETERS = ("quest.interpreter", "quest.driver")
 # C compilation: the C backend (which writes interfaces' C headers too), and
-# what drives it (the backends' entry points, the build engine, compiling module
-# files, and the pipeline, whose phases include C's). Only these may import the
-# C backend.
+# what drives it (the backends' entry points, the build, which compiles module
+# files too, and the pipeline, whose phases include C's). Only these may import
+# the C backend.
 C_COMPILATION = (
     "quest.build",
     "quest.codegen.backend",
     "quest.codegen.c",
-    "quest.modules.artifacts.module_compiler",
     "quest.pipeline",
 )
 # What runs the pipeline, and so reaches the C backend through it

@@ -38,6 +38,18 @@ import
     questlang/types/env : questlang/types/Env
 export
     Let ModuleCompileResult = Tuple c: String o: String qm: String end
+    Let UnitCode = Tuple
+        name: String
+        interfaceName: maybe.T(String)
+        source: String
+        backend: String
+        code: String
+        codeFile: String
+        object: String
+        qm: String
+        modules: Array(manifest.ImportedModuleRef)
+        interfaces: Array(manifest.ImportedInterfaceRef)
+    end
     Let ModuleImport = Tuple name: String source: String offset: Int end
     Let ModuleUnit = Tuple unit: nodes.Unit sourceMap: location.SourceMap imports: Array(ModuleImport) end
     Let Settings = Tuple
@@ -238,6 +250,34 @@ export
             end
         end
 
+    let writeUnit(u: UnitCode includePaths: Array(String) nogc: Bool e: env.T
+            log: All(tag: String message: String) Ok): Ok =
+        begin
+            log("EMIT C" u.codeFile)
+            let w = writer.file(u.codeFile)
+            writer.putString(w u.code)
+            writer.close(w)
+            if choice.isWasm(u.backend) then
+                (* A WebAssembly module serves as both its unit's generated
+                 * code and its object file, with no C compiler or linker
+                 * (docs/wasm.md section 5.1) *)
+                let o = writer.file(u.object)
+                writer.putString(o u.code)
+                writer.close(o)
+            else
+                log("HOST COMPILE" "clang -c " <> u.codeFile <> " -o " <> u.object)
+                compilerRunner.compileCToObject(u.codeFile u.object includePaths nogc cBackend.cFlags(u.backend))
+            end
+            let indirect =
+                interfaceCompiler.indirectInterfaceRefs(u.interfaces vector.toArray(e.includePaths) e.programDir
+                        e.units.resolver)
+            log("WRITE QM" u.qm)
+            manifest.writeQm(manifest.newManifest(u.name u.interfaceName files.absolute(u.source)
+                    files.absolute(u.object) u.modules
+                    vector.toArray(vector.concat(vector.fromArray(u.interfaces) vector.fromArray(indirect))) u.backend
+                    inlined.names() opened.lastOpenedSources()) u.qm)
+        end
+
     let compileModule(decl: ast.ModuleDecl offset: Int e: env.T outputDir: String includePaths: Array(String)
             nogc: Bool sourceMap: location.SourceMap stem: String
             canonicalName: String sourceFile: String buildDir: maybe.T(String)
@@ -270,9 +310,7 @@ export
             let base = if stringOp.length(stem) > 0 then stem else paths.lower(decl.name) end
             let cFile = choice.codeFile(files.join(outputDir base <> ".mod.c") backend)
             let oFile = files.join(outputDir base <> ".o")
-            let w = writer.file(cFile)
-            writer.putString(w c)
-            writer.close(w)
+            let qmFile = files.join(outputDir base <> ".qm")
             (* The directories without repetitions, in order *)
             let unique = vector.new(:String)
             for i = 0 upto {vector.length(dirs) - 1} do
@@ -283,27 +321,19 @@ export
                 end end
                 if not(seen) then vector.append(unique d) end
             end
-            if choice.isWasm(backend) then
-                (* A WebAssembly module serves as both its unit's generated
-                 * code and its object file, with no C compiler or linker
-                 * (docs/wasm.md section 5.1) *)
-                let o = writer.file(oFile)
-                writer.putString(o c)
-                writer.close(o)
-            else
-                compilerRunner.compileCToObject(cFile oFile vector.toArray(unique) nogc cBackend.cFlags(backend))
-            end
-
             (* 7. Its manifest *)
-            let direct = vector.toArray(x.interfaces)
-            let indirect =
-                interfaceCompiler.indirectInterfaceRefs(direct vector.toArray(e.includePaths) e.programDir
-                        e.units.resolver)
-            let qmFile = files.join(outputDir base <> ".qm")
-            manifest.writeQm(manifest.newManifest(name maybe.some(x.targetName) files.absolute(sourceFile)
-                    files.absolute(oFile) vector.toArray(x.modules)
-                    vector.toArray(vector.concat(x.interfaces
-                            vector.fromArray(indirect))) backend inlined.names() opened.lastOpenedSources()) qmFile)
+            writeUnit(tuple
+                let name = name
+                let interfaceName = maybe.some(x.targetName)
+                let source = sourceFile
+                let backend = backend
+                let code = c
+                let codeFile = cFile
+                let object = oFile
+                let qm = qmFile
+                let modules = vector.toArray(x.modules)
+                let interfaces = vector.toArray(x.interfaces)
+            end vector.toArray(unique) nogc e fun(tag: String message: String): Ok ok)
             tuple let c = cFile let o = oFile let qm = qmFile end
         end
 

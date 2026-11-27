@@ -2,10 +2,9 @@
 
 This package turns a program and the modules it imports into an executable for the bootstrap compiler. The driver
 hands it a main program (`questboot compile FILE`, or `-o`), and it compiles each unit on its own to C and an object
-file, through the module compiler in [`quest/modules/artifacts`](../modules/README.md#artifacts), recompiling only the
-units whose artifacts are stale, and links the objects with the C runtime (`runtime/`). It is the original of
-[`questlang/build`](../../../../questlang/build/README.md), whose README introduces the concepts; this one says where
-they are here and what differs.
+file, through its module compiler, recompiling only the units whose artifacts are stale, and links the objects with
+the C runtime (`runtime/`). It is the original of [`questlang/build`](../../../../questlang/build/README.md), whose
+README introduces the concepts; this one says where they are here and what differs.
 
 ## The concepts, here
 
@@ -19,6 +18,10 @@ they are here and what differs.
   and that modules do not import one another in a cycle, then links. `BuildEngine`'s docstring walks through an
   example with its log. The same file has `compile_unit_file`, which compiles one interface or module file alone, as
   `questboot -c` does; in questlang that is the driver's `compileUnitFile`.
+- **The module compiler.** [`module_compiler.py`](module_compiler.py) compiles a module file to C (`<name>.mod.c`,
+  defining the module's record, functions, and initializer), an object, and a manifest (`compile_module_file`), the
+  steps numbered in its code. Its `write_unit`, which writes a unit's C, compiles it, and writes its manifest, ends a
+  main routine's compilation too (`BuildEngine.compile_main_unit`).
 - **The log.** [`logger.py`](logger.py) appends one timestamped, tagged line per event (`POP QUEUE`, `COMPILE MAIN`,
   ...) to `build.log` in the build directory, and with `-v` to standard error
   ([docs/build-process.md](../../../../docs/build-process.md) §9).

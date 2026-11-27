@@ -166,7 +166,7 @@ in that file, not the one being compiled. So the unit's file travels with the er
 
 - **The unit's file.** Each place that reads a unit from source (`load_interface` and `load_module` in
   `modules/loader.py`, `compile_interface_file` in `modules/artifacts/interface_compiler.py`, and
-  `compile_module_file` in `modules/artifacts/module_compiler.py`) parses and elaborates it
+  `compile_module_file` in `build/module_compiler.py`) parses and elaborates it
   inside `diagnostics.in_unit(source_map)` (through `Environment.unit_source` where there is an environment). A
   `QuestCompilerError` leaving it records that unit's `SourceMap`, unless an inner unit already did.
 - **The imports that led there.** Each import is elaborated inside `diagnostics.at_import(offset, source_map)`, with

@@ -63,7 +63,7 @@ unit uses without importing them (`implicit_imports`).
 
 The C backend (`codegen/backend.py` and `codegen/c/`):
 - **`codegen/backend.py`:** Its entry points, `program_to_c` and `module_file_to_c` (lowering, passes, printing),
-  used by `modules/artifacts/module_compiler.py` and `BuildEngine` (`build/engine.py`); the pipeline runs the same
+  used by `build/module_compiler.py` and `BuildEngine` (`build/engine.py`); the pipeline runs the same
   steps as phases (`ir_core` ... `ir_described`, then `codegen_c`).
 - **`printer.py`:** `CPrinter`, printing a described IR unit as C: the descriptors it is given (descriptor variables,
   static descriptors, instantiated templates) and the unit's static data (static descriptors, offset tables, tag maps),

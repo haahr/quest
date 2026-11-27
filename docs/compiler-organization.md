@@ -95,8 +95,8 @@ questlang/
 │   ├── loader               # Loading interfaces and modules
 │   ├── elaboration          # Elaborating interfaces, modules, and imports
 │   ├── stdlib               # The standard library's interfaces and module scopes
-│   └── artifacts/           # interfacecompiler, modulecompiler, manifest, fingerprint: .qi and .qm artifacts,
-│                            # compiled modules, interfaces' fingerprints
+│   └── artifacts/           # interfacecompiler, manifest, fingerprint: .qi and .qm artifacts, interfaces'
+│                            # fingerprints
 │
 ├── values/                  # Runtime values
 │   ├── model                # Values, and the interpreter's frames
@@ -154,9 +154,9 @@ questlang/
 │                            # outline, server
 │
 ├── config/                  # The ABI version and artifacts' format
-├── build/                   # The build engine and its log; compilerrunner, the host C compiler and linker;
-│                            # headers, interfaces' C headers kept beside their .qi files; workers, the
-│                            # processes of a parallel build (-j)
+├── build/                   # The build engine and its log; modulecompiler, a module file's code, object, and
+│                            # manifest; compilerrunner, the host C compiler and linker; headers, interfaces' C
+│                            # headers kept beside their .qi files; workers, the processes of a parallel build (-j)
 │
 └── driver/                  # Compiler driver (the bootstrap's driver/, and its pipeline)
     ├── main                 # Main routine: every phase, -e, -i, and the bootstrap's compiling options
@@ -427,14 +427,16 @@ Layer 6: modules/abstracttypes → types/reduce; modules/loader, elaboration, st
 Layer 7: typechecker/checker → bindings, application, aggregates, tuples, control, exceptions, autovalues →
          typecheck, scoping
 Layer 8: types/canonical → values/model → dynamicjson → interpreter/primitives, builtins,
-         formatting → treewalk, lsp/* | repr/* → ir/* → ssa/* → codegen/*, wasm/* → jit/*, modules' artifacts,
-         config/*, build/*
+         formatting → treewalk, lsp/* | config/*, modules' artifacts | repr/* → ir/* → ssa/* → codegen/*,
+         wasm/* → build/* → jit/*
 Layer 9: driver/*
 ```
 
-Modules' artifacts and `build/`, the last of layer 8, are not ordered: they import each other.
-`modules/artifacts/moduleCompiler` imports `build/compilerRunner` and `build/headers`, and `build/engine` and
-`build/workers` import it, so the modules form a DAG but the two directories interleave.
+The modules' artifacts, which read and write `.qi` files through `values/dynamicjson`, come before `codegen/`, whose
+`c/headers` imports the interface compiler. The module compiler is the build's (`build/moduleCompiler`): it imports
+the backends, `build/compilerRunner`, and `build/headers`, and the build engine, its workers, and the JIT, which loads
+module files through it, import it. So `build/` sits above the backends and the artifacts it writes, and `jit/`
+above `build/`.
 
 The bootstrap's lazy imports made cycles that this order does not allow; they were broken in the bootstrap before the
 port: symbols and scopes are `types/symbols`; the operator table is

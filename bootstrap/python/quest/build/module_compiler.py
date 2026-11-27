@@ -12,15 +12,15 @@ Generated file names keep the .int/.mod of their sources' names, so that the
 header of an interface named like a C standard header (math.int.h, not math.h)
 cannot shadow it (<math.h>) on the C compiler's include path.
 
-The self-hosted counterpart is questlang/modules/artifacts/modulecompiler.
+The self-hosted counterpart is questlang/build/modulecompiler.
 """
 
 from __future__ import annotations
 
 import os
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import quest.syntax.ast as ast
 from quest.modules.stdlib import BuiltinModuleRegistry
@@ -95,6 +95,52 @@ def find_interface_header(interface_name: str, search_dirs: list[Path], header: 
                     continue
             return cand_h.name
     return None
+
+
+@dataclass
+class UnitCode:
+    """A unit's C, the files it goes in, and what its manifest records: its
+    canonical name (<main> for a main routine), the interface it implements
+    (None for a main routine), its source, and the modules and interfaces it
+    imports itself."""
+    name: str
+    interface: Optional[str]
+    source: Optional[Path]
+    code: str
+    c_file: Path
+    o_file: Path
+    qm_file: Path
+    imported_modules: list[ImportedModuleRef]
+    imported_interfaces: list[ImportedInterfaceRef]
+
+
+def write_unit(
+    unit: UnitCode,
+    include_paths: list[Path],
+    nogc: bool,
+    env: Environment,
+    log: Callable[[str, str], None] = lambda tag, message: None,
+) -> None:
+    """The tail of compiling a main routine or a module file: writes the unit's
+    C and compiles it to its object, the C compiler searching include_paths,
+    and writes its manifest, adding the interfaces its interfaces import,
+    resolved as in env. log is told of each step, as the build engine logs
+    them."""
+    log("EMIT C", str(unit.c_file))
+    unit.c_file.write_text(unit.code, encoding="utf-8")
+    log("HOST COMPILE", f"clang -c {unit.c_file} -o {unit.o_file}")
+    compile_c_to_object(unit.c_file, unit.o_file, include_paths=include_paths, nogc=nogc)
+    manifest = ModuleManifest(
+        name=unit.name,
+        interface=unit.interface,
+        source=str(unit.source.resolve()) if unit.source else "",
+        object=str(unit.o_file.resolve()),
+        imported_modules=unit.imported_modules,
+        imported_interfaces=unit.imported_interfaces
+        + indirect_interface_refs(unit.imported_interfaces, env.include_paths, env.program_dir, env.units.resolver),
+    )
+    log("WRITE QM", str(unit.qm_file))
+    write_qm(manifest, unit.qm_file)
 
 
 def compile_module(
@@ -215,15 +261,23 @@ def compile_module(
     c_file.parent.mkdir(parents=True, exist_ok=True)
     o_file.parent.mkdir(parents=True, exist_ok=True)
 
-    c_file.write_text(c_source, encoding="utf-8")
-
-    # 6. Compile .c to .o
-    compile_dirs = list(dict.fromkeys(search_dirs))
-    compile_c_to_object(
-        c_file,
-        o_file,
-        include_paths=compile_dirs,
+    # 6. Its C and its object, and 7. its manifest
+    qm_file = output_dir / f"{base}.qm"
+    write_unit(
+        UnitCode(
+            name=mod_name,
+            interface=canon_target_interface,
+            source=source_file,
+            code=c_source,
+            c_file=c_file,
+            o_file=o_file,
+            qm_file=qm_file,
+            imported_modules=imported_modules,
+            imported_interfaces=imported_interfaces,
+        ),
+        include_paths=list(dict.fromkeys(search_dirs)),
         nogc=nogc,
+        env=env,
     )
 
     if emit_deps:
@@ -252,19 +306,6 @@ def compile_module(
         dep_file = deps_dir / f"{o_file.stem}.d"
         prereqs_str = " ".join(dep_objects)
         dep_file.write_text(f"{target_rel}: {prereqs_str}\n", encoding="utf-8")
-
-    # 7. Emit .qm metadata file
-    qm_file = output_dir / f"{base}.qm"
-    manifest = ModuleManifest(
-        name=mod_name,
-        interface=canon_target_interface,
-        source=str(source_file.resolve()) if source_file else "",
-        object=str(o_file.resolve()),
-        imported_modules=imported_modules,
-        imported_interfaces=imported_interfaces
-        + indirect_interface_refs(imported_interfaces, env.include_paths, env.program_dir, env.units.resolver),
-    )
-    write_qm(manifest, qm_file)
 
     return ModuleCompileResult(c_file, o_file, qm_file)
 

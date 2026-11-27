@@ -11,6 +11,6 @@ This package provides:
   and imports.
 - quest.modules.loader: File-based loading, cycle detection, and caching.
 - quest.modules.artifacts: the artifacts of separate compilation, .qi files
-  (interface_compiler; C headers are the C backend's), .qm manifests and host
-  .o objects (module_compiler, manifest).
+  (interface_compiler; C headers are the C backend's) and .qm manifests
+  (manifest); quest.build.module_compiler writes modules' C and objects.
 """

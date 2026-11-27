@@ -44,14 +44,12 @@ The [`artifacts/`](artifacts) subpackage compiles units apart, as
   scope in the dynamic serialization format, and decides when a `.qi` is current (the same ABI version, the same
   source, nothing it depends on changed) or must be rebuilt ([docs/build-process.md](../../../../docs/build-process.md)
   §4.2, §5).
-- [`module_compiler.py`](artifacts/module_compiler.py) compiles a module file to C (`<name>.mod.c`, defining the
-  module's record, functions, and initializer), an object, and a manifest.
 - [`manifest.py`](artifacts/manifest.py) reads and writes `.qm` manifests, the record of what a unit imported and was
   compiled against, from which the build engine decides staleness. Both compilers write the same JSON, and each
   treats a manifest the other wrote as stale.
 
-The bootstrap has only the C backend, so a module always compiles to C; the self-hosted module compiler can write
-assembly instead, and records the backend in the manifest. The bootstrap has no JIT, and so no interface
+The module compiler, which compiles a module file to C, an object, and a manifest, is the build's
+([`build/module_compiler.py`](../build/module_compiler.py)), as in questlang. The bootstrap has no JIT, and so no interface
 fingerprints and no in-memory compilation of module units.
 
 ## Further reading
@@ -59,4 +57,4 @@ fingerprints and no in-memory compilation of module units.
 - [docs/modules.md](../../../../docs/modules.md): the module system, search rules, separate compilation (§9), and
   manifests (§10).
 - [docs/build-process.md](../../../../docs/build-process.md) §2.1, §4, §5: the unit graph, artifacts, and staleness.
-- [`bootstrap/python/quest/build/`](../build/README.md): the build engine that drives the module compiler.
+- [`bootstrap/python/quest/build/`](../build/README.md): the build engine and the module compiler.

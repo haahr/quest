@@ -22,14 +22,12 @@ from quest.modules.artifacts.manifest import (
     is_manifest_stale,
     read_qm,
     unit_staleness,
-    write_qm,
 )
 from quest.modules.stdlib import BuiltinModuleRegistry
-from quest.build.compiler_runner import compile_c_to_object, link_objects
+from quest.build.compiler_runner import link_objects
 from quest.ir.pipeline import implicit_imports
 from quest.codegen.backend import program_to_c
 from quest.types.env import Environment
-from quest.modules.artifacts.interface_compiler import indirect_interface_refs
 from quest.modules.graph import (
     ModuleArtifacts,
     Resolver,
@@ -44,7 +42,7 @@ from quest.modules.graph import (
 )
 from quest.modules.loader import load_interface
 from quest.build.headers import compile_interface_with_header
-from quest.modules.artifacts.module_compiler import compile_module_file
+from quest.build.module_compiler import UnitCode, compile_module_file, write_unit
 from quest.modules.paths import (
     DEFAULT_LIB_DIR,
     DEFAULT_PROJECT_DIR,
@@ -364,28 +362,23 @@ class BuildEngine:
             self.resolver,
         )
 
-        self.logger.log("EMIT C", str(c_path))
-        c_path.write_text(c_code, encoding="utf-8")
-
-        self.logger.log("HOST COMPILE", f"clang -c {c_path} -o {o_path}")
-        compile_c_to_object(
-            c_path,
-            o_path,
+        write_unit(
+            UnitCode(
+                name="<main>",
+                interface=None,
+                source=main_file,
+                code=c_code,
+                c_file=c_path,
+                o_file=o_path,
+                qm_file=qm_path,
+                imported_modules=imported_modules,
+                imported_interfaces=imported_interfaces,
+            ),
             include_paths=search_paths,
             nogc=self.nogc,
+            env=env,
+            log=self.logger.log,
         )
-
-        manifest = ModuleManifest(
-            name="<main>",
-            interface=None,
-            source=str(main_file.resolve()),
-            object=str(o_path.resolve()),
-            imported_modules=imported_modules,
-            imported_interfaces=imported_interfaces
-            + indirect_interface_refs(imported_interfaces, env.include_paths, env.program_dir, self.resolver),
-        )
-        self.logger.log("WRITE QM", str(qm_path))
-        write_qm(manifest, qm_path)
 
         return (c_path, o_path, qm_path, imported_modules)
 
