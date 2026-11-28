@@ -238,7 +238,9 @@ is used (§3.3); otherwise the JIT compiles the module file from source, and loa
   import it use that copy, whose state persists, as the interpreter's does. Editing the file during the session does
   not reload it. An input that fails forgets the module files it loaded, as the interpreter forgets the modules it ran,
   so that a later import loads them afresh (`tests/repl/modules.quest`); those earlier inputs loaded stay, their state
-  kept. A module that fails to compile reports its error as the interpreter would.
+  kept. The new copy exports the same names as the forgotten one, and the loader points each GOT slot already made for
+  one of them at the new copy (§3.6), so that no later input reaches the forgotten one's state
+  (`tests/repl/rollback_module_state.quest`). A module that fails to compile reports its error as the interpreter would.
 - **Initialization.** The module's initializer, guarded to run once, runs when its first importer's does, as in a
   compiled program.
 - **Exceptions** raised in a module file's code are located in its file (§3.7): the session keeps each loaded file's
@@ -303,7 +305,8 @@ relocations aside. Forms the backend can emit that no such program uses are enco
   behind, unused.
 - **Symbols** (`jit/loader`): a unit's own symbols resolve first, then those the units before it export (the entries,
   the records), then the driver's (`dlsym`). A unit's other symbols (`qr_register_dicts`, its functions' names) are
-  its own, so that units do not collide.
+  its own, so that units do not collide. A name a later unit exports again (a module file loaded afresh, §3.4) takes
+  the new address, in the exports and in its GOT slot if it has one.
 - **Registration,** done by the entry as by a program's `main`: function tables (`quest_register_funcs`), record offset
   tables (`quest_register_record_dict`), and abstract types (`quest_register_abstract_type`). The runtime compares
   type descriptors structurally (`quest_is_subtype`; an opaque one by its name), not by address, so an input's

@@ -1,0 +1,8 @@
+(* An input that fails forgets a module it loaded, and the next import runs the module again: a value of the new
+   instance, not the one the failed input changed *)
+import writer: Writer
+let save(name: String text: String): Ok = begin let w = writer.file(name) writer.putString(w text) writer.close(w) end
+save("m.int.quest" "interface M export x: Tuple var v: Int end end\n")
+save("m.mod.quest" "module m: M export let x = tuple let var v = 1 end end\n")
+import m: M; m.x.v := 99; 1 / 0
+import m: M; m.x.v

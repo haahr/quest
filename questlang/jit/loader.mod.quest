@@ -222,15 +222,22 @@ export
                 let f = e.functions[k]
                 code.addFunction(pointer(codeAt + f.offset) pointer(codeAt + f.offset + f.size))
             end
-            for k = 0 upto {extent e.functions - 1} do
-                if e.functions[k].exported then
-                    hashMap.insert(l.exported e.functions[k].name codeAt + e.functions[k].offset)
+            (* An exported name may be one an earlier unit exported too: a
+             * module loaded again after the input that first loaded it failed
+             * (docs/jit.md section 3.4). Its GOT slot, if it has one, then
+             * holds the earlier unit's address, and is set to the new one, so
+             * that later units reach this module, not the abandoned one. *)
+            let exportAt = fun(name: String a: Int): Ok
+                begin
+                    hashMap.insert(l.exported name a)
+                    let found = hashMap.get(l.slots name)
+                    if maybe.isSome(found) then writeWord(l maybe.unwrap(found) a) end
                 end
+            for k = 0 upto {extent e.functions - 1} do
+                if e.functions[k].exported then exportAt(e.functions[k].name codeAt + e.functions[k].offset) end
             end
             for k = 0 upto {extent e.dataSymbols - 1} do
-                if e.dataSymbols[k].exported then
-                    hashMap.insert(l.exported e.dataSymbols[k].name dataAt + e.dataSymbols[k].offset)
-                end
+                if e.dataSymbols[k].exported then exportAt(e.dataSymbols[k].name dataAt + e.dataSymbols[k].offset) end
             end
             let result = maps.newStringMap(:value.T)
             hashMap.forEach(own fun(name: String a: Int): Ok
