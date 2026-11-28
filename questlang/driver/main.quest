@@ -455,6 +455,11 @@ let keptImports(unit: nodes.Unit): Array(passes.ImplicitImport) =
         vector.toArray(kept)
     end
 
+(* The program's name as the importer of the modules the build engine builds
+ * for it, which its conformance errors name: the program's file without its
+ * extension, or a name like <stdin> as it is *)
+let importer = if strutil.startsWith(options.file "<") then options.file else files.stem(options.file) end
+
 (* Compiled backend execution: takes a type-checked program through the
  * selected backend (C, ssac, arm64, or wasm), matching the bootstrap's
  * codegen_c and run_c_compiled phases as well as -o and `compile`. It prints
@@ -543,9 +548,6 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                             tuple let canonicalPath = "util/realmath" let interfacePath = "util/RealMath" end)
                     let modules = engine.unitModuleRefs(importRefs(program) vector.toArray(implicit)
                             e.currentDir vector.toArray(includes) e.programDir e.units.resolver)
-                    let importer = if strutil.startsWith(options.file "<") then options.file
-                        else files.stem(options.file)
-                        end
                     let engineIncludes = array of(extent options.includePaths + 1 runtimeRoot)
                     for k = 0 upto extent options.includePaths - 1 do engineIncludes[k] := options.includePaths[k] end
                     let wasmEngine = engine.new(engineSettings(maybe.some(buildDir) engineIncludes
@@ -599,8 +601,6 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         engine.unitModuleRefs(importRefs(program) passes.implicitImports(t.unit program)
                                 e.currentDir vector.toArray(e.includePaths) e.programDir e.units.resolver)
                     end
-                let importer =
-                    if strutil.startsWith(options.file "<") then options.file else files.stem(options.file) end
                 try
                     let objects = engine.buildModules(newEngine(e) modules importer e.programDir)
                     if writing then
