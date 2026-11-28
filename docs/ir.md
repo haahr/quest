@@ -71,7 +71,9 @@ An IR **unit** corresponds to a compilation unit (a program, or a module compile
 - **Module records:** a module's exported record, its layout, and its lazy initializer function
   ([c-representation.md](c-representation.md) §5.6). The initializer ends by making the record, a record literal of
   the module's members (`record m_record` after the module's members, `ir.Module.record`), which the printer stores
-  in the module's global. A module file's unit is its module alone, with its
+  in the module's global. A `var` member is a `var` field of the record, and code outside the module reads and writes
+  it there (`record_field` of `module m`, not `member m.x`), since the member's own variable holds only its value when
+  the initializer ended. A module file's unit is its module alone, with its
   **exports**: its interface's members at the interface's types, bound in its initializer after its members (converted
   from the members, at the abstract types' representations, by the represent pass). Its record holds them, and it
   exports a

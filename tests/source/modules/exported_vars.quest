@@ -1,0 +1,23 @@
+(* A module's exported var is one location, whether the module is declared in
+ * the program or imported: writes from outside it, by assignment and through a
+ * var parameter, are what later reads find, through the module and through a
+ * record bound to it. *)
+import conv : Conv
+import tallies : Tallies
+import writer : Writer
+
+interface C export var count: Int end
+module c : C export let var count = 0 end
+
+let bump(var n: Int): Ok = n := n + 1
+
+c.count := 5
+bump(@c.count)
+let r = c
+r.count := r.count * 10
+writer.putString(writer.output conv.int(c.count) <> "\n")
+
+tallies.total := 7
+bump(@tallies.total)
+writer.putString(writer.output conv.int(tallies.total) <> "\n")
+c.count + tallies.total

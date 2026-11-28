@@ -58,6 +58,7 @@ export
      *     import maybe=util/maybe:util/Maybe
      *     type T TYPE
      *     value join: All(...) String
+     *     value var count: Int
      *     uses util/Maybe 3f... *)
     let ofQi(canonical: String qi: String imported: All(path: String) String): String =
         begin
@@ -88,8 +89,9 @@ export
             let vals = interfaceCompiler.itemsOf(interfaceCompiler.fieldOf(r "values"))
             for i = 0 upto {extent vals - 1} do
                 let v = vals[i]
+                let mode = if interfaceCompiler.boolOf(interfaceCompiler.fieldOf(v "isVar")) then "var " else "" end
                 vector.append(valueLines
-                        "value " <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(v "name")) <> ": "
+                        "value " <> mode <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(v "name")) <> ": "
                     <> interfaceCompiler.stringOf(interfaceCompiler.fieldOf(v "typeSig")) <> "\n")
             end
             sha256.hexDigest("abi " <> conv.int(abi.abiVersion) <> "\ninterface " <> canonical <> "\n"

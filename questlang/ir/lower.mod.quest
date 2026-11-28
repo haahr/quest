@@ -419,6 +419,17 @@ export
             else maybe.none()
         end
 
+    (* Whether field name of a record type is a var field *)
+    let isVarField(recordType: Type name: String): Bool =
+        case recordType.form
+            when typeRecord with r then
+                begin
+                    let found = model.recordGetField(r.fields name)
+                    maybe.isSome(found) andif maybe.unwrap(found).isVar
+                end
+            else false
+        end
+
     (* The type of a record's field *)
     let fieldType(recordType: Type name: String): Type =
         case recordType.form
@@ -1005,7 +1016,16 @@ export
     and select(l: Lowerer e: Expr target: Expr field: String into: maybe.T(Variable)): Atom =
         begin
             let m = moduleRefOf(l target)
-            if maybe.isSome(m) then
+            if maybe.isSome(m) andif isVarField(target.type field) then
+                (* A module's var member is its record's field, which writes
+                 * from outside the module store to: the member's own variable
+                 * holds only its value when the initializer ended *)
+                let recordAtom = letOp(l option opModuleMember of Op with
+                    let var moduleRef = maybe.unwrap(m)
+                    let var member = maybe.none()
+                end target.type none)
+                letOp(l nodes.recordField(recordAtom field) e.type into)
+            elsif maybe.isSome(m) then
                 letOp(l option opModuleMember of Op with
                     let var moduleRef = maybe.unwrap(m)
                     let var member = maybe.some(field)
@@ -2311,7 +2331,8 @@ export
     let moduleEnd(l: Lowerer m: nodes.Module): Body = hashMap.find(l.moduleEnds m.id)
 
     (* Ends a module's initializer by making its record: of its members, or of
-     * its exports *)
+     * its exports, with a var field for each var, which is where reads and
+     * writes from outside the module find it (select) *)
     let addModuleRecord(l: Lowerer m: nodes.Module): Ok =
         begin
             let fields = maybe.unwrapOr(m.exports m.members)
@@ -2320,8 +2341,8 @@ export
             for i = 0 upto {vector.length(fields.names) - 1} do
                 let n = vector.get(fields.names i)
                 let v = hashMap.find(fields.vars n)
-                vector.append(recordFields tuple let name = n let type = v.type let isVar = false end)
-                vector.append(atoms tuple let name = n let atom = va(v) let isVar = false end)
+                vector.append(recordFields tuple let name = n let type = v.type let isVar = v.isMutable end)
+                vector.append(atoms tuple let name = n let atom = va(v) let isVar = v.isMutable end)
             end
             let recordType = model.recordType(vector.toArray(recordFields) maybe.none())
             let rv = fresh(m.name <> "_record" recordType false)
@@ -2365,9 +2386,15 @@ export
                                  * abstract type's application at a layout
                                  * of the module's own
                                  * (docs/c-representation.md section 5.1) *)
-                                if subtyping.isTypeEqual(mv.type sym.type maybe.none())
-                                        andif not(genericLayout.abstractLayoutsDiffer(sym.type)) then
+                                let same = subtyping.isTypeEqual(mv.type sym.type maybe.none())
+                                    andif not(genericLayout.abstractLayoutsDiffer(sym.type))
+                                if same andif {mv.isMutable is sym.isVar} then
                                     nodes.addMember(exports sym.name mv)
+                                elsif sym.isVar then
+                                    (* A var export is its member's variable:
+                                     * a converted copy would lose writes *)
+                                    fail(:Ok "module " <> x.name <> ": var member '" <> sym.name
+                                        <> "' needs a conversion to its interface's type")
                                 else
                                     let exported = fresh(sym.name sym.type false)
                                     vector.append(moduleEnd(l m).statements

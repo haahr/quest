@@ -115,7 +115,7 @@ QI_SCHEMA_TYPE_STR = (
     "producer: String "
     "source: String "
     "types: Array(Record group: Int isManifest: Bool kind: String manifestType: String name: String end) "
-    "values: Array(Record isPoly: Bool name: String typeSig: String end) "
+    "values: Array(Record isPoly: Bool isVar: Bool name: String typeSig: String end) "
     "end"
 )
 
@@ -477,6 +477,7 @@ def compile_interface_to_qi(
                             "name": QString(sig.name),
                             "typeSig": QString(sig_str),
                             "isPoly": TRUE_VALUE if is_poly else FALSE_VALUE,
+                            "isVar": TRUE_VALUE if val_sym and val_sym.is_var else FALSE_VALUE,
                         }
                     )
                 )
@@ -943,7 +944,8 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
                     v_name = str(v_item.fields["name"].value)
                     type_sig_str = str(v_item.fields["typeSig"].value)
                     val_type = _parse_and_elaborate_type_in_env(type_sig_str, env)
-                    val_sym = ValueSymbol(name=v_name, type_val=val_type)
+                    is_var = bool(v_item.fields["isVar"].value) if "isVar" in v_item.fields else False
+                    val_sym = ValueSymbol(name=v_name, type_val=val_type, is_var=is_var)
                     iface_scope.declare_value(val_sym)
     finally:
         env.current_scope = saved_scope

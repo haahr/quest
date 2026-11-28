@@ -21,6 +21,10 @@ Quest implements a first-order module system as described by Luca Cardelli in *T
     preventing clients from depending on its internal representation.
   - A manifest type declared in an interface (`Def T = Int` or `Let T = Int`) is transparent, and its definition is
     known to all clients.
+- **Exported `var`s:** An interface may declare a value `var` (`var count: Int`). The module must then bind it with
+  `let var`, at the interface's type itself rather than a subtype, since code outside both reads and writes it
+  (`c.count := 5`, `bump(@c.count)`). It is one location, a `var` field of the module's record, which every importer's
+  reads and writes reach; `.qi` files record which values are `var`.
 - **Singleton Module Semantics:** Modules are instantiated at most once at link time. When multiple modules or phrases
   import the same module (e.g. in diamond dependencies), all importers share the identical runtime record and mutable
   state cells.

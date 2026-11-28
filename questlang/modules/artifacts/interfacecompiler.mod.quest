@@ -61,7 +61,7 @@ export
             <> "producer: String "
             <> "source: String "
             <> "types: Array(Record group: Int isManifest: Bool kind: String manifestType: String name: String end) "
-            <> "values: Array(Record isPoly: Bool name: String typeSig: String end) "
+            <> "values: Array(Record isPoly: Bool isVar: Bool name: String typeSig: String end) "
             <> "end"
 
     (* =========================================================================
@@ -503,9 +503,10 @@ export
                                 end
                             let isPoly = maybe.isSome(valType)
                                 andif case maybe.unwrap(valType).form when typeAll then true else false end
+                            let isVar = maybe.isSome(valSym) andif maybe.unwrap(valSym).isVar
                             vector.append(vals recordOf(array of
                                 field("name" str(name)) field("typeSig" str(sigText))
-                                field("isPoly" values.boolValue(isPoly))
+                                field("isPoly" values.boolValue(isPoly)) field("isVar" values.boolValue(isVar))
                             end))
                         end
                     else ok
@@ -1043,7 +1044,9 @@ export
                     for i = 0 upto {extent valueItems - 1} do
                         let item = valueItems[i]
                         let valueType = elaborateTypeText(stringOf(fieldOf(item "typeSig")) e)
-                        symbols.declareValue(ifaceScope symbols.valueSymbol(stringOf(fieldOf(item "name")) valueType))
+                        let isVar = boolOf(fieldOf(item "isVar"))
+                        symbols.declareValue(ifaceScope
+                                symbols.newValueSymbol(stringOf(fieldOf(item "name")) valueType isVar false false 0 0))
                     end
                     ok
                 end

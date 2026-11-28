@@ -585,6 +585,12 @@ class _Lowerer:
 
     def select(self, e: TypedSelect, target: TypedExpr, fld: str, into: Optional[ir.Var]) -> ir.Atom:
         if (module := self.module_ref(target)) is not None:
+            if _is_var_field(target.type_val, fld):
+                # A module's var member is its record's field, which writes
+                # from outside the module store to: the member's own variable
+                # holds only its value when the initializer ended
+                record = self.let(ir.ModuleMember(module), target.type_val)
+                return self.let(ir.RecordField(record, fld), e.type_val, into)
             return self.let(ir.ModuleMember(module, fld), e.type_val, into)
         base = self.value(target)
         s = resolved_shape(shape(target.type_val))
@@ -1252,8 +1258,13 @@ def lower_module_file(mod: TypedModule, env: Environment) -> ir.Unit:
         # An export converts to its interface's type where it differs, or holds
         # an abstract type's application at a layout of the module's own
         # (docs/c-representation.md §5.1)
-        if is_type_equal(member.type, symbol.type_val) and not abstract_layouts_differ(symbol.type_val):
+        same = is_type_equal(member.type, symbol.type_val) and not abstract_layouts_differ(symbol.type_val)
+        if same and member.mutable == symbol.is_var:
             exports[name] = member
+        elif symbol.is_var:
+            # A var export is its member's variable: a converted copy would
+            # lose writes
+            raise LoweringError(f"module {mod.name}: var member '{name}' needs a conversion to its interface's type")
         else:
             export = ir.Var(name, symbol.type_val)
             lowerer.module_ends[id(module)].statements.append(ir.Let(export, member))
@@ -1265,13 +1276,21 @@ def lower_module_file(mod: TypedModule, env: Environment) -> ir.Unit:
 
 def _add_module_record(lowerer: _Lowerer, module: ir.Module) -> None:
     """Ends a module's initializer by making its record: of its members, or of
-    its exports (docs/ir.md §3)."""
+    its exports (docs/ir.md §3), with a var field for each var, which is where
+    reads and writes from outside the module find it (select)."""
     fields = module.members if module.exports is None else module.exports
-    rec_t = QRecordType(tuple(QRecordField(name=n, type_val=v.type) for n, v in fields.items()))
+    rec_t = QRecordType(tuple(QRecordField(name=n, type_val=v.type, is_var=v.mutable) for n, v in fields.items()))
     module.record = ir.Var(f"{module.name}_record", rec_t)
     lowerer.module_ends[id(module)].statements.append(
-        ir.Let(module.record, ir.MakeRecord(tuple((n, v, False) for n, v in fields.items())))
+        ir.Let(module.record, ir.MakeRecord(tuple((n, v, v.mutable) for n, v in fields.items())))
     )
+
+
+def _is_var_field(record_type: QType, name: str) -> bool:
+    """Whether field name of a record type is a var field."""
+    if isinstance(record_type, QRecordType):
+        return any(f.name == name and f.is_var for f in record_type.fields)
+    return False
 
 
 def lower_program(

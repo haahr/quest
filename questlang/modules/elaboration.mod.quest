@@ -604,6 +604,17 @@ export
                         <> model.show(modSym.type) <> "', which is not a subtype of interface signature '"
                         <> model.show(expected) <> "'" offset)
                 end
+                (* A var member is written through the interface as well as
+                 * read, so it must be a var of the very type *)
+                if entry.value.isVar andif not(modSym.isVar) then
+                    diagnostics.fail(:Ok "Value '" <> entry.key <> "' in module '" <> decl.name
+                        <> "' is not a var, as interface '" <> decl.interfaceName <> "' declares it" offset)
+                end
+                if entry.value.isVar andif not(subtyping.isTypeEqual(modSym.type expected lookup)) then
+                    diagnostics.fail(:Ok "Var '" <> entry.key <> "' in module '" <> decl.name <> "' has type '"
+                        <> model.show(modSym.type) <> "', not its interface's type '" <> model.show(expected) <> "'"
+                            offset)
+                end
             end
         end
 

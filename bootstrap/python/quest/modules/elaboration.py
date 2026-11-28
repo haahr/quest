@@ -597,6 +597,20 @@ def elaborate_module(
                     f"which is not a subtype of interface signature '{expected_type}'",
                     offset=decl.offset,
                 )
+            # A var member is written through the interface as well as read, so
+            # it must be a var of the very type.
+            if interface_val_symbol.is_var and not mod_val_symbol.is_var:
+                raise QuestTypeError(
+                    f"Value '{val_name}' in module '{decl.name}' is not a var, "
+                    f"as interface '{decl.interface_name}' declares it",
+                    offset=decl.offset,
+                )
+            if interface_val_symbol.is_var and not is_type_equal(mod_val_symbol.type_val, expected_type, env):
+                raise QuestTypeError(
+                    f"Var '{val_name}' in module '{decl.name}' has type '{mod_val_symbol.type_val}', "
+                    f"not its interface's type '{expected_type}'",
+                    offset=decl.offset,
+                )
     finally:
         env.current_scope = saved_scope
         env.in_unsound_module = saved_unsound
