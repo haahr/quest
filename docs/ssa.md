@@ -112,7 +112,8 @@ never returns), come from the table `ssa/runtimeFunctions`, which holds each one
 against `quest_runtime.h`; a Quest function's come from its parameters' and results' representations. A function extends
 its byte parameters on entry, since a C caller leaves their upper bits unspecified. A C `bool` or `QChar` result is
 extended by a `zext8` after the call, since AAPCS64 leaves a narrow result's upper bits unspecified; a function that
-returns such an extension of a call's result can make the call in tail position, since its own caller extends it again.
+returns a byte itself, and returns such an extension of a call's result, can make the call in tail position, since its
+own caller extends it again (one that returns a word extends it itself).
 So can one that returns a call's `ptr` result as a `val`, or the reverse (`toVal`, `fromVal`), as a direct call of a
 closure's code at its own types does (ir.md §8.3, `adapt`): the register is the same, and `ssac` casts it.
 A call of a function that does not return (a raise) ends its block with `unreachable`.

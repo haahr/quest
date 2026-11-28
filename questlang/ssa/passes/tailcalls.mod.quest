@@ -128,15 +128,21 @@ export
     (* How many trailing instructions of blk a tail call would replace: 1 for
      * a call whose results blk returns (directly or through forwarding
      * blocks), 2 for a call followed by a byte sign/zero extension (which the
-     * caller will perform anyway; docs/ssa.md section 2.2) or a pointer/QVal
-     * (tagged runtime value) retype, or 0 otherwise *)
+     * caller will perform anyway, when f itself returns a byte; docs/ssa.md
+     * section 2.2) or a pointer/QVal (tagged runtime value) retype, or 0
+     * otherwise. A function returning a word must extend a byte callee's
+     * result itself, since AAPCS64 leaves its upper bits unspecified and f's
+     * caller won't extend them *)
     let tailPops(f: Function blk: ssa.Block): Int =
         begin
             let n = vector.length(blk.insts)
             let isPtr(v: Int): Bool = case ssa.typeOf(f v) when typePtr then true else false end
-            let isExtension(i: ssa.Inst): Bool = ssa.isOp(i ssa.opZext8) orif ssa.isOp(i ssa.opSext8)
-                orif {ssa.isOp(i ssa.opToVal) andif isPtr(i.args[0])}
-                orif {ssa.isOp(i ssa.opFromVal) andif isPtr(i.results[0])}
+            let returnsByte =
+                {extent f.signature.results is 1} andif f.signature.results[0]?passByte
+            let isExtension(i: ssa.Inst): Bool =
+                {returnsByte andif {ssa.isOp(i ssa.opZext8) orif ssa.isOp(i ssa.opSext8)}}
+                    orif {ssa.isOp(i ssa.opToVal) andif isPtr(i.args[0])}
+                    orif {ssa.isOp(i ssa.opFromVal) andif isPtr(i.results[0])}
             let var returned = array of(0 0)
             let var pops = 0
             if n > 0 then

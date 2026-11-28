@@ -6,10 +6,11 @@
  * a call whose results are returned; one whose results a jump passes to a
  * block that returns them; one followed by a jump that passes a join's
  * parameters it does not return (a contified loop's exit); one whose byte
- * result is extended, which the caller's caller extends again; and calls that
- * are not in tail position, one whose result is added to, one followed by a
- * jump to a block that returns another value, and one in a function a slot's
- * address escapes from. *)
+ * result is extended in a function that returns a byte, which the caller's
+ * caller extends again; and calls that are not in tail position, one whose
+ * byte result a function returning a word extends, one whose result is added
+ * to, one followed by a jump to a block that returns another value, and one in
+ * a function a slot's address escapes from. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
@@ -74,10 +75,19 @@ show("a jump to a block that returns another value" array of
     "}"
 end)
 
-show("a byte result extended" array of
-    "function extended(%0: int): int {"
+show("a byte result extended, by a function returning a byte" array of
+    "function extended(%0: int): int result narrow {"
     "b0(%0: int):"
-    "  %1: int = call g(%0)"
+    "  %1: int = call g(%0) result narrow"
+    "  %2: int = zext8 %1"
+    "  return %2"
+    "}"
+end)
+
+show("a byte result extended, by a function returning a word" array of
+    "function widened(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = call g(%0) result narrow"
     "  %2: int = zext8 %1"
     "  return %2"
     "}"

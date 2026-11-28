@@ -53,17 +53,31 @@ b0(%0: int):
 b1(%2: int):
   return %2
 }
-== a byte result extended
-function extended(%0: int): int {
+== a byte result extended, by a function returning a byte
+function extended(%0: int): int result narrow {
 b0(%0: int):
-  %1: int = call g(%0)
+  %1: int = call g(%0) result narrow
   %2: int = zext8 %1
   return %2
 }
 -- after tailCalls
-function extended(%0: int): int {
+function extended(%0: int): int result narrow {
 b0(%0: int):
-  tail %1: int = call g(%0)
+  tail %1: int = call g(%0) result narrow
+}
+== a byte result extended, by a function returning a word
+function widened(%0: int): int {
+b0(%0: int):
+  %1: int = call g(%0) result narrow
+  %2: int = zext8 %1
+  return %2
+}
+-- after tailCalls
+function widened(%0: int): int {
+b0(%0: int):
+  %1: int = call g(%0) result narrow
+  %2: int = zext8 %1
+  return %2
 }
 == a result added to
 function added(%0: int): int {
