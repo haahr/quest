@@ -1,0 +1,98 @@
+function qf_bump(%0: ptr, %1: ptr) {
+b0(%0: ptr, %1: ptr):
+  @2:5:35
+  %2: real = load8 %1 + 0
+  %3: real = realConst 4609434218613702656
+  %4: real = fadd %2, %3
+  %5: int = isNaN %4
+  branch %5, b2(), b1()
+b1():
+  @2:5:30
+  store8 %1 + 0, %4
+  return
+b2():
+  @2:5:35
+  %6: ptr = symbol qs_1
+  call quest_raise_real_error_at(%6)
+  unreachable
+}
+
+function qv_mod_opened__tests__source__modules__openedcounter_init() {
+b0():
+  %0: ptr = symbol qv_mod_opened__tests__source__modules__openedcounter_initialized
+  %1: int = load1 %0 + 0
+  branch %1, b1(), b2()
+b1():
+  return
+b2():
+  %2: ptr = symbol qv_mod_opened__tests__source__modules__openedcounter_initialized
+  %3: int = const 1
+  store1 %2 + 0, %3
+  return
+}
+
+function qr_register_dicts() {
+b0():
+  %0: ptr = symbol qr_roots
+  call quest_register_roots(%0)
+  %1: ptr = symbol qr_frames
+  call quest_register_frames(%1)
+  %2: ptr = symbol qr_funcs
+  %3: int = const 3
+  tail call quest_register_funcs(%2, %3)
+}
+
+function main exported(%0: int, %1: ptr) int32 [0]: int result int32 slots [8:8 8:8 8:8] {
+b0(%0: int, %1: ptr):
+  call quest_gc_init()
+  call quest_builtins_init(%0, %1) int32 [0]
+  call qr_register_dicts()
+  call qv_mod_tests__source__modules__openedcounter_init()
+  call qv_mod_opened__tests__source__modules__openedcounter_init()
+  %2: real = realConst 4611686018427387904
+  %3: int = realBits %2
+  %4: val = toVal %3
+  @10:9
+  %5: ptr = slot 0
+  store8 %5 + 0, %4
+  @11:28
+  %9: int = fromVal %4
+  %10: real = bitsReal %9
+  %11: ptr = slot 1
+  store8 %11 + 0, %10
+  @11:9
+  %14: ptr = null
+  call qf_bump(%14, %11)
+  %16: real = load8 %11 + 0
+  %17: int = realBits %16
+  %18: val = toVal %17
+  store8 %5 + 0, %18
+  call quest_barrier_slot(%5)
+  @12:28
+  %21: int = fromVal %18
+  %22: real = bitsReal %21
+  %23: ptr = slot 2
+  store8 %23 + 0, %22
+  @12:9
+  call qf_bump(%14, %23)
+  %28: real = load8 %23 + 0
+  %29: int = realBits %28
+  %30: val = toVal %29
+  store8 %5 + 0, %30
+  call quest_barrier_slot(%5)
+  %31: int = const 0
+  return %31
+}
+
+data qs_1 text "tests/source/modules/openedcounter.mod.quest:5:35"
+data qm_opened__tests__source__modules__openedcounter writable zero 16
+data qv_mod_opened__tests__source__modules__openedcounter_initialized writable zero 8
+data g_bump words [qf_bump_closure]
+data qf_bump_closure words [qf_bump]
+data qs_2 text "tests/source/modules/openedcounter.bump"
+data qs_3 text "opened/tests/source/modules/openedcounter.<init>"
+data qs_4 text "<main>"
+data qr_frames words [0]
+data qr_funcs words [qf_bump, qs_2, qv_mod_opened__tests__source__modules__openedcounter_init, qs_3, main, qs_4]
+data qr_roots words [g_bump, 1, 0, 0]
+

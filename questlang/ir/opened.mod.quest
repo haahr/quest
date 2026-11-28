@@ -265,8 +265,11 @@ export
                     when sVarDecl with x then begin hashSet.insert(lost x.v.id) ok end
                     when sFuns then vector.append(groups st)
                     (* What the initializer does is the compiled module's to
-                     * do, once *)
-                    else ok
+                     * do, once, and what it binds (a recursive value's
+                     * variables, say) the copy does not *)
+                    else
+                        let binders = walk.statementBinders(st)
+                        for j = 0 upto {extent binders - 1} do begin hashSet.insert(lost binders[j].id) ok end end
                 end
             end
             (* A group is copied unless one of its functions uses a variable

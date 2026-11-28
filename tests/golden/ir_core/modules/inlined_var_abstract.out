@@ -1,0 +1,37 @@
+import openedCounter = "openedCounter" : OpenedCounter
+module opened/tests/source/modules/openedcounter : OpenedCounter {
+  funs {
+    fun make(x: Real): T {
+      return x
+    }
+  }
+  funs {
+    fun bump(var c: T): Ok {
+      let %1: Real = prim ++(c, 1.5) @1:5:35
+      c := %1 @1:5:30
+      return ok
+    }
+  }
+  funs {
+    fun get(c.1: T): Real {
+      return c.1
+    }
+  }
+  export make = make, bump = bump, get = get
+}
+main {
+  funs {
+    fun f(): Real {
+      let %2: openedCounter.T = call opened/tests/source/modules/openedcounter.make(2.0) @10:21
+      var c.2: openedCounter.T = %2 @10:9
+      let %3: Var(openedCounter.T) = addr c.2 @11:28
+      do call opened/tests/source/modules/openedcounter.bump(%3) @11:9
+      let %4: Var(openedCounter.T) = addr c.2 @12:28
+      do call opened/tests/source/modules/openedcounter.bump(%4) @12:9
+      let %5: Real = call opened/tests/source/modules/openedcounter.get(c.2) @13:9
+      return %5
+    }
+  }
+  let %6: Real = call f() @15:1
+}
+

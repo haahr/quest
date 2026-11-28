@@ -1,0 +1,215 @@
+function qf_count(%0: ptr, %1: ptr, %2: int, %3: int): int {
+b0(%0: ptr, %1: ptr, %2: int, %3: int):
+  @7:5
+  %27: int = const 0
+  jump b4()
+b1(%47: int, %53: int):
+  @7:25
+  %7: int = add %47, %2
+  @7:23
+  %8: ptr = load8 %1 + 0 invariant
+  %9: int = callIndirect %8, %1, %7 result narrow
+  %10: int = zext8 %9
+  @7:20
+  %11: int = const 1
+  %12: int = const 0
+  %19: int = select %10, %11, %12
+  @7:63
+  %13: int = const 1
+  %14: int = sub %47, %13
+  @7:20
+  %25: int = add %53, %19
+  jump b3()
+b2(%54: int):
+  @7:5
+  %18: int = const 0
+  %26: int = add %54, %18
+  return %26
+b3():
+  @7:8
+  %4: int = const 0
+  %5: int = gt %14, %4
+  @7:5
+  branch %5, b1(%14, %25), b2(%25)
+b4():
+  @7:8
+  %33: int = const 0
+  %34: int = gt %3, %33
+  @7:5
+  branch %34, b5(), b2(%27)
+b5():
+  @7:5
+  jump b1(%3, %27)
+}
+
+function qf_count_2(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  @7:5
+  %23: int = const 0
+  jump b4(%0, %1, %23)
+b1():
+  @7:25
+  %7: int = add %19, %3
+  @8:25
+  %8: int = const 4
+  %9: int = gt %7, %8
+  @7:20
+  %10: int = const 1
+  %11: int = const 0
+  %17: int = select %9, %10, %11
+  @7:63
+  %12: int = const 1
+  %13: int = sub %19, %12
+  @7:20
+  %21: int = add %20, %17
+  jump b3(%2, %13, %21)
+b2():
+  @7:5
+  %16: int = const 0
+  %22: int = add %20, %16
+  return %22
+b3(%18: ptr, %19: int, %20: int):
+  %2: ptr = load8 %18 + 8 invariant
+  %3: int = load8 %18 + 16 invariant
+  @7:8
+  %4: int = const 0
+  %5: int = gt %19, %4
+  @7:5
+  branch %5, b1(), b2()
+b4(%24: ptr, %25: int, %26: int):
+  @7:5
+  jump b3(%24, %25, %26)
+}
+
+function qr_register_dicts() {
+b0():
+  %0: ptr = symbol qr_roots
+  call quest_register_roots(%0)
+  %1: ptr = symbol qr_frames
+  call quest_register_frames(%1)
+  %2: ptr = symbol qr_funcs
+  %3: int = const 3
+  tail call quest_register_funcs(%2, %3)
+}
+
+function main exported(%0: int, %1: ptr) int32 [0]: int result int32 {
+b0(%0: int, %1: ptr):
+  call quest_gc_init()
+  call quest_builtins_init(%0, %1) int32 [0]
+  call qr_register_dicts()
+  call qv_mod_string_init()
+  %2: ptr = symbol qf_count_closure
+  %3: ptr = symbol g_count
+  store8 %3 + 0, %2
+  @21:6
+  %4: ptr = symbol qso_3 + 8
+  jump b1()
+b1():
+  @21:6
+  %9: int = load8 %4 + 0 invariant
+  jump b2()
+b2():
+  @21:1
+  jump b18()
+b3():
+  @10:5
+  jump b4()
+b4():
+  @10:5
+  %55: int = const 0
+  return %55
+b5():
+  @10:8
+  %15: int = const 0
+  %16: int = lt %18, %15
+  @10:5
+  branch %16, b6(%18), b7(%18)
+b6(%85: int):
+  @11:14
+  %17: int = const 1
+  %18: int = add %85, %17
+  @11:9
+  jump b5()
+b7(%86: int):
+  @14:13
+  %21: int = const 0
+  @15:13
+  %24: int = const 1
+  %28: int = le %24, %86
+  branch %28, b8(), b9()
+b8():
+  @15:13
+  jump b16()
+b9():
+  @15:13
+  jump b10(%21)
+b10(%57: int):
+  @16:21
+  %44: int = const 24
+  %45: ptr = symbol quest_layout_closure_qf_count_2
+  %46: ptr = call quest_alloc(%44, %45)
+  %47: ptr = symbol qf_count_2
+  store8 %46 + 0, %47
+  store8 %46 + 16, %57
+  store8 %46 + 8, %46
+  call quest_barrier(%46)
+  %48: int = const 10
+  %49: int = call qf_count_2(%46, %48)
+  @10:5
+  jump b3()
+b11():
+  @15:38
+  %31: int = const 1
+  %32: int = add %81, %31
+  @15:13
+  %36: int = eq %40, %86
+  branch %36, b13(%32), b14(%32, %40)
+b12():
+  @15:13
+  jump b10(%80)
+b13(%80: int):
+  @15:13
+  jump b12()
+b14(%81: int, %84: int):
+  @15:13
+  jump b15()
+b15():
+  @15:13
+  %39: int = const 1
+  %40: int = add %84, %39
+  jump b11()
+b16():
+  @15:38
+  %63: int = const 1
+  %64: int = add %21, %63
+  @15:13
+  %65: int = eq %24, %86
+  branch %65, b13(%64), b17()
+b17():
+  @15:13
+  jump b14(%64, %24)
+b18():
+  @10:8
+  %72: int = const 0
+  %73: int = lt %9, %72
+  @10:5
+  branch %73, b19(), b7(%9)
+b19():
+  @10:5
+  jump b6(%9)
+}
+
+data qf_count_closure words [qf_count]
+data qf_count_2_closure words [qf_count_2]
+data qs_1 text "count"
+data qs_2 text "<main>"
+data qr_frames words [0]
+data qr_funcs words [qf_count, qs_1, qf_count_2, qs_1, main, qs_2]
+data g_count writable zero 8
+data qs_3 text "ab"
+data qso_3 words [quest_layout_string + ~9223372036854775808, 2, qs_3]
+data qs_4 text "closure_qf_count_2"
+data qlk_closure_qf_count_2 words [256]
+data quest_layout_closure_qf_count_2 words [qs_4, 0, 24, 12884901888, qlk_closure_qf_count_2]
+data qr_roots words [g_count, 1, 0, 0]
+

@@ -1,0 +1,145 @@
+function qf_count(%0: ptr, %1: ptr, %2: ptr, %3: int) {
+b0(%0: ptr, %1: ptr, %2: ptr, %3: int):
+  @6:5
+  jump b8()
+b1(%36: int):
+  @8:16
+  %6: ptr = load8 %1 + 0 invariant
+  %7: int = callIndirect %6, %1, %36 result narrow
+  %8: int = zext8 %7
+  @8:13
+  branch %8, b4(), b5()
+b2():
+  @9:13
+  jump b3()
+b3():
+  @9:13
+  return
+b4():
+  @8:31
+  %9: int = load8 %2 + 0
+  %10: int = const 1
+  %11: int = add %9, %10
+  @8:26
+  store8 %2 + 0, %11
+  jump b6()
+b5():
+  @8:26
+  jump b6()
+b6():
+  @9:24
+  %12: int = const 1
+  %13: int = sub %36, %12
+  @9:13
+  jump b7()
+b7():
+  @6:8
+  %4: int = const 0
+  %5: int = gt %13, %4
+  @6:5
+  branch %5, b1(%13), b2()
+b8():
+  @6:8
+  %23: int = const 0
+  %24: int = gt %3, %23
+  @6:5
+  branch %24, b9(), b2()
+b9():
+  @6:5
+  jump b1(%3)
+}
+
+function qf_count_2(%0: ptr, %1: ptr, %2: int) {
+b0(%0: ptr, %1: ptr, %2: int):
+  @6:5
+  jump b8()
+b1(%27: int):
+  @12:26
+  %5: int = const 4
+  %6: int = gt %27, %5
+  @8:13
+  branch %6, b4(), b5()
+b2():
+  @9:13
+  jump b3()
+b3():
+  @9:13
+  return
+b4():
+  @8:31
+  %7: int = load8 %1 + 0
+  %8: int = const 1
+  %9: int = add %7, %8
+  @8:26
+  store8 %1 + 0, %9
+  jump b6()
+b5():
+  @8:26
+  jump b6()
+b6():
+  @9:24
+  %10: int = const 1
+  %11: int = sub %27, %10
+  @9:13
+  jump b7()
+b7():
+  @6:8
+  %3: int = const 0
+  %4: int = gt %11, %3
+  @6:5
+  branch %4, b1(%11), b2()
+b8():
+  @6:8
+  %19: int = const 0
+  %20: int = gt %2, %19
+  @6:5
+  branch %20, b9(), b2()
+b9():
+  @6:5
+  jump b1(%2)
+}
+
+function qr_register_dicts() {
+b0():
+  %0: ptr = symbol qr_roots
+  call quest_register_roots(%0)
+  %1: ptr = symbol qr_frames
+  call quest_register_frames(%1)
+  %2: ptr = symbol qr_funcs
+  %3: int = const 3
+  tail call quest_register_funcs(%2, %3)
+}
+
+function main exported(%0: int, %1: ptr) int32 [0]: int result int32 slots [8:8] {
+b0(%0: int, %1: ptr):
+  call quest_gc_init()
+  call quest_builtins_init(%0, %1) int32 [0]
+  call qr_register_dicts()
+  %2: ptr = symbol qf_count_closure
+  %3: ptr = symbol g_count
+  store8 %3 + 0, %2
+  @13:25
+  %4: ptr = slot 0
+  %5: int = const 0
+  store8 %4 + 0, %5
+  @13:50
+  %8: ptr = symbol qf_count_2_closure
+  %9: ptr = symbol g_count_2
+  store8 %9 + 0, %8
+  @13:39
+  %10: ptr = null
+  %11: int = const 10
+  call qf_count_2(%10, %4, %11)
+  return %5
+}
+
+data qf_count_closure words [qf_count]
+data qf_count_2_closure words [qf_count_2]
+data qs_1 text "count"
+data qs_2 text "<main>"
+data qr_frames words [0]
+data qr_funcs words [qf_count, qs_1, qf_count_2, qs_1, main, qs_2]
+data g_count writable zero 8
+data g_count_2 writable zero 8
+data qr_roots words [g_count, 1, g_count_2, 1, 0, 0]
+

@@ -21,7 +21,9 @@ import
     questlang/ir/stages : questlang/ir/Stages
     questlang/ir/walk : questlang/ir/Walk
     questlang/repr/genericLayout : questlang/repr/GenericLayout
+    questlang/repr/layout : questlang/repr/Layout
     questlang/repr/shapes : questlang/repr/Shapes
+    questlang/repr/written : questlang/repr/Written
     questlang/types/model : questlang/types/Model
 export
     Let Variable = nodes.Variable
@@ -806,6 +808,20 @@ export
             end
         end
 
+    (* Whether f's var or out parameter i holds its location as the call x
+     * does: a call at another type (a copy of an inlined module's member, at
+     * its interface's type, where an abstract type is laid out generically
+     * and the copy's own names its representation) passes a location that
+     * the body, which uses it in place, could not read or assign; a value
+     * parameter is converted instead, as a call converts it *)
+    let locationAgrees(x: nodes.OpCall f: nodes.Function i: Int): Bool =
+        if maybe.isNone(x.calleeType) then
+            true
+        else
+            let params = written.funSignature(maybe.unwrap(x.calleeType)).params
+            {i >= extent params} orif eq(layout.locationCType(params[i].type) layout.locationCType(f.params[i].v.type))
+        end
+
     (* Returns whether f is eligible for inlining or specialization at call x
      * inside component within. Rejects calls within f's own strongly connected
      * component, recursive functions unless they have static parameters and
@@ -875,7 +891,7 @@ export
                             bonus := bonus + argumentBonus(s x.args[i])
                         else
                             byRef[i] := addressed(s x.args[i])
-                            if maybe.isNone(byRef[i]) then fits := false end
+                            if maybe.isNone(byRef[i]) orif not(locationAgrees(x f i)) then fits := false end
                         end
                     end
                 end

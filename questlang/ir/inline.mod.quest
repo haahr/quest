@@ -438,33 +438,38 @@ export
             let result = maybe.unwrapOr(into nodes.newVar("r" clone.ty(c f.resultType) false))
             let bound = vector.new(:Stmt)
             bindReads(c reads pos bound)
-            (* Collect the local function's non-static parameters and arguments;
-             * each static parameter is mapped directly to its argument
-             * variable, or to a fresh local bound to a constant argument *)
+            (* Collect the local function's non-static parameters and arguments,
+             * with their modes; each static parameter is mapped directly to
+             * its argument variable, or to a fresh local bound to a constant
+             * argument or to a mutable variable's value (which the call passes,
+             * and a closure may not capture the variable itself) *)
             let params = vector.new(:nodes.ParamEntry)
             let types = vector.new(:model.Param)
             let passed = vector.new(:Atom)
             for i = 0 upto {extent f.params - 1} do
                 let p = f.params[i].v
+                let mode = f.params[i].mode
                 if static[i] then
-                    case args[i]
-                        when atomVar with x then clone.bindVar(c p x.v)
-                        when atomConst then
-                            begin
-                                let q = clone.fresh(c p)
-                                let binding = nodes.letStmt(q nodes.opOfAtom(args[i]))
-                                nodes.positionAt(binding pos)
-                                vector.append(bound binding)
-                            end
+                    let copied = case args[i] when atomVar with x then x.v.isMutable when atomConst then true end
+                    if copied then
+                        let q = clone.fresh(c p)
+                        let binding = nodes.letStmt(q nodes.opOfAtom(args[i]))
+                        nodes.positionAt(binding pos)
+                        vector.append(bound binding)
+                    else
+                        case args[i]
+                            when atomVar with x then clone.bindVar(c p x.v)
+                            when atomConst then ok
+                        end
                     end
                 else
                     let q = clone.fresh(c p)
-                    vector.append(params tuple let v = q let mode = nodes.modeOf(false false) end)
+                    vector.append(params tuple let v = q let mode = mode end)
                     vector.append(types tuple
                         let name = q.hint
                         let type = q.type
-                        let isVar = false
-                        let isOut = false
+                        let isVar = mode?modeVar
+                        let isOut = mode?modeOut
                     end)
                     vector.append(passed args[i])
                 end

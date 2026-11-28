@@ -1,0 +1,15 @@
+(* A module inlined into its importer (--inline-module) whose function takes a
+   var parameter of an abstract type laid out otherwise outside the module (a
+   Real inside, generically outside): the call passes a location the copy's
+   body could not use in place, so it stays a call. *)
+(* @inline-module: openedCounter *)
+
+import openedCounter : OpenedCounter
+let f(): Real =
+    begin
+        let var c = openedCounter.make(2.0)
+        openedCounter.bump(@c)
+        openedCounter.bump(@c)
+        openedCounter.get(c)
+    end
+f()

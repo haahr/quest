@@ -1,0 +1,21 @@
+(* A recursive function specialized to a known function passed to a static
+   parameter, whose other static argument is a mutable variable: the copy
+   takes the variable's value at the call, as the call passes it, and the
+   variable may change after. *)
+
+let rec count(f: All(x: Int) Bool k: Int i: Int): Int =
+    if i > 0 then {if f(i + k) then 1 else 0 end} + count(f k i - 1) else 0 end
+let big(x: Int): Bool = x > 4
+let rec main(n: Int): Int =
+    if n < 0 then
+        main(n + 1)
+    else
+        begin
+            let var k = 0
+            for j = 1 upto n do k := k + 1 end
+            let r = count(big k 10)
+            k := 100
+            r + k
+        end
+    end
+main(string.length("ab"))
