@@ -17,7 +17,7 @@ from quest.types.env import Environment, TypeSymbol, ValueSymbol
 from quest.pipeline import default_pipeline
 from quest.repr.shapes import KINDS, shape, shapes_reachable
 from quest.typechecker.typed_ast import TypedNode
-from quest.types import TYPE_KIND, QType, QTypeFun
+from quest.types import TYPE_KIND, QType, QTypeFun, QVarType
 from tests.python.helpers import elaborate_test_type, parse_phrase
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
@@ -128,7 +128,8 @@ class TestShapes(unittest.TestCase):
 
     def test_other_kinds(self) -> None:
         self.assertEqual(self.s("Array(Box(Int))").element.kind, "tuple")
-        self.assertEqual(self.s("Var(Int)").element.kind, "int")
+        # Var(T) cannot be written, but the checker gives var arguments one
+        self.assertEqual(shape(QVarType(elaborate_test_type("Int", self.env))).element.kind, "int")
         existential = self.s("Tuple B::TYPE v: B n: Int end")
         self.assertEqual([c.name for c in existential.components], ["v", "n"])
         self.assertEqual(existential.components[0].shape.kind, "typevar")

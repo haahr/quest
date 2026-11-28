@@ -17,10 +17,12 @@ from quest.typechecker.checker import Checker
 from quest.types import (
     QAllType,
     QFunType,
+    QOutType,
     QParam,
     QQuantifier,
     QType,
     QTypeVar,
+    QVarType,
     is_subkind,
     is_subtype,
     is_type_equal,
@@ -315,7 +317,10 @@ class BindingMixin(Checker):
                                      function_depth=self.function_depth + 1)
                 params.append(TypedParam(name=p.name, symbol=symbol, type_val=p.type_val, is_var=p.is_var,
                                          is_out=p.is_out, offset=fun.offset))
-                args.append(TypedVar(name=p.name, symbol=symbol, type_val=p.type_val, offset=fun.offset))
+                # A var or out parameter is forwarded as a location, typed as
+                # an argument @p is (_check_lvalue_target)
+                arg_type = QVarType(p.type_val) if p.is_var else QOutType(p.type_val) if p.is_out else p.type_val
+                args.append(TypedVar(name=p.name, symbol=symbol, type_val=arg_type, offset=fun.offset))
             body = TypedApp(func=body, args=tuple(args), type_val=inner.result_type, offset=fun.offset)
         return TypedFun(
             params=tuple(params),

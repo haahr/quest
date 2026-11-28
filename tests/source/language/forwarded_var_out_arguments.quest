@@ -1,0 +1,18 @@
+(* Var and Out Arguments Forwarded by a Type-Only Function
+ *
+ * A function of type parameters alone whose result is a function with var and
+ * out parameters, set(A::TYPE): All(out x: Bool var y: Real) Ok, is the
+ * function of all its parameters at once (docs/type-system.md §6.4): calling
+ * it computes its body and forwards the arguments to the result. A var or out
+ * argument is forwarded as the location it is, so the writes reach the
+ * caller's variables. *)
+
+import conv : Conv writer : Writer
+
+let mk(A::TYPE): All(out x: Bool var y: Real) Ok = fun(out x: Bool var y: Real): Ok begin x := true y := 2.5 end
+let var keep = mk
+let set(A::TYPE): All(out x: Bool var y: Real) Ok = keep(:A)
+let var b = false
+let var r = 1.25
+set(:Int @b @r)
+writer.putString(writer.output conv.real(if b then r else 0.0 end) <> "\n")

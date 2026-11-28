@@ -1,0 +1,38 @@
+import conv = "conv" : Conv
+import writer = "writer" : Writer
+main {
+  funs {
+    fun mk [A::TYPE](out x: Bool, var y: Real): Ok {
+      x := true @12:91
+      y := 2.5 @12:101
+      return ok
+    }
+  }
+  var keep: All(A :: TYPE) Fun(out x: Bool var y: Real): Ok = mk @13:1
+  funs {
+    fun set [A::TYPE](out x.1: Bool, var y.1: Real): Ok {
+      let %1: Out(Bool) = addr x.1 @14:5
+      let %2: Var(Real) = addr y.1 @14:5
+      let %3: Ok = call keep [A](%1, %2) @14:5
+      return %3
+    }
+  }
+  var b: Bool = false @15:1
+  var r: Real = 1.25 @16:1
+  let %4: Var(Bool) = addr b @17:10
+  let %5: Var(Real) = addr r @17:13
+  do call set [Int](%4, %5) @17:1
+  let %6: writer.T = member writer.output @18:18
+  join k1(r.1: Real) {
+    let %7: String = call conv.real(r.1) @18:32
+    let %8: String = prim <>(%7, "\n") @18:32
+    do call writer.putString(%6, %8) @18:1
+  } in {
+    if b { @18:42
+      jump k1(r) @18:42
+    } else {
+      jump k1(0.0) @18:42
+    }
+  }
+}
+

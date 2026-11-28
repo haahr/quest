@@ -520,8 +520,12 @@ class AggregateMixin(Checker):
         The elements are checked against the element type the literal annotates,
         which must be a subtype of an expected array type's, or else against the
         expected element type; with neither, they are synthesized and the
-        element type is the join of theirs. Against a type that is not an array
-        type, the literal is synthesized and must be a subtype.
+        element type is the join of theirs. Against an expected array type whose
+        element type the annotation is a proper subtype of, the array is of the
+        expected type: arrays are invariant, so an Array(Sub) is no
+        Array(Super), and its elements are converted to the expected type as any
+        element checked against it is. Against a type that
+        is not an array type, the literal is synthesized and must be a subtype.
         """
         expected_array: Optional[QArrayType] = None
         if expected_type is not None:
@@ -545,6 +549,11 @@ class AggregateMixin(Checker):
 
         if elem_type is not None:
             elem_typeds = [self.check_expr(e, elem_type, env, loop_depth) for e in expr.elements]
+            # An annotation equal to the expected element type stays, as it
+            # may say more about the layout (an abstract type's manifest
+            # representation, where the expected type is an interface's)
+            if expected_array is not None and not is_type_equal(elem_type, expected_array.element_type, env):
+                elem_type = expected_array.element_type
         else:
             if not expr.elements:
                 raise TypeError(

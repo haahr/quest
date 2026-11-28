@@ -352,8 +352,16 @@ export
                             model.recType(x.varName symbolId bound body)
                         end)
                 when typeArray with x then model.arrayType(elaborateType(x.elementType e))
-                when typeVar with x then model.varType(elaborateType(x.elementType e))
-                when typeOut with x then model.outType(elaborateType(x.elementType e))
+                (* Var(T) and Out(T) are the types of locations passed to var
+                 * and out parameters, which only the checker makes; no value
+                 * has one, so none may be written (docs/type-system.md
+                 * §6.2.2). Mutability is written with the var and out keywords
+                 * of bindings, fields, and parameters. *)
+                when typeVar then
+                    diagnostics.fail("A type may not be written 'Var(...)': declare the binding, field, or parameter "
+                        <> "'var' instead" offset)
+                when typeOut then
+                    diagnostics.fail("A type may not be written 'Out(...)': declare the parameter 'out' instead" offset)
                 when typeManifest with x then
                     begin
                         let scope = moduleOrInterface(e x.moduleName)

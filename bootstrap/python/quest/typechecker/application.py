@@ -18,7 +18,6 @@ from quest.types import (
     QArrayType,
     QFunType,
     QOptionType,
-    QOutType,
     QParam,
     QQuantifier,
     QTupleType,
@@ -56,24 +55,22 @@ TypeError = QuestTypeError
 
 
 # The destination of a var or out argument (@x, @r.f, @a[i], or var(e)), the
-# location a reference parameter reads and writes: Var(T) is invariant, since
-# the callee both reads and writes T there, and Out(T) only writes, so any
-# location of a supertype of T will do (docs/type-system.md §6.2.1, §6.5)
+# location a reference parameter reads and writes: a var parameter's type is
+# invariant, since the callee both reads and writes the location, and an out
+# parameter only writes, so any location of a supertype of its type will do
+# (docs/type-system.md §6.2.1, §6.5). The destination's type is that of the
+# variable, field, component, or element itself: no value has a Var or Out
+# type, so it is never a reference cell's (§6.2.2).
 def check_lvalue_mode_type(
     param_type: QType,
-    dest_raw_type: QType,
+    dest_type: QType,
     is_out: bool,
     target_desc: str,
     offset: int,
     env: Environment,
 ) -> QType:
-    """Unwraps reference cell types and validates invariance (var) or covariance
-    (out)."""
-    dest_type = (
-        dest_raw_type.element_type
-        if isinstance(dest_raw_type, (QVarType, QOutType))
-        else dest_raw_type
-    )
+    """Validates invariance (var) or covariance (out) of a destination's type,
+    and returns it."""
     if is_out:
         if not is_subtype(param_type, dest_type, env):
             raise QuestTypeError(
@@ -276,16 +273,14 @@ class ApplicationMixin(Checker):
         phases pass its address rather than its contents. T is the location's
         own type, which for out may differ from the parameter's.
 
-        The location must be mutable: a variable or field declared var, or an
-        array element (arrays are always mutable). Mutability shows in two ways,
-        and the conditions below test both: a declaration marks its symbol or
-        field is_var, while a cell made by var(e) and bound by an ordinary let
-        is mutable through its type, Var(T). Its type must then fit the
-        parameter's mode (check_lvalue_mode_type). For var it must be exactly
-        the parameter's type: passing @x, where x is a Record p: Int q: Int end,
-        to var r: Record p: Int end would let the callee store a record without
-        q into x. For out, which the callee only assigns, any supertype of the
-        parameter's type will do. As with any use of a mutable local, passing
+        The location must be mutable: a variable, field, or tuple component
+        declared var (its symbol or field is_var), or an array element (arrays
+        are always mutable). Its type must then fit the parameter's mode
+        (check_lvalue_mode_type). For var it must be exactly the parameter's
+        type: passing @x, where x is a Record p: Int q: Int end, to var r:
+        Record p: Int end would let the callee store a record without q into x.
+        For out, which the callee only assigns, any supertype of the parameter's
+        type will do. As with any use of a mutable local, passing
         one from a closure that would capture it is rejected
         (_check_capturable).
         """
@@ -299,13 +294,13 @@ class ApplicationMixin(Checker):
                     )
                 self._check_capturable(sym, offset)
                 if is_out:
-                    if not sym.is_var and not sym.is_out and not isinstance(sym.type_val, (QVarType, QOutType)):
+                    if not sym.is_var and not sym.is_out:
                         raise TypeError(
                             f"Argument to 'out' parameter '{target.name}' must be a mutable variable or out parameter",
                             offset=offset,
                         )
                 else:
-                    if not sym.is_var and not isinstance(sym.type_val, QVarType):
+                    if not sym.is_var:
                         raise TypeError(
                             f"Argument to 'var' parameter '{target.name}' must be a mutable variable",
                             offset=offset,
@@ -336,7 +331,7 @@ class ApplicationMixin(Checker):
                         if f.name == target.field or str(i) == target.field:
                             val_idx = i
                             field_type = f.type_val
-                            is_field_var = f.is_var or isinstance(f.type_val, (QVarType, QOutType))
+                            is_field_var = f.is_var
                             break
                     if val_idx == -1 or field_type is None:
                         raise TypeError(
@@ -373,7 +368,7 @@ class ApplicationMixin(Checker):
                         f"Record type '{rec_type}' has no field '{target.field}'",
                         offset=offset,
                     )
-                if not field.is_var and not isinstance(field.type_val, (QVarType, QOutType)):
+                if not field.is_var:
                     raise TypeError(
                         f"Record field '{target.field}' is not mutable",
                         offset=offset,

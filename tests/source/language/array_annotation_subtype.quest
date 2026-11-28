@@ -1,0 +1,23 @@
+(* Array Literal Annotations Below the Expected Element Type
+ *
+ * An array literal whose annotation is a subtype of the element type its
+ * context expects, array of :Sub x end where Array(Super) is expected, is an
+ * Array(Super): arrays are invariant, so the literal takes the expected type,
+ * and its elements are checked against the annotation and then converted to
+ * Super. Sub's tag b is Super's second, so an element left unconverted reads
+ * as a. *)
+
+import conv : Conv writer : Writer
+
+let say(s: String): Ok = writer.putString(writer.output s <> "\n")
+
+Let Super = Option a b end
+Let Sub = Option b end
+
+(* 1. A returned literal *)
+let f(x: Sub): Array(Super) = array of :Sub x end
+say("1: " <> conv.int(case f(option b of Sub end)[0] when a then 1 when b then 2 end))
+
+(* 2. A bound literal, of two elements *)
+let g: Array(Super) = array of :Sub option b of Sub end option b of Sub end end
+say("2: " <> conv.int(case g[1] when a then 1 when b then 2 end) <> " " <> conv.int(extent g))

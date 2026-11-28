@@ -43,9 +43,7 @@ from quest.types import (
     QOptionType,
     QParam,
     QFunType,
-    QVarType,
     QArrayType,
-    QOutType,
     QQuantifier,
     QAllType,
     QAutoType,
@@ -548,11 +546,20 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
         case ast.TypeArray(element_type=elem):
             return QArrayType(elaborate_type(elem, env))
 
-        case ast.TypeVar(element_type=elem):
-            return QVarType(elaborate_type(elem, env))
+        # Var(T) and Out(T) are the types of locations passed to var and out
+        # parameters, which only the checker makes; no value has one, so none
+        # may be written (type-system.md §6.2.2). Mutability is written with
+        # the var and out keywords of bindings, fields, and parameters.
+        case ast.TypeVar(offset=offset):
+            raise QuestTypeError(
+                "A type may not be written 'Var(...)': declare the binding, field, or parameter 'var' instead",
+                offset=offset,
+            )
 
-        case ast.TypeOut(element_type=elem):
-            return QOutType(elaborate_type(elem, env))
+        case ast.TypeOut(offset=offset):
+            raise QuestTypeError(
+                "A type may not be written 'Out(...)': declare the parameter 'out' instead", offset=offset
+            )
 
         case ast.TypeManifest(module_name=mname, type_name=tname, offset=offset):
             mod_scope = env.lookup_module(mname) or env.lookup_interface(mname)

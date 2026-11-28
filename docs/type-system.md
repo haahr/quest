@@ -498,7 +498,7 @@ let var x: Int = 10
 x := x + 1
 ```
 - In value positions, mutable locations automatically coerce to their underlying value type (`TypedDerefCell`).
-- In assignment positions (`x := e`), the target must be an explicit mutable location (`is_var=True` or `QVarType`).
+- In assignment positions (`x := e`), the target must be an explicit mutable location (`is_var=True`).
 - Path-dependent types cannot be rooted at mutable locations.
 
 #### 6.2.1. Parameter Modes: `var` and `out`
@@ -514,6 +514,16 @@ Following Cardelli (*Typeful Programming* §4.8), function signatures support re
   tuple elements (`@t.1`), and arbitrary chained paths ending in a mutable location (`@r.a.b`, `@a[i].f`).
 - Forwarding an existing reference parameter `y` to another callee is written `g(@y)` and forwards the underlying
   pointer without re-referencing.
+- **`Var` and `Out` values are not first-class,** as *Typeful Programming* says (§5.7.1: types like `Var(Var(A))`
+  cannot be produced). `var(e)` is an error anywhere but as the argument of a `var` or `out` parameter, so `let x =
+  var(10)`, `record c = var(10) end`, `array of var(1) end`, and `var(var(1))` are rejected. `Var(T)` and `Out(T)`
+  are errors as written types: mutability is written with the `var` and `out` keywords on bindings, fields, and
+  parameters (`let var x`, `Record var c: Int end`, `Tuple var :Int end`, `out o: Int`). The types stay internal:
+  the checker gives an argument `@x` or `var(e)` the type `Var(T)` of the location it passes (`_check_lvalue_target`
+  in `typechecker/application.py`, `checkLvalueTarget` in `questlang/typechecker/application`), and no value,
+  variable, field, or element has one, so a location's type is always that of the variable or field itself. An
+  anonymous component of a tuple type or an interface written `:Var(T)` or `:Out(T)`, as the paper writes one, is
+  another spelling of `var :T` or `out :T`, a mode rather than a type, and stays.
 
 #### 6.2.3. Closure Capture Restrictions
 These are *Typeful Programming*'s rules (§4.8), with one for parameters, which the paper does not discuss:
@@ -621,7 +631,8 @@ both compilers keep:
   `questlang/typechecker/bindings`). `let h(A::TYPE): All() Int = e` is checked as `let h(A::TYPE)(): Int = e()`, and
   `fun(A::TYPE) fun(B::TYPE x: B) e` as `fun(A::TYPE B::TYPE x: B) e`. So what `e` does before it yields its function
   happens at each call, not when `h` is applied to types: the paper evaluates a type application, but a type that
-  cannot tell `h` from `f` cannot give them different conventions.
+  cannot tell `h` from `f` cannot give them different conventions. The merged function passes its `var` and `out`
+  parameters on as the locations they are, as `@p` would.
 - **A partial type application is a polymorphic function of the rest.** `g(:Int)` for `let g(A::TYPE B::TYPE): Int`
   has type `All(B :: TYPE) Int`; the lowering makes it a closure that applies `g` to `:Int` and its own type argument
   (and passes on its value arguments, if it takes any) when it is applied (`type_app` in `ir/lower.py`).
@@ -629,8 +640,9 @@ both compilers keep:
 ### 6.5. Parameter Passing Modes, Out Types, and Lvalues
 Quest supports three parameter passing modes in signatures:
 - **Value (`val`, default):** Pass-by-value.
-- **Reference (`var`):** Pass-by-reference (`Var(T)`). The type constructor `Var` is invariant.
-- **Output (`out`):** Write-only parameter passing (`Out(T)`):
+- **Reference (`var`):** Pass-by-reference. The argument is a location of type `Var(T)`, which is invariant.
+- **Output (`out`):** Write-only parameter passing, of a location of type `Out(T)`. `Var(T)` and `Out(T)` are the
+  checker's types for the locations an argument passes, never written in a program and never a value's (§6.2.2):
   - **Contravariance:** If $A <: B$, then $\text{Out}(B) <: \text{Out}(A)$ (Cardelli §7.7).
   - **Relation to Var:** If $B <: A$, then $\text{Var}(A) <: \text{Out}(B)$.
   - **Callee Semantics:** Inside the function body, `out` parameters (`sym.is_out=True`) can only be assigned to
@@ -649,7 +661,9 @@ Monadic operators are typed with high precedence:
 ### 6.7. Array Typing and Explicit Element Types
 Array constructors synthesize `QArrayType`:
 - `array of a1 ... an end`: If all elements are homogeneous, synthesizes `Array(T)`.
-- `array of :T a1 ... an end`: Explicitly checks each element against $T$ and synthesizes `Array(T)`.
+- `array of :T a1 ... an end`: Explicitly checks each element against $T$ and synthesizes `Array(T)`. Checked
+  against an expected `Array(S)`, $T$ must be a subtype of $S$, and the literal is an `Array(S)` whose elements are
+  converted from $T$ to $S$: arrays are invariant, so an `Array(T)` is not an `Array(S)`.
 - `array of(cnt init)`: Checks $cnt \Leftarrow \text{Int}$, synthesizes `Array(T)` where $\text{init} \Rightarrow T$.
 - **Variant Subtyping in Aggregates:**
   When array elements or tuple components are checked against an expected variant supertype, subtyped variants

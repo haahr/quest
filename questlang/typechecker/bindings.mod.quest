@@ -252,7 +252,19 @@ export
                                                     let isVar = p.isVar
                                                     let isOut = p.isOut
                                                 end)
-                                                vector.append(args typedAst.expr(fun0.offset p.type
+                                                (* A var or out parameter is
+                                                 * forwarded as a location,
+                                                 * typed as an argument @p
+                                                 * is *)
+                                                let argType =
+                                                    if p.isVar then
+                                                        model.varType(p.type)
+                                                    elsif p.isOut then
+                                                        model.outType(p.type)
+                                                    else
+                                                        p.type
+                                                    end
+                                                vector.append(args typedAst.expr(fun0.offset argType
                                                         option exprVar of typedAst.ExprForm with
                                                             let name = p.name
                                                             let symbol = sym

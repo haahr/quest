@@ -30,25 +30,19 @@ export
     Let Type = model.Type
 
     let varType(t: Type): Type = model.varType(t)
-    let isRefType(t: Type): Bool = case t.form when typeVar then true when typeOut then true else false end
-    let isVarType(t: Type): Bool = case t.form when typeVar then true else false end
 
     (* Validates the destination type of a var or out argument (@x, @r.f,
-     * @a[i], or var(e)) and returns it unwrapped of any Var or Out reference
-     * cell. For a var parameter, the destination type must equal paramType
-     * because the callee both reads and writes the location (invariance). For
-     * an out parameter, the callee only writes, so any supertype of paramType
-     * is accepted (docs/type-system.md §6.2.1, §6.5). *)
+     * @a[i], or var(e)) and returns it. For a var parameter, the destination
+     * type must equal paramType because the callee both reads and writes the
+     * location (invariance). For an out parameter, the callee only writes, so
+     * any supertype of paramType is accepted (docs/type-system.md §6.2.1,
+     * §6.5). The destination's type is that of the variable, field, component,
+     * or element itself: no value has a Var or Out type, so it is never a
+     * reference cell's (§6.2.2). *)
     let checkLvalueModeType(
-            paramType: model.Type destRawType: model.Type isOut: Bool targetDesc: String offset: Int e: env.T
+            paramType: model.Type destType: model.Type isOut: Bool targetDesc: String offset: Int e: env.T
             ): model.Type =
         begin
-            let destType =
-                case destRawType.form
-                    when typeVar with x then x.element
-                    when typeOut with x then x.element
-                    else destRawType
-                end
             let lookup = env.symbolLookup
             if isOut then
                 if not(subtyping.isSubtype(paramType destType lookup)) then
@@ -130,19 +124,16 @@ export
      * address rather than its contents. T is the location's own type, which
      * for out may differ from the parameter's.
      *
-     * The location must be mutable: a variable or field declared var, or an
-     * array element (arrays are always mutable). Mutability shows in two ways,
-     * and the conditions below test both: a declaration marks its symbol or
-     * field isVar, while a cell made by var(e) and bound by an ordinary let is
-     * mutable through its type, Var(T). Its type must then fit the parameter's
-     * mode (checkLvalueModeType). For var it must be exactly the
-     * parameter's type: passing @x, where x is a Record p: Int q: Int end, to
-     * var r: Record p: Int end would let the callee store a record without q
-     * into x. For out, which the callee only assigns, any supertype of the
-     * parameter's type will do. As with any use of a variable, @y is rejected
-     * from a closure if y is a var or out parameter of an enclosing function,
-     * and from any function if y is a global var variable
-     * (checker.checkCapturable). *)
+     * The location must be mutable: a variable, field, or tuple component
+     * declared var (its symbol or field isVar), or an array element (arrays
+     * are always mutable). Its type must then fit the parameter's mode
+     * (checkLvalueModeType). For var it must be exactly the parameter's type:
+     * passing @x, where x is a Record p: Int q: Int end, to var r: Record p:
+     * Int end would let the callee store a record without q into x. For out,
+     * which the callee only assigns, any supertype of the parameter's type
+     * will do. As with any use of a variable, @y is rejected from a closure if
+     * y is a var or out parameter of an enclosing function, and from any
+     * function if y is a global var variable (checker.checkCapturable). *)
     and checkLvalueTarget(
             c: checker.T target: ast.Expr paramType: Type isOut: Bool offset: Int
             ): typedAst.Expr =
@@ -159,11 +150,11 @@ export
                         let sym = maybe.unwrap(found)
                         checker.checkCapturable(c sym offset)
                         if isOut then
-                            if not(sym.isVar) andif not(sym.isOut) andif not(isRefType(sym.type)) then
+                            if not(sym.isVar) andif not(sym.isOut) then
                                 diagnostics.fail(:Ok "Argument to 'out' parameter '" <> x.name
                                     <> "' must be a mutable variable or out parameter" offset)
                             end
-                        elsif not(sym.isVar) andif not(isVarType(sym.type)) then
+                        elsif not(sym.isVar) then
                             diagnostics.fail(:Ok "Argument to 'var' parameter '" <> x.name
                                 <> "' must be a mutable variable"
                                     offset)
@@ -202,7 +193,7 @@ export
                                             <> "' has no component matching '" <> x.field <> "'" offset)
                                     end
                                     let f = fields[index]
-                                    if not(f.isVar orif isRefType(f.type)) then
+                                    if not(f.isVar) then
                                         diagnostics.fail(:Ok "Tuple component '" <> x.field
                                             <> "' is not mutable" offset)
                                     end
@@ -238,7 +229,7 @@ export
                                             <> x.field <> "'" offset)
                                     end
                                     let f = maybe.unwrap(field)
-                                    if not(f.isVar) andif not(isRefType(f.type)) then
+                                    if not(f.isVar) then
                                         diagnostics.fail(:Ok "Record field '" <> x.field <> "' is not mutable" offset)
                                     end
                                     let fieldType = checkLvalueModeType(paramType f.type isOut "field" offset c.env)

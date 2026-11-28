@@ -99,10 +99,10 @@ class TestGenericLayoutsCopyingMutableData(TestGenericLayoutAgrees):
     def test_mutable_data_whose_layout_differs(self) -> None:
         # A bounded parameter's values are held at their own view, so mutable
         # data holding them agrees
-        for generic in ("Array(Box(C))", "Array(C)", "Var(Box(C))", "Box(Array(Box(C)))", "Tuple var x: C end"):
+        for generic in ("Array(Box(C))", "Array(C)", "Box(Array(Box(C)))", "Tuple var x: C end"):
             with self.subTest(generic=generic):
                 self.assertFalse(self.copies(generic, "Q", self.c))
-        for generic in ("Array(Box(A))", "Array(A)", "Tuple var x: A end", "Var(Box(A))", "Box(Array(Box(A)))"):
+        for generic in ("Array(Box(A))", "Array(A)", "Tuple var x: A end", "Box(Array(Box(A)))"):
             with self.subTest(generic=generic):
                 self.assertFalse(self.copies(generic, "P"))
                 self.assertFalse(self.copies(generic, "Bool"))

@@ -309,14 +309,13 @@ export
                             end
                     end
 
-                (* Reference cell allocation (var e) *)
-                when exprVarCell with x then
-                    begin
-                        let valTyped = synthExpr(c x.value false)
-                        typedAst.expr(offset model.varType(valTyped.type) option exprVarCell of typedAst.ExprForm with
-                            let value = valTyped
-                        end)
-                    end
+                (* var(e) makes a fresh location only as the argument of a var
+                 * or out parameter (application.checkLvalueArg); as a value it
+                 * would give its holder a Var type, which no value has
+                 * (docs/type-system.md §6.2.2) *)
+                when exprVarCell then
+                    diagnostics.fail("'var(...)' may be used only as the argument of a 'var' or 'out' parameter"
+                            offset)
 
                 when exprInfix then control.synthInfix(c x0)
                 when exprIf then control.elaborateIf(c x0 none)

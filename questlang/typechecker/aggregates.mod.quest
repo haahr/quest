@@ -705,7 +705,24 @@ export
                                     vector.append(typed
                                             checker.checkExpr(c elements[i] maybe.unwrap(elemType)))
                                 end
-                                maybe.unwrap(elemType)
+                                (* Against an expected array type whose element
+                                 * type the annotation is a proper subtype of,
+                                 * the array is of the expected type: arrays are
+                                 * invariant, so an Array(Sub) is no
+                                 * Array(Super), and its elements are converted
+                                 * to the expected type as any element checked
+                                 * against it is. An annotation equal to the
+                                 * expected type stays, as it may say more about
+                                 * the layout (an abstract type's manifest
+                                 * representation, where the expected type is
+                                 * an interface's) *)
+                                let annotated = maybe.unwrap(elemType)
+                                if maybe.isSome(expectedElement)
+                                        andif not(checks.isTypeEqual(annotated maybe.unwrap(expectedElement))) then
+                                    maybe.unwrap(expectedElement)
+                                else
+                                    annotated
+                                end
                             else
                                 if extent elements is 0 then
                                     diagnostics.fail(:Ok

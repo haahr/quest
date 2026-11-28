@@ -1,0 +1,96 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedLetValue 'say' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetType 'Super' :kind TYPE)
+    (TypedLetType 'Sub' :kind TYPE)
+    (TypedLetValue 'f' :type Fun(x: Sub): Array(Super)
+      :value (TypedFun :params (('x' : Sub)) :type Fun(x: Sub): Array(Super)
+        :body (TypedArray :type Array(Super)
+          :elements (
+            (TypedVar 'x' :type Sub)
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString '1: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedCase :type Int
+                  :target (TypedIndex :type Super
+                    :target (TypedApp :type Array(Super)
+                      :func (TypedVar 'f' :type Fun(x: Sub): Array(Super))
+                      :args (
+                        (TypedOption 'b' :type Sub)
+                      ))
+                    :index (TypedInt 0 :type Int))
+                  :branches (
+                    (TypedCaseBranch tags=(a)
+                      :body (TypedInt 1 :type Int))
+                    (TypedCaseBranch tags=(b)
+                      :body (TypedInt 2 :type Int))
+                  ))
+              )))
+        )))
+    (TypedLetValue 'g' :type Array(Super)
+      :value (TypedArray :type Array(Super)
+        :elements (
+          (TypedOption 'b' :type Sub)
+          (TypedOption 'b' :type Sub)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'say' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString '2: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedCase :type Int
+                    :target (TypedIndex :type Super
+                      :target (TypedVar 'g' :type Array(Super))
+                      :index (TypedInt 1 :type Int))
+                    :branches (
+                      (TypedCaseBranch tags=(a)
+                        :body (TypedInt 1 :type Int))
+                      (TypedCaseBranch tags=(b)
+                        :body (TypedInt 2 :type Int))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Int
+                      :func (TypedTypeApp [Option a b end] :type Fun(a: Array(Option a b end)): Int
+                        :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+                      :args (
+                        (TypedVar 'g' :type Array(Super))
+                      ))
+                  )))))
+        )))
+  ))

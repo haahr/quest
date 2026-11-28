@@ -51,7 +51,6 @@ from quest.typechecker.typed_ast import (
     TypedReal,
     TypedString,
     TypedVar,
-    TypedVarCell,
     TypedWhile,
 )
 from quest.typechecker.checks import require_subtype
@@ -422,12 +421,12 @@ class TypeElaborator(
                 )
 
             # --- Reference Cell Allocation (var e) ---
-            case ast.ExprVarCell(value=val, offset=off):
-                val_typed = self.synth_expr(val, env, loop_depth)
-                return TypedVarCell(
-                    value=val_typed,
-                    type_val=QVarType(val_typed.type_val),
-                    offset=off,
+            # var(e) makes a fresh location only as the argument of a var or
+            # out parameter (_check_lvalue_arg); as a value it would give its
+            # holder a Var type, which no value has (type-system.md §6.2.2)
+            case ast.ExprVarCell(offset=off):
+                raise TypeError(
+                    "'var(...)' may be used only as the argument of a 'var' or 'out' parameter", offset=off
                 )
 
             # --- Infix Operators ---
