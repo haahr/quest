@@ -2,14 +2,13 @@
 
 module native : Native
 import
-    stringOp = string : StringOp
-
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 
     arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
     questlang/codegen/c/printer : questlang/codegen/c/Printer
     questlang/codegen/c/ssac : questlang/codegen/c/SSAC
+    questlang/codegen/choice : questlang/codegen/Choice
     questlang/codegen/ssaBackend : questlang/codegen/SSABackend
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/repr/syntax : questlang/repr/Syntax
@@ -34,11 +33,11 @@ export
                     let contents = option contentsText of ssa.Contents with let text = d.text end
                 end)
             end
-            if stringOp.equal(backend "ssac") then ssac.printUnit(lowered) else arm64.assembleUnit(lowered) end
+            if choice.isSsac(backend) then ssac.printUnit(lowered) else arm64.assembleUnit(lowered) end
         end
 
     let unitCode(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String datum: maybe.T(Datum)): String =
-        if stringOp.equal(backend "ssac") orif stringOp.equal(backend "arm64") then
+        if choice.isNative(backend) then
             let failed = fun(m: String): String raise unsupported with m end
             try ssaPipeline.attempt(fun(): String ssaCode(unit backend datum) failed)
             when ssac.unsupported with m then raise unsupported with m end
@@ -58,7 +57,7 @@ export
         end
 
     let cFlags(backend: String): Array(String) =
-        if stringOp.equal(backend "ssac") then ssac.cFlags else array of :String end end
+        if choice.isSsac(backend) then ssac.cFlags else array of :String end end
 
     let setInterruptChecks(on: Bool): Ok = ssaPipeline.setInterruptChecks(on)
 end

@@ -2,17 +2,15 @@
 
 module ssaBackend : SSABackend
 import
-    stringOp = string : StringOp
-
     arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
+    questlang/codegen/choice : questlang/codegen/Choice
     ir = questlang/ir/nodes : questlang/ir/Nodes
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
 export
     let ssacPolicy: ssa.Policy = tuple let rotateAll = false let rematerializable = arm64.ssaPolicy.rematerializable end
 
-    let policyFor(backend: String): ssa.Policy =
-        if stringOp.equal(backend "ssac") then ssacPolicy else arm64.ssaPolicy end
+    let policyFor(backend: String): ssa.Policy = if choice.isSsac(backend) then ssacPolicy else arm64.ssaPolicy end
 
     let loweredSSA(unit: ir.Unit backend: String): ssa.Unit =
         begin

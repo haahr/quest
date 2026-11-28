@@ -190,7 +190,7 @@ let dumps(phase: String): Bool = isOneOf(phase options.dumpAfter)
 (* The backend that compiles the program's own unit *)
 let programBackend = choice.forUnit(options.backends choice.programUnit)
 if {stringOp.equal(options.stopAfter "codegen_arm64") orif dumps("codegen_arm64")}
-        andif not(stringOp.equal(programBackend "arm64")) then
+        andif not(choice.isAssembly(programBackend)) then
     usage("codegen_arm64 is the arm64 backend's phase, but the program is compiled by " <> programBackend)
 end
 if {stringOp.equal(options.stopAfter "codegen_wasm") orif dumps("codegen_wasm")}
@@ -245,7 +245,7 @@ let pipeline: Array(String) =
             irThrough("described")
             vector.append(ps "codegen_c")
             (* arm64's code is its assembly, which codegen_c prints too *)
-            if stringOp.equal(programBackend "arm64") then vector.append(ps "codegen_arm64") end
+            if choice.isAssembly(programBackend) then vector.append(ps "codegen_arm64") end
             (* and wasm's its module's text *)
             if choice.isWasm(programBackend) then vector.append(ps "codegen_wasm") end
             if not(compileMode) andif maybe.isNone(options.output) then
