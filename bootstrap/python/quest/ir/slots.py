@@ -52,7 +52,7 @@ from quest.repr.generic_layout import is_record_subtype
 from quest.ir import nodes as ir
 from quest.repr.shapes import Shape, shape
 from quest.ir.walk import statement_bodies, walk_statements
-from quest.types import QRecordField, QRecordType, QType, is_type_equal
+from quest.types import QRecordField, QRecordType, QType, QVarType, is_type_equal
 
 
 _VIEWED_KINDS = ("record", "variant", "option")
@@ -413,7 +413,10 @@ class _Slots:
             case ir.ArrayRep(init=init) if var is not None:
                 o.init = self.slot_if_boxed(init, shape(var.type).element, before)
             case ir.AddrCell(init=init):
-                o.init = self.slot_if_boxed(init, shape(_type_of(init)), before)
+                # Of the cell's element type, which represent converted the
+                # initial value to
+                cell_t = var.type.element_type if var is not None and isinstance(var.type, QVarType) else _type_of(init)
+                o.init = self.slot_if_boxed(init, shape(cell_t), before)
             case ir.AddrComponent(base=base, index=index) if not own_view(shape(_type_of(base))):
                 o.access = tuple_access(resolved_shape(shape(_type_of(base))), index)
             case ir.Prim(op="is" | "isnot", args=(a, b)):

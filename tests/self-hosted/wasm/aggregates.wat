@@ -196,7 +196,7 @@
   (global $quest_type_Word (mut eqref) ref.null none)
   (global $quest_type_EmptyTuple (mut eqref) ref.null none)
   (global $quest_type_bound_vars (mut eqref) ref.null none)
-  (global $QT_record_e453bc1b6cf6d2db (mut eqref) ref.null none)
+  (global $QT_record_b1b4b5a1b1aaf0d2 (mut eqref) ref.null none)
   (global $QTuple_Int_90c1d29a40761138 (mut eqref) ref.null none)
   (global $QTuple_Int_Int_586d0a3b5f6d6e01 (mut eqref) ref.null none)
   (global $QTuple_Int_bf55836b2befd5ab (mut eqref) ref.null none)
@@ -1978,7 +1978,7 @@
     end
     local.set $v.2
     i32.const 0
-    global.get $QT_record_e453bc1b6cf6d2db
+    global.get $QT_record_b1b4b5a1b1aaf0d2
     global.get $literal.7
     ref.is_null
     if
@@ -2152,7 +2152,7 @@
     end
     local.set $v.45
     i32.const 0
-    global.get $QT_record_e453bc1b6cf6d2db
+    global.get $QT_record_b1b4b5a1b1aaf0d2
     global.get $literal.8
     ref.is_null
     if
@@ -2683,7 +2683,7 @@
     i64.const 3
     i64.const 0
     call $wasm/core.newDesc
-    global.set $QT_record_e453bc1b6cf6d2db
+    global.set $QT_record_b1b4b5a1b1aaf0d2
     global.get $noClosure
     i64.const 9
     i32.const 0
@@ -2757,7 +2757,7 @@
     call $wasm/core.newDesc
     global.set $QOption_none_some_QTuple_Int_end_9e75d53e4132c43a
     global.get $noClosure
-    global.get $QT_record_e453bc1b6cf6d2db
+    global.get $QT_record_b1b4b5a1b1aaf0d2
     i64.const 0
     global.get $quest_type_String
     i32.const 0
@@ -2769,7 +2769,7 @@
     call $wasm/core.setPart
     drop
     global.get $noClosure
-    global.get $QT_record_e453bc1b6cf6d2db
+    global.get $QT_record_b1b4b5a1b1aaf0d2
     i64.const 1
     global.get $quest_type_Int
     i32.const 0
@@ -2781,7 +2781,7 @@
     call $wasm/core.setPart
     drop
     global.get $noClosure
-    global.get $QT_record_e453bc1b6cf6d2db
+    global.get $QT_record_b1b4b5a1b1aaf0d2
     i64.const 2
     global.get $quest_type_Int
     i32.const 0
@@ -2793,7 +2793,7 @@
     call $wasm/core.setPart
     drop
     global.get $noClosure
-    global.get $QT_record_e453bc1b6cf6d2db
+    global.get $QT_record_b1b4b5a1b1aaf0d2
     i64.const 2
     i64.const 1
     call $wasm/core.setFlags

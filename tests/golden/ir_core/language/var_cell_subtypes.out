@@ -1,0 +1,52 @@
+import conv = "conv" : Conv
+import writer = "writer" : Writer
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @9:45
+      let %2: String = prim <>(s, "\n") @9:59
+      let %3: Ok = call writer.putString(%1, %2) @9:28
+      return %3
+    }
+  }
+  funs {
+    fun f(var r: Super): Int {
+      let %4: Int = record_field(r, z) @14:28
+      return %4
+    }
+  }
+  var fRef: Fun(var r: Super): Int = f @15:1
+  let %5: Record a: Int z: Int end = record(a = 10, z = 20) @16:20
+  var sub: Sub = %5 @16:1
+  let %6: Var(Super) = cell(sub) @17:35
+  let %7: Int = call fRef(%6) @17:30
+  let %8: String = call conv.int(%7) @17:21
+  let %9: String = prim <>("record: ", %8) @17:7
+  do call print(%9) @17:1
+  funs {
+    fun g(var v: Large): String {
+      join k1(r.1: String) {
+        return r.1
+      } in {
+        switch tag(v) { @22:31
+          case a (s.1: String): {
+            let %10: String = prim <>("a ", s.1) @22:57
+            jump k1(%10) @22:31
+          }
+          case b (n: Int): {
+            let %11: String = call conv.int(n) @22:94
+            let %12: String = prim <>("b ", %11) @22:86
+            jump k1(%12) @22:31
+          }
+        }
+      }
+    }
+  }
+  var gRef: Fun(var v: Large): String = g @23:1
+  let small: Small = variant(b, 7) @24:20
+  let %13: Var(Large) = cell(small) @25:27
+  let %14: String = call gRef(%13) @25:22
+  let %15: String = prim <>("variant: ", %14) @25:7
+  do call print(%15) @25:1
+}
+

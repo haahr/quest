@@ -1180,6 +1180,32 @@ export
             end
         end
 
+    (* The operands of is or isnot, of two types one of which is a subtype of
+     * the other. Variants and options are compared by value, by the
+     * descriptor of the first operand's type, so where the two are laid out
+     * differently (a variant's tags numbered otherwise, an option's cases), the
+     * subtype's operand is converted to the supertype first. Other values are
+     * compared by identity, which a conversion (a copy) would lose. *)
+    let comparable(args: Array(Atom) before: vector.T(Stmt)): Array(Atom) =
+        begin
+            let a = typeOf(args[0])
+            let b = typeOf(args[1])
+            let byValue(t: Type): Bool =
+                begin
+                    let s = layout.resolvedShape(shapes.shape(t))
+                    shapes.kindIs(s shapes.shapeVariant) orif shapes.kindIs(s shapes.shapeOption)
+                end
+            if equal(a b) orif not(byValue(a)) orif not(byValue(b)) then
+                args
+            elsif subtyping.isSubtype(a b lookupNone) then
+                array of convert(args[0] b before noLayout) args[1] end
+            elsif subtyping.isSubtype(b a lookupNone) then
+                array of args[0] convert(args[1] a before noLayout) end
+            else
+                args
+            end
+        end
+
     (* Converts an operation's operands to the types it stores them at,
      * returning the type of its result as the operation gives it (none when
      * that is the let's own) *)
@@ -1231,6 +1257,12 @@ export
             when opArrayRep with x then
                 x.init := convert(x.init arrayElement(resultType) before noLayout)
                 maybe.none()
+            when opAddrCell with x then
+                (* var(e) passed for a var or out parameter: the cell is of
+                 * the parameter's type, which e's may be a subtype of *)
+                let element = case resultType.form when typeVar with y then y.element else resultType end
+                x.init := convert(x.init element before noLayout)
+                maybe.none()
             when opMakeAuto with x then
                 let storedType = model.autoPayloadType(x.autoType maybe.none())
                 let p = autoPayloadPlan(typeOf(x.payload) storedType x.autoType)
@@ -1258,6 +1290,9 @@ export
                 x.thunkSymbols := plans.thunkSymbols
                 maybe.none()
             when opPayload with x then writtenVariantCase(typeOf(x.value) x.tag)
+            when opPrim with x then
+                if nodes.comparesIdentity(x.op) andif {extent x.args is 2} then x.args := comparable(x.args before) end
+                maybe.none()
             else maybe.none()
         end
 

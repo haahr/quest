@@ -1,0 +1,25 @@
+(* A fresh cell var(e) passed for a var parameter of a supertype of e's type,
+ * laid out differently (a record view, a variant's tags): the cell holds the
+ * parameter's type, so e is converted into it. The callees are called through
+ * mutable variables, so that none is inlined or specialized. *)
+
+import conv : Conv
+import writer : Writer
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+
+(* A record: the parameter's type sees fewer fields *)
+Let Super = Record z: Int end
+Let Sub = Record a: Int z: Int end
+let f(var r: Super): Int = r.z
+let var fRef = f
+let var sub: Sub = record a = 10 z = 20 end
+print("record: " <> conv.int(fRef(var(sub))))
+
+(* A variant: the parameter's type has more tags *)
+Let Small = Variant b: Int end
+Let Large = Variant a: String b: Int end
+let g(var v: Large): String = case v when a with s then "a " <> s when b with n then "b " <> conv.int(n) end
+let var gRef = g
+let small: Small = variant b of Small with 7 end
+print("variant: " <> gRef(var(small)))

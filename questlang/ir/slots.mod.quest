@@ -455,7 +455,14 @@ export
                 end
                 false
             when opAddrCell with x then
-                x.init := slotIfBoxed(st x.init maybe.some(shapes.shape(typeOf(x.init))) before)
+                (* Of the cell's element type, which represent converted
+                 * the initial value to *)
+                let cellType = if maybe.isSome(v) then
+                    case maybe.unwrap(v).type.form when typeVar with y then y.element else typeOf(x.init) end
+                else
+                    typeOf(x.init)
+                end
+                x.init := slotIfBoxed(st x.init maybe.some(shapes.shape(cellType)) before)
                 false
             when opAddrComponent with x then
                 if not(layout.ownView(shapes.shape(typeOf(x.base)))) then

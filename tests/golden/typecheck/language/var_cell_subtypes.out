@@ -1,0 +1,101 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetType 'Super' :kind TYPE)
+    (TypedLetType 'Sub' :kind TYPE)
+    (TypedLetValue 'f' :type Fun(var r: Super): Int
+      :value (TypedFun :params (('r' : Super)) :type Fun(var r: Super): Int
+        :body (TypedSelect 'z' :type Int
+          :target (TypedDerefCell :type Super
+            :target (TypedVar 'r' :type Var(Super))))))
+    (TypedLetValue 'fRef' :type Fun(var r: Super): Int
+      :value (TypedVar 'f' :type Fun(var r: Super): Int))
+    (TypedLetValue 'sub' :type Sub
+      :value (TypedRecord :type Record a: Int z: Int end
+        :fields (
+          (TypedRecordField 'a'
+            :value (TypedInt 10 :type Int))
+          (TypedRecordField 'z'
+            :value (TypedInt 20 :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'record: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedDerefCell :type Fun(var r: Super): Int
+                    :target (TypedVar 'fRef' :type Var(Fun(var r: Super): Int)))
+                  :args (
+                    (TypedVarCell :type Var(Super)
+                      :value (TypedDerefCell :type Sub
+                        :target (TypedVar 'sub' :type Var(Sub))))
+                  ))
+              )))
+        )))
+    (TypedLetType 'Small' :kind TYPE)
+    (TypedLetType 'Large' :kind TYPE)
+    (TypedLetValue 'g' :type Fun(var v: Large): String
+      :value (TypedFun :params (('v' : Large)) :type Fun(var v: Large): String
+        :body (TypedCase :type String
+          :target (TypedDerefCell :type Large
+            :target (TypedVar 'v' :type Var(Large)))
+          :branches (
+            (TypedCaseBranch tags=(a) :binder 's'
+              :body (TypedInfix '<>' :type String
+                :left (TypedString 'a ' :type String)
+                :right (TypedVar 's' :type String)))
+            (TypedCaseBranch tags=(b) :binder 'n'
+              :body (TypedInfix '<>' :type String
+                :left (TypedString 'b ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedVar 'n' :type Int)
+                  ))))
+          ))))
+    (TypedLetValue 'gRef' :type Fun(var v: Large): String
+      :value (TypedVar 'g' :type Fun(var v: Large): String))
+    (TypedLetValue 'small' :type Small
+      :value (TypedVariant 'b' :type Small
+        :payload (TypedInt 7 :type Int)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'variant: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedDerefCell :type Fun(var v: Large): String
+                :target (TypedVar 'gRef' :type Var(Fun(var v: Large): String)))
+              :args (
+                (TypedVarCell :type Var(Large)
+                  :value (TypedVar 'small' :type Small))
+              )))
+        )))
+  ))

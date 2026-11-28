@@ -131,7 +131,8 @@ export
      * structure of its canonical form, so that a record is named alike however
      * it is written), by name, with their types' tags and digests (records
      * share a struct only if their fields have the same types, not merely the
-     * same C representations), as Python's repr writes them *)
+     * same C representations) and whether they are var fields, as Python's
+     * repr writes them *)
     let shapeKey(t: Type): String =
         begin
             (* Keep abstract types opaque here so fields are keyed as
@@ -153,6 +154,10 @@ export
                 if shapes.transparentAbstractTypes() then
                     vector.append(parts syntax.cInt(shapes.opaqueShape(f.type).id))
                 end
+                (* A var field and an immutable one are described apart:
+                 * dynamic.be must not find a record with an immutable field
+                 * at a type with a var one *)
+                if f.isVar then vector.append(parts pyRepr.str("var")) end
                 vector.append(items pyRepr.tupleOf(parts))
             end
             pyRepr.tupleOf(items)

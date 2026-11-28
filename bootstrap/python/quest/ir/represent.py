@@ -52,6 +52,7 @@ from quest.types import (
     BOOL_TYPE,
     auto_payload_type,
     is_kind_equal,
+    is_subtype,
     is_type_equal,
     QAbstractType,
     QFunType,
@@ -757,6 +758,26 @@ class _Representer:
         case.binders = tuple(binders)
         case.body.statements[:0] = lets
 
+    def comparable(self, a: ir.Atom, b: ir.Atom, before: list) -> tuple:
+        """The operands of is or isnot, of two types one of which is a subtype
+        of the other. Variants and options are compared by value, by the
+        descriptor of the first operand's type, so where the two are laid out
+        differently (a variant's tags numbered otherwise, an option's cases),
+        the subtype's operand is converted to the supertype first. Other values
+        are compared by identity, which a conversion (a copy) would lose."""
+        ta, tb = _type_of(a), _type_of(b)
+
+        def by_value(t: QType) -> bool:
+            return resolved_shape(shape(t)).kind in ("variant", "option")
+
+        if _equal(ta, tb) or not by_value(ta) or not by_value(tb):
+            return (a, b)
+        if is_subtype(ta, tb):
+            return (self.convert(a, tb, before), b)
+        if is_subtype(tb, ta):
+            return (a, self.convert(b, ta, before))
+        return (a, b)
+
     def operation(self, o, result_t: QType, before: list) -> Optional[QType]:
         """Converts an operation's operands to the types it stores them at,
         returning the type of its result as the operation gives it (None when
@@ -781,6 +802,11 @@ class _Representer:
                 o.args = tuple(self.convert(a, elem, before) for a in args)
             case ir.ArrayRep(init=init):
                 o.init = self.convert(init, array_element(result_t), before)
+            case ir.AddrCell(init=init):
+                # var(e) passed for a var or out parameter: the cell is of the
+                # parameter's type, which e's may be a subtype of
+                element = result_t.element_type if isinstance(result_t, QVarType) else result_t
+                o.init = self.convert(init, element, before)
             case ir.MakeAuto(witness=witness, auto_type=auto_t, payload=payload):
                 stored_t = auto_payload_type(auto_t)
                 p = auto_payload_plan(_type_of(payload), stored_t, auto_t)
@@ -807,6 +833,8 @@ class _Representer:
                 else:
                     orig_t = o.callee_type
                 o.plans, o.thunk_symbols = type_app_plans(orig_t, type_args, result_t)
+            case ir.Prim(op="is" | "isnot", args=(a, b)):
+                o.args = self.comparable(a, b, before)
             case ir.Payload(value=v, tag=tag):
                 vt = written_structure(_type_of(v), "variant")
                 if vt is not None:

@@ -1,0 +1,181 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('dynamic') : 'Dynamic')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'be' :type Fun(what: String try1: Fun(): Ok): Ok
+      :value (TypedFun :params (('what' : String) ('try1' : Fun(): Ok)) :type Fun(what: String try1: Fun(): Ok): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedVar 'what' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ': ' :type String)
+                :right (TypedTry :type String
+                  :body (TypedBlock :type String
+                    :bindings (
+                      (TypedExprStmt
+                        :expr (TypedApp :type Ok
+                          :func (TypedVar 'try1' :type Fun(): Ok)
+                          :args ()))
+                    )
+                    :result (TypedString 'accepted' :type String))
+                  :branches (
+                    (TypedTryBranch
+                      :exc_pattern (TypedSelect 'error' :type Exception
+                        :target (TypedVar 'dynamic' :type Module 'dynamic'))
+                      :body (TypedString 'dynamic.error' :type String))
+                  ))))
+          ))))
+    (TypedLetValue 'r' :type Record x: Int end
+      :value (TypedRecord :type Record x: Int end
+        :fields (
+          (TypedRecordField 'x'
+            :value (TypedInt 1 :type Int))
+        )))
+    (TypedLetValue 'd' :type T
+      :value (TypedApp :type T
+        :func (TypedTypeApp [Record x: Int end] :type Fun(a: Record x: Int end): T
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedVar 'r' :type Record x: Int end)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'be' :type Fun(what: String try1: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'immutable as var' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedBlock :type Ok
+              :bindings (
+                (TypedLetValue 'm' :type Record var x: Int end
+                  :value (TypedApp :type Record var x: Int end
+                    :func (TypedTypeApp [Record var x: Int end] :type Fun(d: T): Record var x: Int end
+                      :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedVar 'd' :type T)
+                    )))
+              )
+              :result (TypedAssign
+                :target (TypedSelect 'x' :type Int
+                  :target (TypedVar 'm' :type Record var x: Int end))
+                :value (TypedInt 99 :type Int))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'r.x: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'x' :type Int
+                  :target (TypedVar 'r' :type Record x: Int end))
+              )))
+        )))
+    (TypedLetValue 'v' :type Record var x: Int end
+      :value (TypedRecord :type Record var x: Int end
+        :fields (
+          (TypedRecordField 'x' :var
+            :value (TypedInt 2 :type Int))
+        )))
+    (TypedLetValue 'e' :type T
+      :value (TypedApp :type T
+        :func (TypedTypeApp [Record var x: Int end] :type Fun(a: Record var x: Int end): T
+          :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedVar 'v' :type Record var x: Int end)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'be' :type Fun(what: String try1: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'var as immutable' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedBlock :type Ok
+              :bindings (
+                (TypedLetValue 'm' :type Record x: Int end
+                  :value (TypedApp :type Record x: Int end
+                    :func (TypedTypeApp [Record x: Int end] :type Fun(d: T): Record x: Int end
+                      :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedVar 'e' :type T)
+                    )))
+              )
+              :result (TypedApp :type Ok
+                :func (TypedVar 'print' :type Fun(s: String): Ok)
+                :args (
+                  (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedSelect 'x' :type Int
+                        :target (TypedVar 'm' :type Record x: Int end))
+                    ))
+                ))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'be' :type Fun(what: String try1: Fun(): Ok): Ok)
+        :args (
+          (TypedString 'var as var' :type String)
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedBlock :type Ok
+              :bindings (
+                (TypedLetValue 'm' :type Record var x: Int end
+                  :value (TypedApp :type Record var x: Int end
+                    :func (TypedTypeApp [Record var x: Int end] :type Fun(d: T): Record var x: Int end
+                      :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+                        :target (TypedVar 'dynamic' :type Module 'dynamic')))
+                    :args (
+                      (TypedVar 'e' :type T)
+                    )))
+              )
+              :result (TypedAssign
+                :target (TypedSelect 'x' :type Int
+                  :target (TypedVar 'm' :type Record var x: Int end))
+                :value (TypedInt 3 :type Int))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'v.x: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'x' :type Int
+                  :target (TypedVar 'v' :type Record var x: Int end))
+              )))
+        )))
+  ))

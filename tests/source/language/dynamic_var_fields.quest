@@ -1,0 +1,24 @@
+(* dynamic.be of a record at a type that differs from the record's own only
+ * in whether a field is var: a record with an immutable field is not one with
+ * a var field, so it raises dynamic.error, and the other way, a var field
+ * serves where an immutable one is asked. *)
+
+import conv : Conv
+import dynamic : Dynamic
+import writer : Writer
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+
+let be(what: String try1: All() Ok): Ok =
+    print(what <> ": " <> try begin try1() "accepted" end when dynamic.error then "dynamic.error" end)
+
+let r = record x = 1 end
+let d = dynamic.new(r)
+be("immutable as var" fun(): Ok begin let m = dynamic.be(:Record var x: Int end d) m.x := 99 end)
+print("r.x: " <> conv.int(r.x))
+
+let v = record var x = 2 end
+let e = dynamic.new(v)
+be("var as immutable" fun(): Ok begin let m = dynamic.be(:Record x: Int end e) print(conv.int(m.x)) end)
+be("var as var" fun(): Ok begin let m = dynamic.be(:Record var x: Int end e) m.x := 3 end)
+print("v.x: " <> conv.int(v.x))

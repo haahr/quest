@@ -213,9 +213,9 @@ class RecordNamingContext:
     """
 
     def __init__(self) -> None:
-        self.shape_to_canonical_name: dict[tuple[tuple[str, str, str], ...], str] = {}
+        self.shape_to_canonical_name: dict[tuple[tuple[str, ...], ...], str] = {}
 
-    def _shape_key(self, t: QRecordType) -> tuple[tuple[str, str, str], ...]:
+    def _shape_key(self, t: QRecordType) -> tuple[tuple[str, ...], ...]:
         # Records share a struct (and so a descriptor) only if their fields have
         # the same types, not merely the same C representations: type_tag is
         # QClosure for every function type and QVal for every type variable. The
@@ -224,10 +224,15 @@ class RecordNamingContext:
         s = shape(t)
         fields = s.structure.fields if s.kind == "record" else t.fields
         sorted_fields = sorted(fields, key=lambda f: f.name)
-        return tuple((f.name, type_tag(f.type_val), type_digest(f.type_val)) for f in sorted_fields)
+        # A var field and an immutable one are described apart: dynamic.be must
+        # not find a record with an immutable field at a type with a var one.
+        return tuple(
+            (f.name, type_tag(f.type_val), type_digest(f.type_val)) + (("var",) if f.is_var else ())
+            for f in sorted_fields
+        )
 
     @staticmethod
-    def _shape_digest(key: tuple[tuple[str, str, str], ...]) -> str:
+    def _shape_digest(key: tuple[tuple[str, ...], ...]) -> str:
         return text_digest(repr(key))
 
     def get_or_create_name(self, t: QRecordType) -> str:

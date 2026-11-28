@@ -1,0 +1,75 @@
+import conv = "conv" : Conv
+import dynamic = "dynamic" : Dynamic
+import writer = "writer" : Writer
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @10:45
+      let %2: String = prim <>(s, "\n") @10:59
+      let %3: Ok = call writer.putString(%1, %2) @10:28
+      return %3
+    }
+  }
+  funs {
+    fun be(what: String, try1: Fun(): Ok): Ok {
+      join k1(r: String) {
+        let %4: String = prim <>(": ", r) @13:19
+        let %5: String = prim <>(what, %4) @13:11
+        let %6: Ok = call print(%5) @13:5
+        return %6
+      } in {
+        let %7: Exception = member dynamic.error @13:64
+        try catching (%7) {
+          do call try1() @13:37
+          jump k1("accepted") @13:27
+        } handle (e: Exception) {
+          let %8: Bool = prim is(e, %7) @13:27
+          if %8 { @13:27
+            jump k1("dynamic.error") @13:27
+          } else {
+            reraise e @13:27
+          }
+        }
+      }
+    }
+  }
+  let r.1: Record x: Int end = record(x = 1) @15:9
+  let d: T = call dynamic.new [Record x: Int end](r.1) @16:9
+  funs {
+    fun f(): Ok {
+      let m: Record var x: Int end = call dynamic.be [Record var x: Int end](d) @17:47
+      store m.x := 99 @17:84
+      return ok
+    }
+  }
+  do call be("immutable as var", f) @17:1
+  let %9: Int = record_field(r.1, x) @18:27
+  let %10: String = call conv.int(%9) @18:18
+  let %11: String = prim <>("r.x: ", %10) @18:7
+  do call print(%11) @18:1
+  let v: Record var x: Int end = record(var x = 2) @20:9
+  let e.1: T = call dynamic.new [Record var x: Int end](v) @21:9
+  funs {
+    fun f.1(): Ok {
+      let m.1: Record x: Int end = call dynamic.be [Record x: Int end](e.1) @22:47
+      let %12: Int = record_field(m.1, x) @22:95
+      let %13: String = call conv.int(%12) @22:86
+      let %14: Ok = call print(%13) @22:80
+      return %14
+    }
+  }
+  do call be("var as immutable", f.1) @22:1
+  funs {
+    fun f.2(): Ok {
+      let m.2: Record var x: Int end = call dynamic.be [Record var x: Int end](e.1) @23:41
+      store m.2.x := 3 @23:78
+      return ok
+    }
+  }
+  do call be("var as var", f.2) @23:1
+  let %15: Int = record_field(v, x) @24:27
+  let %16: String = call conv.int(%15) @24:18
+  let %17: String = prim <>("v.x: ", %16) @24:7
+  do call print(%17) @24:1
+}
+
