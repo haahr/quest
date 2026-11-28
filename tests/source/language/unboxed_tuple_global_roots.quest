@@ -1,0 +1,68 @@
+(* @env: QUEST_GC_CHECK=stress,roots *)
+(* A global tuple held unboxed, as its components (questlang/ir/unbox): each
+   of its words that may be a pointer is a GC root, the string's included, so
+   that the collector's roots check, run at each collection, finds every heap
+   pointer in the unit's data covered by its root table *)
+import conv : Conv
+import stringOp = string : StringOp
+import writer : Writer
+
+(* Big enough not to be inlined (40 statements), and called twice, so that it
+   returns the tuple unboxed, as its components, and the global holds them
+   so *)
+let make(n: Int): Tuple a: Int b: String end =
+    begin
+        let var s = stringOp.cat("hello " conv.int(n))
+        if stringOp.length(s) < 3 then s := stringOp.cat(s conv.int(1)) end
+        if stringOp.length(s) < 6 then s := stringOp.cat(s conv.int(2)) end
+        if stringOp.length(s) < 9 then s := stringOp.cat(s conv.int(3)) end
+        if stringOp.length(s) < 12 then s := stringOp.cat(s conv.int(4)) end
+        if stringOp.length(s) < 15 then s := stringOp.cat(s conv.int(5)) end
+        if stringOp.length(s) < 18 then s := stringOp.cat(s conv.int(6)) end
+        if stringOp.length(s) < 21 then s := stringOp.cat(s conv.int(7)) end
+        if stringOp.length(s) < 24 then s := stringOp.cat(s conv.int(8)) end
+        if stringOp.length(s) < 27 then s := stringOp.cat(s conv.int(9)) end
+        if stringOp.length(s) < 30 then s := stringOp.cat(s conv.int(10)) end
+        if stringOp.length(s) < 33 then s := stringOp.cat(s conv.int(11)) end
+        if stringOp.length(s) < 36 then s := stringOp.cat(s conv.int(12)) end
+        if stringOp.length(s) < 39 then s := stringOp.cat(s conv.int(13)) end
+        if stringOp.length(s) < 42 then s := stringOp.cat(s conv.int(14)) end
+        if stringOp.length(s) < 45 then s := stringOp.cat(s conv.int(15)) end
+        if stringOp.length(s) < 48 then s := stringOp.cat(s conv.int(16)) end
+        if stringOp.length(s) < 51 then s := stringOp.cat(s conv.int(17)) end
+        if stringOp.length(s) < 54 then s := stringOp.cat(s conv.int(18)) end
+        if stringOp.length(s) < 57 then s := stringOp.cat(s conv.int(19)) end
+        if stringOp.length(s) < 60 then s := stringOp.cat(s conv.int(20)) end
+        if stringOp.length(s) < 63 then s := stringOp.cat(s conv.int(21)) end
+        if stringOp.length(s) < 66 then s := stringOp.cat(s conv.int(22)) end
+        if stringOp.length(s) < 69 then s := stringOp.cat(s conv.int(23)) end
+        if stringOp.length(s) < 72 then s := stringOp.cat(s conv.int(24)) end
+        if stringOp.length(s) < 75 then s := stringOp.cat(s conv.int(25)) end
+        if stringOp.length(s) < 78 then s := stringOp.cat(s conv.int(26)) end
+        if stringOp.length(s) < 81 then s := stringOp.cat(s conv.int(27)) end
+        if stringOp.length(s) < 84 then s := stringOp.cat(s conv.int(28)) end
+        if stringOp.length(s) < 87 then s := stringOp.cat(s conv.int(29)) end
+        if stringOp.length(s) < 90 then s := stringOp.cat(s conv.int(30)) end
+        if stringOp.length(s) < 93 then s := stringOp.cat(s conv.int(31)) end
+        if stringOp.length(s) < 96 then s := stringOp.cat(s conv.int(32)) end
+        if stringOp.length(s) < 99 then s := stringOp.cat(s conv.int(33)) end
+        if stringOp.length(s) < 102 then s := stringOp.cat(s conv.int(34)) end
+        if stringOp.length(s) < 105 then s := stringOp.cat(s conv.int(35)) end
+        if stringOp.length(s) < 108 then s := stringOp.cat(s conv.int(36)) end
+        if stringOp.length(s) < 111 then s := stringOp.cat(s conv.int(37)) end
+        if stringOp.length(s) < 114 then s := stringOp.cat(s conv.int(38)) end
+        if stringOp.length(s) < 117 then s := stringOp.cat(s conv.int(39)) end
+        if stringOp.length(s) < 120 then s := stringOp.cat(s conv.int(40)) end
+        tuple let a = stringOp.length(s) let b = s end
+    end
+let p = make(12345)
+let q = make(5)
+(* Recursive and called twice, so that it is a function of its own, which
+   reads p as a global *)
+let rec read(k: Int): String = if k > 0 then read(k - 1) else p.b end
+
+(* Allocations, before each of which the stress check collects and checks *)
+let rec churn(i: Int acc: Int): Int =
+    if i is 0 then acc else churn(i - 1 acc + stringOp.length(stringOp.cat("ab" conv.int(i)))) end
+writer.putString(writer.output read(2) <> " " <> conv.int(p.a + q.a) <> " " <> conv.int(churn(3000 0)) <> " " <> read(3)
+    <> "\n")

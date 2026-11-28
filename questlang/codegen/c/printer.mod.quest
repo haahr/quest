@@ -3011,11 +3011,14 @@ export
             lines
         end
 
-    (* A global's declaration, and the words of it a root table lists: all
-     * of them if any may be a pointer, else none; a handler's variable is a
-     * copy of the exception state (QExceptionState), whose every word may be
-     * one *)
-    Let GlobalDecl = Tuple name: String cType: String words: Int end
+    (* A global's declaration, and the words of it a root table lists, as a
+     * C expression ("" for none): all of them if any may be a pointer, else
+     * none. They are the words of the C variable, as varCType declares it: a
+     * handler's variable is a copy of the exception state (QExceptionState),
+     * whose every word may be one; an unboxed tuple is a struct of all its
+     * components' words, and a boxed variable is its slot, whose words its
+     * size says *)
+    Let GlobalDecl = Tuple name: String cType: String words: String end
     let globalDeclarations(p: P): vector.T(GlobalDecl) =
         begin
             let found = vector.new(:GlobalDecl)
@@ -3036,11 +3039,13 @@ export
                             mark(seen v.id)
                             let words =
                                 if hashSet.contains(p.handlerVars v.id) then
-                                    maybe.unwrap(runtimeLayout.struct("QExceptionState")).bytes / 8
-                                elsif holdsPointer(v.type) then
-                                    extent objectLayout.representationKinds(shapeOf(v.type))
+                                    cInt(maybe.unwrap(runtimeLayout.struct("QExceptionState")).bytes / 8)
+                                elsif not(holdsPointer(v.type)) then
+                                    ""
+                                elsif v.unboxed orif v.boxed then
+                                    "sizeof(" <> name(p v) <> ") / sizeof(void *)"
                                 else
-                                    0
+                                    cInt(extent objectLayout.representationKinds(shapeOf(v.type)))
                                 end
                             vector.append(found tuple
                                 let name = name(p v)
@@ -3303,7 +3308,9 @@ export
             add(res "static const QRootEntry qr_roots[] = {")
             for i = 0 upto {vector.length(globalDecls) - 1} do
                 let g = vector.get(globalDecls i)
-                if g.words > 0 then add(res "    { (void *)&" <> g.name <> ", " <> cInt(g.words) <> " },") end
+                if stringOp.length(g.words) > 0 then
+                    add(res "    { (void *)&" <> g.name <> ", " <> g.words <> " },")
+                end
             end
             (* Not the record of a whole program's module left without one
              * (whole.dropUnreachable), which stays zero *)
