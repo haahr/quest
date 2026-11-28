@@ -137,6 +137,17 @@ Subkinding allows type operators and power kinds to be used wherever broader kin
   $\iff K_1' \le K_1 \land K_2 \le K_2'[Y \mapsto X]$
   (contravariant in parameter kind, covariant in result kind).
 
+Kinds compared inside a subtyping proof (an auto type's bound, a quantifier's, a tuple's type component's) are
+compared within that proof, sharing its coinductive trail and fuel (`_is_subkind_in` in `types/subtyping.py`,
+`isSubkindIn` in `questlang/types/subtyping`), so that `Let Rec T1 = Auto A <: T1 with a: A end` and its copy `T2`
+are subtypes of each other: the goal the bounds pose, `T1 <: T2`, is the one already assumed
+(`tests/source/language/recursive_auto_bounds.quest`).
+
+**Substitution reaches kind bounds.** Applying an operator or instantiating a quantifier substitutes into every kind
+bound inside the type as well: an auto type's, a recursive type's, a type operator's parameters' (a telescope, as
+an All type's quantifiers are), and a type variable's. So `Box(Int)`, for `Box(X::TYPE) = Auto A <: X with a: A end`,
+is `Auto A <: Int with a: A end`, and no `Box(String)` (`tests/source/language/parameterized_auto_bounds.quest`).
+
 **Applications of operators** are curried, as operator kinds are: `Fun(A::TYPE B::TYPE) T` has kind
 `ALL(A::TYPE) ALL(B::TYPE) TYPE`, so it may be applied to fewer arguments than its parameters, and a curried
 `Fun(A::TYPE) Fun(B::TYPE) T` to both at once. `type_app` (`types/model.py`; `model.typeApp` in the self-hosted
@@ -156,6 +167,8 @@ binders when a type is compared with a bound that contains it). As in full F<:, 
 *Bounded quantification is undecidable*): each comparison of quantifiers costs a large share of the proof's fuel
 (`_QUANTIFIER_FUEL`), and the supertype's bounds are compared within the same proof, so a search that diverges
 through bounds stops after a few levels and fails as not a subtype (`tests/errors/typecheck/all_subtyping_diverges`).
+A curried All type is compared as its uncurried one, `All(A::TYPE) All(B::TYPE) T` as `All(A::TYPE B::TYPE) T`
+(§6.4; `_flattened_all`, `flattenAll`).
 In C, values of a bounded type parameter are held at their own view, their type argument's, whatever the bound
 ([c-representation.md](c-representation.md) §5.1), so such a function's arguments and results need no conversion
 (at most a cast between the C names of equal types).
@@ -228,6 +241,11 @@ type constructor (`Record`, `Tuple`, `Option`, `Variant`, `Fun`, `Array`, `Var`,
   Let Rec List = Tuple head:Int tail:List end   (* ACCEPTED: guarded by Tuple *)
   Let Rec Tree = Option empty, node with t:Tree end (* ACCEPTED: guarded by Option *)
   ```
+- **An abstract type operator guards nothing.** An application whose constructor is a type parameter or another
+  operator known only by its kind, `F(T)` for `F::ALL(A::TYPE) TYPE`, is contractive only where its arguments are: `F`
+  may be the identity, which would make `Rec(T::TYPE) F(T)` the bare `Rec(T::TYPE) T`, whose unfolding never ends
+  (`tests/errors/typecheck/core/non_contractive_abstract_operator`). A known constructor, such as an external operator,
+  guards its arguments.
 
 ### 3.4. Simultaneous and Mutually Recursive Type Declarations (`and`)
 Type declarations joined by `and` (Cardelli's `TypeDecl "and" TypeDecl`) are declared together, as an
@@ -317,7 +335,10 @@ Subtyping between tuple types implements Cardelli's extended subsignature rules 
 4. **Manifest Type Binding Subsumption:**
    A tuple with a concrete manifest binding is a subtype of a tuple with an abstract type formal:
    `Tuple Def A::TYPE = Int a:A end <: Tuple A::TYPE a:A end`.
-   The manifest type definition is substituted into remaining components of the supertype signature.
+   The manifest type definition is substituted into remaining components of the supertype signature. The
+   definition must have the formal's kind: against `A <: B` it must be a subtype of `B`, and against any other kind
+   the binding's own kind (`TYPE` when it declares none) must be a subkind of it, so `Tuple Let F = Int end` is not a
+   `Tuple F::ALL(A::TYPE) TYPE end`.
 5. **Mutable Component Invariance and Covariance (Cardelli §4.8):**
    - If supertype component is mutable (`var`), subtype component must also be mutable and types must match
      invariantly ($S.f \le: T.f \land T.f \le: S.f$).
@@ -384,6 +405,9 @@ let getOrigin(pkg: PointPackage): pkg.Point = ...   (* REJECTED: dependent retur
   and inspect expressions). If a synthesized type contains a `QPathType` rooted at a locally bound `symbol_id`,
   typechecking aborts with:
   `TypeError: Abstract type 'pkg.Point' cannot escape the scope of 'pkg'`.
+  The type checked is a metavariable's solution when it was one, as the result type a function literal is checked
+  against when that is an inferred type argument (`apply(fun(p: Pkg) p.v)` for `apply(R::TYPE f: All(p: Pkg) R)`):
+  `find_path_types` (`model.findPathTypes`) looks through solved metavariables.
 - Function return types in Quest cannot depend on value parameters (no value-dependent $\Pi$-types).
 
 ### 4.6. REPL Presentation
@@ -633,6 +657,10 @@ both compilers keep:
   happens at each call, not when `h` is applied to types: the paper evaluates a type application, but a type that
   cannot tell `h` from `f` cannot give them different conventions. The merged function passes its `var` and `out`
   parameters on as the locations they are, as `@p` would.
+- **Subtyping and application see through the currying.** `All(A::TYPE) All(B::TYPE) T` and `All(A::TYPE B::TYPE) T`
+  are compared by their quantifiers together (§3.1), so a value of either may be bound at the other, and a value of
+  the curried type may be applied to both type arguments at once, `k2(:Int :String ...)`, as well as to one at a time
+  (`tests/source/language/curried_all_types.quest`).
 - **A partial type application is a polymorphic function of the rest.** `g(:Int)` for `let g(A::TYPE B::TYPE): Int`
   has type `All(B :: TYPE) Int`; the lowering makes it a closure that applies `g` to `:Int` and its own type argument
   (and passes on its value arguments, if it takes any) when it is applied (`type_app` in `ir/lower.py`).

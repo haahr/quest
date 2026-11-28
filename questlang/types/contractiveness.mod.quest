@@ -42,7 +42,8 @@ export
      * type variable is contractive in ids when its symbol id is not in ids;
      * All(X' :: K) B is contractive when B is; a type application is
      * contractive when its evaluated constructor is (evaluation has already
-     * reduced applications of type operators); Rec(X') B is contractive when B
+     * reduced applications of type operators) and, if that constructor is
+     * abstract, when its arguments are; Rec(X') B is contractive when B
      * is contractive in both X' and ids; and a mutually recursive group binding
      * is contractive when its body is contractive in ids together with all
      * bindings in the group.
@@ -81,7 +82,31 @@ export
                         contractive(x.bindings[x.activeIndex].body union(ids groupIds) e {depth + 1})
                     end
                 when typeAll with x then contractive(x.body ids e {depth + 1})
-                when typeApp with x then contractive(model.evaluateLazily(x.constructor lookup) ids e {depth + 1})
+                when typeApp with x then
+                    (* Evaluation has already reduced applications of type
+                     * operators, so the constructor here is opaque. An
+                     * abstract one, a type parameter or an interface's
+                     * operator, may be any operator, the identity
+                     * Fun(A::TYPE) A among them, so the application guards
+                     * its arguments no more than it would guard them bare:
+                     * F(T) is contractive in T only if T is. A known
+                     * constructor (such as an external operator) guards
+                     * them. *)
+                    begin
+                        let constructor = model.evaluateLazily(x.constructor lookup)
+                        let abstract =
+                            case constructor.form
+                                when typeVariable, typeAbstract, typePath, typeMeta then true
+                                else false
+                            end
+                        let var good = contractive(constructor ids e {depth + 1})
+                        if abstract then
+                            for i = 0 upto {extent x.arguments - 1} do
+                                if good andif not(contractive(x.arguments[i] ids e {depth + 1})) then good := false end
+                            end
+                        end
+                        good
+                    end
                 else true
             end
         end

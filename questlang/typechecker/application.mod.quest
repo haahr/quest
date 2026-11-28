@@ -366,6 +366,12 @@ export
                      *    id(:Int)) *)
                     let var numTargs = 0
                     while {numTargs < extent args} andif isTypeOrKindArg(args[numTargs]) do numTargs := numTargs + 1 end
+                    if {numTargs > extent all.quantifiers} andif checks.evaluate(all.body).form?typeAll then
+                        (* A curried All type is its uncurried one
+                         * (docs/type-system.md §6.4): the type arguments past
+                         * these quantifiers are its body's *)
+                        numTargs := extent all.quantifiers
+                    end
                     if numTargs > 0 then
                         explicitTypeApp(c offset args numTargs funcTyped allType all.quantifiers all.body
                                 expected)

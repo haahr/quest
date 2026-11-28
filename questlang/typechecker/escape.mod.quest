@@ -37,13 +37,17 @@ export
     let checkNoEscapingPathTypes(t: model.Type localSymbolIds: maps.IntSet contextDesc: String
             offset: Int): Ok =
         begin
-            let paths = model.findPathTypes(t)
+            (* An expected type that was a metavariable is checked, and shown,
+             * as its solution *)
+            let solved = model.prune(t)
+            let paths = model.findPathTypes(solved)
             for i = 0 upto {extent paths - 1} do
                 case paths[i].form
                     when typePath with p then
                         if hashSet.contains(localSymbolIds p.rootSymbolId) then
                             diagnostics.fail(:Ok "Abstract type '" <> p.rootName <> "." <> p.fieldName
-                                <> "' cannot escape " <> contextDesc <> " in type '" <> model.show(t) <> "'" offset)
+                                <> "' cannot escape " <> contextDesc <> " in type '" <> model.show(solved) <> "'"
+                                    offset)
                         end
                     else ok
                 end

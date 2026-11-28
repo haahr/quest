@@ -453,6 +453,11 @@ class ApplicationMixin(Checker):
         ):
             num_targs += 1
 
+        if num_targs > len(all_type.quantifiers) and isinstance(all_type.body.evaluate_lazily(env), QAllType):
+            # A curried All type is its uncurried one (type-system.md §6.4):
+            # the type arguments past these quantifiers are its body's
+            num_targs = len(all_type.quantifiers)
+
         if num_targs > 0:
             if num_targs > len(all_type.quantifiers):
                 raise TypeError(

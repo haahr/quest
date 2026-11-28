@@ -18,6 +18,7 @@ from quest.types.kinds import KindError
 from quest.types.model import (
     MAX_TYPE_EXPANSION_DEPTH,
     QAllType,
+    QAbstractType,
     QArrayType,
     QAutoType,
     QBoolType,
@@ -104,11 +105,20 @@ def is_type_contractive(
         case QAllType(quantifiers=quants, body=body):
             return is_type_contractive(body, recursive_var_ids, env, depth + 1)
 
-        case QTypeApp(constructor=ctor):
+        case QTypeApp(constructor=ctor, arguments=args):
             # evaluate_lazily has already beta-reduced applications of type
-            # functions, so the constructor here is opaque; the application is
-            # contractive if the constructor is.
-            return is_type_contractive(ctor.evaluate_lazily(env), recursive_var_ids, env, depth + 1)
+            # functions, so the constructor here is opaque. An abstract one, a
+            # type parameter or an interface's operator, may be any operator,
+            # the identity Fun(A::TYPE) A among them, so the application guards
+            # its arguments no more than it would guard them bare: F(T) is
+            # contractive in T only if T is. A known constructor (such as an
+            # external operator) guards them.
+            ctor_lazy = ctor.evaluate_lazily(env)
+            if not is_type_contractive(ctor_lazy, recursive_var_ids, env, depth + 1):
+                return False
+            if isinstance(ctor_lazy, (QTypeVar, QAbstractType, QPathType, QTypeMeta)):
+                return all(is_type_contractive(a, recursive_var_ids, env, depth + 1) for a in args)
+            return True
 
         case (
             QRecordType()

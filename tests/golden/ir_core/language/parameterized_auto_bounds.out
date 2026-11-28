@@ -1,0 +1,79 @@
+import conv = "conv" : Conv
+import writer = "writer" : Writer
+import string = "string" : StringOp
+main {
+  funs {
+    fun say(s: String): Ok {
+      let %1: writer.T = member writer.output @11:43
+      let %2: String = prim <>(s, "\n") @11:57
+      let %3: Ok = call writer.putString(%1, %2) @11:26
+      return %3
+    }
+  }
+  let a: Int = 42 @16:35
+  let %4: Tuple a: Int end = tuple(a) @16:30
+  let bi: Box(Int) = auto[Int](%4) @16:20
+  join k1(r: Int) {
+    let %5: String = call conv.int(r) @17:14
+    let %6: String = prim <>("1: ", %5) @17:5
+    do call say(%6) @17:1
+    let a.1: Record x: Int z: Int end = record(x = 1, z = 2) @22:40
+    let %7: Tuple a: Point3 end = tuple(a.1) @22:35
+    let bp: Box(Point) = auto[Point3](%7) @22:22
+    join k2(r.1: Int) {
+      let %8: String = call conv.int(r.1) @23:14
+      let %9: String = prim <>("2: ", %8) @23:5
+      do call say(%9) @23:1
+      funs {
+        fun unbox(b: Box(String)): Int {
+          join k3(r.2: Int) {
+            return r.2
+          } in {
+            inspect b { @26:34
+              case String (s.1: Tuple a: String end): {
+                let %10: String = tuple_field(s.1, 0) @26:82
+                let %11: Int = call string.length(%10) @26:68
+                jump k3(%11) @26:34
+              }
+              else: {
+                let %12: Int = prim -(0, 1) @26:92
+                jump k3(%12) @26:34
+              }
+            }
+          }
+        }
+      }
+      let a.2: String = "four" @27:47
+      let %13: Tuple a: String end = tuple(a.2) @27:42
+      let %14: Box(String) = auto[String](%13) @27:29
+      let %15: Int = call unbox(%14) @27:23
+      let %16: String = call conv.int(%15) @27:14
+      let %17: String = prim <>("3: ", %16) @27:5
+      do call say(%17) @27:1
+    } in {
+      inspect bp { @23:23
+        case Point3 (p: Tuple a: Point3 end): {
+          let %18: Point3 = tuple_field(p, 0) @23:58
+          let %19: Int = record_field(%18, z) @23:58
+          jump k2(%19) @23:23
+        }
+        else: {
+          let %20: Int = prim -(0, 1) @23:69
+          jump k2(%20) @23:23
+        }
+      }
+    }
+  } in {
+    inspect bi { @17:23
+      case Int (i: Tuple a: Int end): {
+        let %21: Int = tuple_field(i, 0) @17:55
+        jump k1(%21) @17:23
+      }
+      else: {
+        let %22: Int = prim -(0, 1) @17:64
+        jump k1(%22) @17:23
+      }
+    }
+  }
+}
+

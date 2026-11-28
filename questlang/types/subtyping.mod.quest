@@ -190,6 +190,31 @@ export
     let solve(meta: Type t: Type): Ok =
         case meta.form when typeMeta with x then x.meta.instance := maybe.some(t) else ok end
 
+    Let Quantified = Tuple quantifiers: Array(model.Quantifier) body: Type end
+
+    (* An All type's quantifiers, followed by those of the All types its body
+     * is, and the body under them all: All(A::TYPE) All(B::TYPE) T and
+     * All(A::TYPE B::TYPE) T are one type (docs/type-system.md §6.4). The
+     * quantifiers stay a telescope, since an inner one's bound may refer only
+     * to those before it. *)
+    let flattenAll(quantifiers: Array(model.Quantifier) body0: Type env: MaybeLookup): Quantified =
+        begin
+            let all = vector.fromArray(quantifiers)
+            let var body = body0
+            let var looking = true
+            while looking do
+                case evaluate(body env).form
+                    when typeAll with x then
+                        begin
+                            for i = 0 upto {extent x.quantifiers - 1} do vector.append(all x.quantifiers[i]) end
+                            body := x.body
+                        end
+                    else looking := false
+                end
+            end
+            tuple let quantifiers = vector.toArray(all) let body = body end
+        end
+
     let rec prove(sub: Type sup: Type env: MaybeLookup trail: Trail fuel: Int): Bool =
         if model.same(sub sup) then
             true
@@ -490,7 +515,12 @@ export
                     else false
                 end
             when typeAll with s then
-                case sup.form when typeAll with t then quantified(s t env trail fuel) else false end
+                case sup.form
+                    when typeAll with t then
+                        quantified(flattenAll(s.quantifiers s.body env) flattenAll(t.quantifiers t.body env) env trail
+                                fuel)
+                    else false
+                end
             when typeAuto with s then
                 case sup.form
                     when typeAuto with t then
@@ -498,7 +528,7 @@ export
                          * prefix match with matching names, covariant immutable
                          * and invariant mutable components *)
                         if {extent s.signature < extent t.signature}
-                                orif not(isSubkind(s.kindBound t.kindBound env)) then
+                                orif not(isSubkindIn(s.kindBound t.kindBound env trail fuel)) then
                             false
                         else
                             let subst = model.singleSubst(t.symbolId
@@ -541,7 +571,8 @@ export
                             let var good = true
                             for i = 0 upto {extent s.params - 1} do
                                 let renamed = model.substituteInKind(t.params[i].bound subst)
-                                if good andif not(isKindEqual(s.params[i].bound renamed env)) then
+                                if good andif not(isSubkindIn(s.params[i].bound renamed env trail fuel)
+                                        andif isSubkindIn(renamed s.params[i].bound env trail fuel)) then
                                     good := false
                                 end
                             end
@@ -553,7 +584,8 @@ export
                 case sup.form
                     when typeApp with t then
                         if {extent s.arguments isnot extent t.arguments}
-                                orif not(isTypeEqual(s.constructor t.constructor env)) then
+                                orif not(model.same(s.constructor t.constructor)
+                                        orif both(s.constructor t.constructor env trail fuel)) then
                             false
                         else
                             let var good = true
@@ -602,7 +634,8 @@ export
                         when tupleTypeFormal with s then
                             case tf
                                 when tupleTypeFormal with t then
-                                    if not(stringOp.equal(s.name t.name)) orif not(isSubkind(s.bound t.bound env)) then
+                                    if not(stringOp.equal(s.name t.name))
+                                            orif not(isSubkindIn(s.bound t.bound env trail fuel)) then
                                         good := false
                                     elsif t.symbolId isnot s.symbolId then
                                         rename({i + 1} model.singleSubst(t.symbolId
@@ -617,6 +650,16 @@ export
                                         good := false
                                     elsif model.isPower(t.bound)
                                             andif not(prove(s.type model.powerBound(t.bound) env trail fuel)) then
+                                        good := false
+                                    elsif not(model.isPower(t.bound))
+                                            andif not(isSubkindIn(maybe.unwrapOr(s.bound model.typeKind) t.bound env
+                                                    trail fuel)) then
+                                        (* The definition must have the
+                                         * formal's kind: against POWER(B) it
+                                         * is a subtype of B, and against any
+                                         * other kind the binding's own kind
+                                         * (TYPE when it has no bound) is a
+                                         * subkind of it *)
                                         good := false
                                     else
                                         rename({i + 1} model.singleSubst(t.symbolId s.type))
@@ -652,10 +695,7 @@ export
      * F<:, this rule is undecidable, so fuel keeps it terminating. Each
      * comparison costs quantifierFuel and returns false (with no diagnostic)
      * when fuel0 cannot pay it. *)
-    and quantified(s: Tuple quantifiers: Array(model.Quantifier) body: Type end
-            t: Tuple quantifiers: Array(model.Quantifier)
-                body: Type
-            end env: MaybeLookup trail: Trail fuel0: Int): Bool =
+    and quantified(s: Quantified t: Quantified env: MaybeLookup trail: Trail fuel0: Int): Bool =
         if extent s.quantifiers isnot extent t.quantifiers then
             false
         elsif fuel0 <= quantifierFuel then
@@ -674,13 +714,7 @@ export
                     let freshBound = model.substituteInKind(tq.bound supSubst)
                     let fresh = model.typeVariable(tq.name symbols.allocateSymbolId() maybe.some(freshBound))
                     let sBound = model.substituteInKind(sq.bound subSubst)
-                    let holds =
-                        if model.isPower(freshBound) andif model.isPower(sBound) then
-                            prove(model.powerBound(freshBound) model.powerBound(sBound) env trail fuel)
-                        else
-                            isSubkind(freshBound sBound env)
-                        end
-                    if holds then
+                    if isSubkindIn(freshBound sBound env trail fuel) then
                         hashMap.insert(subSubst sq.symbolId fresh)
                         hashMap.insert(supSubst tq.symbolId fresh)
                         ok
@@ -710,7 +744,21 @@ export
             result
         end
     and isKindEqual(a: Kind b: Kind env: MaybeLookup): Bool = isSubkind(a b env) andif isSubkind(b a env)
-    and isSubkind(sub0: Kind sup0: Kind env: MaybeLookup): Bool =
+    and isSubkind(sub: Kind sup: Kind env: MaybeLookup): Bool =
+        if model.sameKind(sub sup) then
+            true
+        else
+            let trail = newTrail()
+            let result = isSubkindIn(sub sup env trail maxSubtypeFuel)
+            commitProof(trail result env)
+            result
+        end
+    (* sub <= sup within a subtyping proof: the subtyping goals between
+     * bounds share its trail and fuel, so that a kind comparison met while
+     * comparing recursive types (an auto type's bound, Auto A <: T1 with ...
+     * end, inside T1) finds the goals already assumed, and a search diverging
+     * through bounds still runs out of fuel *)
+    and isSubkindIn(sub0: Kind sup0: Kind env: MaybeLookup trail: Trail fuel: Int): Bool =
         begin
             let sub = model.evaluateKindLazily(sub0 lookupOf(env))
             let sup = model.evaluateKindLazily(sup0 lookupOf(env))
@@ -721,7 +769,7 @@ export
                     when kindPower with s then
                         case sup.form
                             when kindType then true
-                            when kindPower with t then isSubtype(s.bound t.bound env)
+                            when kindPower with t then prove(s.bound t.bound env trail fuel)
                             else false
                         end
                     when kindAll with s then
@@ -729,7 +777,7 @@ export
                             when kindAll with t then
                                 (* ALL(X :: K1) K2 <= ALL(Y :: K1') K2' iff K1'
                                  * <= K1 and K2 <= K2'[Y -> X] *)
-                                if not(isSubkind(t.paramKind s.paramKind env)) then
+                                if not(isSubkindIn(t.paramKind s.paramKind env trail fuel)) then
                                     false
                                 else
                                     let renamedParam = model.typeVariable(s.paramName s.paramId maybe.none())
@@ -737,7 +785,8 @@ export
                                             model.singleSubst(t.paramId renamedParam))
                                     let kindSubst = model.newKindSubst()
                                     hashMap.insert(kindSubst t.paramId model.kindVar(s.paramName s.paramId))
-                                    isSubkind(s.resultKind model.substituteKinds(renamedTypes kindSubst) env)
+                                    isSubkindIn(s.resultKind model.substituteKinds(renamedTypes kindSubst) env
+                                            trail fuel)
                                 end
                             else false
                         end

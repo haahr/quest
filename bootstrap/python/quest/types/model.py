@@ -1200,20 +1200,24 @@ class QAutoType(QType):
     signature: tuple[QRecordField, ...]
 
     def __post_init__(self) -> None:
-        _init_free_vars(self, *self.signature, bound_ids=(self.symbol_id,))
+        # The kind bound is outside the type parameter's scope
+        free, has_meta = _free_vars_of(self.signature)
+        free.discard(self.symbol_id)
+        _set_free_vars(self, free | self.kind_bound._fv, has_meta or self.kind_bound._has_meta)
 
     def _substitute_full(self, subst: dict[int, QType]) -> QType:
         if self.symbol_id in subst:
             active_subst = {k: v for k, v in subst.items() if k != self.symbol_id}
         else:
             active_subst = subst
+        kind_bound = self.kind_bound.substitute_types(subst)
         signature = tuple(f.substitute(active_subst) for f in self.signature)
-        if _all_same(signature, self.signature):
+        if kind_bound is self.kind_bound and _all_same(signature, self.signature):
             return self
         return QAutoType(
             type_param=self.type_param,
             symbol_id=self.symbol_id,
-            kind_bound=self.kind_bound,
+            kind_bound=kind_bound,
             signature=signature,
         )
 
@@ -1277,9 +1281,13 @@ class QTypeFormal(metaclass=_InternedNode):
     bound: QKind
 
     def __post_init__(self) -> None:
-        # (A QTypeFun's own free variables leave its formals' bounds out, as its
-        # substitution does)
         _init_free_vars(self, self.bound)
+
+    def substitute(self, subst: dict[int, QType]) -> QTypeFormal:
+        bound = self.bound.substitute_types(subst)
+        if bound is self.bound:
+            return self
+        return QTypeFormal(name=self.name, symbol_id=self.symbol_id, bound=bound)
 
     def __str__(self) -> str:
         return f"{self.name} :: {self.bound}"
@@ -1296,13 +1304,31 @@ class QTypeFun(QType):
     body: QType
 
     def __post_init__(self) -> None:
-        _init_free_vars(self, self.body, bound_ids=[p.symbol_id for p in self.params])
+        # The parameters are a telescope, as an All type's quantifiers are: each
+        # bound may refer to the parameters before it, and the body sees them
+        # all
+        free: set[int] = set()
+        has_meta = self.body._has_meta
+        earlier: set[int] = set()
+        for p in self.params:
+            free |= p._fv - earlier
+            has_meta = has_meta or p._has_meta
+            earlier.add(p.symbol_id)
+        _set_free_vars(self, free | (set(self.body._fv) - earlier), has_meta)
 
     def _substitute_full(self, subst: dict[int, QType]) -> QType:
-        bound_ids = {p.symbol_id for p in self.params}
-        active_subst = {k: v for k, v in subst.items() if k not in bound_ids}
+        # A bound does not see the parameters before it substituted, nor does
+        # the body any parameter
+        params_list: list[QTypeFormal] = []
+        active_subst = dict(subst)
+        for p in self.params:
+            params_list.append(p.substitute(active_subst))
+            active_subst.pop(p.symbol_id, None)
+        params = tuple(params_list)
         body = self.body.substitute(active_subst)
-        return self if body is self.body else QTypeFun(params=self.params, body=body)
+        if body is self.body and _all_same(params, self.params):
+            return self
+        return QTypeFun(params=params, body=body)
 
     def __str__(self) -> str:
         params_str = " ".join(str(p) for p in self.params)
@@ -1369,9 +1395,11 @@ def apply_type_fun(fun: QTypeFun, arguments: tuple[QType, ...]) -> QType:
     its parameters. Given fewer arguments than parameters, it is the operator of
     the parameters left; given more, it is its body applied to the rest."""
     n = min(len(fun.params), len(arguments))
-    body = fun.body.substitute({p.symbol_id: a for p, a in zip(fun.params, arguments)})
+    subst = {p.symbol_id: a for p, a in zip(fun.params, arguments)}
+    body = fun.body.substitute(subst)
     if len(arguments) < len(fun.params):
-        return QTypeFun(params=fun.params[n:], body=body)
+        # The parameters left, whose bounds may refer to those given
+        return QTypeFun(params=tuple(p.substitute(subst) for p in fun.params[n:]), body=body)
     if len(arguments) > len(fun.params):
         return type_app(body, arguments[n:])
     return body
@@ -1390,7 +1418,9 @@ class QRecType(QType):
     body: QType
 
     def __post_init__(self) -> None:
-        _init_free_vars(self, self.body, bound_ids=(self.symbol_id,))
+        # The bound is outside the variable's scope
+        _set_free_vars(self, (self.body._fv - {self.symbol_id}) | self.bound._fv,
+                       self.body._has_meta or self.bound._has_meta)
 
     def unfold_lazily(self) -> QType:
         """Unfolds Rec(X) T lazily by substituting Rec(X) T for X in T.
@@ -1413,10 +1443,11 @@ class QRecType(QType):
             active_subst = {k: v for k, v in subst.items() if k != self.symbol_id}
         else:
             active_subst = subst
+        bound = self.bound.substitute_types(subst)
         body = self.body.substitute(active_subst)
-        if body is self.body:
+        if body is self.body and bound is self.bound:
             return self
-        return QRecType(var_name=self.var_name, symbol_id=self.symbol_id, bound=self.bound, body=body)
+        return QRecType(var_name=self.var_name, symbol_id=self.symbol_id, bound=bound, body=body)
 
     def __str__(self) -> str:
         return f"Rec({self.var_name} :: {self.bound}) {self.body}"
@@ -1436,7 +1467,8 @@ class QRecGroupType(QType):
     active_index: int = 0
 
     def __post_init__(self) -> None:
-        _init_free_vars(self, *(b[3] for b in self.bindings), bound_ids=[b[1] for b in self.bindings])
+        _init_free_vars(self, *(b[2] for b in self.bindings), *(b[3] for b in self.bindings),
+                        bound_ids=[b[1] for b in self.bindings])
 
     @property
     def current_symbol_id(self) -> int:
@@ -1483,10 +1515,11 @@ class QRecGroupType(QType):
     def _substitute_full(self, subst: dict[int, QType]) -> QType:
         bound_ids = {b[1] for b in self.bindings}
         active_subst = {k: v for k, v in subst.items() if k not in bound_ids}
+        new_bounds = tuple(b[2].substitute_types(active_subst) for b in self.bindings)
         new_bodies = tuple(b[3].substitute(active_subst) for b in self.bindings)
-        if all(nb is b[3] for nb, b in zip(new_bodies, self.bindings)):
+        if all(nb is b[3] and nk is b[2] for nb, nk, b in zip(new_bodies, new_bounds, self.bindings)):
             return self
-        new_bindings = tuple((b[0], b[1], b[2], nb) for b, nb in zip(self.bindings, new_bodies))
+        new_bindings = tuple((b[0], b[1], nk, nb) for b, nk, nb in zip(self.bindings, new_bounds, new_bodies))
         return QRecGroupType(bindings=new_bindings, active_index=self.active_index)
 
     def __str__(self) -> str:
@@ -1535,7 +1568,12 @@ class QTypeVar(QType):
     bound: Optional[QKind] = None
 
     def __post_init__(self) -> None:
-        _set_free_vars(self, (self.symbol_id,), False)
+        # A variable's bound is outside its own scope, so it never mentions the
+        # variable itself
+        if self.bound is None:
+            _set_free_vars(self, (self.symbol_id,), False)
+        else:
+            _set_free_vars(self, {self.symbol_id} | self.bound._fv, self.bound._has_meta)
 
     def evaluate_lazily(self, env: Optional[Any] = None) -> QType:
         if env is not None:
@@ -1545,7 +1583,12 @@ class QTypeVar(QType):
         return self
 
     def _substitute_full(self, subst: dict[int, QType]) -> QType:
-        return subst.get(self.symbol_id, self)
+        if self.symbol_id in subst:
+            return subst[self.symbol_id]
+        if self.bound is None:
+            return self
+        bound = self.bound.substitute_types(subst)
+        return self if bound is self.bound else QTypeVar(name=self.name, symbol_id=self.symbol_id, bound=bound)
 
     def __str__(self) -> str:
         return self.name
@@ -1796,7 +1839,8 @@ def strip_aliases(node: Any, memo: Optional[dict[int, Any]] = None) -> Any:
 
 
 def find_path_types(typ: QType) -> list[QPathType]:
-    """Finds all QPathType instances occurring anywhere within a QType."""
+    """Finds all QPathType instances occurring anywhere within a QType,
+    solved metavariables' solutions included."""
     result: list[QPathType] = []
     visited: set[int] = set()
 
@@ -1856,6 +1900,11 @@ def find_path_types(typ: QType) -> list[QPathType]:
                 visit(t.payload_type)
             case QAliasType():
                 visit(t.target)
+            case QTypeMeta():
+                # A solved metavariable stands for its solution
+                solution = pruned(t)
+                if solution is not t:
+                    visit(solution)
 
     visit(typ)
     return result

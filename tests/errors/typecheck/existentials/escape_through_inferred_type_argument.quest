@@ -1,0 +1,9 @@
+(* A function's result type may not mention its parameter's abstract type when
+ * that result type is an inferred type argument, R here: the packages unpack
+ * opens would then share one type, and an Int would be used as a String. *)
+Let Pkg = Tuple T::TYPE v: T use: All(x: T) Int end
+let apply(R::TYPE f: All(p: Pkg) R): All(p: Pkg) R = f
+let unpack = apply(fun(p: Pkg) tuple let v = p.v let use = p.use end)  (* ERROR: Abstract type 'p.T' cannot escape function scope in type 'Tuple v: p.T use: Fun\(x: p.T\): Int end' *)
+let intPkg: Pkg = tuple Let T = Int let v = 42 let use(x: Int): Int = x + 1 end
+let strPkg: Pkg = tuple Let T = String let v = "hi" let use(x: String): Int = string.length(x) end
+unpack(strPkg).use(unpack(intPkg).v)

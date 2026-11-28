@@ -1,0 +1,296 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (LetValueBinding
+      :name 'say'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (TypeBinding
+      :name 'Box'
+      :type_val (TypeFun
+        :params (
+          (TypeFormal
+            :name 'X'
+            :bound (KindType)
+          )
+        )
+        :body (TypeAuto
+          :type_param 'A'
+          :kind_bound (KindPower
+            :bound (TypePath ('X'))
+          )
+          :signature (
+            (FieldSig
+              :name 'a'
+              :type_sig (TypePath ('A'))
+              :mode VALUE
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'bi'
+      :value (ExprAuto
+        :witness_type (TypePath ('Int'))
+        :payload (ExprTuple
+          :fields (
+            (TupleBinding
+              :value (ExprInt 42 '42')
+            )
+          )
+        )
+      )
+      :type_annot (TypeApp
+        :constructor (TypePath ('Box'))
+        :arguments (
+          (TypePath ('Int'))
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'say')
+        :args (
+          (ExprInfix
+            :left (ExprString '1: ' '"1: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprInspect
+                  :target (ExprId 'bi')
+                  :branches (
+                    (InspectBranch
+                      :match_type (TypePath ('Int'))
+                      :binders (
+                        ('i' None)
+                      )
+                      :body (ExprSelect
+                        :target (ExprId 'i')
+                        :field 'a'
+                      )
+                    )
+                  )
+                  :else_branch (ExprInfix
+                    :left (ExprInt 0 '0')
+                    :op '-'
+                    :right (ExprInt 1 '1')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'Point'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'x'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'Point3'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'x'
+            :type_sig (TypePath ('Int'))
+          )
+          (RecordFieldSig
+            :name 'z'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'bp'
+      :value (ExprAuto
+        :witness_type (TypePath ('Point3'))
+        :payload (ExprTuple
+          :fields (
+            (TupleBinding
+              :value (ExprRecord
+                :fields (
+                  (RecordBinding
+                    :name 'x'
+                    :value (ExprInt 1 '1')
+                  )
+                  (RecordBinding
+                    :name 'z'
+                    :value (ExprInt 2 '2')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :type_annot (TypeApp
+        :constructor (TypePath ('Box'))
+        :arguments (
+          (TypePath ('Point'))
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'say')
+        :args (
+          (ExprInfix
+            :left (ExprString '2: ' '"2: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprInspect
+                  :target (ExprId 'bp')
+                  :branches (
+                    (InspectBranch
+                      :match_type (TypePath ('Point3'))
+                      :binders (
+                        ('p' None)
+                      )
+                      :body (ExprSelect
+                        :target (ExprSelect
+                          :target (ExprId 'p')
+                          :field 'a'
+                        )
+                        :field 'z'
+                      )
+                    )
+                  )
+                  :else_branch (ExprInfix
+                    :left (ExprInt 0 '0')
+                    :op '-'
+                    :right (ExprInt 1 '1')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'unbox'
+      :value (ExprInspect
+        :target (ExprId 'b')
+        :branches (
+          (InspectBranch
+            :match_type (TypePath ('String'))
+            :binders (
+              ('s' None)
+            )
+            :body (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'string')
+                :field 'length'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprId 's')
+                  :field 'a'
+                )
+              )
+            )
+          )
+        )
+        :else_branch (ExprInfix
+          :left (ExprInt 0 '0')
+          :op '-'
+          :right (ExprInt 1 '1')
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'b'
+          :type_annot (TypeApp
+            :constructor (TypePath ('Box'))
+            :arguments (
+              (TypePath ('String'))
+            )
+          )
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'say')
+        :args (
+          (ExprInfix
+            :left (ExprString '3: ' '"3: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprId 'unbox')
+                  :args (
+                    (ExprAuto
+                      :witness_type (TypePath ('String'))
+                      :payload (ExprTuple
+                        :fields (
+                          (TupleBinding
+                            :value (ExprString 'four' '"four"')
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

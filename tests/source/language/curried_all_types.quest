@@ -1,0 +1,24 @@
+(* Curried and Uncurried All Types
+ *
+ * All(A::TYPE) All(B::TYPE) T and All(A::TYPE B::TYPE) T are one type
+ * (docs/type-system.md §6.4): a function of either may be bound at the other,
+ * and applied to its type arguments one at a time or all at once. *)
+
+import conv : Conv writer : Writer
+
+let say(s: String): Ok = writer.putString(writer.output s <> "\n")
+
+let k(A::TYPE B::TYPE x: A y: B): A = x
+
+(* 1. Uncurried bound at curried, and back *)
+let k2: All(A::TYPE) All(B::TYPE) All(x: A y: B) A = k
+let k3: All(A::TYPE B::TYPE x: A y: B) A = k2
+say("1: " <> conv.int(k2(:Int)(:String)(1 "a")) <> " " <> conv.int(k3(:Int :String 2 "b")))
+
+(* 2. Type arguments all at once, or split elsewhere *)
+say("2: " <> conv.int(k2(:Int :String 3 "c")) <> " " <> conv.int(k2(:Int)(:String 4 "d")))
+
+(* 3. Bounds that refer to earlier quantifiers *)
+let first(A::TYPE B <: A x: A y: B): A = y
+let first2: All(A::TYPE) All(B <: A x: A y: B) A = first
+say("3: " <> conv.int(first2(:Int :Int 5 6)))

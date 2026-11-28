@@ -1,0 +1,27 @@
+(* Kind Bounds Under Substitution
+ *
+ * Substituting into a type substitutes into the kind bounds inside it too: an
+ * auto type's, a recursive type's, a type operator's parameters', and a type
+ * variable's. Box(Int), for Box(X::TYPE) = Auto A <: X with a: A end, is
+ * Auto A <: Int with a: A end, so an auto value whose witness is Int is a
+ * Box(Int), and Box(Int) and Box(String) are different types. *)
+
+import conv : Conv writer : Writer
+
+let say(s: String): Ok = writer.putString(writer.output s <> "\n")
+
+Let Box(X::TYPE) = Auto A <: X with a: A end
+
+(* 1. An auto value made at the substituted bound *)
+let bi: Box(Int) = auto :Int with 42 end
+say("1: " <> conv.int(inspect bi when Int with i then i.a else 0 - 1 end))
+
+(* 2. A subtype witness, below the bound *)
+Let Point = Record x: Int end
+Let Point3 = Record x: Int z: Int end
+let bp: Box(Point) = auto :Point3 with record x = 1 z = 2 end end
+say("2: " <> conv.int(inspect bp when Point3 with p then p.a.z else 0 - 1 end))
+
+(* 3. A function over boxes of one type *)
+let unbox(b: Box(String)): Int = inspect b when String with s then string.length(s.a) else 0 - 1 end
+say("3: " <> conv.int(unbox(auto :String with "four" end)))

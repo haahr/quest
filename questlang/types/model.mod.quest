@@ -243,15 +243,22 @@ export
                         addType(acc x.body earlier)
                     end
                 when typeAuto with x then
+                    (* The kind bound is outside the type parameter's scope *)
                     begin
+                        addKind(acc x.kindBound none)
                         let bound = vector.new(:Int)
                         vector.append(bound x.symbolId)
                         for i = 0 upto {extent x.signature - 1} do addType(acc x.signature[i].type bound) end
                     end
                 when typeOperator with x then
+                    (* The parameters are a telescope, as an All type's
+                     * quantifiers are *)
                     begin
                         let bound = vector.new(:Int)
-                        for i = 0 upto {extent x.params - 1} do vector.append(bound x.params[i].symbolId) end
+                        for i = 0 upto {extent x.params - 1} do
+                            addKind(acc x.params[i].bound bound)
+                            vector.append(bound x.params[i].symbolId)
+                        end
                         addType(acc x.body bound)
                     end
                 when typeApp with x then
@@ -261,6 +268,7 @@ export
                     end
                 when typeRec with x then
                     begin
+                        addKind(acc x.bound none)
                         let bound = vector.new(:Int)
                         vector.append(bound x.symbolId)
                         addType(acc x.body bound)
@@ -269,9 +277,18 @@ export
                     begin
                         let bound = vector.new(:Int)
                         for i = 0 upto {extent x.bindings - 1} do vector.append(bound x.bindings[i].symbolId) end
-                        for i = 0 upto {extent x.bindings - 1} do addType(acc x.bindings[i].body bound) end
+                        for i = 0 upto {extent x.bindings - 1} do
+                            addKind(acc x.bindings[i].bound bound)
+                            addType(acc x.bindings[i].body bound)
+                        end
                     end
-                when typeVariable with x then vector.append(acc.ids x.symbolId)
+                (* A variable's bound is outside its own scope, so it never
+                 * mentions the variable itself *)
+                when typeVariable with x then
+                    begin
+                        vector.append(acc.ids x.symbolId)
+                        addOptKind(acc x.bound none)
+                    end
                 when typeAbstract with x then vector.append(acc.ids x.symbolId)
                 when typePath with x then addKind(acc x.bound none)
                 when typeAlias with x then addType(acc x.target none)
@@ -947,20 +964,32 @@ export
                     end
                 end
             when typeAuto with x then
+                (* The kind bound does not see the type parameter *)
                 begin
+                    let kindBound = substituteInKind(x.kindBound subst)
                     let signature = substituteFields(x.signature minus(subst x.symbolId))
-                    if sameFields(signature x.signature) then
+                    if sameFields(signature x.signature) andif sameKind(kindBound x.kindBound) then
                         t
                     else
-                        autoType(x.typeParam x.symbolId x.kindBound signature)
+                        autoType(x.typeParam x.symbolId kindBound signature)
                     end
                 end
             when typeOperator with x then
+                (* A parameter's bound does not see the parameters before it
+                 * substituted, nor does the body any parameter *)
                 begin
                     let var active = subst
-                    for i = 0 upto {extent x.params - 1} do active := minus(active x.params[i].symbolId) end
+                    let var changed = false
+                    let params = vector.new(:TypeFormal)
+                    for i = 0 upto {extent x.params - 1} do
+                        let p = x.params[i]
+                        let bound = substituteInKind(p.bound active)
+                        if not(sameKind(bound p.bound)) then changed := true end
+                        vector.append(params tuple let name = p.name let symbolId = p.symbolId let bound = bound end)
+                        active := minus(active p.symbolId)
+                    end
                     let body = substitute(x.body active)
-                    if same(body x.body) then t else typeOperator(x.params body) end
+                    if changed orif not(same(body x.body)) then typeOperator(vector.toArray(params) body) else t end
                 end
             when typeApp with x then
                 begin
@@ -976,8 +1005,13 @@ export
                 end
             when typeRec with x then
                 begin
+                    let bound = substituteInKind(x.bound subst)
                     let body = substitute(x.body minus(subst x.symbolId))
-                    if same(body x.body) then t else recType(x.varName x.symbolId x.bound body) end
+                    if same(body x.body) andif sameKind(bound x.bound) then
+                        t
+                    else
+                        recType(x.varName x.symbolId bound body)
+                    end
                 end
             when typeRecGroup with x then
                 begin
@@ -987,18 +1021,25 @@ export
                     let bindings = vector.new(:RecBinding)
                     for i = 0 upto {extent x.bindings - 1} do
                         let b = x.bindings[i]
+                        let bound = substituteInKind(b.bound active)
                         let body = substitute(b.body active)
-                        if not(same(body b.body)) then changed := true end
+                        if not(same(body b.body)) orif not(sameKind(bound b.bound)) then changed := true end
                         vector.append(bindings tuple
                             let name = b.name
                             let symbolId = b.symbolId
-                            let bound = b.bound
+                            let bound = bound
                             let body = body
                         end)
                     end
                     if changed then recGroupType(vector.toArray(bindings) x.activeIndex) else t end
                 end
-            when typeVariable with x then lookupOr(subst x.symbolId t)
+            when typeVariable with x then
+                if hashMap.contains(subst x.symbolId) then
+                    hashMap.find(subst x.symbolId)
+                else
+                    let bound = substituteOptKind(x.bound subst)
+                    if sameOptKind(bound x.bound) then t else typeVariable(x.name x.symbolId bound) end
+                end
             when typeAbstract with x then lookupOr(subst x.symbolId t)
             when typePath with x then
                 begin
@@ -1187,8 +1228,16 @@ export
             for i = 0 upto {n - 1} do hashMap.insert(subst params[i].symbolId arguments[i]) end
             let reduced = substitute(body subst)
             if na < np then
+                (* The parameters left, whose bounds may refer to those given *)
                 let rest = array of(np - n params[0])
-                for i = 0 upto {extent rest - 1} do rest[i] := params[n + i] end
+                for i = 0 upto {extent rest - 1} do
+                    let p = params[n + i]
+                    rest[i] := tuple
+                        let name = p.name
+                        let symbolId = p.symbolId
+                        let bound = substituteInKind(p.bound subst)
+                    end
+                end
                 typeOperator(rest reduced)
             elsif na > np then
                 let rest = array of(na - n arguments[0])
@@ -1761,7 +1810,8 @@ export
     let isPower(k: Kind): Bool = case k.form when kindPower then true else false end
     let powerBound(k: Kind): Type = case k.form when kindPower with x then x.bound else bottomType end
 
-    (* The path types occurring in t, in the order found *)
+    (* The path types occurring in t, solved metavariables' solutions
+     * included, in the order found *)
     let findPathTypes(t: Type): Array(Type) =
         begin
             let result = vector.new(:Type)
@@ -1823,6 +1873,9 @@ export
                             for i = 0 upto {extent g.bindings - 1} do visit(g.bindings[i].body) end
                         when typeException with e then visit(e.payload)
                         when typeAlias with a then visit(a.target)
+                        (* A solved metavariable stands for its solution *)
+                        when typeMeta then
+                            begin let p = prune(x) if not(same(p x)) then visit(p) end end
                         else ok
                     end
                 end

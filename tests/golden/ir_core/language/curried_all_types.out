@@ -1,0 +1,46 @@
+import conv = "conv" : Conv
+import writer = "writer" : Writer
+main {
+  funs {
+    fun say(s: String): Ok {
+      let %1: writer.T = member writer.output @9:43
+      let %2: String = prim <>(s, "\n") @9:57
+      let %3: Ok = call writer.putString(%1, %2) @9:26
+      return %3
+    }
+  }
+  funs {
+    fun k [A::TYPE B::TYPE](x: A, y: B): A {
+      return x
+    }
+  }
+  let k2: All(A :: TYPE) All(B :: TYPE) Fun(x: A y: B): A = k @14:54
+  let k3: All(A :: TYPE B :: TYPE) Fun(x: A y: B): A = k2 @15:44
+  let %4: Int = call k2 [Int String](1, "a") @16:23
+  let %5: String = call conv.int(%4) @16:14
+  let %6: Int = call k3 [Int String](2, "b") @16:68
+  let %7: String = call conv.int(%6) @16:59
+  let %8: String = prim <>(" ", %7) @16:52
+  let %9: String = prim <>(%5, %8) @16:14
+  let %10: String = prim <>("1: ", %9) @16:5
+  do call say(%10) @16:1
+  let %11: Int = call k2 [Int String](3, "c") @19:23
+  let %12: String = call conv.int(%11) @19:14
+  let %13: Int = call k2 [Int String](4, "d") @19:66
+  let %14: String = call conv.int(%13) @19:57
+  let %15: String = prim <>(" ", %14) @19:50
+  let %16: String = prim <>(%12, %15) @19:14
+  let %17: String = prim <>("2: ", %16) @19:5
+  do call say(%17) @19:1
+  funs {
+    fun first [A::TYPE B::<: A](x.1: A, y.1: B): A {
+      return y.1
+    }
+  }
+  let first2: All(A :: TYPE) All(B <: A) Fun(x: A y: B): A = first @23:52
+  let %18: Int = call first2 [Int Int](5, 6) @24:23
+  let %19: String = call conv.int(%18) @24:14
+  let %20: String = prim <>("3: ", %19) @24:5
+  do call say(%20) @24:1
+}
+

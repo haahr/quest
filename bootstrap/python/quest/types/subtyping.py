@@ -50,6 +50,7 @@ from quest.types.model import (
     QOutType,
     QPathType,
     QPowerKind,
+    QQuantifier,
     QRealType,
     QRecGroupType,
     QRecType,
@@ -67,6 +68,7 @@ from quest.types.model import (
     QTypeVar,
     QVariantType,
     QVarType,
+    TYPE_KIND,
     auto_matches_subtypes,
     structurally_equal,
     unalias,
@@ -277,6 +279,22 @@ def _prove_subtype(sub: QType, sup: QType, env: Optional[Any], trail: SubtypeTra
     return result
 
 
+def _flattened_all(t: QAllType, env: Optional[Any]) -> tuple[tuple[QQuantifier, ...], QType]:
+    """An All type's quantifiers, followed by those of the All types its body
+    is, and the body under them all: All(A::TYPE) All(B::TYPE) T and
+    All(A::TYPE B::TYPE) T are one type (type-system.md §6.4). The quantifiers
+    stay a telescope, since an inner one's bound may refer only to those before
+    it."""
+    quantifiers = t.quantifiers
+    body = t.body
+    inner = body.evaluate_lazily(env)
+    while isinstance(inner, QAllType):
+        quantifiers = quantifiers + inner.quantifiers
+        body = inner.body
+        inner = body.evaluate_lazily(env)
+    return quantifiers, body
+
+
 def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: SubtypeTrail, fuel: int) -> bool:
     """Decides one goal, sub <: sup, by the structure of the two types.
 
@@ -403,7 +421,7 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
                 t_f = curr_sup_fields[idx]
                 match s_f, t_f:
                     case QTupleTypeFormal(), QTupleTypeFormal():
-                        if s_f.name != t_f.name or not is_subkind(s_f.bound, t_f.bound, env):
+                        if s_f.name != t_f.name or not _is_subkind_in(s_f.bound, t_f.bound, env, trail, fuel):
                             return False
                         if t_f.symbol_id != s_f.symbol_id:
                             subst = {t_f.symbol_id: QTypeVar(s_f.name, s_f.symbol_id, s_f.bound)}
@@ -412,9 +430,15 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
                     case QTupleTypeBinding(), QTupleTypeFormal():
                         if s_f.name != t_f.name:
                             return False
+                        # The definition must have the formal's kind: against
+                        # POWER(B) it is a subtype of B, and against any other
+                        # kind the binding's own kind (TYPE when it has no
+                        # bound) is a subkind of it
                         if isinstance(t_f.bound, QPowerKind):
                             if not _prove_subtype(s_f.type_val, t_f.bound.bound, env, trail, fuel):
                                 return False
+                        elif not _is_subkind_in(s_f.bound or TYPE_KIND, t_f.bound, env, trail, fuel):
+                            return False
                         subst = {t_f.symbol_id: s_f.type_val}
                         for rem_idx in range(idx + 1, len(curr_sup_fields)):
                             curr_sup_fields[rem_idx] = curr_sup_fields[rem_idx].substitute(subst)
@@ -536,7 +560,10 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
         # bounds contravariant, body covariant, compared under the supertype's
         # bounds. As in full F<: this is undecidable; fuel keeps it terminating
         case (QAllType(), QAllType()):
-            if len(sub_lazy.quantifiers) != len(sup_lazy.quantifiers):
+            # A curried All type is its uncurried one (type-system.md §6.4)
+            sub_quants, sub_body = _flattened_all(sub_lazy, env)
+            sup_quants, sup_body = _flattened_all(sup_lazy, env)
+            if len(sub_quants) != len(sup_quants):
                 return False
             # Both sides' quantifiers become fresh variables, with sup's bounds:
             # either type may contain the other's binders (a type compared with
@@ -552,19 +579,14 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
             fuel -= _QUANTIFIER_FUEL
             sub_subst: dict[int, QType] = {}
             sup_subst: dict[int, QType] = {}
-            for s_q, t_q in zip(sub_lazy.quantifiers, sup_lazy.quantifiers):
+            for s_q, t_q in zip(sub_quants, sup_quants):
                 fresh = QTypeVar(t_q.name, allocate_symbol_id(), t_q.bound.substitute_types(sup_subst))
                 s_bound = s_q.bound.substitute_types(sub_subst)
-                if isinstance(fresh.bound, QPowerKind) and isinstance(s_bound, QPowerKind):
-                    if not _prove_subtype(fresh.bound.bound, s_bound.bound, env, trail, fuel):
-                        return False
-                elif not is_subkind(fresh.bound, s_bound, env):
+                if not _is_subkind_in(fresh.bound, s_bound, env, trail, fuel):
                     return False
                 sub_subst[s_q.symbol_id] = fresh
                 sup_subst[t_q.symbol_id] = fresh
-            return _prove_subtype(
-                sub_lazy.body.substitute(sub_subst), sup_lazy.body.substitute(sup_subst), env, trail, fuel
-            )
+            return _prove_subtype(sub_body.substitute(sub_subst), sup_body.substitute(sup_subst), env, trail, fuel)
 
         # Auto types (Cardelli §6.7): subkind for the type component; for the
         # signature, as for tuples, a prefix match with matching names,
@@ -572,7 +594,7 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
         case (QAutoType(), QAutoType()):
             if len(sub_lazy.signature) < len(sup_lazy.signature):
                 return False
-            if not is_subkind(sub_lazy.kind_bound, sup_lazy.kind_bound, env):
+            if not _is_subkind_in(sub_lazy.kind_bound, sup_lazy.kind_bound, env, trail, fuel):
                 return False
             subst = {
                 sup_lazy.symbol_id: QTypeVar(sub_lazy.type_param, sub_lazy.symbol_id, sub_lazy.kind_bound)
@@ -598,7 +620,8 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
             }
             for s_p, t_p in zip(sub_lazy.params, sup_lazy.params):
                 t_bound_renamed = t_p.bound.substitute_types(subst)
-                if not is_kind_equal(s_p.bound, t_bound_renamed, env):
+                if not (_is_subkind_in(s_p.bound, t_bound_renamed, env, trail, fuel)
+                        and _is_subkind_in(t_bound_renamed, s_p.bound, env, trail, fuel)):
                     return False
             return _prove_subtype(sub_lazy.body, sup_lazy.body.substitute(subst), env, trail, fuel)
 
@@ -607,7 +630,10 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
             QTypeApp(constructor=s_c, arguments=s_args),
             QTypeApp(constructor=t_c, arguments=t_args),
         ):
-            if len(s_args) != len(t_args) or not is_type_equal(s_c, t_c, env):
+            if len(s_args) != len(t_args):
+                return False
+            if s_c is not t_c and not (_prove_subtype(s_c, t_c, env, trail, fuel)
+                                       and _prove_subtype(t_c, s_c, env, trail, fuel)):
                 return False
             for sa, ta in zip(s_args, t_args):
                 if sa is ta:
@@ -631,7 +657,21 @@ def is_kind_equal(k1: QKind, k2: QKind, env: Optional[Any] = None) -> bool:
 
 def is_subkind(sub: QKind, sup: QKind, env: Optional[Any] = None) -> bool:
     """Checks if sub is a subkind of sup (sub <= sup) with Full Subkinding on
-    Kinds."""
+    Kinds, as a top-level proof (see is_subtype)."""
+    if sub is sup:
+        return True
+    trail = SubtypeTrail()
+    result = _is_subkind_in(sub, sup, env, trail, MAX_SUBTYPE_FUEL)
+    _commit_proof(trail, result, env)
+    return result
+
+
+def _is_subkind_in(sub: QKind, sup: QKind, env: Optional[Any], trail: SubtypeTrail, fuel: int) -> bool:
+    """sub <= sup within a subtyping proof: the subtyping goals between bounds
+    share its trail and fuel, so that a kind comparison met while comparing
+    recursive types (an auto type's bound, Auto A <: T1 with ... end, inside
+    T1) finds the goals already assumed, and a search diverging through bounds
+    still runs out of fuel."""
     sub_lazy = sub.evaluate_lazily(env)
     sup_lazy = sup.evaluate_lazily(env)
 
@@ -647,19 +687,19 @@ def is_subkind(sub: QKind, sup: QKind, env: Optional[Any] = None) -> bool:
 
         # Power to Power: POWER(S) <= POWER(T) iff S <: T
         case (QPowerKind(bound=s_bound), QPowerKind(bound=t_bound)):
-            return is_subtype(s_bound, t_bound, env)
+            return _prove_subtype(s_bound, t_bound, env, trail, fuel)
 
         # Higher-Order Operator Kinds (Full Subkinding on Kinds):
         # ALL(X::K1) K2 <= ALL(Y::K1') K2' iff K1' <= K1 and K2 <= K2'[Y -> X]
         case (QAllKind(), QAllKind()):
-            if not is_subkind(sup_lazy.param_kind, sub_lazy.param_kind, env):
+            if not _is_subkind_in(sup_lazy.param_kind, sub_lazy.param_kind, env, trail, fuel):
                 return False
             renamed_sup_res = sup_lazy.result_kind.substitute_types({
                 sup_lazy.param_id: QTypeVar(sub_lazy.param_name, sub_lazy.param_id)
             }).substitute_kinds({
                 sup_lazy.param_id: QKindVar(sub_lazy.param_name, sub_lazy.param_id)
             })
-            return is_subkind(sub_lazy.result_kind, renamed_sup_res, env)
+            return _is_subkind_in(sub_lazy.result_kind, renamed_sup_res, env, trail, fuel)
 
         case _:
             return False
