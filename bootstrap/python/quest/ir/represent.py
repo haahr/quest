@@ -40,7 +40,17 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from quest.repr.layout import held_at_bound, own_view, is_boxed_in_slots, may_be_proxied, resolved_shape, shape_representation, shape_slot_representation
+from quest.repr.layout import (
+    held_at_bound,
+    own_view,
+    is_boxed_in_slots,
+    may_be_proxied,
+    representation,
+    resolved_shape,
+    shape_location_representation,
+    shape_representation,
+    shape_slot_representation,
+)
 from quest.repr.generic_layout import abstract_instance, generic_layout_agrees, generic_layout_copies_mutable_data, signature_representation
 from quest.common.diagnostics import QuestCompilerError
 from quest.ir import nodes as ir
@@ -760,21 +770,30 @@ class _Representer:
 
     def comparable(self, a: ir.Atom, b: ir.Atom, before: list) -> tuple:
         """The operands of is or isnot, of two types one of which is a subtype
-        of the other. Variants and options are compared by value, by the
-        descriptor of the first operand's type, so where the two are laid out
-        differently (a variant's tags numbered otherwise, an option's cases),
-        the subtype's operand is converted to the supertype first. Other values
-        are compared by identity, which a conversion (a copy) would lose."""
+        of the other. Variants, and options with a case without components, are
+        compared by value, by the descriptor of the first operand's type
+        (describe's identity), so where the supertype is one and the two are
+        laid out differently (a variant's tags numbered otherwise, an option's
+        cases), the subtype's operand is converted to the supertype first.
+        Other values are compared by identity, which a conversion (a copy)
+        would lose, or through a proxy to its original."""
         ta, tb = _type_of(a), _type_of(b)
 
         def by_value(t: QType) -> bool:
-            return resolved_shape(shape(t)).kind in ("variant", "option")
+            if representation(t) == "QVariantVal":
+                return True
+            if representation(t) == "QVal" or shape(t).kind != "option":
+                return False
+            from quest.types.reduce import option_identity
 
-        if _equal(ta, tb) or not by_value(ta) or not by_value(tb):
+            rule = option_identity(t)
+            return rule is not None and bool(rule.empty)
+
+        if _equal(ta, tb):
             return (a, b)
-        if is_subtype(ta, tb):
+        if by_value(tb) and is_subtype(ta, tb):
             return (self.convert(a, tb, before), b)
-        if is_subtype(tb, ta):
+        if by_value(ta) and is_subtype(tb, ta):
             return (a, self.convert(b, ta, before))
         return (a, b)
 

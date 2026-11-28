@@ -23,6 +23,7 @@ import
     questlang/repr/shapes : questlang/repr/Shapes
     questlang/repr/written : questlang/repr/Written
     questlang/types/model : questlang/types/Model
+    questlang/types/reduce : questlang/types/Reduce
     questlang/types/subtyping : questlang/types/Subtyping
 export
     Let Type = model.Type
@@ -1181,25 +1182,32 @@ export
         end
 
     (* The operands of is or isnot, of two types one of which is a subtype of
-     * the other. Variants and options are compared by value, by the
-     * descriptor of the first operand's type, so where the two are laid out
-     * differently (a variant's tags numbered otherwise, an option's cases), the
-     * subtype's operand is converted to the supertype first. Other values are
-     * compared by identity, which a conversion (a copy) would lose. *)
+     * the other. Variants, and options with a case without components, are
+     * compared by value, by the descriptor of the first operand's type
+     * (describe's identityOf), so where the supertype is one and the two are
+     * laid out differently (a variant's tags numbered otherwise, an option's
+     * cases), the subtype's operand is converted to the supertype first.
+     * Other values are compared by identity, which a conversion (a copy)
+     * would lose, or through a proxy to its original. *)
     let comparable(args: Array(Atom) before: vector.T(Stmt)): Array(Atom) =
         begin
             let a = typeOf(args[0])
             let b = typeOf(args[1])
             let byValue(t: Type): Bool =
-                begin
-                    let s = layout.resolvedShape(shapes.shape(t))
-                    shapes.kindIs(s shapes.shapeVariant) orif shapes.kindIs(s shapes.shapeOption)
+                case layout.representation(t)
+                    when repVariant then true
+                    when repQVal, repRecord then false
+                    else
+                        shapes.shape(t).kind?shapeOption andif begin
+                            let rule = reduce.optionIdentity(t)
+                            maybe.isSome(rule) andif {extent maybe.unwrap(:reduce.OptionIdentity rule).empty > 0}
+                        end
                 end
-            if equal(a b) orif not(byValue(a)) orif not(byValue(b)) then
+            if equal(a b) then
                 args
-            elsif subtyping.isSubtype(a b lookupNone) then
+            elsif byValue(b) andif subtyping.isSubtype(a b lookupNone) then
                 array of convert(args[0] b before noLayout) args[1] end
-            elsif subtyping.isSubtype(b a lookupNone) then
+            elsif byValue(a) andif subtyping.isSubtype(b a lookupNone) then
                 array of args[0] convert(args[1] a before noLayout) end
             else
                 args
