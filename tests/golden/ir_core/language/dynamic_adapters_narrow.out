@@ -1,0 +1,41 @@
+import ascii = "ascii" : Ascii
+import conv = "conv" : Conv
+import dynamic = "dynamic" : Dynamic
+import writer = "writer" : Writer
+main {
+  funs {
+    fun show(s: String): Ok {
+      let %1: writer.T = member writer.output @14:44
+      let %2: String = prim <>(s, "\n") @14:58
+      let %3: Ok = call writer.putString(%1, %2) @14:27
+      return %3
+    }
+  }
+  funs {
+    fun f(b: Bool, c: Char, r: Small): Int {
+      join k1(r.1: Int) {
+        return r.1
+      } in {
+        if b { @16:40
+          let %4: Int = record_field(r, y) @16:50
+          let %5: Int = prim +(%4, 1) @16:50
+          jump k1(%5) @16:40
+        } else {
+          let %6: Int = call ascii.val(c) @16:63
+          jump k1(%6) @16:40
+        }
+      }
+    }
+  }
+  let %7: T = call dynamic.new [Fun(b: Bool c: Char r: Small): Int](f) @17:53
+  let g: Fun(b: Bool c: Char r: Big): Int = call dynamic.be [Fun(b: Bool c: Char r: Big): Int](%7) @17:9
+  let %8: Record name: String y: Int end = record(name = "n", y = 40) @18:26
+  let %9: Int = call g(true, 'a', %8) @18:15
+  let %10: String = call conv.int(%9) @18:6
+  do call show(%10) @18:1
+  let %11: Record name: String y: Int end = record(name = "n", y = 40) @19:27
+  let %12: Int = call g(false, 'a', %11) @19:15
+  let %13: String = call conv.int(%12) @19:6
+  do call show(%13) @19:1
+}
+

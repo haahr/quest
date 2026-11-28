@@ -1,0 +1,19 @@
+(* A function of Bool and Char parameters taken out of a Dynamic at a
+ * supertype of its type: the adapter's thunk (ssa/build/adapters) extends
+ * each narrow parameter on entry, as a function's own are (docs/ssa.md section
+ * 2.2), since its slow path makes a QVal word of it; its SSA golden shows the
+ * zext8s *)
+
+import ascii : Ascii
+import conv : Conv
+import dynamic : Dynamic
+import writer : Writer
+
+Def Big = Record name: String y: Int end
+Def Small = Record y: Int end
+let show(s: String): Ok = writer.putString(writer.output s <> "\n")
+
+let f(b: Bool c: Char r: Small): Int = if b then r.y + 1 else ascii.val(c) end
+let g = dynamic.be(:All(b: Bool c: Char r: Big) Int dynamic.new(:All(b: Bool c: Char r: Small) Int f))
+show(conv.int(g(true 'a' record name = "n" y = 40 end)))
+show(conv.int(g(false 'a' record name = "n" y = 40 end)))

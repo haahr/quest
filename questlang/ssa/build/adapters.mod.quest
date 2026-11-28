@@ -181,15 +181,21 @@ export
             end)
             let descs = array of(nq 0)
             for k = 0 upto {nq - 1} do descs[k] := param(tf 1 + k) end
-            (* Each parameter's values *)
+            (* Each parameter's values, a narrow one (a Bool or a Char)
+             * extended, as a function's own are on entry (AAPCS64 leaves its
+             * upper bits unspecified), since the slow path makes a QVal word
+             * of it *)
             let paramValues = vector.new(:Array(Int))
             let var at = 1 + nq
             for j = 0 upto {np - 1} do
                 let p = vector.get(sig.params j)
-                let n =
-                    if byLocation(p) orif {extent parts.ofType(p.type) is 0} then 1 else extent parts.ofType(p.type) end
+                let ps = if byLocation(p) then array of :parts.Part end else parts.ofType(p.type) end
+                let n = if extent ps is 0 then 1 else extent ps end
                 let vs = array of(n 0)
-                for k = 0 upto {n - 1} do vs[k] := param(tf at + k) end
+                for k = 0 upto {n - 1} do
+                    vs[k] :=
+                        if extent ps is 0 then param(tf at + k) else vals.narrowed(thunk param(tf at + k) ps[k]) end
+                end
                 at := at + n
                 vector.append(paramValues vs)
             end
