@@ -75,7 +75,8 @@ export
     end
 
     (* The immediate of adr, a distance in bytes, or of adrp, in pages: its
-     * low 21 bits, as the instruction's two fields *)
+     * low 21 bits, as the instruction's two fields; raises unencodable when
+     * the distance does not fit them *)
     adrImmediate(distance: Int): Int
     (* The 12-bit field of an add's offset in a page (width 1), or a load's or
      * store's, scaled by the bytes it accesses (width); offset must be a
@@ -94,7 +95,8 @@ export
      * non-exported function's recursive call to itself qualifies. Any
      * relocation the instruction needs (a call to another symbol, an adrp
      * page, or a page offset) is appended to relocs with its bit field left
-     * as 0. Raises unencodable if op has no encoding. *)
+     * as 0. Raises unencodable if op has no encoding, or if a field does
+     * not fit: a branch's or adr's distance, or an immediate. *)
     word(op: minst.Op regs: Array(Int) at: Int labelOffset: All(label: String) Int
             localFunction: All(symbol: String) Int relocs: vector.T(Reloc)): Int
 

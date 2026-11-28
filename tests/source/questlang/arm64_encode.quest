@@ -1,0 +1,73 @@
+(* Self-Hosted Quest Compiler: Test the arm64 Encoder's Ranges
+ *
+ * questlang/codegen/arm64/encode's word (docs/jit.md section 3.5) on fields at
+ * the edge of their range and past it, which raise unencodable rather than
+ * wrap into a wrong instruction, as the assembler rejects them: an add's or
+ * sub's immediate, below 4096 as itself, a multiple of 4096 shifted left by
+ * 12 (a frame of exactly a page is sub sp, sp, #4096), and any other one of
+ * 4096 or more not at all; and the PC-relative distances of b, bl to the
+ * function itself, cbz, tbz, b.cond, and adr, which is not relaxed. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    words = word : Word
+    writer : Writer
+
+    collections/vector : collections/Vector
+    util/strutil : util/Strutil
+
+    questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+    questlang/codegen/arm64/target : questlang/codegen/arm64/Target
+
+let put(s: String): Ok = writer.putString(writer.output s <> "\n")
+let hex(n: Int): String = strutil.formatWord(words.fromInt(n) 16)
+
+(* The word for i, at offset at, with the label L at offset label and the
+ * function itself (for bl f) at offset 0, or what cannot be encoded *)
+let show(title: String i: minst.Inst at: Int label: Int): Ok =
+    begin
+        let relocs = vector.new(:encode.Reloc)
+        let labelOffset(l: String): Int = label
+        let localFunction(symbol: String): Int = 0
+        let text =
+            try hex(encode.word(i.op i.regs at labelOffset localFunction relocs))
+            when encode.unencodable with x then "unencodable: " <> x
+            end
+        put(title <> ": " <> text)
+    end
+
+let sp = target.sp
+let x0 = target.x(0)
+let x1 = target.x(1)
+
+put("== add and sub immediates")
+show("sub sp, sp, #4095" minst.subImm(sp sp 4095) 0 0)
+show("sub sp, sp, #4096" minst.subImm(sp sp 4096) 0 0)
+show("sub sp, sp, #8192" minst.subImm(sp sp 8192) 0 0)
+show("sub sp, sp, #4095 << 12" minst.subImm(sp sp 4095 * 4096) 0 0)
+show("sub sp, sp, #4097" minst.subImm(sp sp 4097) 0 0)
+show("sub sp, sp, #4096 << 12" minst.subImm(sp sp 4096 * 4096) 0 0)
+show("sub x0, x1, #-1" minst.subImm(x0 x1 ~1) 0 0)
+show("add x0, x1, #4096" minst.addImm(x0 x1 4096 0) 0 0)
+show("add x0, x1, #1, lsl #12" minst.addImm(x0 x1 1 12) 0 0)
+show("add x0, x1, #4096, lsl #12" minst.addImm(x0 x1 4096 12) 0 0)
+show("add x0, x1, #12288 + 1" minst.addImm(x0 x1 12289 0) 0 0)
+
+put("== distances")
+(* b and bl reach 2^25 instructions each way, cbz and b.cond 2^18, tbz 2^13,
+ * and adr 2^20 bytes *)
+show("b, last forward" minst.b("L") 0 4 * {33554432 - 1})
+show("b, past forward" minst.b("L") 0 4 * 33554432)
+show("b, last back" minst.b("L") 4 * 33554432 0)
+show("b, past back" minst.b("L") 4 * {33554432 + 1} 0)
+show("bl f, past back" minst.bl("f") 4 * {33554432 + 1} 0)
+show("cbz, last forward" minst.cbz(x0 "L") 0 4 * {262144 - 1})
+show("cbz, past forward" minst.cbz(x0 "L") 0 4 * 262144)
+show("b.ne, past back" minst.bCond(minst.condNe "L") 4 * {262144 + 1} 0)
+show("tbz, last back" minst.tbz(x0 3 "L") 4 * 8192 0)
+show("tbz, past forward" minst.tbz(x0 3 "L") 0 4 * 8192)
+show("adr, last forward" minst.adr(x0 "L") 0 1048575)
+show("adr, past forward" minst.adr(x0 "L") 0 1048576)
+show("adr, last back" minst.adr(x0 "L") 1048576 0)
+show("adr, past back" minst.adr(x0 "L") 1048577 0)

@@ -52,8 +52,22 @@ export
      * Fields
      * ====================================================================== *)
 
+    let shl(n: Int k: Int): Int = words.toInt(words.shift(words.fromInt(n) k))
+
     (* n's low bits bits, as an unsigned field (n may be negative) *)
     let field(n: Int bits: Int): Int = words.toInt(words.extract(words.fromInt(n) 0 bits))
+
+    (* n as a signed field of bits bits, raising unencodable when it does not
+     * fit: a PC-relative distance, which field alone would wrap into a wrong
+     * target (what names the instruction) *)
+    let signedField(n: Int bits: Int what: String): Int =
+        begin
+            let half = shl(1 bits - 1)
+            if {n >= half} orif {n < 0 - half} then
+                raise unencodable with what <> " distance of " <> conv.int(n) <> " in " <> conv.int(bits) <> " bits" end
+            end
+            field(n bits)
+        end
 
     (* The 5-bit register number encoded in an instruction: 0-30 for x0-x30,
      * 31 for both xzr and sp, and 0-31 for d0-d31 *)
@@ -66,17 +80,29 @@ export
     let ra(r: Int): Int = reg(r) * 1024
     let rt2(r: Int): Int = reg(r) * 1024
 
-    let shl(n: Int k: Int): Int = words.toInt(words.shift(words.fromInt(n) k))
-
     (* The 21 bits of distance, the low 2 at bit 29 and the rest at 5: split
      * from the field, since / truncates a negative distance *)
     let adrImmediate(distance: Int): Int =
         begin
-            let f = field(distance 21)
+            let f = signedField(distance 21 "adr")
             shl(f % 4 29) + shl(f / 4 5)
         end
 
     let pageOffsetImmediate(offset: Int width: Int): Int = shl(offset / width 10)
+
+    (* An add's or sub's immediate fields for n: n itself below 4096, else,
+     * with no shift given (shifted false), n / 4096 shifted left by 12 (bit
+     * 22) when n is a multiple of 4096, as the assembler encodes it. Raises
+     * unencodable for any other n (what names the instruction). A frame of
+     * exactly a page (sub sp, sp, #4096) takes the shifted form. *)
+    let addSubImmediate(n: Int shifted: Bool what: String): Int =
+        if {n >= 0} andif {n < 4096} then
+            shl(n 10)
+        elsif not(shifted) andif {n > 0} andif {{n % 4096} is 0} andif {{n / 4096} < 4096} then
+            shl(1 22) + shl(n / 4096 10)
+        else
+            raise unencodable with what <> " of " <> conv.int(n) end
+        end
 
     let cond(c: minst.Cond): Int =
         case c
@@ -196,7 +222,7 @@ export
                 begin
                     let target = localFunction(symbol)
                     if target >= 0 then
-                        base + field({target - at} / 4 26)
+                        base + signedField({target - at} / 4 26 "a branch's")
                     else
                         vector.append(relocs tuple
                             let offset = at
@@ -221,7 +247,7 @@ export
             let distance(label: String bits: Int): Int =
                 begin
                     let d = labelOffset(label) - at
-                    field(d / 4 bits)
+                    signedField(d / 4 bits "a branch's")
                 end
             let access(a: Access t: Int base: Int index: Int m: minst.Mode): Int =
                 case m
@@ -295,9 +321,10 @@ export
                 when opArith with x then arithWord(x.arith rs)
                 when opAdds then 0xAB000000 + rm(rs[2]) + rn(rs[1]) + rd(rs[0])
                 when opAddImm with x then
-                    0x91000000 + {if x.shift is 12 then shl(1 22) else 0 end} + shl(x.imm 10)
+                    let shifted = x.shift is 12
+                    0x91000000 + {if shifted then shl(1 22) else 0 end} + addSubImmediate(x.imm shifted "add")
                         + rn(rs[1]) + rd(rs[0])
-                when opSubImm with x then 0xD1000000 + shl(x.imm 10) + rn(rs[1]) + rd(rs[0])
+                when opSubImm with x then 0xD1000000 + addSubImmediate(x.imm false "sub") + rn(rs[1]) + rd(rs[0])
                 when opLogicImm with x then
                     let base: Int =
                         case x.arith

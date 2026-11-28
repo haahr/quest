@@ -270,7 +270,10 @@ catches a case missing from either. What the encoder does in place of the assemb
 
 - **Labels and branches:** two passes, offsets then words; `relaxBranches` ensures that every conditional branch
   reaches. Labels are resolved, and so is a function's call of itself, as `as` resolves it (each function is an atom
-  of its own under `.subsections_via_symbols`); every other symbol is relocated.
+  of its own under `.subsections_via_symbols`); every other symbol is relocated. A field that doesn't fit raises
+  `unencodable`, as the assembler rejects it, rather than being truncated into a wrong instruction: a branch's or
+  `adr`'s distance (`adr` is not relaxed, so one past ±1 MB fails), and an `add` or `sub` immediate of 4096 or more,
+  which is encoded shifted left by 12 when it is a multiple of 4096 (a frame of exactly a page), as `as` encodes it.
 - **Symbol addresses** (`relocPage`, `relocGot`): `adrp` reaches ±4 GB, and the arena may be farther than that from
   the host's image. Within the arena, `adrp`/`add` is patched directly; a symbol in the host is reached through a GOT
   slot in the arena (`adrp`/`ldr`), which the loader fills with its address.
