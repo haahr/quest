@@ -46,193 +46,198 @@ export
      * be boxed unless embedded in the aggregate's own allocation.
      * ====================================================================== *)
 
+    (* A value of type t's C type, or none for Ok *)
+    let rep(t: model.Type): maybe.T(String) =
+        if shapes.kindIs(shapes.shape(t) shapes.shapeOk) then maybe.none() else maybe.some(layout.cType(t)) end
+
+    (* Whether a is a boxed variable read as its box *)
+    let isBox(a: Atom): Bool = case a when atomVar with x then x.v.boxed andif not(x.v.isMutable) else false end
+
+    (* The C type a is used in: its slot's if it is a box *)
+    let have(a: Atom): maybe.T(String) =
+        if isBox(a) then maybe.some(layout.slotCType(nodes.atomType(a))) else rep(nodes.atomType(a)) end
+
+    (* The C type a variable is assigned in *)
+    let target(v: Variable): maybe.T(String) = if v.boxed then maybe.some(layout.slotCType(v.type)) else rep(v.type) end
+
+    (* A problem if a is used as want, a C type other than its own *)
+    let expect(problems: vector.T(String) a: Atom want: maybe.T(String) where: String): Ok =
+        begin
+            let had = have(a)
+            if maybe.isSome(had) andif maybe.isSome(want) andif not(eq(maybe.unwrap(had) maybe.unwrap(want))) then
+                vector.append(problems where <> ": a " <> maybe.unwrap(had) <> " used as a " <> maybe.unwrap(want))
+            end
+        end
+
+    (* A problem if a, stored into a slot of shape s (embedded: boxed in the
+     * aggregate's allocation), is boxed where the slot takes a value or not
+     * where it takes a box *)
+    let slot(problems: vector.T(String) a: Atom s: maybe.T(shapes.Shape) where: String embedded: Bool): Ok =
+        if maybe.isSome(s) andif not(shapes.kindIs(maybe.unwrap(s) shapes.shapeOk)) then
+            let boxedIn = layout.isBoxedInSlots(maybe.unwrap(s))
+            if boxedIn andif not(embedded) andif not(isBox(a)) then
+                vector.append(problems where <> ": a record or variant stored into a slot unboxed")
+            elsif {not(boxedIn) orif embedded} andif isBox(a) then
+                vector.append(problems where <> ": a box stored into a slot that does not take one")
+            end
+        end
+
+    (* The shape of what an address a stores into *)
+    let located(a: Atom): shapes.Shape =
+        begin
+            let s = shapes.shape(nodes.atomType(a))
+            if shapes.kindIs(s shapes.shapeCell) orif shapes.kindIs(s shapes.shapeOut) then shapes.element(s) else s end
+        end
+
+    (* The problems of a call's arguments and result *)
+    let checkCall(problems: vector.T(String) c: nodes.OpCall result: maybe.T(Variable) where: String): Ok =
+        begin
+            let ct = nodes.calleeType(c.callee c.moduleRef c.member c.calleeType)
+            let signature = written.funSignature(maybe.unwrapOr(ct model.okType))
+            for i = 0 upto {extent c.args - 1} do
+                if i < extent signature.params then
+                    let p = signature.params[i]
+                    if not(p.isVar orif p.isOut) then
+                        expect(problems c.args[i] rep(p.type) where <> ": an argument of " <> p.name)
+                    end
+                end
+            end
+            if maybe.isSome(result) then
+                expect(problems nodes.atomOfVar(maybe.unwrap(result)) rep(signature.result) where
+                    <> ": the result of a call")
+            end
+        end
+
+    (* The problems of a let's value, of v *)
+    let letValue(problems: vector.T(String) v: Variable value: Op where: String): Ok =
+        case value
+            when opAtom with y then expect(problems y.atom target(v) where <> ": let " <> v.hint)
+            when opCall with c then checkCall(problems c maybe.some(v) where)
+            when opMakeTuple with y then
+                let components = shapes.shape(v.type).components
+                for i = 0 upto {extent y.args - 1} do
+                    if i < extent components then
+                        slot(problems y.args[i] components[i].shape where <> ": component " <> conv.int(i) <> " of "
+                            <> v.hint maps.intIsOneOf(i y.embedded))
+                    end
+                end
+            when opMakeRecord with y then
+                for i = 0 upto {extent y.fields - 1} do
+                    let fa = y.fields[i]
+                    slot(problems fa.atom maybe.some(shapes.shape(nodes.atomType(fa.atom)))
+                            where <> ": field " <> fa.name <> " of " <> v.hint maps.intIsOneOf(i y.embedded))
+                end
+            when opMakeArray with y then
+                for i = 0 upto {extent y.args - 1} do
+                    slot(problems y.args[i] shapes.shape(v.type).elementShape where <> ": an element of " <> v.hint
+                            false)
+                end
+            when opArrayRep with y then
+                slot(problems y.init shapes.shape(v.type).elementShape where <> ": the element of " <> v.hint false)
+            when opAddrCell with y then
+                slot(problems y.init maybe.some(shapes.shape(nodes.atomType(y.init))) where <> ": a cell" false)
+            when opMakeVariant with y then
+                if maybe.isSome(y.payload) then
+                    let vs = layout.resolvedShape(shapes.shape(v.type))
+                    let c = if shapes.kindIs(vs shapes.shapeVariant) then shapes.caseOf(vs y.tag)
+                        else maybe.none(:shapes.Component) end
+                    slot(problems maybe.unwrap(y.payload)
+                            if maybe.isSome(c) then maybe.unwrap(c).shape else maybe.none() end
+                            where <> ": the payload of " <> v.hint false)
+                end
+            else ok
+        end
+
+    (* The problems of a statement s of function (none for a top level's), but
+     * its jumps'; a join point's parameters go in joins, for its jumps *)
+    let representationStatement(problems: vector.T(String) s: Stmt function: maybe.T(nodes.Function) where: String
+            joins: maps.StringMap(Array(Variable))): Ok =
+        begin
+            let binders = walk.statementBinders(s)
+            for i = 0 upto {extent binders - 1} do
+                let b = binders[i]
+                if b.boxed andif not(layout.isBoxedInSlots(shapes.shape(b.type))) then
+                    vector.append(problems where <> ": variable '" <> b.hint
+                        <> "' is boxed, but not of a record or variant type")
+                end
+            end
+            case s
+                when sJoin with x then
+                    begin hashMap.insert(joins x.label x.params) ok end
+                when sLet with x then letValue(problems x.v x.value where)
+                when sDo with x then
+                    case x.value
+                        when opCall with c then checkCall(problems c maybe.none() where)
+                        else ok
+                    end
+                when sRaise with x then
+                    if maybe.isSome(x.payload) then
+                        let es = shapes.shape(nodes.atomType(x.exc))
+                        let payloadShape = if shapes.kindIs(es shapes.shapeException) then es.elementShape
+                            else maybe.none(:shapes.Shape) end
+                        slot(problems maybe.unwrap(x.payload) payloadShape where <> ": a raised payload" false)
+                    end
+                when sEcho with x then
+                    slot(problems x.value maybe.some(shapes.shape(x.type)) where <> ": an echoed value" false)
+                when sStoreAt with x then
+                    slot(problems x.value maybe.some(located(x.address)) where <> ": a store" false)
+                when sStoreComponent with x then
+                    slot(problems x.value
+                            layout.resolvedShape(shapes.shape(nodes.atomType(x.base))).components[x.index].shape
+                            where <> ": a store" false)
+                when sStoreElement with x then
+                    slot(problems x.value shapes.shape(nodes.atomType(x.base)).elementShape where <> ": a store" false)
+                when sVarDecl with x then
+                    if maybe.isSome(x.init) then
+                        expect(problems maybe.unwrap(x.init) target(x.v) where <> ": var " <> x.v.hint)
+                    end
+                when sAssign with x then expect(problems x.value target(x.v) where <> ": " <> x.v.hint <> " :=")
+                when sReturn with x then
+                    if maybe.isSome(function) then
+                        expect(problems x.value rep(maybe.unwrap(function).resultType) where <> ": return")
+                    end
+                else ok
+            end
+        end
+
+    (* The problems of a body of function (none for a top level's): its
+     * statements', and then its jumps', whose join points it binds *)
+    let representationBody(problems: vector.T(String) b: Body function: maybe.T(nodes.Function)): Ok =
+        begin
+            let where = if maybe.isSome(function) then "function '" <> maybe.unwrap(function).v.hint <> "'"
+                else "a top level" end
+            let joins = maps.newStringMap(:Array(Variable))
+            let stmts = walk.walkStatements(b false)
+            for si = 0 upto {vector.length(stmts) - 1} do
+                representationStatement(problems vector.get(stmts si) function where joins)
+            end
+            for si = 0 upto {vector.length(stmts) - 1} do
+                case vector.get(stmts si)
+                    when sJump with x then
+                        let params = hashMap.get(joins x.label)
+                        if maybe.isSome(params) then
+                            let ps = maybe.unwrap(params)
+                            for i = 0 upto {extent x.args - 1} do
+                                if i < extent ps then
+                                    expect(problems x.args[i] target(ps[i]) where <> ": jump " <> x.label)
+                                end
+                            end
+                        end
+                    else ok
+                end
+            end
+        end
+
     let representationProblems(unit: nodes.Unit): vector.T(String) =
         begin
             let problems = vector.new(:String)
-            let rep = fun(t: model.Type): maybe.T(String)
-                if shapes.kindIs(shapes.shape(t) shapes.shapeOk) then maybe.none()
-                else maybe.some(layout.cType(t))
-                end
-            let isBox =
-                fun(a: Atom): Bool case a when atomVar with x then x.v.boxed andif not(x.v.isMutable) else false end
-            let have = fun(a: Atom): maybe.T(String)
-                if isBox(a) then
-                    maybe.some(layout.slotCType(nodes.atomType(a)))
-                else
-                    rep(nodes.atomType(a))
-                end
-            let target = fun(v: Variable): maybe.T(String)
-                if v.boxed then maybe.some(layout.slotCType(v.type)) else rep(v.type) end
-            let expect = fun(a: Atom want: maybe.T(String) where: String): Ok
-                begin
-                    let had = have(a)
-                    if maybe.isSome(had) andif maybe.isSome(want)
-                            andif not(eq(maybe.unwrap(had) maybe.unwrap(want))) then
-                        vector.append(problems where <> ": a " <> maybe.unwrap(had) <> " used as a "
-                            <> maybe.unwrap(want))
-                    end
-                end
-            (* a, stored into a slot of shape s (embedded: boxed in the
-             * aggregate's allocation) *)
-            let slot = fun(a: Atom s: maybe.T(shapes.Shape) where: String embedded: Bool): Ok
-                if maybe.isSome(s)
-                        andif not(shapes.kindIs(maybe.unwrap(s) shapes.shapeOk)) then
-                    let boxedIn = layout.isBoxedInSlots(maybe.unwrap(s))
-                    if boxedIn andif not(embedded) andif not(isBox(a)) then
-                        vector.append(problems where <> ": a record or variant stored into a slot unboxed")
-                    elsif {not(boxedIn) orif embedded} andif isBox(a) then
-                        vector.append(problems where <> ": a box stored into a slot that does not take one")
-                    end
-                end
-            let located = fun(a: Atom): shapes.Shape
-                begin
-                    let s = shapes.shape(nodes.atomType(a))
-                    if shapes.kindIs(s shapes.shapeCell)
-                            orif shapes.kindIs(s shapes.shapeOut) then shapes.element(s) else s end
-                end
-            let calleeType = fun(c: nodes.OpCall): maybe.T(model.Type)
-                nodes.calleeType(c.callee c.moduleRef c.member c.calleeType)
-            let checkCall = fun(c: nodes.OpCall result: maybe.T(Variable) where: String): Ok
-                begin
-                    let ct = calleeType(c)
-                    let signature = written.funSignature(maybe.unwrapOr(ct model.okType))
-                    for i = 0 upto {extent c.args - 1} do
-                        if i < extent signature.params then
-                            let p = signature.params[i]
-                            if not(p.isVar orif p.isOut) then
-                                expect(c.args[i] rep(p.type) where <> ": an argument of " <> p.name)
-                            end
-                        end
-                    end
-                    if maybe.isSome(result) then
-                        expect(nodes.atomOfVar(maybe.unwrap(result)) rep(signature.result) where
-                            <> ": the result of a call")
-                    end
-                end
-            let bodies = vector.new(:Body)
-            let functions = vector.new(:maybe.T(nodes.Function))
             for i = 0 upto {vector.length(unit.modules) - 1} do
-                vector.append(bodies vector.get(unit.modules i).init)
-                vector.append(functions maybe.none(:nodes.Function))
+                representationBody(problems vector.get(unit.modules i).init maybe.none())
             end
-            vector.append(bodies unit.main)
-            vector.append(functions maybe.none(:nodes.Function))
+            representationBody(problems unit.main maybe.none())
             for i = 0 upto {vector.length(unit.functions) - 1} do
                 let f = vector.get(unit.functions i)
-                vector.append(bodies f.body)
-                vector.append(functions maybe.some(f))
-            end
-            for bi = 0 upto {vector.length(bodies) - 1} do
-                let function = vector.get(functions bi)
-                let where = if maybe.isSome(function) then "function '" <> maybe.unwrap(function).v.hint <> "'"
-                    else "a top level" end
-                let joins = maps.newStringMap(:Array(Variable))
-                let stmts = walk.walkStatements(vector.get(bodies bi) false)
-                for si = 0 upto {vector.length(stmts) - 1} do
-                    let s = vector.get(stmts si)
-                    let binders = walk.statementBinders(s)
-                    for i = 0 upto {extent binders - 1} do
-                        let b = binders[i]
-                        if b.boxed andif not(layout.isBoxedInSlots(shapes.shape(b.type))) then
-                            vector.append(problems where <> ": variable '" <> b.hint
-                                <> "' is boxed, but not of a record or variant type")
-                        end
-                    end
-                    case s
-                        when sJoin with x then
-                            begin hashMap.insert(joins x.label x.params) ok end
-                        when sLet with x then
-                            let v = x.v
-                            case x.value
-                                when opAtom with y then expect(y.atom target(v) where <> ": let " <> v.hint)
-                                when opCall with c then checkCall(c maybe.some(v) where)
-                                when opMakeTuple with y then
-                                    let components = shapes.shape(v.type).components
-                                    for i = 0 upto {extent y.args - 1} do
-                                        if i < extent components then
-                                            slot(y.args[i] components[i].shape where <> ": component " <> conv.int(i)
-                                                <> " of " <> v.hint
-                                                    maps.intIsOneOf(i y.embedded))
-                                        end
-                                    end
-                                when opMakeRecord with y then
-                                    for i = 0 upto {extent y.fields - 1} do
-                                        let fa = y.fields[i]
-                                        slot(fa.atom maybe.some(shapes.shape(nodes.atomType(fa.atom)))
-                                                where <> ": field " <> fa.name <> " of "
-                                            <> v.hint maps.intIsOneOf(i y.embedded))
-                                    end
-                                when opMakeArray with y then
-                                    for i = 0 upto {extent y.args - 1} do
-                                        slot(y.args[i] shapes.shape(v.type).elementShape where <> ": an element of "
-                                            <> v.hint false)
-                                    end
-                                when opArrayRep with y then
-                                    slot(y.init shapes.shape(v.type).elementShape where <> ": the element of "
-                                        <> v.hint false)
-                                when opAddrCell with y then
-                                    slot(y.init maybe.some(shapes.shape(nodes.atomType(y.init))) where
-                                        <> ": a cell" false)
-                                when opMakeVariant with y then
-                                    if maybe.isSome(y.payload) then
-                                        let vs = layout.resolvedShape(shapes.shape(v.type))
-                                        let c = if shapes.kindIs(vs shapes.shapeVariant) then shapes.caseOf(vs y.tag)
-                                            else maybe.none(:shapes.Component) end
-                                        slot(maybe.unwrap(y.payload)
-                                                if maybe.isSome(c) then maybe.unwrap(c).shape else maybe.none() end
-                                                where <> ": the payload of " <> v.hint false)
-                                    end
-                                else ok
-                            end
-                        when sDo with x then
-                            case x.value
-                                when opCall with c then checkCall(c maybe.none() where)
-                                else ok
-                            end
-                        when sRaise with x then
-                            if maybe.isSome(x.payload) then
-                                let es = shapes.shape(nodes.atomType(x.exc))
-                                let payloadShape = if shapes.kindIs(es shapes.shapeException) then es.elementShape
-                                    else maybe.none(:shapes.Shape) end
-                                slot(maybe.unwrap(x.payload) payloadShape where <> ": a raised payload" false)
-                            end
-                        when sEcho with x then
-                            slot(x.value maybe.some(shapes.shape(x.type)) where <> ": an echoed value" false)
-                        when sStoreAt with x then
-                            slot(x.value maybe.some(located(x.address)) where <> ": a store" false)
-                        when sStoreComponent with x then
-                            slot(x.value
-                                    layout.resolvedShape(shapes.shape(nodes.atomType(x.base))).components[x.index].shape
-                                    where <> ": a store" false)
-                        when sStoreElement with x then
-                            slot(x.value shapes.shape(nodes.atomType(x.base)).elementShape where <> ": a store" false)
-                        when sVarDecl with x then
-                            if maybe.isSome(x.init) then
-                                expect(maybe.unwrap(x.init) target(x.v) where <> ": var " <> x.v.hint)
-                            end
-                        when sAssign with x then expect(x.value target(x.v) where <> ": " <> x.v.hint <> " :=")
-                        when sReturn with x then
-                            if maybe.isSome(function) then
-                                expect(x.value rep(maybe.unwrap(function).resultType) where <> ": return")
-                            end
-                        else ok
-                    end
-                end
-                for si = 0 upto {vector.length(stmts) - 1} do
-                    case vector.get(stmts si)
-                        when sJump with x then
-                            let params = hashMap.get(joins x.label)
-                            if maybe.isSome(params) then
-                                let ps = maybe.unwrap(params)
-                                for i = 0 upto {extent x.args - 1} do
-                                    if i < extent ps then
-                                        expect(x.args[i] target(ps[i]) where <> ": jump " <> x.label)
-                                    end
-                                end
-                            end
-                        else ok
-                    end
-                end
+                representationBody(problems f.body maybe.some(f))
             end
             problems
         end
