@@ -229,11 +229,11 @@ class TestRuntimeDynamicAndException(unittest.TestCase):
         self.assertTrue(qvalue_to_str(dyn).endswith(" : Int)"))
 
     def test_exception(self):
-        exc_bare = QExceptionVal("NotFound")
-        exc_payload = QExceptionVal("IOError", QString("disk full"))
-        self.assertEqual(exc_bare.type_name, "Exception")
-        self.assertEqual(qvalue_to_str(exc_bare), "exception NotFound")
-        self.assertEqual(qvalue_to_str(exc_payload), 'exception IOError with "disk full"')
+        # An exception value is its tag's name alone: a raise's payload is the
+        # raised error's, not the value's
+        exc = QExceptionVal("NotFound")
+        self.assertEqual(exc.type_name, "Exception")
+        self.assertEqual(qvalue_to_str(exc), "exception NotFound")
 
 
 class TestIdentityAndStructuralEquality(unittest.TestCase):

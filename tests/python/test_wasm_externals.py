@@ -1,9 +1,10 @@
-"""The wasm backend's table of the library's externals covers lib/
-(docs/wasm.md section 4.2): every external value and function
-a module of lib/ binds names a C symbol that questlang/wasm/codegen compiles,
-by name or by prefix, or is one listed in LACKING with the reason the table
-does not. A symbol on neither list is one a change to lib/ added and the
-table missed; one on both is one the table compiles, to take off LACKING.
+"""The wasm backend's table of the library's externals covers lib/ (docs/wasm.md
+section 4.2): every external value and function a module of lib/ binds names a
+C symbol that questlang/wasm/externals' table has a row for, or that
+questlang/wasm/codegen's externalValue names (the library's constants), by name
+or by prefix, or is one listed in LACKING with the reason the table does not. A
+symbol on neither list is one a change to lib/ added and the table missed; one
+on both is one the table compiles, to take off LACKING.
 
     python -m unittest tests.python.test_wasm_externals
 """
@@ -15,6 +16,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
+TABLE = ROOT / "questlang" / "wasm" / "externals.mod.quest"
 CODEGEN = ROOT / "questlang" / "wasm" / "codegen.mod.quest"
 
 # The externals of lib/ the table does not compile, each with why
@@ -38,10 +40,11 @@ def library_externals() -> set[str]:
 
 
 def table_symbols() -> tuple[set[str], set[str]]:
-    """The symbols the table names, and the prefixes it handles whole"""
-    text = CODEGEN.read_text()
-    names = set(re.findall(r'"((?:quest|QUEST)_\w+)"', text))
-    prefixes = set(re.findall(r'strutil\.startsWith\(symbol "((?:quest|QUEST)_\w*)"\)', text))
+    """The symbols the table names, and the prefixes it handles whole (its
+    prefixed rows, `let prefix = "..."`)"""
+    text = TABLE.read_text() + CODEGEN.read_text()
+    prefixes = set(re.findall(r'let prefix = "((?:quest|QUEST)_\w*)"', text))
+    names = set(re.findall(r'"((?:quest|QUEST)_\w+)"', text)) - prefixes
     return names, prefixes
 
 
