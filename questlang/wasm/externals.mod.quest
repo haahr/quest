@@ -1,0 +1,480 @@
+(* Quest Self-Hosted Compiler: The WebAssembly Externals Implementation *)
+
+module externals : Externals
+import
+    stringOp = string : StringOp
+
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+
+    questlang/common/maps : questlang/common/Maps
+    questlang/wasm/model : questlang/wasm/Model
+    questlang/wasm/ops : questlang/wasm/Ops
+export
+    Let ValType = model.ValType
+
+    Def UnitFunction = Tuple unit: String field: String params: Array(ValType) results: Array(ValType) end
+
+    let key(u: UnitFunction): String = u.unit <> "." <> u.field
+
+    Def External = Option
+        extCore with function: UnitFunction boxedArgument: Bool widened: Bool end
+        extWriterPut with function: UnitFunction base: String end
+        extUnit with function: UnitFunction end
+        extBase with field: String end
+        extOps with ops: Array(model.Op) end
+        extRaise with error: String end
+        extFalse
+        extStringLength
+        extAsciiChar
+        extAsciiVal
+        extArraySize
+        extReraise
+        extExit
+        extCodeSymbol
+        extWordNot
+        extWordDivide with op: model.Op end
+        extWordShift
+        extWordMulHi
+        extRealRounding with op: model.Op end
+        extRealRound
+        extRealSqrt
+        extRealDiv
+        extWordToReal
+    end
+
+    (* The representations of runtime unit functions' parameters and
+     * results: an eqref, an i64, an i32, an f64 *)
+    let e = model.eqref
+    let n = model.i64
+    let b = model.i32
+    let r = model.f64
+    let none = array of :ValType end
+
+    let function(unit: String field: String params: Array(ValType) results: Array(ValType)): UnitFunction =
+        tuple let unit = unit let field = field let params = params let results = results end
+
+    (* A row of the table: an external's C symbol and how it compiles *)
+    Def Row = Tuple symbol: String compiled: External end
+
+    let row(symbol: String x: External): Row = tuple let symbol = symbol let compiled = x end
+
+    (* wasm/core's function field, by the symbol of the external it is *)
+    let core(symbol: String field: String params: Array(ValType) result: ValType): Row =
+        row(symbol option extCore of External with
+            let function = function("wasm/core" field params array of result end)
+            let boxedArgument = false
+            let widened = false
+        end)
+    let realconv(symbol: String field: String params: Array(ValType) result: ValType): Row =
+        row(symbol option extUnit of External with
+            let function = function("util/realconv" field params array of result end)
+        end)
+    (* util/realmath's functions, libm's in Quest (section 4.3): each raises
+     * real.error itself where the C runtime's wrapper would *)
+    let realmath(symbol: String field: String arity: Int): Row =
+        row(symbol option extUnit of External with
+            let function = function("util/realmath" field array of(arity r) array of r end)
+        end)
+    let base(symbol: String field: String): Row = row(symbol option extBase of External with let field = field end)
+    let opsRow(symbol: String instructions: Array(model.Op)): Row =
+        row(symbol option extOps of External with let ops = instructions end)
+    let nullary(symbol: String x: External): Row = row(symbol x)
+
+    let realPow = function("util/realmath" "pow" array of r r end array of r end)
+
+    let rows = array of
+        (* util/realconv's and util/realmath's, Quest that both targets
+         * compile (section 4.3) *)
+        realconv("quest_strutil_to_real" "toReal" array of e end r)
+        realconv("quest_real_format" "format" array of r b n end e)
+        realmath("quest_real_sin" "sin" 1)
+        realmath("quest_real_cos" "cos" 1)
+        realmath("quest_real_tan" "tan" 1)
+        realmath("quest_real_asin" "asin" 1)
+        realmath("quest_real_acos" "acos" 1)
+        realmath("quest_real_atan" "atan" 1)
+        realmath("quest_real_atan2" "atan2" 2)
+        realmath("quest_real_exponential" "exponential" 1)
+        realmath("quest_real_log" "log" 1)
+        realmath("quest_real_sinh" "sinh" 1)
+        realmath("quest_real_cosh" "cosh" 1)
+        realmath("quest_real_tanh" "tanh" 1)
+        row("quest_real_exp" option extUnit of External with let function = realPow end)
+        (* wasm/core's, in Quest *)
+        core("quest_string_cat_sub" "catSub" array of e n n e n n end e)
+        core("quest_string_conc" "conc" array of e end e)
+        core("quest_dynamic_copy" "dynamicCopy" array of e end e)
+        core("quest_string_equal_sub" "equalSub" array of e n n e n n end b)
+        core("quest_string_precedes" "precedes" array of e e end b)
+        core("quest_string_precedes_sub" "precedesSub" array of e n n e n n end b)
+        row("quest_identity_hash" option extCore of External with
+            let function = function("wasm/core" "identityHash" array of e e end array of n end)
+            let boxedArgument = true
+            let widened = false
+        end)
+        core("quest_string_freeze" "stringFreeze" array of e end e)
+        core("quest_sb_new" "sbNew" none e)
+        core("quest_sb_append_string" "sbAppendString" array of e e end e)
+        (* Sharing a string is copying it here, which keeps its promise *)
+        core("quest_sb_append_string_shared" "sbAppendString" array of e e end e)
+        core("quest_sb_append_char" "sbAppendChar" array of e b end e)
+        core("quest_sb_append_int" "sbAppendInt" array of e n end e)
+        core("quest_sb_append_sub" "sbAppendSub" array of e e n n end e)
+        core("quest_sb_append_repeat" "sbAppendRepeat" array of e b n end e)
+        core("quest_sb_clear" "sbClear" array of e end e)
+        core("quest_sb_length" "sbLength" array of e end n)
+        core("quest_sb_to_string" "sbToString" array of e end e)
+        core("quest_system_args" "systemArgs" none e)
+        core("quest_system_getenv" "getEnv" array of e end e)
+        core("quest_system_file_exists" "fileExists" array of e end b)
+        core("quest_system_is_file" "isFile" array of e end b)
+        core("quest_system_is_directory" "isDirectory" array of e end b)
+        core("quest_system_make_directory" "makeDirectory" array of e end e)
+        core("quest_system_remove_file" "removeFile" array of e end e)
+        core("quest_system_remove_directory" "removeDirectory" array of e end e)
+        core("quest_system_rename_file" "renameFile" array of e e end e)
+        core("quest_system_current_directory" "currentDirectory" none e)
+        core("quest_system_change_directory" "changeDirectory" array of e end e)
+        core("quest_system_list_directory" "listDirectory" array of e end e)
+        core("quest_filestats_stat" "fileStat" array of e b end e)
+        core("quest_files_remove" "filesRemove" array of e end n)
+        core("quest_files_remove_directory" "filesRemoveDirectory" array of e end n)
+        core("quest_files_rename" "filesRename" array of e e end n)
+        core("quest_files_make_directory" "filesMakeDirectory" array of e n end n)
+        core("quest_files_create_new" "filesCreateNew" array of e n end n)
+        core("quest_files_list" "filesList" array of e end e)
+        core("quest_files_symlink" "filesSymlink" array of e e end n)
+        core("quest_files_read_link" "filesReadLink" array of e end e)
+        core("quest_files_set_mode" "filesSetMode" array of e n end n)
+        core("quest_files_set_times" "filesSetTimes" array of e n n end n)
+        core("quest_files_last_status" "filesLastStatus" none n)
+        core("quest_time_now_ns" "timeNow" none n)
+        core("quest_time_ticks_ns" "timeTicks" none n)
+        core("quest_time_cpu_ns" "timeCpu" none n)
+        core("quest_time_sleep_ns" "timeSleep" array of n end e)
+        core("quest_time_local_offset" "timeLocalOffset" array of n end n)
+        core("quest_writer_file" "writerFile" array of e end e)
+        core("quest_writer_close" "writerClose" array of e end e)
+        row("quest_writer_put_string" option extWriterPut of External with
+            let function = function("wasm/core" "writerPutString" array of e e end array of e end)
+            let base = "putString"
+        end)
+        row("quest_writer_put_char" option extWriterPut of External with
+            let function = function("wasm/core" "writerPutChar" array of e b end array of e end)
+            let base = "putChar"
+        end)
+        core("quest_writer_put_substring" "writerPutSubString" array of e e n n end e)
+        core("quest_writer_flush" "writerFlush" array of e end e)
+        core("quest_reader_input" "readerInput" none e)
+        core("quest_reader_file" "readerFile" array of e end e)
+        core("quest_reader_more" "readerMore" array of e end b)
+        row("quest_reader_ready" option extCore of External with
+            let function = function("wasm/core" "readerMore" array of e end array of b end)
+            let boxedArgument = false
+            let widened = true
+        end)
+        core("quest_reader_get_char" "readerGetChar" array of e end b)
+        core("quest_reader_get_string" "readerGetString" array of e n end e)
+        core("quest_reader_get_substring" "readerGetSubString" array of e e n n end e)
+        core("quest_reader_close" "readerClose" array of e end e)
+        (* string: the base's *)
+        base("quest_string_alloc" "stringNew")
+        base("quest_string_get_char" "stringGetChar")
+        base("quest_string_set_char" "stringSetChar")
+        base("quest_string_get_sub" "stringGetSub")
+        base("quest_string_set_sub" "stringSetSub")
+        base("quest_string_concat" "concat")
+        base("quest_string_equal" "stringEqual")
+        nullary("quest_string_length" option extStringLength of External end)
+        (* ascii, arrayOp, raised, system *)
+        nullary("quest_ascii_char" option extAsciiChar of External end)
+        nullary("quest_ascii_val" option extAsciiVal of External end)
+        nullary("quest_array_size" option extArraySize of External end)
+        nullary("quest_raised_reraise" option extReraise of External end)
+        nullary("quest_system_exit" option extExit of External end)
+        nullary("quest_system_is_terminal" option extFalse of External end)
+        (* Library externals with no WebAssembly equivalent raise their
+         * module's error (section 4.2): no subprocesses, JIT code
+         * generation, raw address inspection, or line editing (and see
+         * prefixed, below). os/code's symbol lookup returns null (matching a
+         * missing native symbol) because the driver queries it at top
+         * level. *)
+        row("quest_system_run" option extRaise of External with let error = "system.error" end)
+        nullary("quest_code_symbol" option extCodeSymbol of External end)
+        opsRow("quest_code_is_null" array of ops.refIsNull end)
+        nullary("quest_readline_editing" option extFalse of External end)
+        (* word *)
+        nullary("quest_word_not_bits" option extWordNot of External end)
+        opsRow("quest_word_and_bits" array of ops.i64And end)
+        opsRow("quest_word_or_bits" array of ops.i64Or end)
+        opsRow("quest_word_xor_bits" array of ops.i64Xor end)
+        opsRow("quest_word_add" array of ops.i64Add end)
+        opsRow("quest_word_sub" array of ops.i64Sub end)
+        opsRow("quest_word_mul" array of ops.i64Mul end)
+        opsRow("quest_word_lt" array of ops.i64LtU end)
+        opsRow("quest_word_le" array of ops.i64LeU end)
+        opsRow("quest_word_gt" array of ops.i64GtU end)
+        opsRow("quest_word_ge" array of ops.i64GeU end)
+        opsRow("quest_word_to_int" array of :model.Op end)
+        opsRow("quest_word_from_int" array of :model.Op end)
+        opsRow("quest_word_pop_count_val" array of ops.i64Popcnt end)
+        opsRow("quest_word_count_leading_zeros_val" array of ops.i64Clz end)
+        opsRow("quest_word_count_trailing_zeros_val" array of ops.i64Ctz end)
+        opsRow("quest_word_rotate_val" array of ops.i64Rotl end)
+        row("quest_word_div_val" option extWordDivide of External with let op = ops.i64DivU end)
+        row("quest_word_mod_val" option extWordDivide of External with let op = ops.i64RemU end)
+        nullary("quest_word_shift_val" option extWordShift of External end)
+        nullary("quest_word_mul_hi" option extWordMulHi of External end)
+        (* real *)
+        opsRow("quest_real_from_int" array of ops.f64ConvertI64S end)
+        row("quest_real_floor" option extRealRounding of External with let op = ops.f64Floor end)
+        row("quest_real_ceil" option extRealRounding of External with let op = ops.f64Ceil end)
+        row("quest_real_trunc" option extRealRounding of External with let op = ops.f64Trunc end)
+        nullary("quest_real_round" option extRealRound of External end)
+        nullary("quest_real_sqrt" option extRealSqrt of External end)
+        nullary("quest_real_div" option extRealDiv of External end)
+        nullary("quest_word_to_real_val" option extWordToReal of External end)
+        opsRow("quest_word_from_real_val" array of ops.i64ReinterpretF64 end)
+    end
+
+    (* The rows by symbol; the first row of a symbol is its *)
+    let bySymbol =
+        begin
+            let m = maps.newStringMap(:External)
+            for k = {extent rows - 1} downto 0 do hashMap.insert(m rows[k].symbol rows[k].compiled) end
+            m
+        end
+
+    (* The externals that raise, by their symbols' prefixes *)
+    let prefixed = array of
+        tuple let prefix = "quest_process_" let error = "system.error" end
+        tuple let prefix = "quest_code_" let error = "value.error" end
+        tuple let prefix = "quest_value_" let error = "value.error" end
+        tuple let prefix = "quest_readline_" let error = "readline.error" end
+    end
+
+    let externalOf(symbol: String): maybe.T(External) =
+        begin
+            let var found = hashMap.get(bySymbol symbol)
+            for k = 0 upto {extent prefixed - 1} do
+                if maybe.isNone(found) andif strutil.startsWith(symbol prefixed[k].prefix) then
+                    found := maybe.some(option extRaise of External with let error = prefixed[k].error end)
+                end
+            end
+            found
+        end
+
+    let exitStatus = function("wasm/core" "exitStatus" array of n end array of n end)
+
+    let imports(x: External): Array(UnitFunction) =
+        case x
+            when extCore with c then array of c.function end
+            when extWriterPut with w then array of w.function end
+            when extUnit with u then array of u.function end
+            when extExit then array of exitStatus end
+            when extBase, extOps, extRaise, extFalse, extStringLength, extAsciiChar, extAsciiVal, extArraySize,
+                    extReraise, extCodeSymbol, extWordNot, extWordDivide, extWordShift, extWordMulHi, extRealRounding,
+                    extRealRound, extRealSqrt, extRealDiv, extWordToReal then
+                array of :UnitFunction end
+        end
+
+    let unitFunctions(unit: String): Array(UnitFunction) =
+        begin
+            let found = vector.new(:UnitFunction)
+            for k = 0 upto {extent rows - 1} do
+                let fs = imports(rows[k].compiled)
+                for j = 0 upto {extent fs - 1} do
+                    if stringOp.equal(fs[j].unit unit) then vector.append(found fs[j]) end
+                end
+            end
+            vector.toArray(found)
+        end
+
+    Def Intrinsic = Option
+        intrBase with field: String end
+        intrHost with field: String end
+        intrPrint with function: UnitFunction end
+        intrOps with ops: Array(model.Op) end
+        intrRuntime with field: String end
+        intrIsSmall
+        intrIsA with type: String end
+        intrCount with isArray: Bool end
+        intrSlot with isArray: Bool end
+        intrPutTo with field: String end
+        intrAutoPart with index: Int end
+        intrRaisedName
+        intrRaisedSite
+        intrFatalReport
+        intrImportedRecord
+        intrRecordSet
+        intrToAny
+        intrFromAny
+        intrRecordField
+        intrOptionTag
+        intrVariantTag
+        intrVariantPayload
+        intrExceptionName
+        intrPut
+        intrSignBit
+        intrHashMix
+        intrSmallValue
+        intrBoxedInt
+        intrRecPayload
+        intrRecDict
+        intrNewRecBox
+        intrRecordLayout
+        intrNewVarBox
+        intrIsNull
+        intrNullAny
+        intrNewI32s
+        intrSetI32
+        intrNewDict
+        intrDictIndex
+        intrRecordSlot
+        intrNewProxy
+        intrProxyState
+        intrNewTuple
+        intrNewOption
+        intrNewAuto
+        intrAdaptClosure
+        intrNewRecordPayload
+        intrDictStored
+        intrDynamicError
+        intrHashOf
+        intrSetHash
+    end
+
+    Def IntrinsicRow = Tuple name: String intrinsic: Intrinsic end
+
+    let intrinsic(name: String x: Intrinsic): IntrinsicRow = tuple let name = name let intrinsic = x end
+    let intrinsicOps(name: String instructions: Array(model.Op)): IntrinsicRow =
+        intrinsic(name option intrOps of Intrinsic with let ops = instructions end)
+    let intrinsicRuntime(name: String field: String): IntrinsicRow =
+        intrinsic(name option intrRuntime of Intrinsic with let field = field end)
+    let isA(name: String type: String): IntrinsicRow =
+        intrinsic(name option intrIsA of Intrinsic with let type = type end)
+    let print(field: String): IntrinsicRow =
+        intrinsic("print." <> field option intrPrint of Intrinsic with
+            let function = function("wasm/print" field none array of e end)
+        end)
+
+    (* The intrinsics by their names after wasm. *)
+    let intrinsicRows = array of
+        print("capture")
+        print("captured")
+        intrinsic("raisedName" option intrRaisedName of Intrinsic end)
+        intrinsic("raisedSite" option intrRaisedSite of Intrinsic end)
+        intrinsic("fatalReport" option intrFatalReport of Intrinsic end)
+        intrinsic("importedRecord" option intrImportedRecord of Intrinsic end)
+        intrinsic("recordSet" option intrRecordSet of Intrinsic end)
+        intrinsic("toAny" option intrToAny of Intrinsic end)
+        intrinsic("fromAny" option intrFromAny of Intrinsic end)
+        intrinsicOps("same" array of ops.refEq end)
+        intrinsic("tupleCount" option intrCount of Intrinsic with let isArray = false end)
+        intrinsic("arrayCount" option intrCount of Intrinsic with let isArray = true end)
+        intrinsic("tupleSlot" option intrSlot of Intrinsic with let isArray = false end)
+        intrinsic("arraySlot" option intrSlot of Intrinsic with let isArray = true end)
+        intrinsic("recordField" option intrRecordField of Intrinsic end)
+        intrinsic("optionTag" option intrOptionTag of Intrinsic end)
+        intrinsic("variantTag" option intrVariantTag of Intrinsic end)
+        intrinsic("variantPayload" option intrVariantPayload of Intrinsic end)
+        intrinsic("exceptionName" option intrExceptionName of Intrinsic end)
+        intrinsicRuntime("decimal" "decimal")
+        intrinsicRuntime("hex" "hex")
+        intrinsicRuntime("escaped" "escaped")
+        intrinsicRuntime("charString" "convChar")
+        intrinsic("put" option intrPut of Intrinsic end)
+        intrinsic("putTo" option intrPutTo of Intrinsic with let field = "putString" end)
+        intrinsic("putCharTo" option intrPutTo of Intrinsic with let field = "putChar" end)
+        intrinsicRuntime("convInt" "convInt")
+        intrinsicOps("realBits" array of ops.i64ReinterpretF64 end)
+        intrinsic("signBit" option intrSignBit of Intrinsic end)
+        intrinsicOps("charCode" array of ops.i64ExtendI32U end)
+        intrinsicOps("shrU" array of ops.i64ShrU end)
+        intrinsicOps("xor" array of ops.i64Xor end)
+        intrinsic("hashMix" option intrHashMix of Intrinsic end)
+        intrinsic("isSmall" option intrIsSmall of Intrinsic end)
+        isA("isBoxedInt" "boxInt")
+        isA("isRecBox" "recBox")
+        isA("isObject" "obj")
+        intrinsic("smallValue" option intrSmallValue of Intrinsic end)
+        intrinsic("boxedInt" option intrBoxedInt of Intrinsic end)
+        intrinsic("recPayload" option intrRecPayload of Intrinsic end)
+        intrinsic("recDict" option intrRecDict of Intrinsic end)
+        intrinsic("newRecBox" option intrNewRecBox of Intrinsic end)
+        intrinsic("recordLayout" option intrRecordLayout of Intrinsic end)
+        intrinsic("newVarBox" option intrNewVarBox of Intrinsic end)
+        intrinsic("isNull" option intrIsNull of Intrinsic end)
+        intrinsic("nullAny" option intrNullAny of Intrinsic end)
+        intrinsic("newI32s" option intrNewI32s of Intrinsic end)
+        intrinsic("setI32" option intrSetI32 of Intrinsic end)
+        intrinsic("newDict" option intrNewDict of Intrinsic end)
+        intrinsic("dictIndex" option intrDictIndex of Intrinsic end)
+        intrinsic("recordSlot" option intrRecordSlot of Intrinsic end)
+        isA("isProxy" "proxy")
+        intrinsic("newProxy" option intrNewProxy of Intrinsic end)
+        intrinsic("proxyState" option intrProxyState of Intrinsic end)
+        intrinsic("newTuple" option intrNewTuple of Intrinsic end)
+        intrinsic("newOption" option intrNewOption of Intrinsic end)
+        intrinsic("autoDesc" option intrAutoPart of Intrinsic with let index = 1 end)
+        intrinsic("autoPayload" option intrAutoPart of Intrinsic with let index = 2 end)
+        intrinsic("newAuto" option intrNewAuto of Intrinsic end)
+        intrinsic("adaptClosure" option intrAdaptClosure of Intrinsic end)
+        intrinsicOps("addWrap" array of ops.i64Add end)
+        intrinsicOps("mulWrap" array of ops.i64Mul end)
+        intrinsic("newRecordPayload" option intrNewRecordPayload of Intrinsic end)
+        intrinsicOps("realEq" array of ops.f64Eq end)
+        isA("isBoxedReal" "boxReal")
+        intrinsic("dictStored" option intrDictStored of Intrinsic end)
+        intrinsic("dynamicError" option intrDynamicError of Intrinsic end)
+        intrinsic("hashOf" option intrHashOf of Intrinsic end)
+        intrinsic("setHash" option intrSetHash of Intrinsic end)
+    end
+
+    let intrinsicsByName =
+        begin
+            let m = maps.newStringMap(:Intrinsic)
+            for k = {extent intrinsicRows - 1} downto 0 do
+                hashMap.insert(m intrinsicRows[k].name intrinsicRows[k].intrinsic)
+            end
+            m
+        end
+
+    (* s after prefix, if it begins with it *)
+    let after(s: String prefix: String): maybe.T(String) =
+        if strutil.startsWith(s prefix) then
+            maybe.some(stringOp.getSub(s stringOp.length(prefix) {stringOp.length(s) - stringOp.length(prefix)}))
+        else
+            maybe.none()
+        end
+
+    let intrinsicOf(symbol: String): maybe.T(Intrinsic) =
+        begin
+            let baseField = after(symbol "wasm.base.")
+            let hostField = after(symbol "wasm.host.")
+            let name = after(symbol "wasm.")
+            if maybe.isSome(baseField) then
+                maybe.some(option intrBase of Intrinsic with let field = maybe.unwrap(baseField) end)
+            elsif maybe.isSome(hostField) then
+                maybe.some(option intrHost of Intrinsic with let field = maybe.unwrap(hostField) end)
+            elsif maybe.isSome(name) then
+                hashMap.get(intrinsicsByName maybe.unwrap(name))
+            else
+                maybe.none()
+            end
+        end
+
+    let printShow = function("wasm/print" "show" array of e e end array of e end)
+
+    let intrinsicImports(x: Intrinsic): Array(UnitFunction) =
+        case x
+            when intrPrint with p then array of p.function end
+            when intrRaisedName then array of printShow end
+            else array of :UnitFunction end
+        end
+
+    let needsPrint(x: Intrinsic): Bool = x?intrPrint orif x?intrRaisedName
+end

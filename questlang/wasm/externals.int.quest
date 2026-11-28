@@ -1,0 +1,149 @@
+(* Quest Self-Hosted Compiler: The WebAssembly Externals Interface
+ *
+ * How the wasm backend compiles each external it knows (docs/wasm.md
+ * sections 4.2 and 4.5), as typed rows the backend looks up once: the
+ * standard library's C externals, which compile to calls of the base runtime
+ * or of a Quest runtime unit (wasm/core, util/realconv, util/realmath), to
+ * instructions in place, or to a raise where WebAssembly has no equivalent;
+ * and the intrinsics, externals named wasm.NAME, which unsound modules (the
+ * core above all) declare. Each row says what the backend emits and which
+ * runtime unit functions it calls, so the import scan and the emitters read
+ * the same entry. The instructions themselves are wasm/codegen's. *)
+
+interface Externals
+import
+    util/maybe : util/Maybe
+
+    questlang/wasm/model : questlang/wasm/Model
+export
+    (* A function of a Quest runtime unit, imported by its unit's name and its
+     * field, at its interface type's closure signature: these parameters
+     * after the closure, and these results *)
+    Def UnitFunction = Tuple unit: String field: String params: Array(model.ValType) results: Array(model.ValType)
+    end
+    (* The key the backend records an imported unit function by, unit.field *)
+    key(u: UnitFunction): String
+
+    (* How a library external compiles *)
+    Def External = Option
+        (* A function of wasm/core, called after the descriptors with the
+         * arguments, the first boxed when boxedArgument; its result
+         * zero-extended to an i64 when widened *)
+        extCore with function: UnitFunction boxedArgument: Bool widened: Bool end
+        (* A write to a writer: a standard stream's (an i31) by the base's
+         * function, a file's by the core's, which buffers *)
+        extWriterPut with function: UnitFunction base: String end
+        (* A function of util/realconv or util/realmath, called with the
+         * arguments *)
+        extUnit with function: UnitFunction end
+        (* The base's function, called with the arguments *)
+        extBase with field: String end
+        (* The arguments, then these instructions *)
+        extOps with ops: Array(model.Op) end
+        (* A raise of the error, for an external with no WebAssembly
+         * equivalent *)
+        extRaise with error: String end
+        (* false, for an external whose answer here is always no *)
+        extFalse
+        (* Each of the rest is its own instructions *)
+        extStringLength
+        extAsciiChar
+        extAsciiVal
+        extArraySize
+        extReraise
+        extExit
+        extCodeSymbol
+        extWordNot
+        extWordDivide with op: model.Op end
+        extWordShift
+        extWordMulHi
+        extRealRounding with op: model.Op end
+        extRealRound
+        extRealSqrt
+        extRealDiv
+        extWordToReal
+    end
+    (* How the external of the C symbol compiles here, if the backend knows
+     * it *)
+    externalOf(symbol: String): maybe.T(External)
+    (* The runtime unit functions an external calls, which a unit using it
+     * imports *)
+    imports(e: External): Array(UnitFunction)
+    (* The functions of a runtime unit that the externals call *)
+    unitFunctions(unit: String): Array(UnitFunction)
+    (* util/realmath's pow, which Real's ^^ calls too *)
+    realPow: UnitFunction
+
+    (* What an intrinsic, an external named wasm.NAME, compiles to *)
+    Def Intrinsic = Option
+        (* the base's function of the field (wasm.base.FIELD), Ok when it
+         * gives nothing *)
+        intrBase with field: String end
+        (* the host's function (wasm.host.FIELD), its Ints as i32s *)
+        intrHost with field: String end
+        (* wasm/print's capture or captured *)
+        intrPrint with function: UnitFunction end
+        (* The arguments, then these instructions *)
+        intrOps with ops: Array(model.Op) end
+        (* The base's function, called with the arguments *)
+        intrRuntime with field: String end
+        (* A test of the first argument's reference type: an i31, or of the
+         * runtime's type of the name *)
+        intrIsSmall
+        intrIsA with type: String end
+        (* A tuple's or an array's count, or one of its slots *)
+        intrCount with isArray: Bool end
+        intrSlot with isArray: Bool end
+        (* A put to a standard stream's writer by the base's function *)
+        intrPutTo with field: String end
+        (* An auto value's part: its descriptor (1) or its payload (2) *)
+        intrAutoPart with index: Int end
+        (* Each of the rest is its own instructions *)
+        intrRaisedName
+        intrRaisedSite
+        intrFatalReport
+        intrImportedRecord
+        intrRecordSet
+        intrToAny
+        intrFromAny
+        intrRecordField
+        intrOptionTag
+        intrVariantTag
+        intrVariantPayload
+        intrExceptionName
+        intrPut
+        intrSignBit
+        intrHashMix
+        intrSmallValue
+        intrBoxedInt
+        intrRecPayload
+        intrRecDict
+        intrNewRecBox
+        intrRecordLayout
+        intrNewVarBox
+        intrIsNull
+        intrNullAny
+        intrNewI32s
+        intrSetI32
+        intrNewDict
+        intrDictIndex
+        intrRecordSlot
+        intrNewProxy
+        intrProxyState
+        intrNewTuple
+        intrNewOption
+        intrNewAuto
+        intrAdaptClosure
+        intrNewRecordPayload
+        intrDictStored
+        intrDynamicError
+        intrHashOf
+        intrSetHash
+    end
+    (* The intrinsic an external's symbol names, if it is one *)
+    intrinsicOf(symbol: String): maybe.T(Intrinsic)
+    (* The runtime unit functions an intrinsic calls, and whether it needs
+     * wasm/print initialized before it runs *)
+    intrinsicImports(x: Intrinsic): Array(UnitFunction)
+    needsPrint(x: Intrinsic): Bool
+end

@@ -30,6 +30,7 @@ import
     questlang/repr/layout : questlang/repr/Layout
     questlang/repr/shapes : questlang/repr/Shapes
     questlang/repr/staticdata : questlang/repr/StaticData
+    questlang/wasm/externals : questlang/wasm/Externals
     reuse = questlang/wasm/locals : questlang/wasm/Locals
     questlang/wasm/model : questlang/wasm/Model
     questlang/wasm/ops : questlang/wasm/Ops
@@ -2189,119 +2190,6 @@ export
      * The library's externals (section 4.2)
      * ====================================================================== *)
 
-    (* The externals that are functions of wasm/core, in Quest: each symbol,
-     * the core's function, and its parameters' and result's representations
-     * (e an eqref, n an i64, b an i32) *)
-    let coreExternals = array of
-        array of "quest_string_cat_sub" "catSub" "ennenn" "e" end
-        array of "quest_string_conc" "conc" "e" "e" end
-        array of "quest_dynamic_copy" "dynamicCopy" "e" "e" end
-        array of "quest_string_equal_sub" "equalSub" "ennenn" "b" end
-        array of "quest_string_precedes" "precedes" "ee" "b" end
-        array of "quest_string_precedes_sub" "precedesSub" "ennenn" "b" end
-        array of "quest_identity_hash" "identityHash" "ee" "n" end
-        array of "quest_string_freeze" "stringFreeze" "e" "e" end
-        array of "quest_sb_new" "sbNew" "" "e" end
-        array of "quest_sb_append_string" "sbAppendString" "ee" "e" end
-        (* Sharing a string is copying it here, which keeps its promise *)
-        array of "quest_sb_append_string_shared" "sbAppendString" "ee" "e" end
-        array of "quest_sb_append_char" "sbAppendChar" "eb" "e" end
-        array of "quest_sb_append_int" "sbAppendInt" "en" "e" end
-        array of "quest_sb_append_sub" "sbAppendSub" "eenn" "e" end
-        array of "quest_sb_append_repeat" "sbAppendRepeat" "ebn" "e" end
-        array of "quest_sb_clear" "sbClear" "e" "e" end
-        array of "quest_sb_length" "sbLength" "e" "n" end
-        array of "quest_sb_to_string" "sbToString" "e" "e" end
-        array of "quest_system_args" "systemArgs" "" "e" end
-        array of "quest_system_getenv" "getEnv" "e" "e" end
-        array of "quest_system_file_exists" "fileExists" "e" "b" end
-        array of "quest_system_is_file" "isFile" "e" "b" end
-        array of "quest_system_is_directory" "isDirectory" "e" "b" end
-        array of "quest_system_make_directory" "makeDirectory" "e" "e" end
-        array of "quest_system_remove_file" "removeFile" "e" "e" end
-        array of "quest_system_remove_directory" "removeDirectory" "e" "e" end
-        array of "quest_system_rename_file" "renameFile" "ee" "e" end
-        array of "quest_system_current_directory" "currentDirectory" "" "e" end
-        array of "quest_system_change_directory" "changeDirectory" "e" "e" end
-        array of "quest_system_list_directory" "listDirectory" "e" "e" end
-        array of "quest_filestats_stat" "fileStat" "eb" "e" end
-        array of "quest_files_remove" "filesRemove" "e" "n" end
-        array of "quest_files_remove_directory" "filesRemoveDirectory" "e" "n" end
-        array of "quest_files_rename" "filesRename" "ee" "n" end
-        array of "quest_files_make_directory" "filesMakeDirectory" "en" "n" end
-        array of "quest_files_create_new" "filesCreateNew" "en" "n" end
-        array of "quest_files_list" "filesList" "e" "e" end
-        array of "quest_files_symlink" "filesSymlink" "ee" "n" end
-        array of "quest_files_read_link" "filesReadLink" "e" "e" end
-        array of "quest_files_set_mode" "filesSetMode" "en" "n" end
-        array of "quest_files_set_times" "filesSetTimes" "enn" "n" end
-        array of "quest_files_last_status" "filesLastStatus" "" "n" end
-        array of "quest_time_now_ns" "timeNow" "" "n" end
-        array of "quest_time_ticks_ns" "timeTicks" "" "n" end
-        array of "quest_time_cpu_ns" "timeCpu" "" "n" end
-        array of "quest_time_sleep_ns" "timeSleep" "n" "e" end
-        array of "quest_time_local_offset" "timeLocalOffset" "n" "n" end
-        array of "quest_writer_file" "writerFile" "e" "e" end
-        array of "quest_writer_close" "writerClose" "e" "e" end
-        array of "quest_writer_put_string" "writerPutString" "ee" "e" end
-        array of "quest_writer_put_char" "writerPutChar" "eb" "e" end
-        array of "quest_writer_put_substring" "writerPutSubString" "eenn" "e" end
-        array of "quest_writer_flush" "writerFlush" "e" "e" end
-        array of "quest_reader_input" "readerInput" "" "e" end
-        array of "quest_reader_file" "readerFile" "e" "e" end
-        array of "quest_reader_more" "readerMore" "e" "b" end
-        array of "quest_reader_ready" "readerMore" "e" "b" end
-        array of "quest_reader_get_char" "readerGetChar" "e" "b" end
-        array of "quest_reader_get_string" "readerGetString" "en" "e" end
-        array of "quest_reader_get_substring" "readerGetSubString" "eenn" "e" end
-        array of "quest_reader_close" "readerClose" "e" "e" end
-    end
-    let coreExternal(symbol: String): maybe.T(Array(String)) =
-        begin
-            let var found = maybe.none(:Array(String))
-            for k = 0 upto extent coreExternals - 1 do
-                if stringOp.equal(coreExternals[k][0] symbol) then found := maybe.some(coreExternals[k]) end
-            end
-            found
-        end
-    (* The externals that are functions of util/realconv, Quest that both
-     * targets compile (section 4.3), each with the function it calls *)
-    let realconvExternals = array of
-        array of "quest_strutil_to_real" "toReal" end
-        array of "quest_real_format" "format" end
-    end
-    let realconvFunction(symbol: String): maybe.T(String) =
-        begin
-            let var found = maybe.none(:String)
-            for k = 0 upto extent realconvExternals - 1 do
-                if stringOp.equal(realconvExternals[k][0] symbol) then
-                    found := maybe.some(realconvExternals[k][1])
-                end
-            end
-            found
-        end
-    (* The externals that are functions of util/realmath, libm's functions in
-     * Quest (section 4.3), each with the function it calls and its arity;
-     * each raises real.error itself where the C runtime's wrapper would *)
-    let realmathExternals = array of
-        array of "quest_real_sin" "sin" "1" end array of "quest_real_cos" "cos" "1" end
-        array of "quest_real_tan" "tan" "1" end array of "quest_real_asin" "asin" "1" end
-        array of "quest_real_acos" "acos" "1" end array of "quest_real_atan" "atan" "1" end
-        array of "quest_real_atan2" "atan2" "2" end array of "quest_real_exponential" "exponential" "1" end
-        array of "quest_real_log" "log" "1" end array of "quest_real_sinh" "sinh" "1" end
-        array of "quest_real_cosh" "cosh" "1" end array of "quest_real_tanh" "tanh" "1" end
-        array of "quest_real_exp" "pow" "2" end
-    end
-    let realmathFunction(symbol: String): maybe.T(Array(String)) =
-        begin
-            let var found = maybe.none(:Array(String))
-            for k = 0 upto extent realmathExternals - 1 do
-                if stringOp.equal(realmathExternals[k][0] symbol) then
-                    found := maybe.some(realmathExternals[k])
-                end
-            end
-            found
-        end
     (* A Real as echo writes it (quest_put_real): its magnitude, as conv.real
      * writes it, after - when its sign bit is set *)
     let realText(f: F a: ir.Atom): Ok =
@@ -2319,17 +2207,6 @@ export
             atom(f a)
             runtimeUnitCall(f "util/realconv.magnitude")
             runtimeCall(f "concat")
-        end
-
-    (* The representations codes names, as coreExternals codes them *)
-    let repTypes(codes: String): Array(ValType) =
-        begin
-            let ts = array of(stringOp.length(codes) model.eqref)
-            for k = 0 upto stringOp.length(codes) - 1 do
-                let c = stringOp.getChar(codes k)
-                ts[k] := if c is 'n' then model.i64 elsif c is 'b' then model.i32 else model.eqref end
-            end
-            ts
         end
 
     (* SplitMix64's finalizer (quest_hash_mix64) of the i64 on the stack *)
@@ -2353,326 +2230,269 @@ export
             step(31 0)
         end
 
-    (* Compiles a call to the library external symbol (section 4.2): as a call
-     * to the base runtime (runtimeCall), a call to a Quest runtime unit
-     * (wasm/core, util/realconv, or util/realmath), or inline instructions.
-     * Externals unavailable on this target compile to a stub that fails if
-     * called. *)
+    (* Compiles a call to the library external symbol (section 4.2), as
+     * wasm/externals' row for it says: a call to the base runtime
+     * (runtimeCall), a call to a Quest runtime unit (wasm/core,
+     * util/realconv, or util/realmath), or inline instructions. Externals
+     * unavailable on this target compile to a stub that fails if called. *)
     let externalCall(f: F symbol: String args: Array(ir.Atom) descs: Array(ir.Descriptor)
             target: maybe.T(ir.Variable)): Ok =
         begin
-            let named = fun(n: String): Bool stringOp.equal(symbol n)
-            let through = fun(field: String): Ok begin atoms(f args) runtimeCall(f field) end
             let okValue = fun(): Ok begin emit(f model.i32Const(0)) emit(f i(ops.refI31)) end
             let binary = fun(o: model.Op): Ok begin atoms(f args) emit(f i(o)) end
-            let core = coreExternal(symbol)
-            let realconv = realconvFunction(symbol)
-            let realmath = realmathFunction(symbol)
-            if maybe.isSome(realconv) then
-                emit(f i1(ops.globalGet f.g.noClosure))
-                atoms(f args)
-                runtimeUnitCall(f "util/realconv." <> maybe.unwrap(realconv))
-            elsif maybe.isSome(realmath) then
-                emit(f i1(ops.globalGet f.g.noClosure))
-                atoms(f args)
-                runtimeUnitCall(f "util/realmath." <> maybe.unwrap(realmath)[1])
-            elsif {named("quest_writer_put_string") orif named("quest_writer_put_char")} andif not(f.g.isCore) then
-                (* a standard stream's writer, an i31ref, written by the
-                 * runtime at once; a file's by the core, which buffers *)
-                let w = scratch(f model.eqref)
-                atom(f args[0])
-                emit(f i1(ops.localTee w))
-                emit(f option instRefTest of Inst with
-                    let type = tuple let nullable = false let heap = option heapI31 of model.HeapType end end
-                end)
-                emit(f model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
-                emit(f i1(ops.localGet w))
-                atom(f args[1])
-                runtimeCall(f if named("quest_writer_put_string") then "putString" else "putChar" end)
-                emit(f model.elseInst)
-                emit(f i1(ops.globalGet f.g.noClosure))
-                emit(f i1(ops.localGet w))
-                atom(f args[1])
-                runtimeUnitCall(f "wasm/core." <> maybe.unwrap(core)[1])
-                emit(f model.endInst)
-            elsif maybe.isSome(core) then
-                emit(f i1(ops.globalGet f.g.noClosure))
-                descriptors(f descs)
-                if named("quest_identity_hash") then boxedAtom(f args[0]) else atoms(f args) end
-                runtimeUnitCall(f "wasm/core." <> maybe.unwrap(core)[1])
-                if named("quest_reader_ready") then emit(f i(ops.i64ExtendI32U)) end
-            (* string *)
-            elsif named("quest_string_alloc") then
-                through("stringNew")
-            elsif named("quest_string_get_char") then
-                through("stringGetChar")
-            elsif named("quest_string_set_char") then
-                through("stringSetChar")
-            elsif named("quest_string_get_sub") then
-                through("stringGetSub")
-            elsif named("quest_string_set_sub") then
-                through("stringSetSub")
-            elsif named("quest_string_concat") then
-                through("concat")
-            elsif named("quest_string_equal") then
-                through("stringEqual")
-            elsif named("quest_string_length") then
-                atoms(f args)
-                castTo(f rt.index("string"))
-                emit(f i2(ops.structGet rt.index("string") rt.field("string" "length")))
-                emit(f i(ops.i64ExtendI32U))
-            (* conv *)
-            (* writer: the core's (coreExternals) *)
-            (* ascii, arrayOp, raised, system *)
-            elsif named("quest_ascii_char") then
-                atom(f args[0])
-                emit(f model.i64Const(256))
-                emit(f i(ops.i64GeU))
-                emit(f model.ifInst(empty ""))
-                raiseAt(f "ascii.error" maybe.none())
-                emit(f model.endInst)
-                atom(f args[0])
-                emit(f i(ops.i32WrapI64))
-            elsif named("quest_ascii_val") then
-                atom(f args[0])
-                emit(f i(ops.i64ExtendI32U))
-            elsif named("quest_array_size") then
-                atom(f args[0])
-                castTo(f tArray)
-                emit(f i2(ops.structGet tArray fElems))
-                emit(f i(ops.arrayLen))
-                emit(f i(ops.i64ExtendI32U))
-            elsif named("quest_raised_reraise") then
-                atom(f args[0])
-                castTo(f rt.index("raised"))
-                emit(f i1(ops.throw 0))
-            elsif named("quest_system_exit") then
-                (* the files' writers flushed first, as C's exit does; then
-                 * fatal, with no message, ends the run at the status *)
-                if hashMap.contains(f.g.runtimeUnits "wasm/core.flushWriters") then
+            (* A function of wasm/core: after the descriptors, the arguments,
+             * the first boxed when boxedArgument *)
+            let coreCall = fun(function: externals.UnitFunction boxedArgument: Bool): Ok
+                begin
                     emit(f i1(ops.globalGet f.g.noClosure))
-                    runtimeUnitCall(f "wasm/core.flushWriters")
-                    emit(f i(ops.drop))
+                    descriptors(f descs)
+                    if boxedArgument then boxedAtom(f args[0]) else atoms(f args) end
+                    runtimeUnitCall(f externals.key(function))
                 end
-                literal(f "")
-                if hashMap.contains(f.g.runtimeUnits "wasm/core.exitStatus") then
-                    emit(f i1(ops.globalGet f.g.noClosure))
-                    atom(f args[0])
-                    runtimeUnitCall(f "wasm/core.exitStatus")
-                else
-                    atom(f args[0])
-                end
-                emit(f i(ops.i32WrapI64))
-                runtimeCall(f "fatal")
-                okValue()
-            elsif named("quest_system_is_terminal") then
-                emit(f model.i32Const(0))
-            (* Library externals with no WebAssembly equivalent raise their
-             * module's error (section 4.2): no subprocesses, JIT code
-             * generation, raw address inspection, or line editing. os/code's
-             * symbol lookup returns null (matching a missing native symbol)
-             * because the driver queries it at top level. *)
-            elsif named("quest_system_run") orif strutil.startsWith(symbol "quest_process_") then
-                raiseAt(f "system.error" maybe.none())
-            elsif named("quest_code_symbol") then
-                emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
-            elsif named("quest_code_is_null") then
-                atoms(f args)
-                emit(f i(ops.refIsNull))
-            elsif strutil.startsWith(symbol "quest_code_") orif strutil.startsWith(symbol "quest_value_") then
-                raiseAt(f "value.error" maybe.none())
-            elsif named("quest_readline_editing") then
-                emit(f model.i32Const(0))
-            elsif strutil.startsWith(symbol "quest_readline_") then
-                raiseAt(f "readline.error" maybe.none())
-            (* word *)
-            elsif named("quest_word_not_bits") then
-                atoms(f args)
-                emit(f model.i64Const(~1))
-                emit(f i(ops.i64Xor))
-            elsif named("quest_word_and_bits") then
-                binary(ops.i64And)
-            elsif named("quest_word_or_bits") then
-                binary(ops.i64Or)
-            elsif named("quest_word_xor_bits") then
-                binary(ops.i64Xor)
-            elsif named("quest_word_add") then
-                binary(ops.i64Add)
-            elsif named("quest_word_sub") then
-                binary(ops.i64Sub)
-            elsif named("quest_word_mul") then
-                binary(ops.i64Mul)
-            elsif named("quest_word_lt") then
-                binary(ops.i64LtU)
-            elsif named("quest_word_le") then
-                binary(ops.i64LeU)
-            elsif named("quest_word_gt") then
-                binary(ops.i64GtU)
-            elsif named("quest_word_ge") then
-                binary(ops.i64GeU)
-            elsif named("quest_word_to_int") orif named("quest_word_from_int") then
-                atoms(f args)
-            elsif named("quest_word_pop_count_val") then
-                atoms(f args)
-                emit(f i(ops.i64Popcnt))
-            elsif named("quest_word_count_leading_zeros_val") then
-                atoms(f args)
-                emit(f i(ops.i64Clz))
-            elsif named("quest_word_count_trailing_zeros_val") then
-                atoms(f args)
-                emit(f i(ops.i64Ctz))
-            elsif named("quest_word_rotate_val") then
-                binary(ops.i64Rotl)
-            elsif named("quest_word_div_val") orif named("quest_word_mod_val") then
-                atom(f args[1])
-                emit(f i(ops.i64Eqz))
-                emit(f model.ifInst(empty ""))
-                raiseAt(f "word.error" maybe.none())
-                emit(f model.endInst)
-                binary(if named("quest_word_div_val") then ops.i64DivU else ops.i64RemU end)
-            elsif named("quest_word_shift_val") then
-                (* 0 when |count| >= 64; left for a positive count, right with
-                 * zeros for a negative *)
-                let i64Result = option blockValue of model.BlockType with let type = model.i64 end
-                atom(f args[1])
-                emit(f model.i64Const(63))
-                emit(f i(ops.i64GtS))
-                atom(f args[1])
-                emit(f model.i64Const(~63))
-                emit(f i(ops.i64LtS))
-                emit(f i(ops.i32Or))
-                emit(f model.ifInst(i64Result ""))
-                emit(f model.i64Const(0))
-                emit(f model.elseInst)
-                atom(f args[1])
-                emit(f model.i64Const(0))
-                emit(f i(ops.i64GeS))
-                emit(f model.ifInst(i64Result ""))
-                atom(f args[0])
-                atom(f args[1])
-                emit(f i(ops.i64Shl))
-                emit(f model.elseInst)
-                atom(f args[0])
-                emit(f model.i64Const(0))
-                atom(f args[1])
-                emit(f i(ops.i64Sub))
-                emit(f i(ops.i64ShrU))
-                emit(f model.endInst)
-                emit(f model.endInst)
-            elsif named("quest_word_mul_hi") then
-                (* the high 64 bits of the product, from 32-bit halves *)
-                let half = fun(a: ir.Atom high: Bool): Ok
-                    begin
-                        atom(f a)
-                        if high then
-                            emit(f model.i64Const(32))
-                            emit(f i(ops.i64ShrU))
-                        else
-                            emit(f model.i64Const(4294967295))
-                            emit(f i(ops.i64And))
-                        end
-                    end
-                let p1 = scratch(f model.i64)
-                let p2 = scratch(f model.i64)
-                half(args[0] false)
-                half(args[1] true)
-                emit(f i(ops.i64Mul))
-                emit(f i1(ops.localSet p1))
-                half(args[0] true)
-                half(args[1] false)
-                emit(f i(ops.i64Mul))
-                emit(f i1(ops.localSet p2))
-                (* p3 + (p1 >> 32) + (p2 >> 32) + carry, the carry the middle
-                 * sum's high half *)
-                half(args[0] true)
-                half(args[1] true)
-                emit(f i(ops.i64Mul))
-                emit(f i1(ops.localGet p1))
-                emit(f model.i64Const(32))
-                emit(f i(ops.i64ShrU))
-                emit(f i(ops.i64Add))
-                emit(f i1(ops.localGet p2))
-                emit(f model.i64Const(32))
-                emit(f i(ops.i64ShrU))
-                emit(f i(ops.i64Add))
-                half(args[0] false)
-                half(args[1] false)
-                emit(f i(ops.i64Mul))
-                emit(f model.i64Const(32))
-                emit(f i(ops.i64ShrU))
-                emit(f i1(ops.localGet p1))
-                emit(f model.i64Const(4294967295))
-                emit(f i(ops.i64And))
-                emit(f i(ops.i64Add))
-                emit(f i1(ops.localGet p2))
-                emit(f model.i64Const(4294967295))
-                emit(f i(ops.i64And))
-                emit(f i(ops.i64Add))
-                emit(f model.i64Const(32))
-                emit(f i(ops.i64ShrU))
-                emit(f i(ops.i64Add))
-            (* real *)
-            elsif named("quest_real_from_int") then
-                atoms(f args)
-                emit(f i(ops.f64ConvertI64S))
-            elsif named("quest_real_floor") orif named("quest_real_ceil") orif named("quest_real_trunc") then
-                atoms(f args)
-                emit(f i(if named("quest_real_floor") then ops.f64Floor
-                    elsif named("quest_real_ceil") then ops.f64Ceil
-                    else ops.f64Trunc end))
-                realToInt(f)
-            elsif named("quest_real_round") then
-                (* half away from zero, as C's round: the truncation, and one
-                 * more away from zero when what it drops is at least a half *)
-                let t = scratch(f model.f64)
-                atoms(f args)
-                emit(f i(ops.f64Trunc))
-                emit(f i1(ops.localTee t))
-                atoms(f args)
-                emit(f i1(ops.localGet t))
-                emit(f i(ops.f64Sub))
-                emit(f i(ops.f64Abs))
-                emit(f model.f64Const(0.5))
-                emit(f i(ops.f64Ge))
-                emit(f model.ifInst(option blockValue of model.BlockType with let type = model.f64 end ""))
-                emit(f model.f64Const(1.0))
-                atoms(f args)
-                emit(f i(ops.f64Copysign))
-                emit(f model.elseInst)
-                emit(f model.f64Const(0.0))
-                emit(f model.endInst)
-                emit(f i(ops.f64Add))
-                realToInt(f)
-            elsif named("quest_real_sqrt") then
-                atoms(f args)
-                emit(f i(ops.f64Sqrt))
-                notNaN(f maybe.none())
-            elsif named("quest_real_div") then
-                atom(f args[1])
-                emit(f model.f64Const(0.0))
-                emit(f i(ops.f64Eq))
-                emit(f model.ifInst(empty ""))
-                raiseAt(f "real.error" maybe.none())
-                emit(f model.endInst)
-                binary(ops.f64Div)
-                notNaN(f maybe.none())
-            elsif named("quest_word_to_real_val") then
-                (* word.error for a NaN's bits, which are no Real's *)
-                let r = scratch(f model.f64)
-                atoms(f args)
-                emit(f i(ops.f64ReinterpretI64))
-                emit(f i1(ops.localTee r))
-                emit(f i1(ops.localGet r))
-                emit(f i(ops.f64Ne))
-                emit(f model.ifInst(empty ""))
-                raiseAt(f "word.error" maybe.none())
-                emit(f model.endInst)
-                emit(f i1(ops.localGet r))
-            elsif named("quest_word_from_real_val") then
-                atoms(f args)
-                emit(f i(ops.i64ReinterpretF64))
-            else
+            let row = externals.externalOf(symbol)
+            if maybe.isNone(row) then
                 pending(f "the library's external " <> symbol <> ", which this target lacks for now")
+            else
+                case maybe.unwrap(row)
+                    when extUnit with x then
+                        emit(f i1(ops.globalGet f.g.noClosure))
+                        atoms(f args)
+                        runtimeUnitCall(f externals.key(x.function))
+                    when extWriterPut with x then
+                        if f.g.isCore then
+                            coreCall(x.function false)
+                        else
+                            (* a standard stream's writer, an i31ref, written by
+                             * the runtime at once; a file's by the core, which
+                             * buffers *)
+                            let w = scratch(f model.eqref)
+                            atom(f args[0])
+                            emit(f i1(ops.localTee w))
+                            emit(f option instRefTest of Inst with
+                                let type =
+                                    tuple let nullable = false let heap = option heapI31 of model.HeapType end end
+                            end)
+                            emit(f
+                                    model.ifInst(option blockValue of model.BlockType with
+                                        let type = model.eqref
+                                    end ""))
+                            emit(f i1(ops.localGet w))
+                            atom(f args[1])
+                            runtimeCall(f x.base)
+                            emit(f model.elseInst)
+                            emit(f i1(ops.globalGet f.g.noClosure))
+                            emit(f i1(ops.localGet w))
+                            atom(f args[1])
+                            runtimeUnitCall(f externals.key(x.function))
+                            emit(f model.endInst)
+                        end
+                    when extCore with x then
+                        coreCall(x.function x.boxedArgument)
+                        if x.widened then emit(f i(ops.i64ExtendI32U)) end
+                    when extBase with x then
+                        atoms(f args)
+                        runtimeCall(f x.field)
+                    when extOps with x then
+                        atoms(f args)
+                        for k = 0 upto extent x.ops - 1 do emit(f i(x.ops[k])) end
+                    when extRaise with x then raiseAt(f x.error maybe.none())
+                    when extFalse then emit(f model.i32Const(0))
+                    when extStringLength then
+                        atoms(f args)
+                        castTo(f rt.index("string"))
+                        emit(f i2(ops.structGet rt.index("string") rt.field("string" "length")))
+                        emit(f i(ops.i64ExtendI32U))
+                    when extAsciiChar then
+                        atom(f args[0])
+                        emit(f model.i64Const(256))
+                        emit(f i(ops.i64GeU))
+                        emit(f model.ifInst(empty ""))
+                        raiseAt(f "ascii.error" maybe.none())
+                        emit(f model.endInst)
+                        atom(f args[0])
+                        emit(f i(ops.i32WrapI64))
+                    when extAsciiVal then
+                        atom(f args[0])
+                        emit(f i(ops.i64ExtendI32U))
+                    when extArraySize then
+                        atom(f args[0])
+                        castTo(f tArray)
+                        emit(f i2(ops.structGet tArray fElems))
+                        emit(f i(ops.arrayLen))
+                        emit(f i(ops.i64ExtendI32U))
+                    when extReraise then
+                        atom(f args[0])
+                        castTo(f rt.index("raised"))
+                        emit(f i1(ops.throw 0))
+                    when extExit then
+                        (* the files' writers flushed first, as C's exit does;
+                         * then fatal, with no message, ends the run at the
+                         * status *)
+                        if hashMap.contains(f.g.runtimeUnits "wasm/core.flushWriters") then
+                            emit(f i1(ops.globalGet f.g.noClosure))
+                            runtimeUnitCall(f "wasm/core.flushWriters")
+                            emit(f i(ops.drop))
+                        end
+                        literal(f "")
+                        if hashMap.contains(f.g.runtimeUnits "wasm/core.exitStatus") then
+                            emit(f i1(ops.globalGet f.g.noClosure))
+                            atom(f args[0])
+                            runtimeUnitCall(f "wasm/core.exitStatus")
+                        else
+                            atom(f args[0])
+                        end
+                        emit(f i(ops.i32WrapI64))
+                        runtimeCall(f "fatal")
+                        okValue()
+                    when extCodeSymbol then
+                        emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+                    when extWordNot then
+                        atoms(f args)
+                        emit(f model.i64Const(~1))
+                        emit(f i(ops.i64Xor))
+                    when extWordDivide with x then
+                        atom(f args[1])
+                        emit(f i(ops.i64Eqz))
+                        emit(f model.ifInst(empty ""))
+                        raiseAt(f "word.error" maybe.none())
+                        emit(f model.endInst)
+                        binary(x.op)
+                    when extWordShift then
+                        (* 0 when |count| >= 64; left for a positive count,
+                         * right with zeros for a negative *)
+                        let i64Result = option blockValue of model.BlockType with let type = model.i64 end
+                        atom(f args[1])
+                        emit(f model.i64Const(63))
+                        emit(f i(ops.i64GtS))
+                        atom(f args[1])
+                        emit(f model.i64Const(~63))
+                        emit(f i(ops.i64LtS))
+                        emit(f i(ops.i32Or))
+                        emit(f model.ifInst(i64Result ""))
+                        emit(f model.i64Const(0))
+                        emit(f model.elseInst)
+                        atom(f args[1])
+                        emit(f model.i64Const(0))
+                        emit(f i(ops.i64GeS))
+                        emit(f model.ifInst(i64Result ""))
+                        atom(f args[0])
+                        atom(f args[1])
+                        emit(f i(ops.i64Shl))
+                        emit(f model.elseInst)
+                        atom(f args[0])
+                        emit(f model.i64Const(0))
+                        atom(f args[1])
+                        emit(f i(ops.i64Sub))
+                        emit(f i(ops.i64ShrU))
+                        emit(f model.endInst)
+                        emit(f model.endInst)
+                    when extWordMulHi then
+                        (* the high 64 bits of the product, from 32-bit
+                         * halves *)
+                        let half = fun(a: ir.Atom high: Bool): Ok
+                            begin
+                                atom(f a)
+                                if high then
+                                    emit(f model.i64Const(32))
+                                    emit(f i(ops.i64ShrU))
+                                else
+                                    emit(f model.i64Const(4294967295))
+                                    emit(f i(ops.i64And))
+                                end
+                            end
+                        let p1 = scratch(f model.i64)
+                        let p2 = scratch(f model.i64)
+                        half(args[0] false)
+                        half(args[1] true)
+                        emit(f i(ops.i64Mul))
+                        emit(f i1(ops.localSet p1))
+                        half(args[0] true)
+                        half(args[1] false)
+                        emit(f i(ops.i64Mul))
+                        emit(f i1(ops.localSet p2))
+                        (* p3 + (p1 >> 32) + (p2 >> 32) + carry, the carry the
+                         * middle sum's high half *)
+                        half(args[0] true)
+                        half(args[1] true)
+                        emit(f i(ops.i64Mul))
+                        emit(f i1(ops.localGet p1))
+                        emit(f model.i64Const(32))
+                        emit(f i(ops.i64ShrU))
+                        emit(f i(ops.i64Add))
+                        emit(f i1(ops.localGet p2))
+                        emit(f model.i64Const(32))
+                        emit(f i(ops.i64ShrU))
+                        emit(f i(ops.i64Add))
+                        half(args[0] false)
+                        half(args[1] false)
+                        emit(f i(ops.i64Mul))
+                        emit(f model.i64Const(32))
+                        emit(f i(ops.i64ShrU))
+                        emit(f i1(ops.localGet p1))
+                        emit(f model.i64Const(4294967295))
+                        emit(f i(ops.i64And))
+                        emit(f i(ops.i64Add))
+                        emit(f i1(ops.localGet p2))
+                        emit(f model.i64Const(4294967295))
+                        emit(f i(ops.i64And))
+                        emit(f i(ops.i64Add))
+                        emit(f model.i64Const(32))
+                        emit(f i(ops.i64ShrU))
+                        emit(f i(ops.i64Add))
+                    (* real *)
+                    when extRealRounding with x then
+                        atoms(f args)
+                        emit(f i(x.op))
+                        realToInt(f)
+                    when extRealRound then
+                        (* half away from zero, as C's round: the truncation,
+                         * and one more away from zero when what it drops is at
+                         * least a half *)
+                        let t = scratch(f model.f64)
+                        atoms(f args)
+                        emit(f i(ops.f64Trunc))
+                        emit(f i1(ops.localTee t))
+                        atoms(f args)
+                        emit(f i1(ops.localGet t))
+                        emit(f i(ops.f64Sub))
+                        emit(f i(ops.f64Abs))
+                        emit(f model.f64Const(0.5))
+                        emit(f i(ops.f64Ge))
+                        emit(f model.ifInst(option blockValue of model.BlockType with let type = model.f64 end ""))
+                        emit(f model.f64Const(1.0))
+                        atoms(f args)
+                        emit(f i(ops.f64Copysign))
+                        emit(f model.elseInst)
+                        emit(f model.f64Const(0.0))
+                        emit(f model.endInst)
+                        emit(f i(ops.f64Add))
+                        realToInt(f)
+                    when extRealSqrt then
+                        atoms(f args)
+                        emit(f i(ops.f64Sqrt))
+                        notNaN(f maybe.none())
+                    when extRealDiv then
+                        atom(f args[1])
+                        emit(f model.f64Const(0.0))
+                        emit(f i(ops.f64Eq))
+                        emit(f model.ifInst(empty ""))
+                        raiseAt(f "real.error" maybe.none())
+                        emit(f model.endInst)
+                        binary(ops.f64Div)
+                        notNaN(f maybe.none())
+                    when extWordToReal then
+                        (* word.error for a NaN's bits, which are no Real's *)
+                        let r = scratch(f model.f64)
+                        atoms(f args)
+                        emit(f i(ops.f64ReinterpretI64))
+                        emit(f i1(ops.localTee r))
+                        emit(f i1(ops.localGet r))
+                        emit(f i(ops.f64Ne))
+                        emit(f model.ifInst(empty ""))
+                        raiseAt(f "word.error" maybe.none())
+                        emit(f model.endInst)
+                        emit(f i1(ops.localGet r))
+                end
             end
         end
 
@@ -2681,7 +2501,12 @@ export
     let externalValue(f: F symbol: String): Ok =
         begin
             let named = fun(n: String): Bool stringOp.equal(symbol n)
-            let core = coreExternal(symbol)
+            (* a function of the core's, of no arguments *)
+            let core =
+                case maybe.unwrapOr(externals.externalOf(symbol) option extFalse of externals.External end)
+                    when extCore with x then maybe.some(x.function)
+                    else maybe.none(:externals.UnitFunction)
+                end
             let prefix = "(&quest_exc_"
             if strutil.startsWith(symbol prefix) andif strutil.endsWith(symbol ")") then
                 (* the module's name, then the exception's, after its first _ *)
@@ -2745,7 +2570,7 @@ export
                 emit(f i(ops.refI31))
             elsif maybe.isSome(core) then
                 emit(f i1(ops.globalGet f.g.noClosure))
-                runtimeUnitCall(f "wasm/core." <> maybe.unwrap(core)[1])
+                runtimeUnitCall(f externals.key(maybe.unwrap(core)))
             else
                 pending(f "the library's external " <> symbol <> ", which this target lacks for now")
             end
@@ -3994,13 +3819,13 @@ export
 
     (* An intrinsic (section 4.5): an external named wasm.NAME, which an
      * unsound module the backend compiles, the runtime's core above all,
-     * declares at the types it uses it at; compiled in place, its value
-     * that of its function's result type, target's *)
+     * declares at the types it uses it at; compiled in place, as
+     * wasm/externals' row for it says, its value that of its function's
+     * result type, target's *)
     let intrinsic(f: F x: ir.OpCallExternal target: maybe.T(ir.Variable)): Ok =
         begin
             let name = x.symbol
             let args = x.args
-            let named = fun(n: String): Bool stringOp.equal(name "wasm." <> n)
             let indexArg = fun(): Ok
                 begin
                     atom(f args[1])
@@ -4013,366 +3838,334 @@ export
                 end
             let tRecBox = rt.index("recBox")
             let tException = rt.index("exception")
-            if strutil.startsWith(name "wasm.base.") then
-                (* a function of the base's, by its export's name; Ok when it
-                 * gives nothing *)
-                let field = stringOp.getSub(name 10 {stringOp.length(name) - 10})
-                atoms(f args)
-                runtimeCall(f field)
-                let var results = 1
-                for k = 0 upto extent runtime.exports - 1 do
-                    if stringOp.equal(runtime.exports[k].field field) then
-                        results := extent runtime.exports[k].results
+            let which = externals.intrinsicOf(name)
+            if maybe.isNone(which) then fail(:Ok "the external " <> name <> ", which is no intrinsic") end
+            case maybe.unwrap(which)
+                when intrBase with b then
+                    (* a function of the base's, by its export's name; Ok when
+                     * it gives nothing *)
+                    let field = b.field
+                    atoms(f args)
+                    runtimeCall(f field)
+                    let var results = 1
+                    for k = 0 upto extent runtime.exports - 1 do
+                        if stringOp.equal(runtime.exports[k].field field) then
+                            results := extent runtime.exports[k].results
+                        end
                     end
-                end
-                if results is 0 then okValue() end
-            elsif strutil.startsWith(name "wasm.host.") then
-                (* the host's function, its Ints as i32s *)
-                for k = 0 upto extent args - 1 do
-                    atom(f args[k])
+                    if results is 0 then okValue() end
+                when intrHost with h then
+                    (* the host's function, its Ints as i32s *)
+                    for k = 0 upto extent args - 1 do
+                        atom(f args[k])
+                        emit(f i(ops.i32WrapI64))
+                    end
+                    runtimeUnitCall(f "quest.host." <> h.field)
+                    emit(f i(ops.i64ExtendI32S))
+                when intrPrint with p then
+                    emit(f i1(ops.globalGet f.g.noClosure))
+                    runtimeUnitCall(f externals.key(p.function))
+                when intrRaisedName then
+                    (* a raised exception's text, as the uncaught report writes
+                     * it: its name, and its payload, by its descriptor if it
+                     * has one (print's show), with its type *)
+                    let tRaised = rt.index("raised")
+                    let state = scratch(f model.eqref)
+                    atom(f args[0])
+                    emit(f i1(ops.localTee state))
+                    emit(f i1(ops.localGet state))
+                    castTo(f tRaised)
+                    emit(f i2(ops.structGet tRaised rt.field("raised" "desc")))
+                    emit(f i(ops.refIsNull))
+                    emit(f model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
+                    emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+                    emit(f model.elseInst)
+                    emit(f i1(ops.globalGet f.g.noClosure))
+                    emit(f i1(ops.localGet state))
+                    castTo(f tRaised)
+                    emit(f i2(ops.structGet tRaised rt.field("raised" "payload")))
+                    emit(f i1(ops.localGet state))
+                    castTo(f tRaised)
+                    emit(f i2(ops.structGet tRaised rt.field("raised" "desc")))
+                    runtimeUnitCall(f "wasm/print.show")
+                    emit(f model.endInst)
+                    runtimeCall(f "raisedText")
+                when intrRaisedSite then
+                    (* a raise's site, "" if none *)
+                    let tRaised = rt.index("raised")
+                    atom(f args[0])
+                    castTo(f tRaised)
+                    emit(f i2(ops.structGet tRaised rt.field("raised" "site")))
+                    let site = scratch(f model.eqref)
+                    emit(f i1(ops.localTee site))
+                    emit(f i(ops.refIsNull))
+                    emit(f model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
+                    literal(f "")
+                    emit(f model.elseInst)
+                    emit(f i1(ops.localGet site))
+                    emit(f model.endInst)
+                when intrFatalReport then
+                    (* the report of the fatal error the runtime kept while it
+                     * held them (holdFatal), "" if none *)
+                    runtimeCall(f "fatalReport")
+                    let report = scratch(f model.eqref)
+                    emit(f i1(ops.localTee report))
+                    emit(f i(ops.refIsNull))
+                    emit(f model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
+                    literal(f "")
+                    emit(f model.elseInst)
+                    emit(f i1(ops.localGet report))
+                    emit(f model.endInst)
+                when intrImportedRecord then
+                    (* the payload of the record of a unit this one imports,
+                     * named by a constant *)
+                    let unitName =
+                        case args[0]
+                            when atomConst with c then
+                                case c.c.value when constString with s then s.s else "" end
+                            else ""
+                        end
+                    if not(hashMap.contains(f.g.importRecords unitName)) then
+                        fail(:Ok "importedRecord of a unit not imported: " <> unitName)
+                    end
+                    emit(f i1(ops.globalGet hashMap.find(f.g.importRecords unitName)))
+                when intrRecordSet then
+                    (* a record's field, by its index in name order, set *)
+                    let tRecord = rt.index("record")
+                    atom(f args[0])
+                    castTo(f tRecord)
+                    emit(f i2(ops.structGet tRecord rt.field("record" "slots")))
+                    indexArg()
+                    boxedAtom(f args[2])
+                    emit(f i1(ops.arraySet tSlots))
+                    okValue()
+                when intrToAny then
+                    boxedAtom(f args[0])
+                when intrFromAny then
+                    atom(f args[0])
+                    if maybe.isSome(target) then
+                        unboxFor(f maybe.unwrap(target).type target)
+                    end
+                when intrOps with o then
+                    atoms(f args)
+                    for k = 0 upto extent o.ops - 1 do emit(f i(o.ops[k])) end
+                when intrCount with c then
+                    let isArray = c.isArray
+                    atom(f args[0])
+                    castTo(f if isArray then tArray else tTuple end)
+                    emit(f
+                            i2(ops.structGet if isArray then
+                                tArray
+                            else
+                                tTuple
+                            end if isArray then fElems else fSlots end))
+                    emit(f i(ops.arrayLen))
+                    emit(f i(ops.i64ExtendI32U))
+                when intrSlot with c then
+                    let isArray = c.isArray
+                    atom(f args[0])
+                    castTo(f if isArray then tArray else tTuple end)
+                    emit(f
+                            i2(ops.structGet if isArray then
+                                tArray
+                            else
+                                tTuple
+                            end if isArray then fElems else fSlots end))
+                    indexArg()
+                    emit(f i1(ops.arrayGet tSlots))
+                when intrRecordField then
+                    (* the payload's slot that the view's table gives field i *)
+                    let b = scratch(f model.refNull(tRecBox))
+                    atom(f args[0])
+                    castTo(f tRecBox)
+                    emit(f i1(ops.localTee b))
+                    emit(f i2(ops.structGet tRecBox 0))
+                    emit(f i2(ops.structGet tRecord rt.field("record" "slots")))
+                    emit(f i1(ops.localGet b))
+                    emit(f i2(ops.structGet tRecBox 1))
+                    emit(f i2(ops.structGet tDict 0))
+                    indexArg()
+                    emit(f i1(ops.arrayGet rt.index("i32s")))
+                    emit(f i1(ops.arrayGet tSlots))
+                when intrOptionTag then
+                    atom(f args[0])
+                    castTo(f tOption)
+                    emit(f i2(ops.structGet tOption fTag))
+                    emit(f i(ops.i64ExtendI32U))
+                when intrVariantTag then
+                    atom(f args[0])
+                    castTo(f tVarBox)
+                    emit(f i2(ops.structGet tVarBox 0))
+                    emit(f i(ops.i64ExtendI32U))
+                when intrVariantPayload then
+                    atom(f args[0])
+                    castTo(f tVarBox)
+                    emit(f i2(ops.structGet tVarBox 1))
+                when intrExceptionName then
+                    atom(f args[0])
+                    castTo(f tException)
+                    emit(f i2(ops.structGet tException rt.field("exception" "name")))
+                when intrRuntime with r then
+                    atoms(f args)
+                    runtimeCall(f r.field)
+                when intrPut then
+                    emit(f model.i32Const(1))
+                    emit(f i(ops.refI31))
+                    atoms(f args)
+                    runtimeCall(f "putString")
+                when intrPutTo with p then
+                    (* to a standard stream's writer, the i31 of its file
+                     * descriptor *)
+                    atoms(f args)
+                    runtimeCall(f p.field)
+                when intrSignBit then
+                    atoms(f args)
+                    emit(f i(ops.i64ReinterpretF64))
+                    emit(f model.i64Const(0))
+                    emit(f i(ops.i64LtS))
+                when intrHashMix then
+                    atoms(f args)
+                    hashMix(f)
+                when intrIsSmall then
+                    atom(f args[0])
+                    emit(f option instRefTest of Inst with
+                        let type = tuple let nullable = false let heap = option heapI31 of model.HeapType end end
+                    end)
+                when intrIsA with t then
+                    atom(f args[0])
+                    emit(f option instRefTest of Inst with
+                        let type = tuple let nullable = false let heap = heapOf(rt.index(t.type)) end
+                    end)
+                when intrSmallValue then
+                    atom(f args[0])
+                    castI31(f)
+                    emit(f i(ops.i31GetS))
+                    emit(f i(ops.i64ExtendI32S))
+                when intrBoxedInt then
+                    atom(f args[0])
+                    castTo(f rt.index("boxInt"))
+                    emit(f i2(ops.structGet rt.index("boxInt") 0))
+                when intrRecPayload then
+                    atom(f args[0])
+                    castTo(f tRecBox)
+                    emit(f i2(ops.structGet tRecBox 0))
+                when intrRecDict then
+                    atom(f args[0])
+                    castTo(f tRecBox)
+                    emit(f i2(ops.structGet tRecBox 1))
+                when intrNewRecBox then
+                    atom(f args[0])
+                    castTo(f tRecord)
+                    atom(f args[1])
+                    castTo(f tDict)
+                    emit(f i1(ops.structNew tRecBox))
+                when intrRecordLayout then
+                    atom(f args[0])
+                    castTo(f tRecord)
+                    emit(f i2(ops.structGet tRecord rt.field("record" "layout")))
+                when intrNewVarBox then
+                    atom(f args[0])
                     emit(f i(ops.i32WrapI64))
-                end
-                runtimeUnitCall(f "quest.host." <> stringOp.getSub(name 10 {stringOp.length(name) - 10}))
-                emit(f i(ops.i64ExtendI32S))
-            elsif named("print.capture") orif named("print.captured") then
-                emit(f i1(ops.globalGet f.g.noClosure))
-                runtimeUnitCall(f "wasm/print." <> stringOp.getSub(name 11 {stringOp.length(name) - 11}))
-            elsif named("raisedName") then
-                (* a raised exception's text, as the uncaught report writes
-                 * it: its name, and its payload, by its descriptor if it has
-                 * one (print's show), with its type *)
-                let tRaised = rt.index("raised")
-                let state = scratch(f model.eqref)
-                atom(f args[0])
-                emit(f i1(ops.localTee state))
-                emit(f i1(ops.localGet state))
-                castTo(f tRaised)
-                emit(f i2(ops.structGet tRaised rt.field("raised" "desc")))
-                emit(f i(ops.refIsNull))
-                emit(f model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
-                emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
-                emit(f model.elseInst)
-                emit(f i1(ops.globalGet f.g.noClosure))
-                emit(f i1(ops.localGet state))
-                castTo(f tRaised)
-                emit(f i2(ops.structGet tRaised rt.field("raised" "payload")))
-                emit(f i1(ops.localGet state))
-                castTo(f tRaised)
-                emit(f i2(ops.structGet tRaised rt.field("raised" "desc")))
-                runtimeUnitCall(f "wasm/print.show")
-                emit(f model.endInst)
-                runtimeCall(f "raisedText")
-            elsif named("raisedSite") then
-                (* a raise's site, "" if none *)
-                let tRaised = rt.index("raised")
-                atom(f args[0])
-                castTo(f tRaised)
-                emit(f i2(ops.structGet tRaised rt.field("raised" "site")))
-                let site = scratch(f model.eqref)
-                emit(f i1(ops.localTee site))
-                emit(f i(ops.refIsNull))
-                emit(f model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
-                literal(f "")
-                emit(f model.elseInst)
-                emit(f i1(ops.localGet site))
-                emit(f model.endInst)
-            elsif named("fatalReport") then
-                (* the report of the fatal error the runtime kept while it held
-                 * them (holdFatal), "" if none *)
-                runtimeCall(f "fatalReport")
-                let report = scratch(f model.eqref)
-                emit(f i1(ops.localTee report))
-                emit(f i(ops.refIsNull))
-                emit(f model.ifInst(option blockValue of model.BlockType with let type = model.eqref end ""))
-                literal(f "")
-                emit(f model.elseInst)
-                emit(f i1(ops.localGet report))
-                emit(f model.endInst)
-            elsif named("importedRecord") then
-                (* the payload of the record of a unit this one imports, named
-                 * by a constant *)
-                let unitName =
-                    case args[0]
-                        when atomConst with c then
-                            case c.c.value when constString with s then s.s else "" end
-                        else ""
-                    end
-                if not(hashMap.contains(f.g.importRecords unitName)) then
-                    fail(:Ok "importedRecord of a unit not imported: " <> unitName)
-                end
-                emit(f i1(ops.globalGet hashMap.find(f.g.importRecords unitName)))
-            elsif named("recordSet") then
-                (* a record's field, by its index in name order, set *)
-                let tRecord = rt.index("record")
-                atom(f args[0])
-                castTo(f tRecord)
-                emit(f i2(ops.structGet tRecord rt.field("record" "slots")))
-                indexArg()
-                boxedAtom(f args[2])
-                emit(f i1(ops.arraySet tSlots))
-                okValue()
-            elsif named("toAny") then
-                boxedAtom(f args[0])
-            elsif named("fromAny") then
-                atom(f args[0])
-                if maybe.isSome(target) then
-                    unboxFor(f maybe.unwrap(target).type target)
-                end
-            elsif named("same") then
-                atoms(f args)
-                emit(f i(ops.refEq))
-            elsif named("tupleCount") orif named("arrayCount") then
-                let isArray = named("arrayCount")
-                atom(f args[0])
-                castTo(f if isArray then tArray else tTuple end)
-                emit(f i2(ops.structGet if isArray then tArray else tTuple end if isArray then fElems else fSlots end))
-                emit(f i(ops.arrayLen))
-                emit(f i(ops.i64ExtendI32U))
-            elsif named("tupleSlot") orif named("arraySlot") then
-                let isArray = named("arraySlot")
-                atom(f args[0])
-                castTo(f if isArray then tArray else tTuple end)
-                emit(f i2(ops.structGet if isArray then tArray else tTuple end if isArray then fElems else fSlots end))
-                indexArg()
-                emit(f i1(ops.arrayGet tSlots))
-            elsif named("recordField") then
-                (* the payload's slot that the view's table gives field i *)
-                let b = scratch(f model.refNull(tRecBox))
-                atom(f args[0])
-                castTo(f tRecBox)
-                emit(f i1(ops.localTee b))
-                emit(f i2(ops.structGet tRecBox 0))
-                emit(f i2(ops.structGet tRecord rt.field("record" "slots")))
-                emit(f i1(ops.localGet b))
-                emit(f i2(ops.structGet tRecBox 1))
-                emit(f i2(ops.structGet tDict 0))
-                indexArg()
-                emit(f i1(ops.arrayGet rt.index("i32s")))
-                emit(f i1(ops.arrayGet tSlots))
-            elsif named("optionTag") then
-                atom(f args[0])
-                castTo(f tOption)
-                emit(f i2(ops.structGet tOption fTag))
-                emit(f i(ops.i64ExtendI32U))
-            elsif named("variantTag") then
-                atom(f args[0])
-                castTo(f tVarBox)
-                emit(f i2(ops.structGet tVarBox 0))
-                emit(f i(ops.i64ExtendI32U))
-            elsif named("variantPayload") then
-                atom(f args[0])
-                castTo(f tVarBox)
-                emit(f i2(ops.structGet tVarBox 1))
-            elsif named("exceptionName") then
-                atom(f args[0])
-                castTo(f tException)
-                emit(f i2(ops.structGet tException rt.field("exception" "name")))
-            elsif named("decimal") then
-                atoms(f args)
-                runtimeCall(f "decimal")
-            elsif named("hex") then
-                atoms(f args)
-                runtimeCall(f "hex")
-            elsif named("escaped") then
-                atoms(f args)
-                runtimeCall(f "escaped")
-            elsif named("charString") then
-                atoms(f args)
-                runtimeCall(f "convChar")
-            elsif named("put") then
-                emit(f model.i32Const(1))
-                emit(f i(ops.refI31))
-                atoms(f args)
-                runtimeCall(f "putString")
-            elsif named("putTo") orif named("putCharTo") then
-                (* to a standard stream's writer, the i31 of its file
-                 * descriptor *)
-                atoms(f args)
-                runtimeCall(f if named("putTo") then "putString" else "putChar" end)
-            elsif named("convInt") then
-                atoms(f args)
-                runtimeCall(f "convInt")
-            elsif named("realBits") then
-                atoms(f args)
-                emit(f i(ops.i64ReinterpretF64))
-            elsif named("signBit") then
-                atoms(f args)
-                emit(f i(ops.i64ReinterpretF64))
-                emit(f model.i64Const(0))
-                emit(f i(ops.i64LtS))
-            elsif named("charCode") then
-                atoms(f args)
-                emit(f i(ops.i64ExtendI32U))
-            elsif named("shrU") then
-                atoms(f args)
-                emit(f i(ops.i64ShrU))
-            elsif named("xor") then
-                atoms(f args)
-                emit(f i(ops.i64Xor))
-            elsif named("hashMix") then
-                atoms(f args)
-                hashMix(f)
-            elsif named("isSmall") orif named("isBoxedInt") orif named("isRecBox") orif named("isObject") then
-                atom(f args[0])
-                let heap = if named("isSmall") then option heapI31 of model.HeapType end
-                    else heapOf(rt.index(if named("isBoxedInt") then "boxInt"
-                        elsif named("isRecBox") then "recBox"
-                        else "obj" end))
-                    end
-                emit(f option instRefTest of Inst with let type = tuple let nullable = false let heap = heap end end)
-            elsif named("smallValue") then
-                atom(f args[0])
-                castI31(f)
-                emit(f i(ops.i31GetS))
-                emit(f i(ops.i64ExtendI32S))
-            elsif named("boxedInt") then
-                atom(f args[0])
-                castTo(f rt.index("boxInt"))
-                emit(f i2(ops.structGet rt.index("boxInt") 0))
-            elsif named("recPayload") then
-                atom(f args[0])
-                castTo(f tRecBox)
-                emit(f i2(ops.structGet tRecBox 0))
-            elsif named("recDict") then
-                atom(f args[0])
-                castTo(f tRecBox)
-                emit(f i2(ops.structGet tRecBox 1))
-            elsif named("newRecBox") then
-                atom(f args[0])
-                castTo(f tRecord)
-                atom(f args[1])
-                castTo(f tDict)
-                emit(f i1(ops.structNew tRecBox))
-            elsif named("recordLayout") then
-                atom(f args[0])
-                castTo(f tRecord)
-                emit(f i2(ops.structGet tRecord rt.field("record" "layout")))
-            elsif named("newVarBox") then
-                atom(f args[0])
-                emit(f i(ops.i32WrapI64))
-                atom(f args[1])
-                emit(f i1(ops.structNew tVarBox))
-            elsif named("isNull") then
-                atom(f args[0])
-                emit(f i(ops.refIsNull))
-            elsif named("nullAny") then
-                emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
-            elsif named("newI32s") then
-                atom(f args[0])
-                emit(f i(ops.i32WrapI64))
-                emit(f i1(ops.arrayNewDefault rt.index("i32s")))
-            elsif named("setI32") then
-                atom(f args[0])
-                castTo(f rt.index("i32s"))
-                atom(f args[1])
-                emit(f i(ops.i32WrapI64))
-                atom(f args[2])
-                emit(f i(ops.i32WrapI64))
-                emit(f i1(ops.arraySet rt.index("i32s")))
-                okValue()
-            elsif named("newDict") then
-                atom(f args[0])
-                castTo(f rt.index("i32s"))
-                atom(f args[1])
-                emit(f i1(ops.structNew tDict))
-            elsif named("dictIndex") then
-                atom(f args[0])
-                castTo(f tDict)
-                emit(f i2(ops.structGet tDict 0))
-                atom(f args[1])
-                emit(f i(ops.i32WrapI64))
-                emit(f i1(ops.arrayGet rt.index("i32s")))
-                emit(f i(ops.i64ExtendI32U))
-            elsif named("recordSlot") then
-                atom(f args[0])
-                castTo(f tRecord)
-                emit(f i2(ops.structGet tRecord rt.field("record" "slots")))
-                atom(f args[1])
-                emit(f i(ops.i32WrapI64))
-                emit(f i1(ops.arrayGet tSlots))
-            elsif named("isProxy") then
-                atom(f args[0])
-                emit(f option instRefTest of Inst with
-                    let type = tuple
-                        let nullable = false
-                        let heap = heapOf(rt.index("proxy"))
-                    end
-                end)
-            elsif named("newProxy") then
-                emit(f model.i32Const(0))
-                atom(f args[0])
-                emit(f i1(ops.structNew rt.index("proxy")))
-            elsif named("proxyState") then
-                atom(f args[0])
-                castTo(f rt.index("proxy"))
-                emit(f i2(ops.structGet rt.index("proxy") 1))
-            elsif named("newTuple") then
-                emit(f model.i32Const(0))
-                atom(f args[0])
-                castTo(f tArray)
-                emit(f i2(ops.structGet tArray fElems))
-                emit(f i1(ops.structNew tTuple))
-            elsif named("newOption") then
-                emit(f model.i32Const(0))
-                atom(f args[1])
-                castTo(f tArray)
-                emit(f i2(ops.structGet tArray fElems))
-                atom(f args[0])
-                emit(f i(ops.i32WrapI64))
-                emit(f i1(ops.structNew tOption))
-            elsif named("autoDesc") orif named("autoPayload") then
-                atom(f args[0])
-                castTo(f rt.index("auto"))
-                emit(f i2(ops.structGet rt.index("auto") if named("autoDesc") then 1 else 2 end))
-            elsif named("newAuto") then
-                emit(f model.i32Const(0))
-                atoms(f args)
-                emit(f i1(ops.structNew rt.index("auto")))
-            elsif named("adaptClosure") then
-                atoms(f args)
-                emit(f i1(ops.call adapters(f.g)))
-            elsif named("addWrap") orif named("mulWrap") then
-                atoms(f args)
-                emit(f i(if named("addWrap") then ops.i64Add else ops.i64Mul end))
-            elsif named("newRecordPayload") then
-                (* a record's payload, its layout's descriptor and its slots *)
-                emit(f model.i32Const(0))
-                atom(f args[0])
-                atom(f args[1])
-                castTo(f tArray)
-                emit(f i2(ops.structGet tArray fElems))
-                emit(f i1(ops.structNew tRecord))
-            elsif named("realEq") then
-                atoms(f args)
-                emit(f i(ops.f64Eq))
-            elsif named("isBoxedReal") then
-                atom(f args[0])
-                emit(f option instRefTest of Inst with
-                    let type = tuple
-                        let nullable = false
-                        let heap = heapOf(rt.index("boxReal"))
-                    end
-                end)
-            elsif named("dictStored") then
-                atom(f args[0])
-                castTo(f tDict)
-                emit(f i2(ops.structGet tDict 1))
-            elsif named("dynamicError") then
-                raiseAt(f "dynamic.error" maybe.none())
-            elsif named("hashOf") then
-                atom(f args[0])
-                castTo(f rt.index("obj"))
-                emit(f i2(ops.structGet rt.index("obj") 0))
-                emit(f i(ops.i64ExtendI32U))
-            elsif named("setHash") then
-                atom(f args[0])
-                castTo(f rt.index("obj"))
-                atom(f args[1])
-                emit(f i(ops.i32WrapI64))
-                emit(f i2(ops.structSet rt.index("obj") 0))
-                okValue()
-            else
-                fail(:Ok "the external " <> name <> ", which is no intrinsic")
+                    atom(f args[1])
+                    emit(f i1(ops.structNew tVarBox))
+                when intrIsNull then
+                    atom(f args[0])
+                    emit(f i(ops.refIsNull))
+                when intrNullAny then
+                    emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+                when intrNewI32s then
+                    atom(f args[0])
+                    emit(f i(ops.i32WrapI64))
+                    emit(f i1(ops.arrayNewDefault rt.index("i32s")))
+                when intrSetI32 then
+                    atom(f args[0])
+                    castTo(f rt.index("i32s"))
+                    atom(f args[1])
+                    emit(f i(ops.i32WrapI64))
+                    atom(f args[2])
+                    emit(f i(ops.i32WrapI64))
+                    emit(f i1(ops.arraySet rt.index("i32s")))
+                    okValue()
+                when intrNewDict then
+                    atom(f args[0])
+                    castTo(f rt.index("i32s"))
+                    atom(f args[1])
+                    emit(f i1(ops.structNew tDict))
+                when intrDictIndex then
+                    atom(f args[0])
+                    castTo(f tDict)
+                    emit(f i2(ops.structGet tDict 0))
+                    atom(f args[1])
+                    emit(f i(ops.i32WrapI64))
+                    emit(f i1(ops.arrayGet rt.index("i32s")))
+                    emit(f i(ops.i64ExtendI32U))
+                when intrRecordSlot then
+                    atom(f args[0])
+                    castTo(f tRecord)
+                    emit(f i2(ops.structGet tRecord rt.field("record" "slots")))
+                    atom(f args[1])
+                    emit(f i(ops.i32WrapI64))
+                    emit(f i1(ops.arrayGet tSlots))
+                when intrNewProxy then
+                    emit(f model.i32Const(0))
+                    atom(f args[0])
+                    emit(f i1(ops.structNew rt.index("proxy")))
+                when intrProxyState then
+                    atom(f args[0])
+                    castTo(f rt.index("proxy"))
+                    emit(f i2(ops.structGet rt.index("proxy") 1))
+                when intrNewTuple then
+                    emit(f model.i32Const(0))
+                    atom(f args[0])
+                    castTo(f tArray)
+                    emit(f i2(ops.structGet tArray fElems))
+                    emit(f i1(ops.structNew tTuple))
+                when intrNewOption then
+                    emit(f model.i32Const(0))
+                    atom(f args[1])
+                    castTo(f tArray)
+                    emit(f i2(ops.structGet tArray fElems))
+                    atom(f args[0])
+                    emit(f i(ops.i32WrapI64))
+                    emit(f i1(ops.structNew tOption))
+                when intrAutoPart with p then
+                    atom(f args[0])
+                    castTo(f rt.index("auto"))
+                    emit(f i2(ops.structGet rt.index("auto") p.index))
+                when intrNewAuto then
+                    emit(f model.i32Const(0))
+                    atoms(f args)
+                    emit(f i1(ops.structNew rt.index("auto")))
+                when intrAdaptClosure then
+                    atoms(f args)
+                    emit(f i1(ops.call adapters(f.g)))
+                when intrNewRecordPayload then
+                    (* a record's payload, its layout's descriptor and its
+                     * slots *)
+                    emit(f model.i32Const(0))
+                    atom(f args[0])
+                    atom(f args[1])
+                    castTo(f tArray)
+                    emit(f i2(ops.structGet tArray fElems))
+                    emit(f i1(ops.structNew tRecord))
+                when intrDictStored then
+                    atom(f args[0])
+                    castTo(f tDict)
+                    emit(f i2(ops.structGet tDict 1))
+                when intrDynamicError then
+                    raiseAt(f "dynamic.error" maybe.none())
+                when intrHashOf then
+                    atom(f args[0])
+                    castTo(f rt.index("obj"))
+                    emit(f i2(ops.structGet rt.index("obj") 0))
+                    emit(f i(ops.i64ExtendI32U))
+                when intrSetHash then
+                    atom(f args[0])
+                    castTo(f rt.index("obj"))
+                    atom(f args[1])
+                    emit(f i(ops.i32WrapI64))
+                    emit(f i2(ops.structSet rt.index("obj") 0))
+                    okValue()
             end
             ok
         end
@@ -5838,6 +5631,21 @@ export
                     results: Array(ValType)): Bool
                 hashMap.insert(g.runtimeUnits unitName <> "." <> field
                         importFunction(unitName field funcType(g withClosure(params) results)))
+            (* A runtime unit's function the externals call (wasm/externals),
+             * imported once *)
+            let unitFunction = fun(u: externals.UnitFunction): Ok
+                if not(hashMap.contains(g.runtimeUnits externals.key(u))) then
+                    runtimeImport(u.unit u.field u.params u.results)
+                end
+            (* wasm/print's init, imported once; called first in the unit's
+             * initializer when printAtStart, as by a unit that echoes with
+             * descriptors, a phrase, or one using print's intrinsics *)
+            let printInit = fun(): Ok
+                if not(hashMap.contains(g.runtimeUnits "wasm/print.init")) then
+                    hashMap.insert(g.runtimeUnits "wasm/print.init"
+                            importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
+                end
+            let var printAtStart = false
             let e = model.eqref
             let n = model.i64
             (* Import wasm/print when a unit echoes descriptor-formatted values
@@ -5857,17 +5665,15 @@ export
                     end
                 end
             end
-            let printed = {described andif echoes} orif {asProgram andif not(isRuntimeUnit(moduleName))}
-            if printed then
-                hashMap.insert(g.runtimeUnits "wasm/print.init"
-                        importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
+            (* A program's _start initializes print itself, and only to report
+             * an uncaught exception *)
+            printAtStart := {described andif echoes} orif g.isPhrase
+            if {described andif echoes} orif {asProgram andif not(isRuntimeUnit(moduleName))} then
+                printInit()
                 runtimeImport("wasm/print" "show" array of e e end array of e end)
             end
             if g.isPhrase then
-                if not(hashMap.contains(g.runtimeUnits "wasm/print.init")) then
-                    hashMap.insert(g.runtimeUnits "wasm/print.init"
-                            importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
-                end
+                printInit()
                 runtimeImport("wasm/print" "echoText" array of e end array of e end)
             end
             (* the core's proxies, which an access that may meet one calls *)
@@ -5955,35 +5761,19 @@ export
                                     else ok
                                 end
                             end
-                        let realconvImport = fun(field: String): Ok
-                            if not(hashMap.contains(g.runtimeUnits "util/realconv." <> field)) then
-                                if stringOp.equal(field "toReal") then
-                                    runtimeImport("util/realconv" field array of model.eqref end array of model.f64 end)
-                                elsif stringOp.equal(field "format") then
-                                    runtimeImport("util/realconv" field array of model.f64 model.i32 model.i64 end
-                                            array of model.eqref end)
-                                else
-                                    runtimeImport("util/realconv" field array of model.f64 end array of model.eqref end)
-                                end
-                            end
-                        let realmathImport = fun(field: String arity: Int): Ok
-                            if not(hashMap.contains(g.runtimeUnits "util/realmath." <> field)) then
-                                runtimeImport("util/realmath" field array of(arity model.f64) array of model.f64 end)
-                            end
+                        (* the runtime unit functions an external calls
+                         * (wasm/externals), each once; the core imports
+                         * none of its own *)
                         let coreFunction = fun(symbol: String): Ok
-                            if stringOp.equal(symbol "quest_system_exit") andif not(g.isCore) then
-                                if not(hashMap.contains(g.runtimeUnits "wasm/core.exitStatus")) then
-                                    runtimeImport("wasm/core" "exitStatus" repTypes("n") repTypes("n"))
-                                end
-                            elsif maybe.isSome(realmathFunction(symbol)) then
-                                let e = maybe.unwrap(realmathFunction(symbol))
-                                realmathImport(e[1] if stringOp.equal(e[2] "2") then 2 else 1 end)
-                            elsif maybe.isSome(realconvFunction(symbol)) then
-                                realconvImport(maybe.unwrap(realconvFunction(symbol)))
-                            elsif not(g.isCore) andif maybe.isSome(coreExternal(symbol)) then
-                                let e = maybe.unwrap(coreExternal(symbol))
-                                if not(hashMap.contains(g.runtimeUnits "wasm/core." <> e[1])) then
-                                    runtimeImport("wasm/core" e[1] repTypes(e[2]) repTypes(e[3]))
+                            begin
+                                let row = externals.externalOf(symbol)
+                                if maybe.isSome(row) then
+                                    let fs = externals.imports(maybe.unwrap(row))
+                                    for j = 0 upto extent fs - 1 do
+                                        if not(g.isCore andif stringOp.equal(fs[j].unit "wasm/core")) then
+                                            unitFunction(fs[j])
+                                        end
+                                    end
                                 end
                             end
                         case maybe.unwrap(op)
@@ -6002,40 +5792,33 @@ export
                                 end
                             when opCallExternal with c then
                                 coreFunction(c.symbol)
-                                (* The host's functions (section 4.5), each
-                                 * of Ints as i32s; and print's capture *)
-                                let hostPrefix = "wasm.host."
-                                if strutil.startsWith(c.symbol hostPrefix) then
-                                    let field = stringOp.getSub(c.symbol stringOp.length(hostPrefix)
-                                            {stringOp.length(c.symbol) - stringOp.length(hostPrefix)})
-                                    if not(hashMap.contains(g.runtimeUnits "quest.host." <> field)) then
-                                        hashMap.insert(g.runtimeUnits "quest.host." <> field
-                                                importFunction("quest.host" field funcType(g
-                                                        array of(extent c.args model.i32) array of model.i32 end)))
+                                (* An intrinsic's runtime unit functions: the
+                                 * host's (section 4.5), each of Ints as i32s,
+                                 * and print's; print initialized before it *)
+                                let which = externals.intrinsicOf(c.symbol)
+                                if maybe.isSome(which) then
+                                    let x = maybe.unwrap(which)
+                                    case x
+                                        when intrHost with h then
+                                            if not(hashMap.contains(g.runtimeUnits "quest.host." <> h.field)) then
+                                                hashMap.insert(g.runtimeUnits "quest.host." <> h.field
+                                                        importFunction("quest.host" h.field funcType(g
+                                                                array of(extent c.args model.i32)
+                                                                array of model.i32 end)))
+                                            end
+                                        else ok
                                     end
-                                elsif stringOp.equal(c.symbol "wasm.raisedName") then
-                                    if not(hashMap.contains(g.runtimeUnits "wasm/print.show")) then
-                                        runtimeImport("wasm/print" "show" array of e e end array of e end)
-                                    end
-                                    if not(hashMap.contains(g.runtimeUnits "wasm/print.init")) then
-                                        hashMap.insert(g.runtimeUnits "wasm/print.init"
-                                                importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
-                                    end
-                                elsif stringOp.equal(c.symbol "wasm.print.capture")
-                                        orif stringOp.equal(c.symbol "wasm.print.captured") then
-                                    let field = stringOp.getSub(c.symbol 11 {stringOp.length(c.symbol) - 11})
-                                    if not(hashMap.contains(g.runtimeUnits "wasm/print." <> field)) then
-                                        runtimeImport("wasm/print" field noTypes array of e end)
-                                    end
-                                    (* print initialized before its capture *)
-                                    if not(hashMap.contains(g.runtimeUnits "wasm/print.init")) then
-                                        hashMap.insert(g.runtimeUnits "wasm/print.init"
-                                                importFunction("wasm/print" "init" funcType(g noTypes noTypes)))
+                                    let fs = externals.intrinsicImports(x)
+                                    for j = 0 upto extent fs - 1 do unitFunction(fs[j]) end
+                                    if externals.needsPrint(x) then
+                                        printAtStart := true
+                                        printInit()
                                     end
                                 end
                             when opExternal with c then coreFunction(c.symbol)
-                            when opPrim with c then if c.op?primRealPow then realmathImport("pow" 2) end
-                            when opBuiltin with c then if stringOp.equal(c.name "^^") then realmathImport("pow" 2) end
+                            when opPrim with c then if c.op?primRealPow then unitFunction(externals.realPow) end
+                            when opBuiltin with c then
+                                if stringOp.equal(c.name "^^") then unitFunction(externals.realPow) end
                             when opTypeApp with c then register(c.callee c.moduleRef c.member c.calleeType)
                             else ok
                         end
@@ -6045,17 +5828,16 @@ export
             (* A program's _start flushes the files' writers when it ends *)
             if g.unit.isProgram andif not(g.isRuntime)
                     andif not(hashMap.contains(g.runtimeUnits "wasm/core.flushWriters")) then
-                runtimeImport("wasm/core" "flushWriters" repTypes("") repTypes("e"))
+                runtimeImport("wasm/core" "flushWriters" noTypes array of model.eqref end)
             end
             (* The core initialized before any of its functions is called *)
             let usesCore = fun(): Bool
                 begin
                     let var any = hashMap.contains(g.runtimeUnits "wasm/core.flushWriters")
                         orif hashMap.contains(g.runtimeUnits "wasm/core.exitStatus")
-                    for k = 0 upto extent coreExternals - 1 do
-                        if hashMap.contains(g.runtimeUnits "wasm/core." <> coreExternals[k][1]) then
-                            any := true
-                        end
+                    let fs = externals.unitFunctions("wasm/core")
+                    for k = 0 upto extent fs - 1 do
+                        if hashMap.contains(g.runtimeUnits externals.key(fs[k])) then any := true end
                     end
                     any
                 end
@@ -6068,10 +5850,9 @@ export
                         importFunction("util/realconv" "init" funcType(g noTypes noTypes)))
             end
             let var usesRealmath = false
-            for k = 0 upto extent realmathExternals - 1 do
-                if hashMap.contains(g.runtimeUnits "util/realmath." <> realmathExternals[k][1]) then
-                    usesRealmath := true
-                end
+            let realmath = externals.unitFunctions("util/realmath")
+            for k = 0 upto extent realmath - 1 do
+                if hashMap.contains(g.runtimeUnits externals.key(realmath[k])) then usesRealmath := true end
             end
             if usesRealmath then
                 hashMap.insert(g.runtimeUnits "util/realmath.init"
@@ -6132,6 +5913,7 @@ export
                 makeDescriptors(df forms)
                 fill(df descIndex "descriptors" placeholder)
             end
+            let printsAtStart = printAtStart
             let initRuntime = fun(f: F): Ok
                 begin
                     if hashMap.contains(g.runtimeUnits "wasm/core.init") then
@@ -6144,10 +5926,7 @@ export
                         emit(f i1(ops.call hashMap.find(g.runtimeUnits "util/realmath.init")))
                     end
                     if described then emit(f i1(ops.call descIndex)) end
-                    if {described andif echoes} orif g.isPhrase
-                            orif hashMap.contains(g.runtimeUnits "wasm/print.capture") then
-                        emit(f i1(ops.call hashMap.find(g.runtimeUnits "wasm/print.init")))
-                    end
+                    if printsAtStart then emit(f i1(ops.call hashMap.find(g.runtimeUnits "wasm/print.init"))) end
                 end
             (* Each unit imported initialized, in the order of the imports *)
             let initImports = fun(f: F): Ok
