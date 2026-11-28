@@ -8,6 +8,7 @@ import
 
     ir = questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/slots : questlang/ir/Slots
+    questlang/repr/layout : questlang/repr/Layout
     questlang/repr/objectLayout : questlang/repr/ObjectLayout
     questlang/repr/runtimeLayout : questlang/repr/RuntimeLayout
     questlang/repr/shapes : questlang/repr/Shapes
@@ -203,23 +204,68 @@ export
              * signature *)
             thunk.cur := directB
             let var directArgs = vals.concat(array of orig end descs)
+            (* A var or out argument that may hold a value of a subtype is
+             * passed as a temporary, its one word converted in (an out
+             * argument's whose word is a pointer starts null) and back after
+             * the call (an unassigned one's left as it was): each one's
+             * parameter, location, temporary, and whether it starts null *)
+            Let Back = Tuple j: Int location: Int temp: Int unassigned: Bool end
+            let backs = vector.new(:Back)
             for j = 0 upto {np - 1} do
                 let p = vector.get(sig.params j)
                 let vs = vector.get(paramValues j)
-                let converted = not(byLocation(p)) andif not(isOk(p.type))
-                    andif slots.mayBeStoredAsSubtype(shapes.shape(p.type))
-                directArgs := vals.concat(directArgs if converted then
-                    vals.fromWord(thunk
-                            convertWord(thunk vals.toWord(thunk vs p.type) paramType(thunk to j)
-                                    paramType(thunk from j))
-                            p.type)
+                let ps = shapes.shape(p.type)
+                let converted = not(byLocation(p)) andif not(isOk(p.type)) andif slots.mayBeStoredAsSubtype(ps)
+                if byLocation(p) andif slots.mayBeStoredAsSubtype(ps) then
+                    let temp = ssa.slotAddress(tf thunk.cur ssa.newSlot(tf 8 8))
+                    let unassigned = p.isOut
+                        andif {if layout.isBoxedInSlots(ps) then layout.slotIsPointer(ps) else layout.isPointer(ps) end}
+                    let initial =
+                        if unassigned then vals.toVal(thunk vals.null(thunk))
+                        else convertWord(thunk vals.loadWord(thunk vs[0] 0 vals.tVal) paramType(thunk to j)
+                                paramType(thunk from j))
+                        end
+                    vals.store(thunk temp 0 8 initial)
+                    vector.append(backs tuple
+                        let j = j
+                        let location = vs[0]
+                        let temp = temp
+                        let unassigned = unassigned
+                    end)
+                    directArgs := vals.concat(directArgs array of temp end)
                 else
-                    vs
-                end)
+                    directArgs := vals.concat(directArgs if converted then
+                        vals.fromWord(thunk
+                                convertWord(thunk vals.toWord(thunk vs p.type) paramType(thunk to j)
+                                        paramType(thunk from j))
+                                p.type)
+                    else
+                        vs
+                    end)
+                end
             end
             let directResults = calls.resultsOf(thunk retParts vals.callQuest(thunk ""
                     vals.concat(array of closureFn(thunk orig) end directArgs) shifted(s.pairs 1) shifted(s.narrow
                             1) retParts))
+            for k = 0 upto {vector.length(backs) - 1} do
+                let b = vector.get(backs k)
+                let word = vals.loadWord(thunk b.temp 0 vals.tVal)
+                let join = control.newBlock(thunk)
+                if b.unassigned then
+                    let write = control.newBlock(thunk)
+                    vals.terminate(thunk option termBranch of ssa.Terminator with
+                        let cond = vals.binary(thunk ssa.opPne vals.fromVal(thunk word vals.tPtr) vals.null(thunk))
+                        let ifTrue = ssa.target(write vals.noValues)
+                        let ifFalse = ssa.target(join vals.noValues)
+                    end)
+                    thunk.cur := write
+                end
+                let back = convertWord(thunk word paramType(thunk from b.j) paramType(thunk to b.j))
+                vals.store(thunk b.location 0 8 back)
+                vals.callVoid(thunk "quest_barrier_slot" array of b.location end)
+                vals.jump(thunk join vals.noValues)
+                thunk.cur := join
+            end
             returnValues(thunk if not(isOk(ret)) andif slots.mayBeStoredAsSubtype(shapes.shape(ret)) then
                 vals.fromWord(thunk
                         convertWord(thunk vals.toWord(thunk directResults ret)

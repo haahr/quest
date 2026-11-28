@@ -1,0 +1,176 @@
+import conv = "conv" : Conv
+import dynamic = "dynamic" : Dynamic
+import writer = "writer" : Writer
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @14:45
+      let %2: String = prim <>(s, "\n") @14:59
+      let %3: Ok = call writer.putString(%1, %2) @14:28
+      return %3
+    }
+  }
+  funs {
+    fun fill(out r: Sub): Ok {
+      let %4: Record a: Int z: Int end = record(a = 10, z = 20) @19:33
+      r := %4 @19:28
+      return ok
+    }
+  }
+  var g: Fun(out r: Super): Ok = fill @20:1
+  let %5: Record z: Int end = record(z = 1) @21:20
+  var x: Super = %5 @21:1
+  let %6: Var(Super) = addr x @22:3
+  do call g(%6) @22:1
+  let %7: Int = record_field(x, z) @23:30
+  let %8: String = call conv.int(%7) @23:21
+  let %9: String = prim <>("record: ", %8) @23:7
+  do call print(%9) @23:1
+  funs {
+    fun maybeFill(out r.1: Sub, set: Bool): Ok {
+      if set { @26:43
+        let %10: Record a: Int z: Int end = record(a = 30, z = 40) @26:60
+        r.1 := %10 @26:55
+      }
+      return ok
+    }
+  }
+  var h: Fun(out r: Super set: Bool): Ok = maybeFill @27:1
+  let %11: Var(Super) = addr x @28:3
+  do call h(%11, false) @28:1
+  let %12: Int = record_field(x, z) @29:35
+  let %13: String = call conv.int(%12) @29:26
+  let %14: String = prim <>("record kept: ", %13) @29:7
+  do call print(%14) @29:1
+  let %15: Var(Super) = addr x @30:3
+  do call h(%15, true) @30:1
+  let %16: Int = record_field(x, z) @31:34
+  let %17: String = call conv.int(%16) @31:25
+  let %18: String = prim <>("record set: ", %17) @31:7
+  do call print(%18) @31:1
+  funs {
+    fun pick(out v: Small): Ok {
+      let %19: Small = variant(b, 7) @36:35
+      v := %19 @36:30
+      return ok
+    }
+  }
+  var k: Fun(out v: Large): Ok = pick @37:1
+  let %20: Large = variant(a, "first") @38:24
+  var large: Large = %20 @38:1
+  let %21: Var(Large) = addr large @39:3
+  do call k(%21) @39:1
+  join k1(r.2: String) {
+    let %22: String = prim <>("variant: ", r.2) @40:7
+    do call print(%22) @40:1
+    funs {
+      fun poly [A::TYPE](var x.1: A, y: A, out z: A): Ok {
+        z := x.1 @44:54
+        x.1 := y @44:61
+        return ok
+      }
+    }
+    var keep: All(A :: TYPE) Fun(var x: A y: A out z: A): Ok = poly @45:1
+    let %23: Fun(var x: Bool y: Bool out z: Bool): Ok = type_app keep [Bool] @46:19
+    var setBool: Fun(var x: Bool y: Bool out z: Bool): Ok = %23 @46:1
+    var b: Bool = false @47:1
+    var c: Bool = false @48:1
+    let %24: Var(Bool) = addr b @49:9
+    let %25: Var(Bool) = addr c @49:17
+    do call setBool(%24, true, %25) @49:1
+    let %26: String = call conv.bool(b) @50:19
+    let %27: String = call conv.bool(c) @50:42
+    let %28: String = prim <>(" ", %27) @50:35
+    let %29: String = prim <>(%26, %28) @50:19
+    let %30: String = prim <>("bool: ", %29) @50:7
+    do call print(%30) @50:1
+    let %31: Fun(var x: Real y: Real out z: Real): Ok = type_app keep [Real] @51:19
+    var setReal: Fun(var x: Real y: Real out z: Real): Ok = %31 @51:1
+    var r.3: Real = 1.25 @52:1
+    var s.1: Real = 0.0 @53:1
+    let %32: Var(Real) = addr r.3 @54:9
+    let %33: Var(Real) = addr s.1 @54:16
+    do call setReal(%32, 2.5, %33) @54:1
+    let %34: String = call conv.real(r.3) @55:19
+    let %35: String = call conv.real(s.1) @55:42
+    let %36: String = prim <>(" ", %35) @55:35
+    let %37: String = prim <>(%34, %36) @55:19
+    let %38: String = prim <>("real: ", %37) @55:7
+    do call print(%38) @55:1
+    let dFill: T = call dynamic.new [Fun(out r: Sub): Ok](fill) @58:13
+    let dg: Fun(out r: Super): Ok = call dynamic.be [Fun(out r: Super): Ok](dFill) @59:10
+    let %39: Record z: Int end = record(z = 1) @60:20
+    var y.1: Super = %39 @60:1
+    let %40: Var(Super) = addr y.1 @61:4
+    do call dg(%40) @61:1
+    let %41: Int = record_field(y.1, z) @62:38
+    let %42: String = call conv.int(%41) @62:29
+    let %43: String = prim <>("dynamic record: ", %42) @62:7
+    do call print(%43) @62:1
+    let dMaybe: T = call dynamic.new [Fun(out r: Sub set: Bool): Ok](maybeFill) @63:14
+    let dh: Fun(out r: Super set: Bool): Ok = call dynamic.be [Fun(out r: Super set: Bool): Ok](dMaybe) @64:10
+    let %44: Var(Super) = addr y.1 @65:4
+    do call dh(%44, false) @65:1
+    let %45: Int = record_field(y.1, z) @66:43
+    let %46: String = call conv.int(%45) @66:34
+    let %47: String = prim <>("dynamic record kept: ", %46) @66:7
+    do call print(%47) @66:1
+    let %48: Var(Super) = addr y.1 @67:4
+    do call dh(%48, true) @67:1
+    let %49: Int = record_field(y.1, z) @68:42
+    let %50: String = call conv.int(%49) @68:33
+    let %51: String = prim <>("dynamic record set: ", %50) @68:7
+    do call print(%51) @68:1
+    funs {
+      fun name(out r.4: Tagged): Ok {
+        let %52: Record a: Int z: String end = record(a = 10, z = "ok") @71:36
+        r.4 := %52 @71:31
+        return ok
+      }
+    }
+    let %53: T = call dynamic.new [Fun(out r: Tagged): Ok](name) @72:43
+    let dn: Fun(out r: Named): Ok = call dynamic.be [Fun(out r: Named): Ok](%53) @72:10
+    let %54: Record z: String end = record(z = "no") @73:20
+    var n: Named = %54 @73:1
+    let %55: Var(Named) = addr n @74:4
+    do call dn(%55) @74:1
+    let %56: String = record_field(n, z) @75:29
+    let %57: String = prim <>("dynamic string: ", %56) @75:7
+    do call print(%57) @75:1
+    let %58: T = call dynamic.new [Fun(out v: Small): Ok](pick) @76:43
+    let dk: Fun(out v: Large): Ok = call dynamic.be [Fun(out v: Large): Ok](%58) @76:10
+    let %59: Large = variant(a, "first") @77:21
+    var l2: Large = %59 @77:1
+    let %60: Var(Large) = addr l2 @78:4
+    do call dk(%60) @78:1
+    join k2(r.5: String) {
+      let %61: String = prim <>("dynamic variant: ", r.5) @79:7
+      do call print(%61) @79:1
+    } in {
+      switch tag(l2) { @79:30
+        case a (s.2: String): {
+          let %62: String = prim <>("a ", s.2) @79:57
+          jump k2(%62) @79:30
+        }
+        case b (n.1: Int): {
+          let %63: String = call conv.int(n.1) @79:94
+          let %64: String = prim <>("b ", %63) @79:86
+          jump k2(%64) @79:30
+        }
+      }
+    }
+  } in {
+    switch tag(large) { @40:22
+      case a (s.3: String): {
+        let %65: String = prim <>("a ", s.3) @40:52
+        jump k1(%65) @40:22
+      }
+      case b (n.2: Int): {
+        let %66: String = call conv.int(n.2) @40:89
+        let %67: String = prim <>("b ", %66) @40:81
+        jump k1(%67) @40:22
+      }
+    }
+  }
+}
+

@@ -289,7 +289,7 @@ class _Describer:
             case "adapt":
                 with self.thunk(p.thunk_symbols) as params:
                     p.thunk_params = params
-                    for f in p.fields:
+                    for f in p.fields + p.writebacks:
                         self.plan(f)
         return p
 
@@ -402,7 +402,7 @@ class _Describer:
                     # and result
                     with self.thunk(o.thunk_symbols) as params:
                         o.thunk_params = params
-                        for p in o.plans:
+                        for p in o.plans + o.writebacks:
                             self.plan(p)
                 else:
                     for p in o.plans:

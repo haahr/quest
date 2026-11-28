@@ -179,6 +179,9 @@ export
             let fields = vector.new(:maybe.T(nodes.Plan))
             for i = 0 upto {extent x.fields - 1} do vector.append(fields plan(c x.fields[i])) end
             copy.fields := vector.toArray(fields)
+            let writebacks = vector.new(:maybe.T(nodes.Plan))
+            for i = 0 upto {extent x.writebacks - 1} do vector.append(writebacks plan(c x.writebacks[i])) end
+            copy.writebacks := vector.toArray(writebacks)
             copy.layout := x.layout
             copy.access := x.access
             copy.thunkSymbols := x.thunkSymbols
@@ -310,6 +313,7 @@ export
                     let var descriptors = descriptors(c x.descriptors)
                 end
             when opTypeApp with x then
+                let writebacks = plans(c x.writebacks)
                 option opTypeApp of Op with
                     let var callee = optVar(c x.callee)
                     let var typeArgs = tys(c x.typeArgs)
@@ -325,6 +329,7 @@ export
                         else
                             x.thunkParams
                         end
+                    let var writebacks = writebacks
                 end
             when opModuleMember with x then
                 option opModuleMember of Op with let var moduleRef = x.moduleRef let var member = x.member end

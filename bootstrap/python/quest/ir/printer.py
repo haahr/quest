@@ -137,6 +137,8 @@ class _Printer:
             text += f" [{', '.join(self.decl(p.var) for p in plan.thunk_params)}]"
         if plan.kind in ("copy", "adapt") and _described(plan):
             text += " {" + ", ".join(self.plan(f) for f in plan.fields) + "}"
+            if any(plan.writebacks):
+                text += " back {" + ", ".join(self.plan(f) for f in plan.writebacks) + "}"
         return text
 
     # Operations
@@ -157,7 +159,11 @@ class _Printer:
                 thunk = ""
                 if o.thunk_params:
                     thunk = f" [{', '.join(self.decl(p.var) for p in o.thunk_params)}]"
-                converting = f"{thunk} converting ({', '.join(self.plan(p) for p in plans)})" if any(plans) else ""
+                converting = ""
+                if any(plans) or any(o.writebacks):
+                    converting = f"{thunk} converting ({', '.join(self.plan(p) for p in plans)})"
+                if any(o.writebacks):
+                    converting += f" back ({', '.join(self.plan(p) for p in o.writebacks)})"
                 type_args_text = self.type_args(type_args, o.descriptors)
                 return f"type_app {self.callee(callee, module, member)}{type_args_text}{converting}"
             case ir.ModuleMember(module=module, member=member):
@@ -402,7 +408,7 @@ def _described(plan: Optional[ir.Plan]) -> bool:
     pass)."""
     if plan is None:
         return False
-    return bool(plan.descriptors or plan.thunk_params) or any(_described(f) for f in plan.fields)
+    return bool(plan.descriptors or plan.thunk_params) or any(_described(f) for f in plan.fields + plan.writebacks)
 
 
 def format_unit(unit: ir.Unit) -> str:

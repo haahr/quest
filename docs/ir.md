@@ -599,8 +599,13 @@ printer makes its thunks itself.
   whose environment is a struct of captures read by `env_field`. It takes the target's type parameters (the plan's
   thunk parameters, which become the function's descriptor parameters), passes them on to the closure, converting
   each argument by the plan's fields and the result by the last (a call returning `Ok` returns `ok`, which is `Ok`'s
-  value where the result is a type parameter's). The plan names its adapter (`Plan.thunk`, printed `adapt by
-  qa_adapt`) and keeps neither thunk parameters nor fields, which are the adapter's; a conversion by it is a new
+  value where the result is a type parameter's). A `var` or `out` parameter whose types differ in layout is passed
+  on as a temporary of the closure's parameter type, as `refArgument` passes one at a call: it starts from the
+  location's value converted by the parameter's field (an `out` parameter's whose word is a pointer starts null), and
+  is converted by the plan's `writebacks` and stored into the location after the call (an unassigned one's only if
+  the closure assigned it); the slots pass then decides the adapter's slots, as it did the unit's. A function
+  `type_app`'s thunk does the same with its `plans` and `writebacks`. The plan names its adapter (`Plan.thunk`, printed
+  `adapt by qa_adapt`) and keeps neither thunk parameters nor fields, which are the adapter's; a conversion by it is a new
   closure of the adapter whose environment is the converted closure. A conversion of a known function (a variable
   bound to a closure without captures or type arguments, or a copy of one) is instead the static closure of an
   adapter of its own, without an environment, which calls the function directly: so a module's exported function

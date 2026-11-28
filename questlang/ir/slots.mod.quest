@@ -327,6 +327,7 @@ export
                          * components directly *)
                         let copy = nodes.newPlan(p.kind p.source p.target)
                         copy.fields := p.fields
+                        copy.writebacks := p.writebacks
                         copy.layout := p.layout
                         copy.access := array of(extent p.access nodes.direct)
                         copy.thunkSymbols := p.thunkSymbols
@@ -457,11 +458,12 @@ export
             when opAddrCell with x then
                 (* Of the cell's element type, which represent converted
                  * the initial value to *)
-                let cellType = if maybe.isSome(v) then
-                    case maybe.unwrap(v).type.form when typeVar with y then y.element else typeOf(x.init) end
-                else
-                    typeOf(x.init)
-                end
+                let cellType =
+                    if maybe.isSome(v) then
+                        case maybe.unwrap(v).type.form when typeVar with y then y.element else typeOf(x.init) end
+                    else
+                        typeOf(x.init)
+                    end
                 x.init := slotIfBoxed(st x.init maybe.some(shapes.shape(cellType)) before)
                 false
             when opAddrComponent with x then
@@ -632,9 +634,9 @@ export
             b.statements := statements
         end
 
-    let decideSlots(unit: nodes.Unit): Ok =
+    (* Decides slots for the bodies of the functions, in place *)
+    let decideBodies(bodies: Array(Body) functions: Array(nodes.Function)): Ok =
         begin
-            let bodies = walk.unitBodies(unit)
             (* The mutable variables of record or variant types whose addresses
              * are taken are held boxed, as are var and out parameters of those
              * types *)
@@ -652,8 +654,8 @@ export
                     end
                 end
             end
-            for i = 0 upto {vector.length(unit.functions) - 1} do
-                let f = vector.get(unit.functions i)
+            for i = 0 upto {extent functions - 1} do
+                let f = functions[i]
                 for j = 0 upto {extent f.params - 1} do
                     let p = f.params[j]
                     if not(p.mode?modeValue) andif boxed(maybe.some(shapes.shape(p.v.type))) then
@@ -669,4 +671,8 @@ export
                 body(st bodies[i])
             end
         end
+
+    let decideSlots(unit: nodes.Unit): Ok = decideBodies(walk.unitBodies(unit) vector.toArray(unit.functions))
+
+    let decideFunctionSlots(f: nodes.Function): Ok = decideBodies(array of f.body end array of f end)
 end

@@ -234,8 +234,9 @@ class TypeApp:
     # plan of its value at the type arguments to the let's type; for a function,
     # the instance is a closure converting its arguments from the let's
     # parameter types to the function's generic ones at the type arguments, and
-    # its result back: the parameters' plans (None for var and out parameters),
-    # then the result's
+    # its result back: the parameters' plans (for a var parameter, its value
+    # into the function's location; for an out parameter, the same, or None
+    # where the location starts unassigned: see writebacks), then the result's
     plans: tuple[Optional[Plan], ...] = ()
     # Set by the represent pass for a function: the symbols the instance's own
     # type parameters (the thunk's) are named by in the plans, the let's type's
@@ -247,6 +248,12 @@ class TypeApp:
     # converts it where it is applied
     descriptors: tuple[Descriptor, ...] = ()
     thunk_params: Optional[tuple[DescriptorParam, ...]] = None
+    # Set by the represent pass for a function: for each parameter, how a var
+    # or out parameter's value converts back, after the call, from the
+    # function's location (a temporary the thunk passes) into the instance's
+    # (None for a value parameter, and where nothing converts). A thunk passes
+    # its own location on as it is only where neither plan converts.
+    writebacks: tuple[Optional[Plan], ...] = ()
 
 
 @dataclass(eq=False)
@@ -325,7 +332,8 @@ class Plan:
     parameters' instantiation, and whether the value goes to the generic layout,
     are `layout`); `adapt` (a closure wrapped in a thunk of the target's C
     signature converting arguments and result: `fields` are the parameters'
-    plans, then the result's); `view` (converted by the runtime between two
+    plans, then the result's, and `writebacks` those of var and out
+    parameters back, as for TypeApp); `view` (converted by the runtime between two
     views' descriptors: a tuple or option upcast to a supertype at which
     components change view, as a proxy of the original; a variant or option from
     a bounded type parameter's view at its bound to another)."""
@@ -348,6 +356,9 @@ class Plan:
     descriptors: tuple[Descriptor, ...] = ()
     thunk_params: tuple[DescriptorParam, ...] = ()
     tag_map: Optional[TagMap] = None
+    # An adapt plan's conversions of its var and out parameters back, as for
+    # TypeApp.writebacks
+    writebacks: tuple[Optional[Plan], ...] = ()
 
 
 @dataclass(eq=False)

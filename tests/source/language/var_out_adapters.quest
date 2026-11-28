@@ -1,0 +1,79 @@
+(* A function with var or out parameters used at another function type, whose
+ * parameter types are laid out differently: through an adapter (an out
+ * parameter of a subtype, a record view or a variant's tags), and a type
+ * application's instance (a var or out parameter of a type parameter, at a
+ * scalar type). The adapter passes a temporary of the function's parameter
+ * type and converts it back into the location after the call; an out
+ * location the function leaves unassigned keeps its value. The functions are
+ * held in mutable variables, so that none is called directly. *)
+
+import conv : Conv
+import dynamic : Dynamic
+import writer : Writer
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+
+(* An out parameter of a record type, used at a supertype *)
+Let Super = Record z: Int end
+Let Sub = Record a: Int z: Int end
+let fill(out r: Sub): Ok = r := record a = 10 z = 20 end
+let var g: All(out r: Super) Ok = fill
+let var x: Super = record z = 1 end
+g(@x)
+print("record: " <> conv.int(x.z))
+
+(* One that may leave its location unassigned *)
+let maybeFill(out r: Sub set: Bool): Ok = if set then r := record a = 30 z = 40 end end
+let var h: All(out r: Super set: Bool) Ok = maybeFill
+h(@x false)
+print("record kept: " <> conv.int(x.z))
+h(@x true)
+print("record set: " <> conv.int(x.z))
+
+(* A variant: the location's type has more tags *)
+Let Small = Variant b: Int end
+Let Large = Variant a: String b: Int end
+let pick(out v: Small): Ok = v := variant b of Small with 7 end
+let var k: All(out v: Large) Ok = pick
+let var large: Large = variant a of Large with "first" end
+k(@large)
+print("variant: " <> case large when a with s then "a " <> s when b with n then "b " <> conv.int(n) end)
+
+(* A type application's instance: a var and an out parameter of a type
+ * parameter, at Bool and Real *)
+let poly(A::TYPE var x: A y: A out z: A): Ok = begin z := x x := y end
+let var keep = poly
+let var setBool = keep(:Bool)
+let var b = false
+let var c = false
+setBool(@b true @c)
+print("bool: " <> conv.bool(b) <> " " <> conv.bool(c))
+let var setReal = keep(:Real)
+let var r = 1.25
+let var s = 0.0
+setReal(@r 2.5 @s)
+print("real: " <> conv.real(r) <> " " <> conv.real(s))
+
+(* The same conversions made at run time, by dynamic.be's adapters *)
+let dFill = dynamic.new(:All(out r: Sub) Ok fill)
+let dg = dynamic.be(:All(out r: Super) Ok dFill)
+let var y: Super = record z = 1 end
+dg(@y)
+print("dynamic record: " <> conv.int(y.z))
+let dMaybe = dynamic.new(:All(out r: Sub set: Bool) Ok maybeFill)
+let dh = dynamic.be(:All(out r: Super set: Bool) Ok dMaybe)
+dh(@y false)
+print("dynamic record kept: " <> conv.int(y.z))
+dh(@y true)
+print("dynamic record set: " <> conv.int(y.z))
+Let Named = Record z: String end
+Let Tagged = Record a: Int z: String end
+let name(out r: Tagged): Ok = r := record a = 10 z = "ok" end
+let dn = dynamic.be(:All(out r: Named) Ok dynamic.new(:All(out r: Tagged) Ok name))
+let var n: Named = record z = "no" end
+dn(@n)
+print("dynamic string: " <> n.z)
+let dk = dynamic.be(:All(out v: Large) Ok dynamic.new(:All(out v: Small) Ok pick))
+let var l2: Large = variant a of Large with "first" end
+dk(@l2)
+print("dynamic variant: " <> case l2 when a with s then "a " <> s when b with n then "b " <> conv.int(n) end)

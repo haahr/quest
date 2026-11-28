@@ -89,6 +89,18 @@ export
             maybe.unwrap(element)
         end
 
+    (* Whether a thunk's temporary location of type t, passed for an out
+     * parameter, starts unassigned: one whose word is a pointer, null until
+     * the callee assigns it (opIsSet), so that it is written back only if the
+     * callee did. Any other (a scalar, or a QVal word, whose every value may
+     * be stored) starts from the caller's location's value instead, as a var
+     * parameter's does. *)
+    let startsUnassigned(t: Type): Bool =
+        begin
+            let s = shapes.shape(t)
+            if layout.isBoxedInSlots(s) then layout.slotIsPointer(s) else layout.isPointer(s) end
+        end
+
     (* Whether s is a module's abstract type's (or an abstract or path type's)
      * bounded by a record, variant, or option type, held viewed at its bound *)
     let boundedView(s: Shape): Bool = layout.heldAtBound(s) andif shapes.isViewedKind(layout.resolvedShape(s).kind)
@@ -451,20 +463,21 @@ export
                     end
                 hashSet.insert(adapting key)
                 let fields = array of({extent shared.sParams + 1} none)
+                let writebacks = array of(extent shared.sParams none)
                 for i = 0 upto {extent shared.sParams - 1} do
-                    let tp = shared.tParams[i]
-                    fields[i] :=
-                        if tp.isVar orif tp.isOut then none else plan(tp.type shared.sParams[i].type flipped) end
+                    fields[i] := refInPlan(shared.tParams[i] shared.sParams[i] flipped)
+                    writebacks[i] := refBackPlan(shared.sParams[i] shared.tParams[i] lay)
                 end
                 fields[extent shared.sParams] := plan(shared.sResult shared.tResult lay)
                 hashSet.delete(adapting key)
                 let var allNone = true
                 for i = 0 upto {extent fields - 1} do if maybe.isSome(fields[i]) then allNone := false end end
+                for i = 0 upto {extent writebacks - 1} do if maybe.isSome(writebacks[i]) then allNone := false end end
                 if allNone
                         andif eq(genericLayout.signatureRepresentation(source)
                                 genericLayout.signatureRepresentation(target)) then
                     none
-                elsif alikeness.referencesAlike andif referencesOnly(fields)
+                elsif alikeness.referencesAlike andif referencesOnly(fields) andif referencesOnly(writebacks)
                         andif {extent written.quantified(source).quantifiers
                                 is extent written.quantified(target).quantifiers} then
                     (* Where a reference and a QVal are held alike, a closure
@@ -486,12 +499,26 @@ export
                     end
                     let p = nodes.newPlan(nodes.planAdapt source target)
                     p.fields := fields
+                    p.writebacks := writebacks
                     p.layout := lay
                     p.thunkSymbols := thunkSymbols
                     some(p)
                 end
             end
         end
+
+    (* The plan of a thunk's argument for its parameter param, passed on for
+     * the closure's parameter calleeParam: a value parameter's value, or a var
+     * or out parameter's location's value into a temporary of calleeParam's
+     * type (none for an out parameter whose temporary starts unassigned) *)
+    and refInPlan(param: model.Param calleeParam: model.Param lay: Layout): maybe.T(Plan) =
+        if param.isOut andif startsUnassigned(calleeParam.type) then none else plan(param.type calleeParam.type lay) end
+
+    (* The plan converting a var or out parameter's value back after the call,
+     * from the temporary of the closure's parameter calleeParam to the
+     * thunk's location of param (none for a value parameter) *)
+    and refBackPlan(calleeParam: model.Param param: model.Param lay: Layout): maybe.T(Plan) =
+        if param.isVar orif param.isOut then plan(calleeParam.type param.type lay) else none end
 
     and planInner(source: Type target: Type lay: Layout): maybe.T(Plan) =
         begin
@@ -869,7 +896,11 @@ export
             end
         end
 
-    Def TypeAppPlans = Tuple plans: Array(maybe.T(Plan)) thunkSymbols: Array(Array(Int)) end
+    Def TypeAppPlans = Tuple
+        plans: Array(maybe.T(Plan))
+        thunkSymbols: Array(Array(Int))
+        writebacks: Array(maybe.T(Plan))
+    end
 
     (* How a polymorphic value of type origType applied to the type arguments is
      * used at targetType *)
@@ -896,21 +927,22 @@ export
                     let tResult = case t.body.form when typeFun with x then x.result else t.body end
                     let n = if extent tParams < extent inner.params then extent tParams else extent inner.params end
                     let plans = array of({n + 1} none)
+                    let writebacks = array of(n none)
                     for i = 0 upto {n - 1} do
-                        let tp = tParams[i]
-                        plans[i] := if tp.isVar orif tp.isOut then none
-                            else plan(tp.type inner.params[i].type layoutOf(instantiation true)) end
+                        plans[i] := refInPlan(tParams[i] inner.params[i] layoutOf(instantiation true))
+                        writebacks[i] := refBackPlan(inner.params[i] tParams[i] layoutOf(instantiation false))
                     end
                     plans[n] := plan(inner.result tResult layoutOf(instantiation false))
                     let symbols = array of(extent t.quantifiers array of :Int end)
                     for i = 0 upto {extent t.quantifiers - 1} do
                         symbols[i] := array of t.quantifiers[i].symbolId end
                     end
-                    tuple let plans = plans let thunkSymbols = symbols end
+                    tuple let plans = plans let thunkSymbols = symbols let writebacks = writebacks end
                 else
                     tuple
                         let plans = array of plan(q.body targetType layoutOf(instantiation false)) end
                         let thunkSymbols = array of :Array(Int) end
+                        let writebacks = array of :maybe.T(Plan) end
                     end
             end
         end
@@ -1296,6 +1328,7 @@ export
                 let plans = typeAppPlans(origType x.typeArgs resultType)
                 x.plans := plans.plans
                 x.thunkSymbols := plans.thunkSymbols
+                x.writebacks := plans.writebacks
                 maybe.none()
             when opPayload with x then writtenVariantCase(typeOf(x.value) x.tag)
             when opPrim with x then

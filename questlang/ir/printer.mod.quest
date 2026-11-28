@@ -206,6 +206,14 @@ export
 
     (* Whether a plan, or one in it, has descriptors (after the describe
      * pass) *)
+    (* Whether any of plans converts *)
+    let anyPlan(plans: Array(maybe.T(Plan))): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent plans - 1} do if maybe.isSome(plans[i]) then found := true end end
+            found
+        end
+
     let rec described(plan: maybe.T(Plan)): Bool =
         if maybe.isNone(plan) then
             false
@@ -213,6 +221,7 @@ export
             let x = maybe.unwrap(plan)
             let var found = {extent x.descriptors > 0} orif {extent x.thunkParams > 0}
             for i = 0 upto {extent x.fields - 1} do if described(x.fields[i]) then found := true end end
+            for i = 0 upto {extent x.writebacks - 1} do if described(x.writebacks[i]) then found := true end end
             found
         end
 
@@ -235,6 +244,11 @@ export
                 let texts = vector.new(:String)
                 for i = 0 upto {extent x.fields - 1} do vector.append(texts plan(p x.fields[i])) end
                 text := text <> " {" <> joinWith(", " texts) <> "}"
+                if anyPlan(x.writebacks) then
+                    let backs = vector.new(:String)
+                    for i = 0 upto {extent x.writebacks - 1} do vector.append(backs plan(p x.writebacks[i])) end
+                    text := text <> " back {" <> joinWith(", " backs) <> "}"
+                end
             end
             if maybe.isSome(x.thunk) then text := text <> " by " <> name(p maybe.unwrap(x.thunk).v) end
             text
@@ -266,13 +280,14 @@ export
                     else
                         ""
                     end
-                let var anyPlan = false
-                for i = 0 upto {extent x.plans - 1} do if maybe.isSome(x.plans[i]) then anyPlan := true end end
                 let converting =
-                    if anyPlan then
+                    if anyPlan(x.plans) orif anyPlan(x.writebacks) then
                         let texts = vector.new(:String)
                         for i = 0 upto {extent x.plans - 1} do vector.append(texts plan(p x.plans[i])) end
+                        let backs = vector.new(:String)
+                        for i = 0 upto {extent x.writebacks - 1} do vector.append(backs plan(p x.writebacks[i])) end
                         thunk <> " converting (" <> joinWith(", " texts) <> ")"
+                            <> if anyPlan(x.writebacks) then " back (" <> joinWith(", " backs) <> ")" else "" end
                     else
                         ""
                     end

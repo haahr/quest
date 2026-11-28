@@ -1021,13 +1021,54 @@ export
                     let callArgs = vector.new(:String)
                     add(callArgs "(void *)e->orig")
                     for k = 0 upto {nq - 1} do add(callArgs "qv_desc_" <> cInt(k)) end
+                    (* The direct path's var and out arguments that may hold a
+                     * value of a subtype pass a temporary, converted back
+                     * after the call *)
+                    let writebacks = vector.new(:String)
                     for j = 0 upto {np - 1} do
                         let p = vector.get(sig.params j)
                         let name = "qv_arg_" <> cInt(j)
                         let slot = "qv_args[" <> cInt(nq + j) <> "]"
                         if p.isVar orif p.isOut then
-                            add(paramDecls layout.locationCType(p.type) <> " *" <> name)
+                            let location = layout.locationCType(p.type)
+                            add(paramDecls location <> " *" <> name)
                             add(uniform slot <> ".p = (void *)" <> name <> ";")
+                            let s = shapes.shape(p.type)
+                            if slots.mayBeStoredAsSubtype(s) then
+                                let temp = "qv_loc_" <> cInt(j)
+                                let toFrom = "to->params[" <> cInt(j) <> "].type, from->params[" <> cInt(j) <> "].type"
+                                let fromTo = "from->params[" <> cInt(j) <> "].type, to->params[" <> cInt(j) <> "].type"
+                                (* An out argument's pointer starts null,
+                                 * and is written back only if the closure
+                                 * assigned it *)
+                                let unassigned = p.isOut
+                                    andif {if layout.isBoxedInSlots(s) then
+                                        layout.slotIsPointer(s)
+                                    else
+                                        layout.isPointer(s)
+                                    end}
+                                if unassigned then
+                                    add(direct location <> " " <> temp <> " = NULL;")
+                                else
+                                    let current =
+                                        "quest_convert(" <> types.shapeSlotToQval("(*" <> name <> ")" s) <> ", "
+                                            <> toFrom <> ")"
+                                    add(direct location <> " " <> temp <> " = " <> types.shapeQvalToSlot(current s)
+                                        <> ";")
+                                end
+                                let back =
+                                    types.shapeQvalToSlot("quest_convert(" <> types.shapeSlotToQval(temp s) <> ", "
+                                        <> fromTo <> ")" s)
+                                let store = "{ *" <> name <> " = " <> back <> "; quest_barrier_slot(" <> name <> "); }"
+                                add(writebacks if unassigned then
+                                    "if (" <> temp <> " != NULL) " <> store
+                                else
+                                    store
+                                end)
+                                add(callArgs "&" <> temp)
+                            else
+                                add(callArgs name)
+                            end
                         elsif isOk(p.type) then
                             add(paramDecls "QVal " <> name)
                             add(uniform slot <> " = " <> name <> ";")
@@ -1042,20 +1083,26 @@ export
                                 add(direct name <> " = " <> converted <> ";")
                             end
                         end
-                        add(callArgs name)
+                        if not(p.isVar orif p.isOut) then add(callArgs name) end
                     end
                     let callExpr = syntax.call("((" <> fnPtr <> ")(e->orig->fn))" callArgs)
                     let invokeExpr = "from->invoke(e->orig, qv_args)"
                     if isOk(ret) then
                         add(direct callExpr <> ";")
+                        addAll(direct writebacks)
                         add(direct "return;")
                         add(uniform "(void)" <> invokeExpr <> ";")
                     else
                         if slots.mayBeStoredAsSubtype(shapes.shape(ret)) then
                             add(direct retC <> " qv_result = " <> callExpr <> ";")
+                            addAll(direct writebacks)
                             let converted = types.qvalUnwrap("quest_convert(" <> types.qvalWrap("qv_result" ret)
                                 <> ", from->result_type, to->result_type)" ret)
                             add(direct "return " <> converted <> ";")
+                        elsif not(vector.empty(writebacks)) then
+                            add(direct retC <> " qv_result = " <> callExpr <> ";")
+                            addAll(direct writebacks)
+                            add(direct "return qv_result;")
                         else
                             add(direct "return " <> callExpr <> ";")
                         end

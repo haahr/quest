@@ -3543,7 +3543,7 @@ export
      * uniform entry, and converts the result via adaptResult. Returns the
      * struct type index and entry function index. *)
     Def Adapter = Tuple type: Int entry: Int end
-    let adapterOf(g: G n: Int adaptArg: Int adaptResult: Int): Adapter =
+    let adapterOf(g: G n: Int adaptArg: Int adaptBack: Int adaptResult: Int): Adapter =
         begin
             let t = addType(g structSub("adapt" <> conv.int(n) true closU(g n) array of
                 hashField fieldOf("uniform" model.ref(uniformType(g n)) false)
@@ -3558,11 +3558,10 @@ export
             emit(f i1(ops.localGet 0))
             castTo(f t)
             emit(f i1(ops.localSet state))
-            (* the closure adapted, then each argument converted *)
-            emit(f i1(ops.localGet state))
-            emit(f i2(ops.structGet t 2))
-            castTo(f tClos)
+            (* each argument converted, kept for adaptBack *)
+            let converted = array of(n 0)
             for k = 0 upto n - 1 do
+                converted[k] := scratch(f model.eqref)
                 emit(f i1(ops.globalGet g.noClosure))
                 emit(f i1(ops.localGet state))
                 emit(f i2(ops.structGet t 3))
@@ -3571,13 +3570,32 @@ export
                 emit(f model.i64Const(k))
                 emit(f i1(ops.localGet k + 1))
                 emit(f i1(ops.call adaptArg))
+                emit(f i1(ops.localSet converted[k]))
             end
+            (* the closure adapted, then the arguments *)
+            emit(f i1(ops.localGet state))
+            emit(f i2(ops.structGet t 2))
+            castTo(f tClos)
+            for k = 0 upto n - 1 do emit(f i1(ops.localGet converted[k])) end
             emit(f i1(ops.localGet state))
             emit(f i2(ops.structGet t 2))
             castTo(f closU(g n))
             emit(f i2(ops.structGet closU(g n) 1))
             emit(f i1(ops.callRef uniformType(g n)))
             emit(f i1(ops.localSet result))
+            (* var and out arguments' values back into their locations *)
+            for k = 0 upto n - 1 do
+                emit(f i1(ops.globalGet g.noClosure))
+                emit(f i1(ops.localGet state))
+                emit(f i2(ops.structGet t 3))
+                emit(f i1(ops.localGet state))
+                emit(f i2(ops.structGet t 4))
+                emit(f model.i64Const(k))
+                emit(f i1(ops.localGet k + 1))
+                emit(f i1(ops.localGet converted[k]))
+                emit(f i1(ops.call adaptBack))
+                emit(f i(ops.drop))
+            end
             emit(f i1(ops.globalGet g.noClosure))
             emit(f i1(ops.localGet state))
             emit(f i2(ops.structGet t 3))
@@ -3619,10 +3637,11 @@ export
                     found
                 end
             let adaptArg = helper("adaptArg")
+            let adaptBack = helper("adaptBack")
             let adaptResult = helper("adaptResult")
             let adapterFor = helper("adapterFor")
             let made = array of(maxAdapted + 1 tuple let type = 0 let entry = 0 end)
-            for n = 0 upto maxAdapted do made[n] := adapterOf(g n adaptArg adaptResult) end
+            for n = 0 upto maxAdapted do made[n] := adapterOf(g n adaptArg adaptBack adaptResult) end
             (* adaptClosure(v from to n): an adapter of arity n *)
             let names = array of "v" "from" "to" "n" end
             let f = newF(g names array of model.eqref end ~1)
@@ -3712,8 +3731,8 @@ export
         for k = 0 upto extent arities - 1 do
             let g = f.g
             let n = arities[k]
-            let a = adapterOf(g n hashMap.find(g.runtimeUnits "wasm/core.adaptArg")
-                    hashMap.find(g.runtimeUnits "wasm/core.adaptResult"))
+            let helper(name: String): Int = hashMap.find(g.runtimeUnits "wasm/core." <> name)
+            let a = adapterOf(g n helper("adaptArg") helper("adaptBack") helper("adaptResult"))
             let mf = newF(g array of "maker" "v" "from" "to" end array of model.eqref end ~1)
             emit(mf model.i32Const(0))
             emit(mf i1(ops.refFunc a.entry))
@@ -4073,6 +4092,22 @@ export
                     emit(f i(ops.refIsNull))
                 when intrNullAny then
                     emit(f option instRefNull of Inst with let heap = option heapNone of model.HeapType end end)
+                (* A location as a uniform entry holds it (packLocation) *)
+                when intrLocationGet then
+                    atom(f args[0])
+                    unpackLocation(f)
+                    emit(f i1(ops.arrayGet tSlots))
+                when intrLocationSet then
+                    atom(f args[0])
+                    unpackLocation(f)
+                    atom(f args[1])
+                    emit(f i1(ops.arraySet tSlots))
+                    okValue()
+                when intrNewLocation then
+                    atom(f args[0])
+                    emit(f i2(ops.arrayNewFixed tSlots 1))
+                    emit(f model.i32Const(0))
+                    packLocation(f)
                 when intrNewI32s then
                     atom(f args[0])
                     emit(f i(ops.i32WrapI64))
@@ -5869,6 +5904,7 @@ export
             let pastArities = if isRuntimeUnit(moduleName) then array of :Int end else arityPast(g unit) end
             if extent pastArities > 0 then
                 runtimeImport(g "wasm/core" "adaptArg" array of e e n e end array of e end)
+                runtimeImport(g "wasm/core" "adaptBack" array of e e n e e end array of e end)
                 runtimeImport(g "wasm/core" "adaptResult" array of e e e end array of e end)
                 runtimeImport(g "wasm/core" "registerAdapter" array of n e end array of e end)
             end

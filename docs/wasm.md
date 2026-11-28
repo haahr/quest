@@ -415,7 +415,9 @@ pass makes none where both sides are references.
 **Function adapters for a view's change** (a closure seen at another function type, `quest_convert`'s): the backend
 builds `$adaptN` and a maker for each uniform arity up to 8 when it compiles the core. A unit that calls a closure
 wider than that (`arityPast`) makes its maker and registers it (`registerAdapter`); the core's `adapterFor` finds it,
-or raises `dynamic.error`.
+or raises `dynamic.error`. A `var` or `out` argument whose parameter's types differ is passed as a new location
+(`adaptArg`, through the intrinsics `locationGet`, `locationSet`, and `newLocation`), which starts from the location's
+value converted (an `out` argument's empty) and which `adaptBack` converts back into the location after the call.
 
 *Not taken:* every unknown call through the uniform entry (ten times slower); C's single entry with adapters (an
 `i64` and an `eqref` never agree, so nearly every function crossing into generic code would need one); one `(ref

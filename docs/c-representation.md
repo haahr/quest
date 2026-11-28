@@ -982,8 +982,12 @@ struct QTypeDescriptor {
   (`quest_fun_signature_equivalent`, recorded in the adapter's closure as `direct`), as closures of types related
   by subtyping do; otherwise (one of the two types is laid out generically, §6.4.5) it calls it through the invoker
   of the closure's type, `quest_invoke_fun_<digest>`, which takes the type parameters' descriptors and the arguments
-  in their `QVal` forms, calls the closure with that type's C signature, and returns the result's `QVal` form. Runtime subtyping of function types is contravariant in value parameters, invariant in `var` parameters, and
-  covariant in `out` parameters and the result. Polymorphic function types (`All(A::TYPE x: A) A`) are described the
+  in their `QVal` forms, calls the closure with that type's C signature, and returns the result's `QVal` form. On the
+  direct path a `var` or `out` argument of a type that may be laid out as a subtype's (`mayBeStoredAsSubtype`) is
+  passed as a temporary of one word, converted in from the location (an `out` argument's pointer starts null) and
+  back into it after the call (an `out` argument's only if the closure assigned it). Runtime subtyping of function
+  types is contravariant in value parameters, invariant in `var` parameters, and covariant in `out` parameters and
+  the result. Polymorphic function types (`All(A::TYPE x: A) A`) are described the
   same way, plus `quantifier_count` and `quantifier_bounds`: their type parameters are passed as descriptors before the
   values (and adapters pass them through), and within the parameter and result types a type parameter is described
   by `quest_type_bound_vars[i]` (kind `QTYPE_KIND_BOUND_VAR`), where `i` is its de Bruijn index. So types differing

@@ -334,7 +334,7 @@ _FIELDS_OF: dict[type, Callable[[Any], tuple]] = {
     ),
     ir.TypeApp: lambda node: (
         node.callee, node.type_args, node.module, node.member, node.callee_type, node.plans, node.thunk_symbols,
-        node.descriptors, node.thunk_params,
+        node.descriptors, node.thunk_params, node.writebacks,
     ),
     ir.ModuleMember: lambda node: (node.module, node.member),
     ir.Builtin: lambda node: (node.name,),
@@ -344,7 +344,7 @@ _FIELDS_OF: dict[type, Callable[[Any], tuple]] = {
     ir.EnvField: lambda node: (node.env, node.index),
     ir.Plan: lambda node: (
         node.kind, node.source, node.target, node.fields, node.layout, node.access, node.thunk_symbols,
-        node.descriptors, node.thunk_params, node.tag_map,
+        node.descriptors, node.thunk_params, node.tag_map, node.writebacks,
     ),
     ir.Convert: lambda node: (node.value, node.plan),
     ir.MakeTuple: lambda node: (node.args, node.type_components, node.embedded),
@@ -433,6 +433,7 @@ _CONTENTS: dict[type, Callable[[Any], tuple]] = {
     ir.Call: lambda node: (node.callee, node.type_args, node.args, node.module, node.member, node.callee_type),
     ir.TypeApp: lambda node: (
         node.callee, node.type_args, node.module, node.member, node.callee_type, node.plans, node.thunk_symbols,
+        node.writebacks,
     ),
     ir.ModuleMember: lambda node: (node.module, node.member),
     ir.Builtin: lambda node: (node.name,),
@@ -442,6 +443,7 @@ _CONTENTS: dict[type, Callable[[Any], tuple]] = {
     ir.EnvField: lambda node: (node.env, node.index),
     ir.Plan: lambda node: (
         node.kind, node.source, node.target, node.fields, node.layout, node.access, node.thunk_symbols,
+        node.writebacks,
     ),
     ir.Convert: lambda node: (node.value, node.plan),
     ir.MakeTuple: lambda node: (node.args, node.type_components, node.embedded),
@@ -534,6 +536,7 @@ _REBUILD: dict[type, Callable[[Any, tuple], Any]] = {
     ir.TypeApp: lambda node, values: ir.TypeApp(
         callee=values[0], type_args=values[1], module=values[2], member=values[3], callee_type=values[4],
         plans=values[5], thunk_symbols=values[6], descriptors=values[7], thunk_params=values[8],
+        writebacks=values[9],
     ),
     ir.ModuleMember: lambda node, values: ir.ModuleMember(module=values[0], member=values[1]),
     ir.Builtin: lambda node, values: ir.Builtin(name=values[0]),
@@ -548,6 +551,7 @@ _REBUILD: dict[type, Callable[[Any, tuple], Any]] = {
     ir.Plan: lambda node, values: ir.Plan(
         kind=values[0], source=values[1], target=values[2], fields=values[3], layout=values[4], access=values[5],
         thunk_symbols=values[6], descriptors=values[7], thunk_params=values[8], tag_map=values[9],
+        writebacks=values[10],
     ),
     ir.Convert: lambda node, values: ir.Convert(value=values[0], plan=values[1]),
     ir.MakeTuple: lambda node, values: ir.MakeTuple(args=values[0], type_components=values[1], embedded=values[2]),

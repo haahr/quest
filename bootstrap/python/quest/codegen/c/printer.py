@@ -92,7 +92,7 @@ from quest.repr.symbols import mangle_ident, mangle_module_ident, mangle_module_
 from quest.common.diagnostics import MAIN_FRAME, init_frame
 from quest.ir import nodes as ir
 from quest.ir.describe import echo_value_kind
-from quest.ir.represent import held_shape
+from quest.ir.represent import held_shape, starts_unassigned
 from quest.repr.shapes import Shape, shape
 from quest.ir.walk import global_variables, statement_binders, walk_statements
 from quest.types import (
@@ -932,17 +932,16 @@ class CPrinter:
             return self.thunks[key]
         name = self.fresh_name("qa_adapt")
         self.thunks[key] = name
-        _, _, s_result = fun_shape_signature(plan.source)
+        _, s_params, s_result = fun_shape_signature(plan.source)
         _, t_params, t_result = fun_shape_signature(plan.target)
         with self.auxiliary():
             # The thunk's descriptor parameters are its descriptor variables,
             # which its plans' descriptors use
             decls, descs, names = self.thunk_params(plan.thunk_params, t_params)
-            args = []
-            for p, n, fp in zip(t_params, names, plan.fields):
-                args.append(n if fp is None else self.convert(n, fp))
+            args, after = self.thunk_arguments(names, t_params, s_params, plan.fields, plan.writebacks)
             fn = f"(({closure_fn_ptr_type(plan.source, self.ctx)})(orig->fn))"
-            self.finish_thunk_call(call(fn, ['(void *)orig'] + descs + args), s_result, t_result, plan.fields[-1])
+            self.finish_thunk_call(call(fn, ['(void *)orig'] + descs + args), s_result, t_result, plan.fields[-1],
+                                   after)
             ret = "void" if self.is_ok(t_result) else self.c_type(t_result)
             orig = "((const QAdaptClosure *)_raw_env)->orig" if known is None else f"(const QClosure *){known}"
             self.thunk(name, ret, decls, [f"const QClosure *orig = {orig};"]
@@ -996,9 +995,68 @@ class CPrinter:
                                     f"{{ (void *){thunk}, {orig_c} }};")
         return f"((QClosure *)&{self.thunks[full]}_closure)"
 
-    def finish_thunk_call(self, called: str, source_result: QType, target_result: QType, result_plan) -> None:
+    def thunk_arguments(self, names: list[str], params, callee_params, plans, writebacks) -> tuple[list[str], list]:
+        """The arguments a thunk passes on for its parameters (names, of params)
+        to the closure's (callee_params), each converted by its plan, if any,
+        and the lines that write var and out parameters back after the call. A
+        var or out parameter whose plans convert nothing passes its location on
+        as it is; else the thunk passes a temporary of the closure's parameter
+        type, which starts from the location's value converted (for an out
+        parameter whose temporary starts unassigned, null: the location is
+        written only if the callee assigned it), and is converted back into the
+        location after the call (ir.TypeApp.writebacks)."""
+        args, after = [], []
+        for i, (name, param) in enumerate(zip(names, params)):
+            in_plan = plans[i] if i < len(plans) else None
+            back = writebacks[i] if i < len(writebacks) else None
+            if not (param.is_var or param.is_out):
+                args.append(name if in_plan is None else self.convert(name, in_plan))
+                continue
+            if in_plan is None and back is None:
+                args.append(name)
+                continue
+            source = callee_params[i].type_val
+            s_shape, t_shape = shape(source), shape(param.type_val)
+            temp = self.temp(self.location_c_type(source))
+            unassigned = param.is_out and starts_unassigned(source)
+            if unassigned:
+                self.emit(f"{temp} = NULL;")
+            else:
+                current = shape_slot_load(f"(*{name})", t_shape)
+                value = current if in_plan is None else self.convert(current, in_plan)
+                self.emit(f"{temp} = {shape_slot_store(value, s_shape)};")
+            args.append(f"(&{temp})")
+            # The writeback, printed after the call
+            saved = self.lines
+            self.lines = []
+            if unassigned:
+                self.emit(f"if ({temp} != NULL) {{")
+                self.indent += 1
+            written = shape_slot_load(temp, s_shape)
+            converted = written if back is None else self.convert(written, back)
+            self.emit(f"*{name} = {shape_slot_store(converted, t_shape)};")
+            if self.holds_pointer(param.type_val):
+                self.emit(f"quest_barrier_slot({name});")
+            if unassigned:
+                self.indent -= 1
+                self.emit("}")
+            after.append(self.lines)
+            self.lines = saved
+        return args, after
+
+    def finish_thunk_call(self, called: str, source_result: QType, target_result: QType, result_plan,
+                          after: list = ()) -> None:
+        """Prints a thunk's call and its return of the result, converted by
+        result_plan, with the writebacks of its var and out parameters
+        (thunk_arguments) between the two."""
+
+        def write_back() -> None:
+            for lines in after:
+                self.lines.extend(lines)
+
         if self.is_ok(target_result):
             self.emit(f"{called};")
+            write_back()
             self.emit("return;")
             return
         if self.is_ok(source_result):
@@ -1006,14 +1064,16 @@ class CPrinter:
             # result (Ok at a type parameter), it returns Ok's value
             assert self.c_type(target_result) == "QVal", f"adapting an Ok result to {target_result}"
             self.emit(f"{called};")
+            write_back()
             self.emit("return Q_OK_VAL;")
             return
-        if result_plan is None:
+        if result_plan is None and not after:
             self.emit(f"return {called};")
             return
         r = self.temp(self.c_type(source_result))
         self.emit(f"{r} = {called};")
-        self.emit(f"return {self.convert(r, result_plan)};")
+        write_back()
+        self.emit(f"return {r if result_plan is None else self.convert(r, result_plan)};")
 
     @staticmethod
     def layout_key(layout) -> tuple:
@@ -1077,15 +1137,15 @@ class CPrinter:
             f"typedef struct {{ void *fn; QClosure *orig; const QTypeDescriptor *desc[{c_int(max(n, 1))}]; }} "
             f"{env_struct};"
         )
-        _, _, o_result = fun_shape_signature(orig_t)
+        _, o_params, o_result = fun_shape_signature(orig_t)
         _, t_params, t_result = fun_shape_signature(target_t)
         with self.auxiliary():
             decls, descs, names = self.thunk_params(o.thunk_params, t_params)
-            args = [a if p is None else self.convert(a, p) for a, p in zip(names, plans[:-1])]
+            args, after = self.thunk_arguments(names, t_params, o_params, plans[:-1], o.writebacks)
             env_descs = [f"_env->desc[{c_int(i)}]" for i in range(n)]
             call_args = ["(void *)_env->orig"] + env_descs + descs + args
             fn = f"(({closure_fn_ptr_type(orig_t, self.ctx)})(_env->orig->fn))"
-            self.finish_thunk_call(call(fn, call_args), o_result, t_result, plans[-1])
+            self.finish_thunk_call(call(fn, call_args), o_result, t_result, plans[-1], after)
             ret = "void" if self.is_ok(t_result) else self.c_type(t_result)
             self.thunk(name, ret, decls, [f"{env_struct} *_env = ({env_struct} *)_raw_env;"]
                        + [f"(void){d};" for d in descs])

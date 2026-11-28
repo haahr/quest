@@ -15,8 +15,10 @@ import
     questlang/common/maps : questlang/common/Maps
     questlang/ir/clone : questlang/ir/Clone
     questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/slots : questlang/ir/Slots
     questlang/ir/walk : questlang/ir/Walk
     questlang/repr/digests : questlang/repr/Digests
+    questlang/repr/layout : questlang/repr/Layout
     questlang/repr/shapes : questlang/repr/Shapes
     questlang/repr/written : questlang/repr/Written
     questlang/types/model : questlang/types/Model
@@ -68,9 +70,13 @@ export
             {if lay.toGeneric then "True" else "False" end} <> strutil.joinArray("" pairs)
         end
 
-    (* An adapt plan's fields and thunk parameters, which the plan gives up to
-     * its adapter *)
-    Let Adapted = Tuple fields: Array(maybe.T(Plan)) thunkParams: Array(nodes.DescriptorParam) end
+    (* An adapt plan's fields, writebacks, and thunk parameters, which the plan
+     * gives up to its adapter *)
+    Let Adapted = Tuple
+        fields: Array(maybe.T(Plan))
+        writebacks: Array(maybe.T(Plan))
+        thunkParams: Array(nodes.DescriptorParam)
+    end
 
     (* What a variable is known to hold, so that its adapter calls it without
      * holding it: a closure of a function, without captures or type arguments,
@@ -171,9 +177,91 @@ export
             vector.toArray(res)
         end
 
+    (* Whether a temporary location of type t, passed for an out parameter,
+     * starts unassigned: one whose word is a pointer, null until the callee
+     * assigns it (opIsSet), so that it is written back only if the callee did
+     * (represent's startsUnassigned, by which it planned the parameter) *)
+    let startsUnassigned(t: Type): Bool =
+        begin
+            let s = shapes.shape(t)
+            if layout.isBoxedInSlots(s) then layout.slotIsPointer(s) else layout.isPointer(s) end
+        end
+
+    (* The location a thunk passes on for its var or out parameter p (the
+     * address of a, its own location), where the closure's parameter is of
+     * type calleeType: a temporary of that type, which starts from a's value
+     * converted by inPlan (an out parameter's whose temporary starts
+     * unassigned, from nothing), and whose value is converted back by back
+     * and stored into a after the call, by the statements added to after (an
+     * unassigned temporary's only if the callee assigned it), as represent's
+     * refArgument passes a location at a call *)
+    let refForwarded(stmts: vector.T(Stmt) p: nodes.ParamEntry a: Variable calleeType: Type inPlan: maybe.T(Plan)
+            back: maybe.T(Plan) after: vector.T(Stmt)): Atom =
+        begin
+            let isOut = p.mode?modeOut
+            let unassigned = isOut andif startsUnassigned(calleeType)
+            let var init = maybe.none(:Atom)
+            if not(unassigned) then
+                let current = nodes.newVar("" p.v.type false)
+                vector.append(stmts nodes.letStmt(current option opLoad of Op with
+                    let var address = nodes.atomOfVar(a)
+                end))
+                init := maybe.some(nodes.atomOfVar(current))
+                if maybe.isSome(inPlan) then
+                    let converted = nodes.newVar("" calleeType false)
+                    vector.append(stmts nodes.letStmt(converted option opConvert of Op with
+                        let var value = nodes.atomOfVar(current)
+                        let var plan = maybe.unwrap(inPlan)
+                    end))
+                    init := maybe.some(nodes.atomOfVar(converted))
+                end
+            end
+            let temp = nodes.newVar("cell" calleeType true)
+            vector.append(stmts option sVarDecl of Stmt with let var pos = ~1 let var v = temp let var init = init end)
+            let tempAddress = nodes.newVar("" if isOut then model.outType(calleeType) else model.varType(calleeType)
+                end false)
+            vector.append(stmts nodes.letStmt(tempAddress option opAddrVar of Op with let var v = temp end))
+            let writeback = nodes.newBody()
+            let var written = nodes.newVar("" calleeType false)
+            vector.append(writeback.statements nodes.letStmt(written nodes.opOfVar(temp)))
+            if maybe.isSome(back) then
+                let converted = nodes.newVar("" p.v.type false)
+                vector.append(writeback.statements nodes.letStmt(converted option opConvert of Op with
+                    let var value = nodes.atomOfVar(written)
+                    let var plan = maybe.unwrap(back)
+                end))
+                written := converted
+            end
+            vector.append(writeback.statements option sStoreAt of Stmt with
+                let var pos = ~1
+                let var value = nodes.atomOfVar(written)
+                let var address = nodes.atomOfVar(a)
+            end)
+            if unassigned then
+                let set = nodes.newVar("" model.boolType false)
+                vector.append(after nodes.letStmt(set option opIsSet of Op with let var v = temp end))
+                vector.append(after option sIf of Stmt with
+                    let var pos = ~1
+                    let var cond = nodes.atomOfVar(set)
+                    let var thenBody = writeback
+                    let var elseBody = nodes.newBody()
+                end)
+            else
+                for i = 0 upto {vector.length(writeback.statements) - 1} do
+                    vector.append(after vector.get(writeback.statements i))
+                end
+            end
+            nodes.atomOfVar(tempAddress)
+        end
+
     (* The arguments a thunk passes on: its parameters, each converted by its
-     * plan, if any (a var or out parameter's location is passed as it is) *)
-    let forwarded(stmts: vector.T(Stmt) params: Array(nodes.ParamEntry) plans: Array(maybe.T(Plan))): Array(Atom) =
+     * plan, if any. A var or out parameter's location is passed as it is
+     * where neither its plan nor its writeback (backs) converts, and
+     * otherwise as a temporary of the closure's parameter type (of
+     * calleeParams), written back by the statements added to after
+     * (refForwarded) *)
+    let forwarded(stmts: vector.T(Stmt) params: Array(nodes.ParamEntry) plans: Array(maybe.T(Plan))
+            backs: Array(maybe.T(Plan)) calleeParams: Array(model.Param) after: vector.T(Stmt)): Array(Atom) =
         begin
             let res = vector.new(:Atom)
             for i = 0 upto {extent params - 1} do
@@ -184,7 +272,13 @@ export
                     let refType = if p.mode?modeVar then model.varType(p.v.type) else model.outType(p.v.type) end
                     let a = nodes.newVar(p.v.hint refType false)
                     vector.append(stmts nodes.letStmt(a option opAddrVar of Op with let var v = p.v end))
-                    vector.append(res nodes.atomOfVar(a))
+                    let inPlan = if i < extent plans then plans[i] else maybe.none(:Plan) end
+                    let back = if i < extent backs then backs[i] else maybe.none(:Plan) end
+                    if {maybe.isNone(inPlan) andif maybe.isNone(back)} orif {i >= extent calleeParams} then
+                        vector.append(res nodes.atomOfVar(a))
+                    else
+                        vector.append(res refForwarded(stmts p a calleeParams[i].type inPlan back after))
+                    end
                 elsif {i < extent plans} andif maybe.isSome(plans[i]) then
                     let plan = maybe.unwrap(plans[i])
                     let a = nodes.newVar(p.v.hint plan.target false)
@@ -200,17 +294,21 @@ export
             vector.toArray(res)
         end
 
-    (* Ends a thunk's body with the call it makes and the return of its
+    (* Ends a thunk's body with the call it makes, the writebacks of its var
+     * and out parameters (after, from forwarded), and the return of its
      * result, converted by resultPlan: a call returning Ok (a C function
      * returning nothing) returns ok, which is Ok's value when the thunk's
      * result is a type parameter's *)
-    let finish(stmts: vector.T(Stmt) called: Op sourceResult: Type targetResult: Type resultPlan: maybe.T(Plan)): Ok =
+    let finish(stmts: vector.T(Stmt) called: Op sourceResult: Type targetResult: Type resultPlan: maybe.T(Plan)
+            after: vector.T(Stmt)): Ok =
         if isOk(targetResult) orif isOk(sourceResult) then
             vector.append(stmts doStmt(called))
+            for i = 0 upto {vector.length(after) - 1} do vector.append(stmts vector.get(after i)) end
             vector.append(stmts returnStmt(okAtom()))
         else
             let r = nodes.newVar("r" sourceResult false)
             vector.append(stmts nodes.letStmt(r called))
+            for i = 0 upto {vector.length(after) - 1} do vector.append(stmts vector.get(after i)) end
             if maybe.isNone(resultPlan) then
                 vector.append(stmts returnStmt(nodes.atomOfVar(r)))
             else
@@ -269,7 +367,8 @@ export
                         when knownMember then known
                     end
                     end
-                let args = forwarded(stmts params a.fields)
+                let after = vector.new(:Stmt)
+                let args = forwarded(stmts params a.fields a.writebacks source.params after)
                 let called =
                     if maybe.isSome(member) then
                         case maybe.unwrap(member)
@@ -286,10 +385,13 @@ export
                     end
                 case called when opCall with c then c.descriptors := descriptorsOf(a.thunkParams) else ok end
                 let last = if extent a.fields > 0 then a.fields[extent a.fields - 1] else maybe.none(:Plan) end
-                finish(stmts called source.result target.result last)
+                finish(stmts called source.result target.result last after)
                 let f = nodes.newFunction(nodes.newVar("qa_adapt" plan.target false) typeParams params target.result
                         nodes.bodyOf(vector.toArray(stmts)) maybe.none())
                 if maybe.isNone(known) then f.env := maybe.some(orig) end
+                (* Temporaries passed for var and out parameters are held as
+                 * the represent pass's slots decisions hold locations *)
+                if not(vector.empty(after)) then slots.decideFunctionSlots(f) end
                 (* Each thunk parameter carries both the target and source
                  * type-parameter symbol ids; on the adapter function
                  * itself, record only the target's symbol id *)
@@ -356,7 +458,9 @@ export
             let typeParams = typeParamsOf(written.quantified(plan.target).quantifiers)
             let params = paramsOf(target)
             let stmts = vector.new(:Stmt)
-            let args = forwarded(stmts params a.fields)
+            (* Its closure's function has value parameters only (closureOf) *)
+            let args = forwarded(stmts params a.fields array of :maybe.T(Plan) end array of :model.Param end
+                    vector.new(:Stmt))
             let cl = clone.newClosedCloner(model.newSubst())
             for i = 0 upto {extent f.params - 1} do
                 case args[i]
@@ -441,16 +545,18 @@ export
                 end))
                 let target = written.funSignature(targetType)
                 let params = paramsOf(target)
-                let args = forwarded(stmts params o.plans)
+                let after = vector.new(:Stmt)
+                let args = forwarded(stmts params o.plans o.writebacks written.funSignature(origType).params after)
                 let descriptors = descriptorsOf(vector.toArray(descriptorParams))
                 let called = nodes.call(maybe.some(orig) typeVariables(typeParams) args
                         maybe.none() maybe.none() maybe.none())
                 case called when opCall with c then c.descriptors := descriptors else ok end
                 let resultPlan = if extent o.plans > 0 then o.plans[extent o.plans - 1] else maybe.none(:Plan) end
-                finish(stmts called written.funSignature(origType).result target.result resultPlan)
+                finish(stmts called written.funSignature(origType).result target.result resultPlan after)
                 let f = nodes.newFunction(nodes.newVar("qa_type_app" targetType false) typeParams params target.result
                         nodes.bodyOf(vector.toArray(stmts)) maybe.none())
                 f.env := maybe.some(env)
+                if not(vector.empty(after)) then slots.decideFunctionSlots(f) end
                 f.descriptorParams := vector.toArray(descriptorParams)
                 addThunk(t key f)
             end
@@ -479,14 +585,16 @@ export
                 let descriptorParams = vector.toArray(made)
                 let params = paramsOf(sig)
                 let stmts = vector.new(:Stmt)
-                let args = forwarded(stmts params array of :maybe.T(Plan) end)
+                let after = vector.new(:Stmt)
+                let args = forwarded(stmts params array of :maybe.T(Plan) end array of :maybe.T(Plan) end
+                        array of :model.Param end after)
                 let called = option opCallExternal of Op with
                     let symbol = symbol
                     let var typeArgs = array of :Type end
                     let var args = args
                     let var descriptors = array of :Descriptor end
                 end
-                finish(stmts called sig.result sig.result maybe.none())
+                finish(stmts called sig.result sig.result maybe.none() after)
                 let f = nodes.newFunction(nodes.newVar("qx_" <> symbol ty false) typeParams params sig.result
                         nodes.bodyOf(vector.toArray(stmts)) maybe.none())
                 f.descriptorParams := descriptorParams
@@ -504,7 +612,7 @@ export
         begin
             if not(hashMap.contains(t.adapted p.id)) then
                 hashMap.insert(t.adapted p.id
-                        tuple let fields = p.fields let thunkParams = p.thunkParams end)
+                        tuple let fields = p.fields let writebacks = p.writebacks let thunkParams = p.thunkParams end)
             end
             hashMap.find(t.adapted p.id)
         end
@@ -530,6 +638,7 @@ export
                         let a = adaptedOf(t p)
                         p.thunk := maybe.some(adapter(t p a maybe.none(:Known)))
                         p.fields := array of :maybe.T(Plan) end
+                        p.writebacks := array of :maybe.T(Plan) end
                         p.thunkParams := array of :nodes.DescriptorParam end
                     end
                 when planCopy then
@@ -636,10 +745,15 @@ export
             end
             let var ok1 = true
             for i = 0 upto {extent descs - 1} do if not(ownDescriptor(descs[i] own)) then ok1 := false end end
-            for i = 0 upto {extent a.fields - 1} do
-                if maybe.isSome(a.fields[i]) then
-                    let f = maybe.unwrap(a.fields[i])
-                    let fa = tuple let fields = f.fields let thunkParams = f.thunkParams end
+            let nested = vector.new(:maybe.T(Plan))
+            for i = 0 upto {extent a.fields - 1} do vector.append(nested a.fields[i]) end
+            for i = 0 upto {extent a.writebacks - 1} do vector.append(nested a.writebacks[i]) end
+            for i = 0 upto {vector.length(nested) - 1} do
+                let f0 = vector.get(nested i)
+                if maybe.isSome(f0) then
+                    let f = maybe.unwrap(f0)
+                    let fa =
+                        tuple let fields = f.fields let writebacks = f.writebacks let thunkParams = f.thunkParams end
                     if not(planOwnDescriptors(f.descriptors fa own)) then ok1 := false end
                 end
             end

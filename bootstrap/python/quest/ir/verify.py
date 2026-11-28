@@ -293,7 +293,7 @@ def _descriptor_problems(unit: ir.Unit) -> list[str]:
                 problems.append(f"{where}: an adapt plan's thunk has {len(p.thunk_params)} descriptor parameters")
             bind(p.thunk_params, where)
             scope = scope.thunk(p.thunk_params)
-        for f in p.fields:
+        for f in p.fields + p.writebacks:
             plan(f, scope, where)
 
     def operation(o, scope: _DescriptorScope, where: str) -> None:
@@ -309,7 +309,7 @@ def _descriptor_problems(unit: ir.Unit) -> list[str]:
                                         f"parameters")
                     bind(o.thunk_params, where)
                     inner = scope.thunk(o.thunk_params)
-                for p in o.plans:
+                for p in o.plans + o.writebacks:
                     plan(p, inner, where)
             case ir.Convert(plan=p):
                 plan(p, scope, where)

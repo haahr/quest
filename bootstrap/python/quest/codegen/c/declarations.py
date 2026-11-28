@@ -22,6 +22,8 @@ from quest.codegen.c.types import (
     qval_unwrap,
     qval_wrap,
     record_struct_name,
+    shape_qval_to_slot,
+    shape_slot_to_qval,
     RecordNamingContext,
 )
 from quest.repr.descriptors import fun_descriptor_tag
@@ -985,12 +987,36 @@ class CDeclarationEmitter:
             uniform: list[str] = [f"QVal qv_args[{c_int(max(1, nq + len(params)))}];"]
             uniform.extend(f"qv_args[{c_int(k)}].p = (void *)qv_desc_{c_int(k)};" for k in range(nq))
             call_args = ["(void *)e->orig"] + [f"qv_desc_{c_int(k)}" for k in range(nq)]
+            # The direct path's var and out arguments that may hold a value of
+            # a subtype pass a temporary, converted back after the call
+            direct_args = list(call_args)
+            writebacks: list[str] = []
             for i, p in enumerate(params):
                 name = f"qv_arg_{c_int(i)}"
                 slot = f"qv_args[{c_int(nq + i)}]"
                 if p.is_var or p.is_out:
-                    param_decls.append(f"{location_representation(p.type_val)} *{name}")
+                    location = location_representation(p.type_val)
+                    param_decls.append(f"{location} *{name}")
                     uniform.append(f"{slot}.p = (void *){name};")
+                    if may_be_stored_as_subtype(shape(p.type_val)):
+                        temp = f"qv_loc_{c_int(i)}"
+                        s = shape(p.type_val)
+                        to_from = f"to->params[{c_int(i)}].type, from->params[{c_int(i)}].type"
+                        from_to = f"from->params[{c_int(i)}].type, to->params[{c_int(i)}].type"
+                        # An out argument's pointer starts null, and is written
+                        # back only if the closure assigned it
+                        unassigned = p.is_out and location.endswith("*")
+                        if unassigned:
+                            direct.append(f"{location} {temp} = NULL;")
+                        else:
+                            current = f"quest_convert({shape_slot_to_qval(f'(*{name})', s)}, {to_from})"
+                            direct.append(f"{location} {temp} = {shape_qval_to_slot(current, s)};")
+                        back = shape_qval_to_slot(f"quest_convert({shape_slot_to_qval(temp, s)}, {from_to})", s)
+                        store = f"{{ *{name} = {back}; quest_barrier_slot({name}); }}"
+                        writebacks.append(f"if ({temp} != NULL) {store}" if unassigned else store)
+                        call_args.append(name)
+                        direct_args.append(f"&{temp}")
+                        continue
                 elif p.type_val is OK_TYPE:
                     param_decls.append(f"QVal {name}")
                     uniform.append(f"{slot} = {name};")
@@ -1004,21 +1030,28 @@ class CDeclarationEmitter:
                         )
                         direct.append(f"{name} = {converted};")
                 call_args.append(name)
-            call_expr = call(f"(({fn_ptr})(e->orig->fn))", call_args)
+                direct_args.append(name)
+            call_expr = call(f"(({fn_ptr})(e->orig->fn))", direct_args)
             invoke_expr = "from->invoke(e->orig, qv_args)"
             if ret_t is OK_TYPE:
                 direct.append(f"{call_expr};")
+                direct.extend(writebacks)
                 direct.append("return;")
                 uniform.append(f"(void){invoke_expr};")
             else:
                 if may_be_stored_as_subtype(shape(ret_t)):
                     direct.append(f"{ret_c} qv_result = {call_expr};")
+                    direct.extend(writebacks)
                     converted = qval_unwrap(
                         f"quest_convert({qval_wrap('qv_result', ret_t)}, from->result_type, to->result_type)",
                         ret_t,
                         self.record_ctx,
                     )
                     direct.append(f"return {converted};")
+                elif writebacks:
+                    direct.append(f"{ret_c} qv_result = {call_expr};")
+                    direct.extend(writebacks)
+                    direct.append("return qv_result;")
                 else:
                     direct.append(f"return {call_expr};")
                 uniform.append(

@@ -1,0 +1,1124 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('dynamic') 'Dynamic')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (LetValueBinding
+      :name 'print'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (TypeBinding
+      :name 'Super'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'z'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'Sub'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'a'
+            :type_sig (TypePath ('Int'))
+          )
+          (RecordFieldSig
+            :name 'z'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'fill'
+      :value (ExprInfix
+        :left (ExprId 'r')
+        :op ':='
+        :right (ExprRecord
+          :fields (
+            (RecordBinding
+              :name 'a'
+              :value (ExprInt 10 '10')
+            )
+            (RecordBinding
+              :name 'z'
+              :value (ExprInt 20 '20')
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'r'
+          :type_annot (TypePath ('Sub'))
+          :mode OUT
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'g'
+      :value (ExprId 'fill')
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'r'
+            :bound (KindPower
+              :bound (TypePath ('Super'))
+            )
+            :mode OUT
+          )
+        )
+        :result_type (TypePath ('Ok'))
+      )
+      :is_var True
+    )
+    (LetValueBinding
+      :name 'x'
+      :value (ExprRecord
+        :fields (
+          (RecordBinding
+            :name 'z'
+            :value (ExprInt 1 '1')
+          )
+        )
+      )
+      :type_annot (TypePath ('Super'))
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'g')
+        :args (
+          (ExprDerefCell
+            :target (ExprId 'x')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'record: ' '"record: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprId 'x')
+                  :field 'z'
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'maybeFill'
+      :value (ExprIf
+        :cond (ExprId 'set')
+        :then_branch (ExprInfix
+          :left (ExprId 'r')
+          :op ':='
+          :right (ExprRecord
+            :fields (
+              (RecordBinding
+                :name 'a'
+                :value (ExprInt 30 '30')
+              )
+              (RecordBinding
+                :name 'z'
+                :value (ExprInt 40 '40')
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'r'
+          :type_annot (TypePath ('Sub'))
+          :mode OUT
+        )
+        (FormalParam
+          :name 'set'
+          :type_annot (TypePath ('Bool'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'h'
+      :value (ExprId 'maybeFill')
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'r'
+            :bound (KindPower
+              :bound (TypePath ('Super'))
+            )
+            :mode OUT
+          )
+          (Quantifier
+            :name 'set'
+            :bound (KindPower
+              :bound (TypePath ('Bool'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('Ok'))
+      )
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'h')
+        :args (
+          (ExprDerefCell
+            :target (ExprId 'x')
+          )
+          (ExprBool False)
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'record kept: ' '"record kept: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprId 'x')
+                  :field 'z'
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'h')
+        :args (
+          (ExprDerefCell
+            :target (ExprId 'x')
+          )
+          (ExprBool True)
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'record set: ' '"record set: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprId 'x')
+                  :field 'z'
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'Small'
+      :type_val (TypeVariant
+        :fields (
+          (VariantFieldSig
+            :tag 'b'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'Large'
+      :type_val (TypeVariant
+        :fields (
+          (VariantFieldSig
+            :tag 'a'
+            :type_sig (TypePath ('String'))
+          )
+          (VariantFieldSig
+            :tag 'b'
+            :type_sig (TypePath ('Int'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'pick'
+      :value (ExprInfix
+        :left (ExprId 'v')
+        :op ':='
+        :right (ExprVariant
+          :tag 'b'
+          :variant_type (TypePath ('Small'))
+          :payload (ExprInt 7 '7')
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'v'
+          :type_annot (TypePath ('Small'))
+          :mode OUT
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'k'
+      :value (ExprId 'pick')
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'v'
+            :bound (KindPower
+              :bound (TypePath ('Large'))
+            )
+            :mode OUT
+          )
+        )
+        :result_type (TypePath ('Ok'))
+      )
+      :is_var True
+    )
+    (LetValueBinding
+      :name 'large'
+      :value (ExprVariant
+        :tag 'a'
+        :variant_type (TypePath ('Large'))
+        :payload (ExprString 'first' '"first"')
+      )
+      :type_annot (TypePath ('Large'))
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'k')
+        :args (
+          (ExprDerefCell
+            :target (ExprId 'large')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'variant: ' '"variant: "')
+            :op '<>'
+            :right (ExprCase
+              :target (ExprId 'large')
+              :branches (
+                (CaseBranch
+                  :tags ('a')
+                  :binder 's'
+                  :body (ExprInfix
+                    :left (ExprString 'a ' '"a "')
+                    :op '<>'
+                    :right (ExprId 's')
+                  )
+                )
+                (CaseBranch
+                  :tags ('b')
+                  :binder 'n'
+                  :body (ExprInfix
+                    :left (ExprString 'b ' '"b "')
+                    :op '<>'
+                    :right (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'conv')
+                        :field 'int'
+                      )
+                      :args (
+                        (ExprId 'n')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'poly'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'x'
+            :type_annot (TypePath ('A'))
+            :mode VAR
+          )
+          (FormalParam
+            :name 'y'
+            :type_annot (TypePath ('A'))
+            :mode VALUE
+          )
+          (FormalParam
+            :name 'z'
+            :type_annot (TypePath ('A'))
+            :mode OUT
+          )
+        )
+        :return_type (TypePath ('Ok'))
+        :body (ExprBlock
+          :bindings (
+            (ExprStmt
+              :expr (ExprInfix
+                :left (ExprId 'z')
+                :op ':='
+                :right (ExprId 'x')
+              )
+            )
+            (ExprStmt
+              :expr (ExprInfix
+                :left (ExprId 'x')
+                :op ':='
+                :right (ExprId 'y')
+              )
+            )
+          )
+        )
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindType)
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindType)
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'x'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VAR
+          )
+          (Quantifier
+            :name 'y'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+          (Quantifier
+            :name 'z'
+            :bound (KindPower
+              :bound (TypePath ('A'))
+            )
+            :mode OUT
+          )
+        )
+        :result_type (TypePath ('Ok'))
+      )
+    )
+    (LetValueBinding
+      :name 'keep'
+      :value (ExprId 'poly')
+      :is_var True
+    )
+    (LetValueBinding
+      :name 'setBool'
+      :value (ExprApp
+        :func (ExprId 'keep')
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('Bool'))
+          )
+        )
+      )
+      :is_var True
+    )
+    (LetValueBinding
+      :name 'b'
+      :value (ExprBool False)
+      :is_var True
+    )
+    (LetValueBinding
+      :name 'c'
+      :value (ExprBool False)
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'setBool')
+        :args (
+          (ExprDerefCell
+            :target (ExprId 'b')
+          )
+          (ExprBool True)
+          (ExprDerefCell
+            :target (ExprId 'c')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'bool: ' '"bool: "')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'bool'
+                )
+                :args (
+                  (ExprId 'b')
+                )
+              )
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprString ' ' '" "')
+                :op '<>'
+                :right (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'bool'
+                  )
+                  :args (
+                    (ExprId 'c')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'setReal'
+      :value (ExprApp
+        :func (ExprId 'keep')
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('Real'))
+          )
+        )
+      )
+      :is_var True
+    )
+    (LetValueBinding
+      :name 'r'
+      :value (ExprReal 1.25 '1.25')
+      :is_var True
+    )
+    (LetValueBinding
+      :name 's'
+      :value (ExprReal 0.0 '0.0')
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'setReal')
+        :args (
+          (ExprDerefCell
+            :target (ExprId 'r')
+          )
+          (ExprReal 2.5 '2.5')
+          (ExprDerefCell
+            :target (ExprId 's')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'real: ' '"real: "')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'real'
+                )
+                :args (
+                  (ExprId 'r')
+                )
+              )
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprString ' ' '" "')
+                :op '<>'
+                :right (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'real'
+                  )
+                  :args (
+                    (ExprId 's')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'dFill'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'dynamic')
+          :field 'new'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypeAll
+              :quantifiers (
+                (Quantifier
+                  :name 'r'
+                  :bound (KindPower
+                    :bound (TypePath ('Sub'))
+                  )
+                  :mode OUT
+                )
+              )
+              :result_type (TypePath ('Ok'))
+            )
+          )
+          (ExprId 'fill')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'dg'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'dynamic')
+          :field 'be'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypeAll
+              :quantifiers (
+                (Quantifier
+                  :name 'r'
+                  :bound (KindPower
+                    :bound (TypePath ('Super'))
+                  )
+                  :mode OUT
+                )
+              )
+              :result_type (TypePath ('Ok'))
+            )
+          )
+          (ExprId 'dFill')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'y'
+      :value (ExprRecord
+        :fields (
+          (RecordBinding
+            :name 'z'
+            :value (ExprInt 1 '1')
+          )
+        )
+      )
+      :type_annot (TypePath ('Super'))
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'dg')
+        :args (
+          (ExprDerefCell
+            :target (ExprId 'y')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'dynamic record: ' '"dynamic record: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprId 'y')
+                  :field 'z'
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'dMaybe'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'dynamic')
+          :field 'new'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypeAll
+              :quantifiers (
+                (Quantifier
+                  :name 'r'
+                  :bound (KindPower
+                    :bound (TypePath ('Sub'))
+                  )
+                  :mode OUT
+                )
+                (Quantifier
+                  :name 'set'
+                  :bound (KindPower
+                    :bound (TypePath ('Bool'))
+                  )
+                  :mode VALUE
+                )
+              )
+              :result_type (TypePath ('Ok'))
+            )
+          )
+          (ExprId 'maybeFill')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'dh'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'dynamic')
+          :field 'be'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypeAll
+              :quantifiers (
+                (Quantifier
+                  :name 'r'
+                  :bound (KindPower
+                    :bound (TypePath ('Super'))
+                  )
+                  :mode OUT
+                )
+                (Quantifier
+                  :name 'set'
+                  :bound (KindPower
+                    :bound (TypePath ('Bool'))
+                  )
+                  :mode VALUE
+                )
+              )
+              :result_type (TypePath ('Ok'))
+            )
+          )
+          (ExprId 'dMaybe')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'dh')
+        :args (
+          (ExprDerefCell
+            :target (ExprId 'y')
+          )
+          (ExprBool False)
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'dynamic record kept: ' '"dynamic record kept: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprId 'y')
+                  :field 'z'
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'dh')
+        :args (
+          (ExprDerefCell
+            :target (ExprId 'y')
+          )
+          (ExprBool True)
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'dynamic record set: ' '"dynamic record set: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprId 'y')
+                  :field 'z'
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'Named'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'z'
+            :type_sig (TypePath ('String'))
+          )
+        )
+      )
+    )
+    (TypeBinding
+      :name 'Tagged'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'a'
+            :type_sig (TypePath ('Int'))
+          )
+          (RecordFieldSig
+            :name 'z'
+            :type_sig (TypePath ('String'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'name'
+      :value (ExprInfix
+        :left (ExprId 'r')
+        :op ':='
+        :right (ExprRecord
+          :fields (
+            (RecordBinding
+              :name 'a'
+              :value (ExprInt 10 '10')
+            )
+            (RecordBinding
+              :name 'z'
+              :value (ExprString 'ok' '"ok"')
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'r'
+          :type_annot (TypePath ('Tagged'))
+          :mode OUT
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'dn'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'dynamic')
+          :field 'be'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypeAll
+              :quantifiers (
+                (Quantifier
+                  :name 'r'
+                  :bound (KindPower
+                    :bound (TypePath ('Named'))
+                  )
+                  :mode OUT
+                )
+              )
+              :result_type (TypePath ('Ok'))
+            )
+          )
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'dynamic')
+              :field 'new'
+            )
+            :args (
+              (TypeArgument
+                :type_val (TypeAll
+                  :quantifiers (
+                    (Quantifier
+                      :name 'r'
+                      :bound (KindPower
+                        :bound (TypePath ('Tagged'))
+                      )
+                      :mode OUT
+                    )
+                  )
+                  :result_type (TypePath ('Ok'))
+                )
+              )
+              (ExprId 'name')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'n'
+      :value (ExprRecord
+        :fields (
+          (RecordBinding
+            :name 'z'
+            :value (ExprString 'no' '"no"')
+          )
+        )
+      )
+      :type_annot (TypePath ('Named'))
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'dn')
+        :args (
+          (ExprDerefCell
+            :target (ExprId 'n')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'dynamic string: ' '"dynamic string: "')
+            :op '<>'
+            :right (ExprSelect
+              :target (ExprId 'n')
+              :field 'z'
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'dk'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'dynamic')
+          :field 'be'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypeAll
+              :quantifiers (
+                (Quantifier
+                  :name 'v'
+                  :bound (KindPower
+                    :bound (TypePath ('Large'))
+                  )
+                  :mode OUT
+                )
+              )
+              :result_type (TypePath ('Ok'))
+            )
+          )
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'dynamic')
+              :field 'new'
+            )
+            :args (
+              (TypeArgument
+                :type_val (TypeAll
+                  :quantifiers (
+                    (Quantifier
+                      :name 'v'
+                      :bound (KindPower
+                        :bound (TypePath ('Small'))
+                      )
+                      :mode OUT
+                    )
+                  )
+                  :result_type (TypePath ('Ok'))
+                )
+              )
+              (ExprId 'pick')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'l2'
+      :value (ExprVariant
+        :tag 'a'
+        :variant_type (TypePath ('Large'))
+        :payload (ExprString 'first' '"first"')
+      )
+      :type_annot (TypePath ('Large'))
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'dk')
+        :args (
+          (ExprDerefCell
+            :target (ExprId 'l2')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'dynamic variant: ' '"dynamic variant: "')
+            :op '<>'
+            :right (ExprCase
+              :target (ExprId 'l2')
+              :branches (
+                (CaseBranch
+                  :tags ('a')
+                  :binder 's'
+                  :body (ExprInfix
+                    :left (ExprString 'a ' '"a "')
+                    :op '<>'
+                    :right (ExprId 's')
+                  )
+                )
+                (CaseBranch
+                  :tags ('b')
+                  :binder 'n'
+                  :body (ExprInfix
+                    :left (ExprString 'b ' '"b "')
+                    :op '<>'
+                    :right (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'conv')
+                        :field 'int'
+                      )
+                      :args (
+                        (ExprId 'n')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

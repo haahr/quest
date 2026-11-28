@@ -381,10 +381,11 @@ export
             (* An adapt plan's thunk parameters and fields are its adapter's,
              * a function of the unit (the thunks pass) *)
             if nodes.planIs(p nodes.planAdapt) andif {maybe.isNone(p.thunk)
-                    orif {extent p.fields > 0} orif {extent p.thunkParams > 0}} then
+                    orif {extent p.fields > 0} orif {extent p.writebacks > 0} orif {extent p.thunkParams > 0}} then
                 problem(c where <> ": an adapt plan without its adapter")
             end
             for i = 0 upto {extent p.fields - 1} do plan(c p.fields[i] scope where) end
+            for i = 0 upto {extent p.writebacks - 1} do plan(c p.writebacks[i] scope where) end
         end
 
     (* The problems of an operation's descriptors and plans *)
@@ -401,6 +402,7 @@ export
                     problem(c where <> ": a type application whose instance is a function, not its thunk's closure")
                 end
                 for i = 0 upto {extent x.plans - 1} do plan(c x.plans[i] scope where) end
+                for i = 0 upto {extent x.writebacks - 1} do plan(c x.writebacks[i] scope where) end
             when opConvert with x then plan(c maybe.some(x.plan) scope where)
             when opPrim with x then
                 if nodes.comparesIdentity(x.op) andif {extent x.args > 0} then

@@ -259,13 +259,14 @@ def adapt_plan(source: QType, target: QType, layout) -> Optional[ir.Plan]:
     flipped = (layout[0], not layout[1]) if layout is not None else None
     _ADAPTING.add(key)
     try:
-        fields = tuple(
-            None if tp.is_var or tp.is_out else plan(tp.type_val, sp.type_val, flipped)
-            for sp, tp in zip(s_params, t_params)
-        ) + (plan(s_result, t_result, layout),)
+        fields = tuple(ref_in_plan(tp, sp, flipped) for sp, tp in zip(s_params, t_params)) + (
+            plan(s_result, t_result, layout),
+        )
+        writebacks = tuple(ref_back_plan(sp, tp, layout) for sp, tp in zip(s_params, t_params))
     finally:
         _ADAPTING.discard(key)
-    if all(p is None for p in fields) and signature_representation(source) == signature_representation(target):
+    if (all(p is None for p in fields + writebacks)
+            and signature_representation(source) == signature_representation(target)):
         return None
     # The thunk takes target's type parameters, which the fields' types name by
     # source's symbols (shared_signatures) or target's own
@@ -274,7 +275,37 @@ def adapt_plan(source: QType, target: QType, layout) -> Optional[ir.Plan]:
     thunk_symbols = tuple(
         (tq.symbol_id,) + ((s_quants[k].symbol_id,) if k < len(s_quants) else ()) for k, tq in enumerate(t_quants)
     )
-    return ir.Plan("adapt", source, target, fields, layout, thunk_symbols=thunk_symbols)
+    return ir.Plan("adapt", source, target, fields, layout, thunk_symbols=thunk_symbols, writebacks=writebacks)
+
+
+def starts_unassigned(t: QType) -> bool:
+    """Whether a thunk's temporary location of type t, passed for an out
+    parameter, starts unassigned: one whose word is a pointer, null until the
+    callee assigns it (ir.IsSet), so that it is written back only if the callee
+    did. Any other (a scalar, or a QVal word, whose every value may be stored)
+    starts from the caller's location's value instead, as a var parameter's
+    does."""
+    return shape_location_representation(shape(t)).endswith("*")
+
+
+def ref_in_plan(param, callee_param, layout) -> Optional[ir.Plan]:
+    """The plan of a thunk's argument for its parameter param, passed on for
+    the closure's parameter callee_param: a value parameter's value, or a var
+    or out parameter's location's value into a temporary of the closure's
+    parameter type (None for an out parameter whose temporary starts
+    unassigned)."""
+    if param.is_out and starts_unassigned(callee_param.type_val):
+        return None
+    return plan(param.type_val, callee_param.type_val, layout)
+
+
+def ref_back_plan(callee_param, param, layout) -> Optional[ir.Plan]:
+    """The plan converting a var or out parameter's value back, from the
+    closure's parameter callee_param's temporary to the thunk's location of
+    param (None for a value parameter)."""
+    if not (param.is_var or param.is_out):
+        return None
+    return plan(callee_param.type_val, param.type_val, layout)
 
 
 # The pairs of shapes being planned (with their layouts), for recursive types,
@@ -594,31 +625,32 @@ def inspect_arm(auto_t, case: ir.InspectCase) -> ir.InspectArm:
                          layout_error=has_var)
 
 
-def type_app_plans(orig_t: QType, type_args: tuple[QType, ...],
-                   target_t: QType) -> tuple[tuple[Optional[ir.Plan], ...], tuple[tuple[int, ...], ...]]:
+def type_app_plans(
+    orig_t: QType, type_args: tuple[QType, ...], target_t: QType
+) -> tuple[tuple[Optional[ir.Plan], ...], tuple[tuple[int, ...], ...], tuple[Optional[ir.Plan], ...]]:
     """How a polymorphic value of type orig_t applied to the type arguments is
     used at target_t (ir.TypeApp.plans): for a value of no parameters, its
     value's plan from the generic result at the type arguments; for a function,
     the plans of a thunk of target_t's signature, converting each argument from
     target_t's parameter type to the function's generic one at the type
-    arguments (None for var and out parameters), and the result back. The type
-    parameters the type arguments do not bind stand for target_t's own, the
-    thunk's, whose symbols are returned too (ir.TypeApp.thunk_symbols)."""
+    arguments (a var or out parameter's location's value, ref_in_plan), and the
+    result back. The type parameters the type arguments do not bind stand for
+    target_t's own, the thunk's, whose symbols are returned too
+    (ir.TypeApp.thunk_symbols), and then the var and out parameters' plans back
+    (ir.TypeApp.writebacks)."""
     quants, inner = quantified(orig_t)
     instantiation = {q.symbol_id: t for q, t in zip(quants, type_args)}
     if not isinstance(inner, QFunType):
-        return (plan(inner, target_t, (instantiation, False)),), ()
+        return (plan(inner, target_t, (instantiation, False)),), (), ()
     t_quants, t_inner = quantified(target_t)
     for oq, tq in zip(quants[len(type_args):], t_quants):
         instantiation[oq.symbol_id] = QTypeVar(name=tq.name, symbol_id=tq.symbol_id, bound=tq.bound)
     t_params = t_inner.params if isinstance(t_inner, QFunType) else ()
     t_result = t_inner.result_type if isinstance(t_inner, QFunType) else t_inner
-    params = tuple(
-        None if tp.is_var or tp.is_out else plan(tp.type_val, op.type_val, (instantiation, True))
-        for tp, op in zip(t_params, inner.params)
-    )
+    params = tuple(ref_in_plan(tp, op, (instantiation, True)) for tp, op in zip(t_params, inner.params))
     plans = params + (plan(inner.result_type, t_result, (instantiation, False)),)
-    return plans, tuple((tq.symbol_id,) for tq in t_quants)
+    writebacks = tuple(ref_back_plan(op, tp, (instantiation, False)) for tp, op in zip(t_params, inner.params))
+    return plans, tuple((tq.symbol_id,) for tq in t_quants), writebacks
 
 
 def _type_of(a: ir.Atom) -> QType:
@@ -851,7 +883,7 @@ class _Representer:
                     orig_t = o.module.members[o.member].type
                 else:
                     orig_t = o.callee_type
-                o.plans, o.thunk_symbols = type_app_plans(orig_t, type_args, result_t)
+                o.plans, o.thunk_symbols, o.writebacks = type_app_plans(orig_t, type_args, result_t)
             case ir.Prim(op="is" | "isnot", args=(a, b)):
                 o.args = self.comparable(a, b, before)
             case ir.Payload(value=v, tag=tag):

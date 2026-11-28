@@ -262,8 +262,11 @@ export
      * the fields after kind, source, and target, and the describe pass the
      * descriptors and tables:
      * - fields: a copy's plan for each component of the new tuple, or an
-     *   adapt plan's for each of the closure's parameters (none for var and
-     *   out ones), then its result's; none where a value is used as it is;
+     *   adapt plan's for each of the closure's parameters (a var or out
+     *   parameter's as for opTypeApp's plans), then its result's; none where
+     *   a value is used as it is;
+     * - writebacks: an adapt plan's for each of its var and out parameters
+     *   back, as for opTypeApp's;
      * - layout: for a runtime plan, the polymorphic callee's layout the value
      *   goes to or comes from (an adapt plan has its call's, by which its
      *   fields convert; a view plan of an abstract type's value, the layout
@@ -290,6 +293,7 @@ export
         var descriptors: Array(Descriptor)
         var thunkParams: Array(DescriptorParam)
         var tagMap: maybe.T(TagMap)
+        var writebacks: Array(maybe.T(Plan))
         (* An adapt plan's adapter, a function of the unit (made by the
          * thunks pass, which empties the plan's thunk parameters and fields:
          * they are the adapter's) *)
@@ -344,11 +348,17 @@ export
          * represent pass sets plans: for a value of no parameters, its
          * value's conversion to the let's type; for a function, whose instance
          * is a thunk converting its arguments and result, the parameters'
-         * plans (none for var and out ones), then the result's; and
-         * thunkSymbols, the symbols the thunk's own type parameters are named
-         * by in those plans. The describe pass sets thunkParams, for a
-         * function only: the thunk's descriptor variables, which its plans'
-         * descriptors use (docs/ir.md section 8.4). *)
+         * plans (for a var parameter, its location's value into the
+         * function's; for an out one, the same, or none where the function's
+         * location starts unassigned), then the result's; writebacks, each
+         * var and out parameter's plan back from the function's location (a
+         * temporary the thunk passes) into the instance's (none for a value
+         * parameter, and where nothing converts: a thunk passes its location
+         * on as it is where neither plan converts); and thunkSymbols, the
+         * symbols the thunk's own type parameters are named by in those
+         * plans. The describe pass sets thunkParams, for a function only: the
+         * thunk's descriptor variables, which its plans' descriptors use
+         * (docs/ir.md section 8.4). *)
         opTypeApp with
             var callee: maybe.T(Variable)
             var typeArgs: Array(Type)
@@ -359,6 +369,7 @@ export
             var thunkSymbols: Array(Array(Int))
             var descriptors: Array(Descriptor)
             var thunkParams: maybe.T(Array(DescriptorParam))
+            var writebacks: Array(maybe.T(Plan))
         end
         (* A module's member as a value, or with no member the module itself *)
         opModuleMember with var moduleRef: ModuleRef var member: maybe.T(String) end
@@ -688,6 +699,7 @@ export
         var thunkSymbols: Array(Array(Int))
         var descriptors: Array(Descriptor)
         var thunkParams: maybe.T(Array(DescriptorParam))
+        var writebacks: Array(maybe.T(Plan))
     end
     and OpModuleMember = Tuple var moduleRef: ModuleRef var member: maybe.T(String) end
     and OpBuiltin = Tuple name: String end

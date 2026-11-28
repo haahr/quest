@@ -374,6 +374,12 @@ export
     let newVarBox(tag: Int payload: Any): Any = external "wasm.newVarBox"
     let isNull(x: Any): Bool = external "wasm.isNull"
     let nullAny(): Any = external "wasm.nullAny"
+    (* A location as a uniform entry receives it: its value, a new value
+     * stored in it, and a new location holding a value *)
+    let locationGet(location: Any): Any = external "wasm.locationGet"
+    let sameLocation(a: Any b: Any): Bool = external "wasm.same"
+    let locationSet(location: Any v: Any): Ok = external "wasm.locationSet"
+    let newLocation(v: Any): Any = external "wasm.newLocation"
     (* A table ($dict): its indices, an array of i32s, and its stored types,
      * an array of descriptors or null *)
     let newI32s(n: Int): Any = external "wasm.newI32s"
@@ -1188,14 +1194,36 @@ export
     (* An adapter's argument k (a descriptor for each quantifier, then the
      * parameters): a value parameter's converted from the adapter's type to
      * the closure's, contravariantly; a var or out parameter's location as
-     * it is; and the result converted from the closure's to the adapter's *)
+     * it is where the two types' parameters are one, else a new location,
+     * which starts from the location's value converted (an out parameter's
+     * empty) and is converted back by adaptBack after the call; and the
+     * result converted from the closure's to the adapter's *)
     and adaptArg(from: Desc to: Desc k: Int v: Any): Any =
         begin
             let q = funQuantifiers(to)
             if k < q then v
             else
                 let i = k - q
-                if {i < extent to.flags} andif {to.flags[i] is 0} then convert(v to.parts[i] from.parts[i]) else v end
+                if {i >= extent to.flags} orif {i >= extent from.parts} then v
+                elsif to.flags[i] is 0 then convert(v to.parts[i] from.parts[i])
+                elsif to.parts[i] is from.parts[i] then v
+                elsif to.flags[i] is 2 then newLocation(nullAny())
+                else newLocation(convert(locationGet(v) to.parts[i] from.parts[i]))
+                end
+            end
+        end
+    (* After an adapter's call: a var or out parameter's value, from the
+     * location adaptArg made for argument k (converted), converted back into
+     * the adapter's location (original), unless the closure left an out
+     * parameter's unassigned *)
+    and adaptBack(from: Desc to: Desc k: Int original: Any converted: Any): Ok =
+        begin
+            let q = funQuantifiers(to)
+            let i = k - q
+            if {i >= 0} andif {i < extent to.flags} andif {to.flags[i] isnot 0}
+                    andif not(sameLocation(original converted)) then
+                let w = locationGet(converted)
+                if not(isNull(w)) then locationSet(original convert(w from.parts[i] to.parts[i])) end
             end
         end
     and adaptResult(from: Desc to: Desc v: Any): Any =
