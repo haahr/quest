@@ -80,8 +80,8 @@ def check_lexer() -> list[str]:
     # (directly, or by keywordRow, openerRow, or declarationRow): a kind, its
     # name, and its spelling
     tokens = (ROOT_DIR / "questlang" / "syntax" / "tokens.mod.quest").read_text(encoding="utf-8")
-    keywords = set(re.findall(r'(?:keywordOf|keywordRow|openerRow|declarationRow)\(option \w+ of K end "\w+" "([A-Za-z]+)"',
-                              tokens))
+    row = r'(?:keywordOf|keywordRow|openerRow|declarationRow)\(option \w+ of K end "\w+" "([A-Za-z]+)"'
+    keywords = set(re.findall(row, tokens))
     lexed = set(quest_lexer.TYPE_KEYWORDS) | set(quest_lexer.VALUE_KEYWORDS)
     if keywords != lexed:
         problems.append(f"the lexer's keywords differ from the tokenizer's: only the tokenizer's "

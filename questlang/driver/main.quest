@@ -469,19 +469,19 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
     begin
         let located = fun(message: String): Ok
             diagbag.add(bag diagnostics.error(message location.span(location.file(sm) 0 1)))
-        Let Translated = maybe.T(Tuple code: String unit: nodes.Unit end)
-        let translated = reportingInternal(bag maybe.none(:Tuple code: String unit: nodes.Unit end)
+        Let Translated = maybe.T(Tuple emitted: String unit: nodes.Unit end)
+        let translated = reportingInternal(bag maybe.none(:Tuple emitted: String unit: nodes.Unit end)
                 fun(): Translated
                     begin
                         let unit = lowered(program e sm compiledPrintsResult "described")
                         maybe.some(tuple
-                            let code = cBackend.codeOfUnit(unit maybe.none(:String) programBackend)
+                            let emitted = cBackend.emitUnit(unit maybe.none(:String) programBackend)
                             let unit = unit
                         end)
                     end)
         if maybe.isSome(translated) then
             let t = maybe.unwrap(translated)
-            if shows("codegen_c") orif shows("codegen_arm64") then dump(t.code) end
+            if shows("codegen_c") orif shows("codegen_arm64") then dump(t.emitted) end
             if shows("codegen_wasm") then dump(cBackend.wasmText(t.unit)) end
             let running = reaches("run_c_compiled")
             let writing = {compileMode orif maybe.isSome(options.output)} andif not(options.stopGiven)
@@ -516,14 +516,14 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     let target = maybe.unwrap(compileOutput)
                     try
                         let w = writer.file(target)
-                        writer.putString(w t.code)
+                        writer.putString(w t.emitted)
                         writer.close(w)
                     when writer.error then
                         failWith("error writing '" <> target <> "'")
                     end
                 else
                     flushDumps()
-                    writer.putString(writer.output t.code)
+                    writer.putString(writer.output t.emitted)
                 end
             elsif choice.isWasm(programBackend) andif {running orif writing} then
                 (* Builds and runs or writes the WebAssembly bundle
@@ -555,7 +555,7 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     let objects = engine.buildModules(wasmEngine modules importer e.programDir)
                     let units = wasmBundle.ordered(objects buildDir)
                     if writing then
-                        wasmBundle.write(files.absolute(maybe.unwrap(compileOutput)) t.code runtimeBytes units)
+                        wasmBundle.write(files.absolute(maybe.unwrap(compileOutput)) t.emitted runtimeBytes units)
                     else
                         let base = compilerRunner.temporaryBinary()
                         let program = base <> ".wasm"
@@ -566,7 +566,7 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                                 writer.putString(w contents)
                                 writer.close(w)
                             end
-                        save(program t.code)
+                        save(program t.emitted)
                         save(runtimePath runtimeBytes)
                         let r = wasmBundle.asRun(system.run(wasmBundle.command(options.wasmEngine program
                                 wasmRuntime.name runtimePath units options.programArgs)))
@@ -612,11 +612,11 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         let assembly = choice.isAssembly(programBackend)
                         let flags = vector.fromArray(cBackend.cFlags(programBackend))
                         if assembly then vector.append(flags "-g") end
-                        compilerRunner.buildExecutable(t.code files.absolute(maybe.unwrap(compileOutput))
+                        compilerRunner.buildExecutable(t.emitted files.absolute(maybe.unwrap(compileOutput))
                                 options.nogc maybe.none() objects vector.toArray(flags) assembly)
                     else
                         let binary = compilerRunner.temporaryBinary()
-                        compilerRunner.buildExecutable(t.code binary false maybe.none() objects
+                        compilerRunner.buildExecutable(t.emitted binary false maybe.none() objects
                                 cBackend.cFlags(programBackend) choice.isAssembly(programBackend))
                         let r = compilerRunner.runBinary(binary options.programArgs)
                         if system.fileExists(binary) then system.removeFile(binary) end

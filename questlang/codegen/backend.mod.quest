@@ -124,23 +124,23 @@ export
             end
         end
 
-    let codeOfUnit(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String): String =
+    let emitUnit(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String): String =
         unitWithDatum(unit interfaceHeader backend maybe.none())
 
     let cFlags(backend: String): Array(String) = native.cFlags(backend)
 
-    let codeOfProgram(program: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult:
+    let emitProgram(program: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult:
             Bool backend: String)
-            : Tuple code: String unit: nodes.Unit end =
+            : Tuple emitted: String unit: nodes.Unit end =
         begin
             (* A separately compiled unit, with copies of the inlined modules
              * it imports (ir/opened) *)
             let lowered = opened.openImports(lower.lowerProgram(program e sourceMap echo printResult) e)
             let unit = passes.runPasses(lowered choice.referencesAlike(backend))
-            tuple let code = codeOfUnit(unit maybe.none() backend) let unit = unit end
+            tuple let emitted = emitUnit(unit maybe.none() backend) let unit = unit end
         end
 
-    let codeOfModuleFile(m: typedAst.Binding e: env.T sourceMap: maybe.T(location.SourceMap)
+    let emitModuleFile(m: typedAst.Binding e: env.T sourceMap: maybe.T(location.SourceMap)
             interfaceHeader: maybe.T(String) backend: String fingerprint: String): String =
         begin
             let unit = opened.openImports(lower.lowerModuleFile(m e sourceMap 0) e)

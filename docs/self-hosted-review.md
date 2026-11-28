@@ -92,7 +92,7 @@ paths):
 - Their order is written in `ir/pipeline.runPasses` and again in `driver/main.quest:316-350`'s `lowered`, its own
   array of the five steps.
 - The sequence of lower, `openImports` or merge, verify, `setReferencesAlike`, then passes appears again in
-  `codegen/backend.codeOfProgram` and `codeOfModuleFile`, and in both JIT targets (`jit/target.mod.quest:319-346`,
+  `codegen/backend.emitProgram` and `emitModuleFile`, and in both JIT targets (`jit/target.mod.quest:319-346`,
   `jit/target.wasm.mod.quest:144-160`).
 - The JIT also repeats `codegen/native.unitCode`'s SSA build-and-lower.
 
@@ -433,7 +433,7 @@ These are the findings not covered by §2, by area, most valuable first.
 - **`modules/artifacts/moduleCompiler` belongs to the build layer.** It imports `build/`, and `build/` imports it, so
   §5's layers are not acyclic as written. Its main-unit and module-unit code-emitting tails are near copies of the
   engine's. Move it to `build/`, mirrored in the bootstrap, and share the tail.
-- **"C" names that mean any backend.** These include `compiledPipeline`, `backendPhases`, `codeOfUnit`, `codeOfProgram`, the field `c`
+- **"C" names that mean any backend.** These include `compiledPipeline`, `backendPhases`, `emitUnit`, `emitProgram`, the field `c`
   that holds wasm bytes, `importsThroughInterfaces`, and `buildExecutable`. Rename the identifiers, not the golden-facing phase names.
 - **The REPL, the JIT run, and the kernel are written as near copies.** Factor out `programArgs`, `importerName`,
   `report(bag sm)`, and one function that continues interactively.
