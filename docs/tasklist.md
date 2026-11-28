@@ -169,6 +169,45 @@ measured slower (wasm.md §9.2).
 **Done when.** Each one's time is accounted for, and what would fix it is a task or a note in
 optimization-experiments.md.
 
+## Function-type adapters as IR functions
+
+**Problem.** A function-type descriptor's thunk, adapter, and invoker are still built twice, by the C backend
+(`codegen/c/declarations`) and by the SSA builder (`ssa/build/adapters`); `ir/thunks` made the other wrappers IR
+functions for this reason. They read the adapter closure's descriptors (their parameters' and result's types,
+`invoke`), call `quest_convert` with run-time descriptors, pack and unpack an array of QVal arguments, call
+`quest_fun_signature_equivalent`, allocate with `quest_layout_adapter_closure`, and keep the `quest_adapt_<tag>` and
+`quest_invoke_<tag>` symbols the descriptors name: operations the IR does not have.
+
+**Where to start.** The operations each needs, as IR operations: the verifier, the IR printer and interpreter, the C
+printer, the SSA builder, and wasm would each learn them.
+
+**Done when.** Both copies are gone, the adapters are functions of the unit, and the programs that convert functions
+(`tests/source/conversions/`) pass on every backend. The C changes shape, so `tools/c-diff` is a review, not a check.
+
+## The module system's binding elaborator passed, not hooked
+
+**Problem.** `typecheck.elaborateProgram` installs `elaboration.hooks.elaborateBinding` and leaves it, so a library
+compiled later in the same process (one a program imports, compiled to C) reaches the finished program's checker;
+`checker.forBinding` makes that harmless (a checker of the library's own environment, recording into the old one's
+errors). The bootstrap's checker instead passes its own elaborator to `elaborate_module`, and only units loaded from
+files use the hook.
+
+**Where to start.** `modules/elaboration`'s elaborateModule taking the elaborator as an argument, from the type
+checker's module phrases; the hook kept for the loader's units.
+
+**Done when.** No hook outlives a check, both compilers agree on which elaborator an imported module's members get,
+and the error tests (`--errors`, both compilers) show any change of reported errors, each reviewed.
+
+## Strings that still name things across modules
+
+- `repr/externals`' generated table is rows of strings, read through `repr/externalFunctions`' typed rows; a typed
+  format for `tools/externals`' output would change the ABI corpus's text, so it waits for an ABI bump for another
+  reason.
+- wasm's `externalValue` matches the library's constants (`QUEST_REAL_*`, `QUEST_INT_*`, the writer streams) by name.
+- `genericLayout.signatureRepresentation` is a C-spelled string key, which `ir/simplify` compares.
+
+**Done when.** Each is a typed row or an option, or recorded here as not worth it.
+
 ## Two observations to check
 
 - **simple reports `gc minors: 0` for 465 collections** (benchmarks.md §34). Likely §17.2's rule that a heap whose

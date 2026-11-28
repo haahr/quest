@@ -536,6 +536,31 @@ The layout above follows these conventions:
   A new switch is listed here; a path that needs another setting passes it as an argument instead, as
   `represent.representUnit` takes `referencesAlike` (ir/pipeline.runThrough).
 
+- **An internal error is fatal, and each layer raises one kind** (2026-11-27). The front end raises
+  `diagnostics.internal`, a fatal `compilerError` whose message starts `internal:`, which no recovery point reports
+  and goes on from ([diagnostics.md](diagnostics.md) §3, §4.5); `types/` raises it too, at the site. Lowering and the
+  IR passes raise `nodes.irError` (by `nodes.internal`), and a conversion `represent` rejects as the program's error
+  is reported where it is found ([ir.md](ir.md) §9). The SSA raises `ssa/verify`'s `verifyError`, and
+  `ssa/pipeline.attempt` catches it with the SSA builder's `unsupported` for the backends and the JIT. A catch site
+  names the one exception of each layer it calls.
+- **The pipeline has one entry for each piece, not a copy per caller.** `parser.parseSource` tokenizes and parses a
+  source whole; `env.forProgram` and `env.useArtifacts` make a program's environment; `diagbag.addChecked` reports a
+  check's errors and warnings; `ir/pipeline.runThrough` takes a unit through the passes to a stage, and
+  `runPasses` to the described one; `codegen/ssaBackend` holds each backend's SSA policy and lowering;
+  `codegen/backend.emitUnit`, `emitProgram`, and `emitModuleFile` are what a backend emits. The driver decides what
+  its command line asks for once (`options.command`).
+- **A fact about shapes is worked out once, in `repr/` or `ir/nodes`,** and the backends ask for it rather than
+  working it out again: a case's index (`shapes.tagIndex`, which raises for a missing case), its shape
+  (`caseShape`), a type's quantifiers (`quantified`), an allocation's size (`layout.allocationBytes`), a function's
+  captured descriptors (`nodes.capturedDescriptors`), the modules' initialization order (`nodes.initOrder`), the
+  closures each function makes (`walk.closuresByFunction`), and what an `is` compares (`OpPrim.identity`, which
+  describe records). A representation is `layout`'s `Representation`, and C spellings are made from it (`cType`).
+- **Names that cross modules are made in one place.** Linkage names are `repr/symbols`' (`moduleInitIdent`,
+  `phraseEntryIdent`, `framesIdent`, ...); token kinds, spellings, and classes are `syntax/tokens`' table; a backend
+  is decided by `codegen/choice`'s predicates (`isAssembly`, `isSsac`, `isNative`, `isWasm`), names spelled only there
+  and where they are text (the command line, the workers' arguments, manifests); a diagnostic a caller acts on
+  carries a code (`diagnostics.setCode`), not text to search for.
+
 Type operators were also weighed for these, and left out (2026-11-26):
 
 - **ir/walk's three traversals** (`visitOp`, `opUses`, `mapInOp`). A visitor parameterized by an operator, `F(A) = A`
