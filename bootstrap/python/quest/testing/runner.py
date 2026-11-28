@@ -387,6 +387,10 @@ def run_single_golden_test(
             command.append("--no-inline-library")
         for name in directives.inline_modules:
             command.extend(["--inline-module", name])
+        # A whole program keeps these modules apart
+        if driver_args and "--whole-program" in driver_args:
+            for name in directives.apart_modules:
+                command.extend(["--apart", name])
     else:
         command = [
             python_executable,

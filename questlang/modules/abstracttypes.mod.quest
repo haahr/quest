@@ -12,6 +12,7 @@ import
     util/strutil : util/Strutil
 
     questlang/common/maps : questlang/common/Maps
+    questlang/modules/paths : questlang/modules/Paths
     questlang/types/model : questlang/types/Model
     questlang/types/symbols : questlang/types/Symbols
 export
@@ -98,6 +99,27 @@ export
     let setRegisteringApart(on: Bool): Ok = represented.apart := on
     let registeringApart(): Bool = represented.apart
 
+    (* The modules marked apart, by canonical name in lower case *)
+    let apartModules = maps.newStringSet()
+
+    let markModuleApart(canonical: String): Ok =
+        begin
+            hashSet.insert(apartModules paths.lower(canonical))
+            (* representations() changes: its cached copies are stale *)
+            represented.count := represented.count + 1
+        end
+
+    (* Whether globalName (module.T) is an abstract type of a module marked
+     * apart *)
+    let inApartModule(globalName: String): Bool =
+        begin
+            let var dot = ~1
+            for i = 0 upto {stringOp.length(globalName) - 1} do
+                if stringOp.getChar(globalName i) is '.' then dot := i end
+            end
+            {dot > 0} andif hashSet.contains(apartModules paths.lower(stringOp.getSub(globalName 0 dot)))
+        end
+
     let registerAbstractTypeRepresentation(globalName: String typeVar: model.Type rep: model.Type): Ok =
         begin
             represented.count := represented.count + 1
@@ -123,7 +145,7 @@ export
             let s = model.newSubst()
             hashMap.forEach(bySymbol fun(k: Int e: ModuleAbstractType): Ok
                 if maybe.isSome(e.rep) andif unbounded(e)
-                        andif not(hashSet.contains(apartNames e.globalName)) then
+                        andif not(hashSet.contains(apartNames e.globalName)) andif not(inApartModule(e.globalName)) then
                     begin hashMap.insert(s k maybe.unwrap(e.rep)) ok end
                 end)
             s

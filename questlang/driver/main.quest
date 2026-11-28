@@ -93,6 +93,7 @@ import
     questlang/ir/verify : questlang/ir/Verify
     questlang/jit/session : questlang/jit/Session
     questlang/lsp/server : questlang/lsp/Server
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/inlined : questlang/modules/Inlined
     questlang/modules/paths : questlang/modules/Paths
@@ -131,6 +132,9 @@ let usage(message: String): Ok = commandLine.usage(message)
 let programSettings(): Ok =
     begin
         if options.wholeProgram then shapes.setTransparentAbstractTypes(true) end
+        (* A module kept apart is opaque in its own object, so the program
+         * lays its abstract types out opaquely too *)
+        for i = 0 upto {extent options.apart - 1} do abstractTypes.markModuleApart(options.apart[i]) end
         inlined.setInlined(options.inlineLibrary options.inlineModules)
     end
 
