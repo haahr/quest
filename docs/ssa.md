@@ -372,13 +372,16 @@ dumps show the passes under the policy of the backend chosen (`--backend ssac` d
   (`ptrAdd`) moves only out of a loop that calls nothing, so that none is live across a collection without its object's
   own pointer. Through arm64, matrix-multiply retires 0.84 of its instructions, fft 0.87, pidigits and vector-rev 0.88,
   smith-normal-form 0.90; through `ssac`, whose clang hoisted most of it already, tensor 0.95. Then a bounds check goes
-  when the comparisons before it decide it (benchmarks.md §44): its index is never negative (a constant, a length,
-  either plus a small constant, or a block parameter that every jump binds such a value to) and at most the length less
+  when the comparisons before it decide it (benchmarks.md §44): its index is never negative (a constant up to 2^62, so
+  that a few small additions can't wrap; a length; either plus a small constant; or a block parameter that every jump
+  binds such a value to) and at most the length less
   one, by a comparison on a branch that dominates it or, for a block parameter, on every jump into the block, by the
   value bound there or, for a jump binding x + 1, by a test there that x is not the bound (a `for` loop's, by
   induction). Values compare by form, a base and a constant offset, loads by address and symbols by name, so the guard's
   copy of `len - 1` is the header's; and `string.length`'s test for a null string counts as the length, since under its
-  bound of 0 - 1 no index that is not negative reaches the check. Through arm64, vector32- and vector64-concat retire
+  bound of 0 - 1 no index that is not negative reaches the check. A length is a load with the form of one a bounds
+  check compares with, since a switch's table (`tables`) and an immutable field are loaded at the same offset and the
+  SSA's types don't tell an array's pointer from theirs. Through arm64, vector32- and vector64-concat retire
   0.83 of their instructions, matrix-multiply 0.91, smith-normal-form 0.93; through `ssac`, smith-normal-form 0.94 and
   the vector programs 0.95. Through arm64 (not `ssac`: clang rotates loops itself, and one rotated before it can compile
   worse, fib by 20%) a loop is rotated whether or not it has checks to move, when its header only tests whether to

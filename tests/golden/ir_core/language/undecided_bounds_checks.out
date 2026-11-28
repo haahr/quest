@@ -1,0 +1,126 @@
+import arrayOp = "arrayOp" : ArrayOp
+import conv = "conv" : Conv
+import writer = "writer" : Writer
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @8:45
+      let %2: String = prim <>(s, "\n") @8:59
+      let %3: Ok = call writer.putString(%1, %2) @8:28
+      return %3
+    }
+  }
+  funs {
+    fun wrapped(a: Array(Int)): Int {
+      var s.1: Int = 0 @15:9
+      var i: Int = 9223372036854775806 @16:9
+      var n: Int = 0 @17:9
+      loop L1 {
+        let %4: Bool = prim <(n, 3) @18:15
+        if %4 { @18:9
+          let %5: Int = prim +(i, 1) @19:18
+          i := %5 @19:13
+          let %6: Int = prim extent(a) @20:20
+          let %7: Bool = prim <(i, %6) @20:16
+          if %7 { @20:13
+            let %8: Int = index(a, i) @20:43
+            let %9: Int = prim +(s.1, %8) @20:39
+            s.1 := %9 @20:34
+          }
+          let %10: Int = prim +(n, 1) @21:18
+          n := %10 @21:13
+        } else {
+          break L1 @18:9
+        }
+      }
+      return s.1
+    }
+  }
+  let %11: Array(Int) = array(10, 20) @25:14
+  var xs: Array(Int) = %11 @25:1
+  funs {
+    fun wraps(a.1: Array(Int)): String {
+      join k1(r: String) {
+        return r
+      } in {
+        let %12: Exception = member arrayOp.error @26:66
+        try catching (%12) {
+          let %13: Int = call wrapped(a.1) @26:49
+          let %14: String = call conv.int(%13) @26:40
+          jump k1(%14) @26:36
+        } handle (e: Exception) {
+          let %15: Bool = prim is(e, %12) @26:36
+          if %15 { @26:36
+            jump k1("array.error") @26:36
+          } else {
+            reraise e @26:36
+          }
+        }
+      }
+    }
+  }
+  let %16: String = call wraps(xs) @27:22
+  let %17: String = prim <>("wrapped: ", %16) @27:7
+  do call print(%17) @27:1
+  funs {
+    fun fromTable(a.2: Array(Int), k: Tag): Int {
+      join k2(idx: Int) {
+        join k3(r.1: Int) {
+          return r.1
+        } in {
+          let %18: Int = prim extent(a.2) @35:18
+          let %19: Bool = prim <(idx, %18) @35:12
+          if %19 { @35:9
+            let %20: Int = index(a.2, idx) @35:32
+            jump k3(%20) @35:9
+          } else {
+            jump k3(0) @35:9
+          }
+        }
+      } in {
+        switch tag(k) { @34:19
+          case a: {
+            jump k2(-1) @34:19
+          }
+          case b: {
+            jump k2(0) @34:19
+          }
+          case c: {
+            jump k2(1) @34:19
+          }
+          case d: {
+            jump k2(2) @34:19
+          }
+        }
+      }
+    }
+  }
+  let %21: Tag = option(a) @37:15
+  var tag: Tag = %21 @37:1
+  funs {
+    fun table(a.3: Array(Int), k.1: Tag): String {
+      join k4(r.2: String) {
+        return r.2
+      } in {
+        let %22: Exception = member arrayOp.error @38:77
+        try catching (%22) {
+          let %23: Int = call fromTable(a.3, k.1) @38:56
+          let %24: String = call conv.int(%23) @38:47
+          jump k4(%24) @38:43
+        } handle (e.1: Exception) {
+          let %25: Bool = prim is(e.1, %22) @38:43
+          if %25 { @38:43
+            jump k4("array.error") @38:43
+          } else {
+            reraise e.1 @38:43
+          }
+        }
+      }
+    }
+  }
+  let %26: Array(Int) = array(10, 20) @39:26
+  let %27: String = call table(%26, tag) @39:20
+  let %28: String = prim <>("table: ", %27) @39:7
+  do call print(%28) @39:1
+}
+

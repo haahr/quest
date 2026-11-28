@@ -16,7 +16,8 @@ export
 
     (* What the bounds analysis knows of a function: each value's defining
      * instruction, each value's block if it is a parameter (~1 if not) and its
-     * position, the graph, and the lengths' offsets *)
+     * position, the graph, the lengths' offsets, and the forms (form, below)
+     * of the lengths its bounds checks compare with *)
     Let Ranges = Tuple
         f: Function
         defs: Array(maybe.T(ssa.Inst))
@@ -25,6 +26,7 @@ export
         g: cfg.Graph
         arrayLength: Int
         stringLength: Int
+        lengths: vector.T(String)
     end
 
     let defOf(r: Ranges v: Int): maybe.T(ssa.Inst) = if v < extent r.defs then r.defs[v] else maybe.none() end
@@ -95,10 +97,24 @@ export
             end
         end
 
-    (* Whether v is never negative: a constant that is not, an array's or a
-     * string's length, such a value plus a small constant, or
-     * a block parameter every jump to which binds such a value (assumed of
-     * the parameters being asked about, which a loop's back edges reach) *)
+    (* The largest constant nonNegative takes: 2^62, so that adding the small
+     * constants it allows, a loop's steps included, can't reach 2^63 and wrap
+     * to a negative Int before the loop has run for longer than it could *)
+    let largest = 4611686018427387904
+
+    (* Whether v is never negative: a constant that is not, too small for a
+     * few small additions to wrap, an array's or a string's length, such a
+     * value plus a small constant, or a block parameter every jump to which
+     * binds such a value (assumed of the parameters being asked about, which a
+     * loop's back edges reach).
+     *
+     * An invariant load at a length's offset is a length only if what it loads
+     * from is an array or a string: a switch's table (questlang/ssa/passes/
+     * tables) or an immutable field is loaded the same way, and may hold a
+     * negative Int. The SSA's types don't say which a pointer is, so a load is
+     * taken for a length when its form is that of a length a bounds check
+     * compares with, which the builder loads from the array or string it
+     * indexes *)
     let rec nonNegative(r: Ranges v: Int asking: vector.T(Int) depth: Int): Bool =
         if depth > 12 then
             false
@@ -106,11 +122,17 @@ export
             let d = defOf(r v)
             if maybe.isSome(d) then
                 let i = maybe.unwrap(d)
-                if ssa.isOp(i ssa.opConst) then i.imm >= 0
+                if ssa.isOp(i ssa.opConst) then
+                    {i.imm >= 0} andif {i.imm <= largest}
                 elsif ssa.isOp(i ssa.opLoad) andif i.invariant andif {i.width is 8}
                         andif {{i.imm is r.arrayLength} orif {i.imm is r.stringLength}}
                         andif {ssa.typeOf(r.f i.results[0]) is ssa.typeInt} then
-                    true
+                    let at = form(r v 0)
+                    let var known = false
+                    for k = 0 upto {vector.length(r.lengths) - 1} do
+                        if stringOp.equal(vector.get(r.lengths k) at.base) then known := true end
+                    end
+                    known
                 elsif ssa.isOp(i ssa.opAdd) then
                     (* Only a small constant added, so that the sum cannot
                      * wrap: a loop's index stepping up, a length plus one *)
@@ -323,6 +345,26 @@ export
                 let g = cfg.graph(f)
                 let arrayLength = runtimeLayout.offset("QArray" "length")
                 let stringLength = runtimeLayout.offset("QString" "length")
+                let lengths = vector.new(:String)
+            end
+            let checkOf = fun(b: Int): maybe.T(ssa.Inst)
+                case ssa.block(f b).term
+                    when termBranch with x then
+                        let d = defOf(r x.cond)
+                        if maybe.isSome(d) andif ssa.isOp(maybe.unwrap(d) ssa.opUlt)
+                                andif cfg.onlyRaises(f x.ifFalse.block)
+                                andif {x.ifTrue.block isnot x.ifFalse.block} then
+                            d
+                        else
+                            maybe.none(:ssa.Inst)
+                        end
+                    else maybe.none(:ssa.Inst)
+                end
+            for b = 0 upto {vector.length(f.blocks) - 1} do
+                if cfg.reached(r.g b) andif maybe.isSome(checkOf(b)) then
+                    let lf = form(r maybe.unwrap(checkOf(b)).args[1] 0)
+                    if lf.offset is 0 then vector.append(r.lengths lf.base) end
+                end
             end
             let var decided = false
             for b = 0 upto {vector.length(f.blocks) - 1} do
@@ -330,10 +372,8 @@ export
                     let blk = ssa.block(f b)
                     case blk.term
                         when termBranch with x then
-                            let d = defOf(r x.cond)
-                            if maybe.isSome(d) andif ssa.isOp(maybe.unwrap(d) ssa.opUlt)
-                                    andif cfg.onlyRaises(f x.ifFalse.block)
-                                    andif {x.ifTrue.block isnot x.ifFalse.block} then
+                            let d = checkOf(b)
+                            if maybe.isSome(d) then
                                 let i = maybe.unwrap(d)
                                 let len = form(r i.args[1] 0)
                                 let top = tuple let base = len.base let offset = len.offset - 1 end

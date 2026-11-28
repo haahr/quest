@@ -1,0 +1,39 @@
+(* Bounds checks that look decided but aren't, which the loops pass
+   (ssa/passes/loops/bounds, docs/ssa.md section 4.1) must keep: each index
+   below is negative where it reaches the check, though it is below the
+   array's length. *)
+import arrayOp : ArrayOp
+import conv : Conv
+import writer : Writer
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+(* Each case is called from a function of its own that catches the error,
+   as a try in the main program would compile it differently *)
+
+(* 1. An index that starts near the largest Int and wraps to the smallest *)
+let wrapped(a: Array(Int)): Int =
+    begin
+        let var s = 0
+        let var i = 9223372036854775806
+        let var n = 0
+        while n < 3 do
+            i := i + 1
+            if i < extent a then s := s + a[i] end
+            n := n + 1
+        end
+        s
+    end
+let var xs = array of 10 20 end
+let wraps(a: Array(Int)): String = try conv.int(wrapped(a)) when arrayOp.error then "array.error" end
+print("wrapped: " <> wraps(xs))
+
+(* 2. An index loaded from a switch's table (ssa/passes/tables), which is
+   loaded as an array's length is, at the same offset *)
+Let Tag = Option a b c d end
+let fromTable(a: Array(Int) k: Tag): Int =
+    begin
+        let idx = case k when a then ~1 when b then 0 when c then 1 when d then 2 end
+        if idx < extent a then a[idx] else 0 end
+    end
+let var tag = option a of Tag end
+let table(a: Array(Int) k: Tag): String = try conv.int(fromTable(a k)) when arrayOp.error then "array.error" end
+print("table: " <> table(array of 10 20 end tag))
