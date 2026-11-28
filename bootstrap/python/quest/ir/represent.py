@@ -114,6 +114,13 @@ def _own_viewed(s: Shape) -> bool:
     return own_view(s) and resolved_shape(s).kind in _VIEWED_KINDS + ("tuple",)
 
 
+def _own_function(s: Shape) -> bool:
+    """Whether s is a type parameter's bounded by a function type, whose values
+    are held as the type argument's own closures, of its own signature, which
+    may not be the bound's."""
+    return own_view(s) and resolved_shape(s).kind in ("fun", "all")
+
+
 def _equal(a: QType, b: QType) -> bool:
     return a is b or is_type_equal(a, b)
 
@@ -414,11 +421,12 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
         # parameter's bound is stronger): its values are held at their own view
         # either way
         return None
-    if _own_viewed(ss) or _own_viewed(ts):
+    if _own_viewed(ss) or _own_viewed(ts) or _own_function(ss) or _own_function(ts):
         # A bounded type parameter's value is held at its own view, its type
         # argument's: used at another type, it is converted by the runtime
         # between the two types' descriptors (a record viewed at the other, a
-        # variant's tags remapped, a tuple or option through a proxy)
+        # variant's tags remapped, a tuple or option through a proxy, a
+        # function by an adapter of its signature to the other's)
         return ir.Plan("view", source, target)
     s_held, t_held = resolved_shape(ss), resolved_shape(ts)
     if s_held.kind == t_held.kind == "record":

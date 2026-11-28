@@ -1,0 +1,23 @@
+(* A value of a type parameter bounded by a function type, used at its bound:
+ * the value is the type argument's own closure, so it is adapted to the
+ * bound's signature, which differs where the type argument takes a supertype
+ * laid out otherwise (a record of fewer fields). Called directly (specialized)
+ * and through a polymorphic value (generic). *)
+
+import conv : Conv
+import writer : Writer
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n")
+
+let apply(F <: All(x: Int) Int f: F): Int = begin let h: All(x: Int) Int = f h(3) end
+print("direct: " <> conv.int(apply(fun(x: Int): Int x + 1)))
+let applyF: All(F <: All(x: Int) Int f: F) Int = apply
+print("generic: " <> conv.int(applyF(:All(x: Int) Int fun(x: Int): Int x + 2)))
+
+Let Super = Record z: Int end
+Let Sub = Record a: Int z: Int end
+let call(F <: All(x: Sub) Int f: F): Int = begin let h: All(x: Sub) Int = f h(record a = 1 z = 2 end) end
+let tens(x: Super): Int = x.z * 10
+print("direct subtype: " <> conv.int(call(tens)))
+let callF: All(F <: All(x: Sub) Int f: F) Int = call
+print("generic subtype: " <> conv.int(callF(:All(x: Super) Int tens)))

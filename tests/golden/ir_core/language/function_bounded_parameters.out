@@ -1,0 +1,65 @@
+import conv = "conv" : Conv
+import writer = "writer" : Writer
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @10:45
+      let %2: String = prim <>(s, "\n") @10:59
+      let %3: Ok = call writer.putString(%1, %2) @10:28
+      return %3
+    }
+  }
+  funs {
+    fun apply [F::<: Fun(x: Int): Int](f: F): Int {
+      let h: Fun(x: Int): Int = f @12:76
+      let %4: Int = call h(3) @12:78
+      return %4
+    }
+  }
+  funs {
+    fun f.1(x: Int): Int {
+      let %5: Int = prim +(x, 1) @13:53
+      return %5
+    }
+  }
+  let %6: Int = call apply [Fun(x: Int): Int](f.1) @13:30
+  let %7: String = call conv.int(%6) @13:21
+  let %8: String = prim <>("direct: ", %7) @13:7
+  do call print(%8) @13:1
+  let applyF: All(F <: Fun(x: Int): Int) Fun(f: F): Int = apply @14:50
+  funs {
+    fun f.2(x.1: Int): Int {
+      let %9: Int = prim +(x.1, 2) @15:72
+      return %9
+    }
+  }
+  let %10: Int = call applyF [Fun(x: Int): Int](f.2) @15:31
+  let %11: String = call conv.int(%10) @15:22
+  let %12: String = prim <>("generic: ", %11) @15:7
+  do call print(%12) @15:1
+  funs {
+    fun call [F::<: Fun(x: Sub): Int](f.3: F): Int {
+      let h.1: Fun(x: Sub): Int = f.3 @19:75
+      let %13: Record a: Int z: Int end = record(a = 1, z = 2) @19:79
+      let %14: Int = call h.1(%13) @19:77
+      return %14
+    }
+  }
+  funs {
+    fun tens(x.2: Super): Int {
+      let %15: Int = record_field(x.2, z) @20:27
+      let %16: Int = prim *(%15, 10) @20:27
+      return %16
+    }
+  }
+  let %17: Int = call call [Fun(x: Super): Int](tens) @21:38
+  let %18: String = call conv.int(%17) @21:29
+  let %19: String = prim <>("direct subtype: ", %18) @21:7
+  do call print(%19) @21:1
+  let callF: All(F <: Fun(x: Sub): Int) Fun(f: F): Int = call @22:49
+  let %20: Int = call callF [Fun(x: Super): Int](tens) @23:39
+  let %21: String = call conv.int(%20) @23:30
+  let %22: String = prim <>("generic subtype: ", %21) @23:7
+  do call print(%22) @23:1
+}
+

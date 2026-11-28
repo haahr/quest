@@ -111,6 +111,11 @@ export
         layout.ownView(s) andif {shapes.isViewedKind(layout.resolvedShape(s).kind)
             orif shapes.kindIs(layout.resolvedShape(s) shapes.shapeTuple)}
 
+    (* Whether s is a type parameter's bounded by a function type, whose values
+     * are held as the type argument's own closures, of its own signature
+     * (genericLayout.storedValueAgrees), which may not be the bound's *)
+    let ownFunction(s: Shape): Bool = layout.ownView(s) andif isFunctionKind(layout.resolvedShape(s))
+
     let equal(a: Type b: Type): Bool = model.same(a b) orif subtyping.isTypeEqual(a b lookupNone)
 
     (* The type variables in each type met, by the type's id, while a unit is
@@ -614,10 +619,11 @@ export
             (* One type parameter, at whatever bounds: its values are held at
              * their own view either way *)
             none
-        elsif ownViewed(ss) orif ownViewed(ts) then
+        elsif ownViewed(ss) orif ownViewed(ts) orif ownFunction(ss) orif ownFunction(ts) then
             (* A bounded type parameter's value is held at its own view: used at
              * another type, it is converted by the runtime between the two
-             * types' descriptors *)
+             * types' descriptors (a function's, by an adapter of the type
+             * argument's signature to the other's) *)
             newPlan(nodes.planView source target)
         else
             let sHeld = layout.resolvedShape(ss)
