@@ -76,8 +76,12 @@ def check_lexer() -> list[str]:
     from pygments.token import Comment, Keyword, Name, Number, String
 
     problems: list[str] = []
-    tokenizer = (ROOT_DIR / "questlang" / "syntax" / "tokenizer.mod.quest").read_text(encoding="utf-8")
-    keywords = set(re.findall(r'add\(m "([A-Za-z]+)"', tokenizer))
+    # The keywords are the rows of syntax/tokens' table that keywordOf makes
+    # (directly, or by keywordRow, openerRow, or declarationRow): a kind, its
+    # name, and its spelling
+    tokens = (ROOT_DIR / "questlang" / "syntax" / "tokens.mod.quest").read_text(encoding="utf-8")
+    keywords = set(re.findall(r'(?:keywordOf|keywordRow|openerRow|declarationRow)\(option \w+ of K end "\w+" "([A-Za-z]+)"',
+                              tokens))
     lexed = set(quest_lexer.TYPE_KEYWORDS) | set(quest_lexer.VALUE_KEYWORDS)
     if keywords != lexed:
         problems.append(f"the lexer's keywords differ from the tokenizer's: only the tokenizer's "
