@@ -356,34 +356,39 @@ class QiImport(NamedTuple):
     of the interface alone), the module paths it gives them (none when they are
     the names), and the interface path. Its text is :I with no names,
     n1,n2=p1,p2:I with module paths, and n1,n2:I otherwise, I being the
-    interface path; format_qi_import writes it and parse_qi_import reads it
-    back."""
+    interface path, or L=I when the import names the interface L (import :L =
+    :a/Item), so that the types the interface writes as L.T still find it
+    (local_name, empty otherwise); format_qi_import writes it and
+    parse_qi_import reads it back."""
     names: tuple[str, ...]
     module_paths: tuple[str, ...]
     interface_path: str
+    local_name: str = ""
 
 
 def format_qi_import(item: QiImport) -> str:
     """The text of a .qi's import entry (QiImport)."""
+    iface = f"{item.local_name}={item.interface_path}" if item.local_name else item.interface_path
     if not item.names:
-        return f":{item.interface_path}"
+        return f":{iface}"
     if item.module_paths:
-        return f"{','.join(item.names)}={','.join(item.module_paths)}:{item.interface_path}"
-    return f"{','.join(item.names)}:{item.interface_path}"
+        return f"{','.join(item.names)}={','.join(item.module_paths)}:{iface}"
+    return f"{','.join(item.names)}:{iface}"
 
 
 def parse_qi_import(text: str) -> QiImport:
     """A .qi's import entry, read back from its text (QiImport)."""
-    if text.startswith(":"):
-        return QiImport((), (), text[1:])
-    if "=" in text:
-        names_part, rest = text.split("=", 1)
-        paths_part, interface_path = rest.split(":", 1)
-        return QiImport(tuple(names_part.split(",")), tuple(paths_part.split(",")), interface_path)
-    if ":" in text:
-        names_part, interface_path = text.split(":", 1)
-        return QiImport(tuple(names_part.split(",")), (), interface_path)
-    return QiImport((), (), text)
+    if ":" not in text:
+        return QiImport((), (), text)
+    # Names and module paths, then the interface (I or L=I)
+    left, iface = text.split(":", 1)
+    local_name, _, interface_path = iface.rpartition("=")
+    if not left:
+        return QiImport((), (), interface_path, local_name)
+    if "=" in left:
+        names_part, paths_part = left.split("=", 1)
+        return QiImport(tuple(names_part.split(",")), tuple(paths_part.split(",")), interface_path, local_name)
+    return QiImport(tuple(left.split(",")), (), interface_path, local_name)
 
 
 def compile_interface_to_qi(
@@ -412,8 +417,11 @@ def compile_interface_to_qi(
     one of them changes.
     """
     imports_arr = QArray([
-        QString(format_qi_import(QiImport(tuple(imp.names), tuple(imp.module_paths or ()),
-                                          imp.effective_interface_path)))
+        QString(format_qi_import(QiImport(
+            tuple(imp.names), tuple(imp.module_paths or ()), imp.effective_interface_path,
+            # An alias, not the path's own last name (util/Maybe's Maybe)
+            "" if imp.interface_name == imp.effective_interface_path.rsplit("/", 1)[-1] else imp.interface_name,
+        )))
         for imp in decl.imports
     ])
 
@@ -839,6 +847,10 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
             imp_scope = env.lookup_interface(imp_name)
             if imp_scope is None:
                 imp_scope = load_interface(imp_name, env)
+            # An interface the import names otherwise, which the types write
+            # it as
+            if qi_import.local_name:
+                env.register_interface(qi_import.local_name, imp_scope)
 
             if not names:
                 for t_name, t_sym in imp_scope.types.items():

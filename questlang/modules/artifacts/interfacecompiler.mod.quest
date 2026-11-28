@@ -365,15 +365,19 @@ export
         tuple let name = name let value = value end
     let arrayOf(xs: vector.T(Value)): Value = option vArray of Value with let a = vector.toArray(xs) end
 
-    Let QiImport = Tuple names: Array(String) modulePaths: Array(String) interfacePath: String end
+    Let QiImport = Tuple names: Array(String) modulePaths: Array(String) interfacePath: String localName: String end
 
     let formatQiImport(i: QiImport): String =
-        if extent i.names is 0 then
-            ":" <> i.interfacePath
-        elsif extent i.modulePaths > 0 then
-            strutil.joinArray("," i.names) <> "=" <> strutil.joinArray("," i.modulePaths) <> ":" <> i.interfacePath
-        else
-            strutil.joinArray("," i.names) <> ":" <> i.interfacePath
+        begin
+            let iface = if stringOp.length(i.localName) > 0 then i.localName <> "=" <> i.interfacePath
+                else i.interfacePath end
+            if extent i.names is 0 then
+                ":" <> iface
+            elsif extent i.modulePaths > 0 then
+                strutil.joinArray("," i.names) <> "=" <> strutil.joinArray("," i.modulePaths) <> ":" <> iface
+            else
+                strutil.joinArray("," i.names) <> ":" <> iface
+            end
         end
 
     let parseQiImport(text: String): QiImport =
@@ -381,19 +385,32 @@ export
             (* What follows s's character at *)
             let after(s: String at: Int): String = stringOp.getSub(s {at + 1} {{stringOp.length(s) - at} - 1})
             let names(s: String): Array(String) = vector.toArray(strutil.split(s ","))
-            let qiImport(ns: Array(String) ps: Array(String) path: String): QiImport =
-                tuple let names = ns let modulePaths = ps let interfacePath = path end
+            (* The interface part, I or L=I *)
+            let qiImport(ns: Array(String) ps: Array(String) iface: String): QiImport =
+                if strutil.contains(iface "=") then
+                    let at = strutil.find(iface "=")
+                    tuple
+                        let names = ns
+                        let modulePaths = ps
+                        let interfacePath = after(iface at)
+                        let localName = stringOp.getSub(iface 0 at)
+                    end
+                else
+                    tuple let names = ns let modulePaths = ps let interfacePath = iface let localName = "" end
+                end
             let none = array of :String end
-            if strutil.startsWith(text ":") then
-                qiImport(none none after(text 0))
-            elsif strutil.contains(text "=") then
-                let at = strutil.find(text "=")
-                let rest = after(text at)
-                let c = strutil.find(rest ":")
-                qiImport(names(stringOp.getSub(text 0 at)) names(stringOp.getSub(rest 0 c)) after(rest c))
-            elsif strutil.contains(text ":") then
+            if strutil.contains(text ":") then
+                (* Names and module paths, then the interface *)
                 let c = strutil.find(text ":")
-                qiImport(names(stringOp.getSub(text 0 c)) none after(text c))
+                let left = stringOp.getSub(text 0 c)
+                if stringOp.length(left) is 0 then
+                    qiImport(none none after(text c))
+                elsif strutil.contains(left "=") then
+                    let at = strutil.find(left "=")
+                    qiImport(names(stringOp.getSub(left 0 at)) names(after(left at)) after(text c))
+                else
+                    qiImport(names(left) none after(text c))
+                end
             else
                 qiImport(none none text)
             end
@@ -417,6 +434,14 @@ export
                         if hasModulePaths then vector.toArray(maybe.unwrap(imp.modulePaths)) else array of :String end
                         end
                     let interfacePath = ast.effectiveInterfacePath(imp)
+                    (* An alias, not the path's own last name (util/Maybe's
+                     * Maybe) *)
+                    let localName =
+                        if stringOp.equal(imp.interfaceName paths.lastSegment(ast.effectiveInterfacePath(imp))) then
+                            ""
+                        else
+                            imp.interfaceName
+                        end
                 end)))
             end
 
@@ -903,6 +928,9 @@ export
                 let imp = parseQiImport(case importsOf[i] when vString with x then x.s else "" end)
                 let impName = imp.interfacePath
                 let impScope = interfaceOf(impName)
+                (* An interface the import names otherwise, which the types
+                 * write it as *)
+                if stringOp.length(imp.localName) > 0 then env.registerInterface(e imp.localName impScope) end
                 if extent imp.names is 0 then
                     elaboration.declareTypesAndKinds(impScope frame)
                 else

@@ -15,8 +15,9 @@ compiles modules into a running process.
 the interface's elaborated scope, from which an importer can rebuild the scope without parsing and elaborating the
 source, or the interfaces it imports. A `.qi` is itself a Quest value serialized in the dynamic format
 ([docs/dynamic.md](../../../docs/dynamic.md) §2, written by `questlang/values`): a *shadow record* whose type,
-`qiSchemaType`, has fields for the interface's name, its imports, its types (each with its kind and, if manifest, its
-definition), its values' signatures, the source it was compiled from, the interfaces it depends on, the ABI version,
+`qiSchemaType`, has fields for the interface's name, its imports (each with the local name of an interface imported
+under another, `:PT=PointType`, which its types are written through), its types (each with its kind and, if
+manifest, its definition), its values' signatures (and which are `var`), the source it was compiled from, the interfaces it depends on, the ABI version,
 and the compiler that wrote it. Types and kinds are stored as Quest type syntax (`formatTypeForQi`), with type
 aliases kept by name so that the file stays small and readable ([docs/build-process.md](../../../docs/build-process.md)
 §4.2). Loading one (`loadInterfaceFromQiFile`) parses those strings back into semantic types.
