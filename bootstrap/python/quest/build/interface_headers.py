@@ -66,7 +66,9 @@ def write_interface_header(
                         build_root, resolver,
                     )
     h_file = interface_header_file(compiled.qi_file)
-    canonical_name = canonicalize_interface_name(compiled.source, list(compiled.include_paths), compiled.decl.name)
+    canonical_name = canonicalize_interface_name(
+        compiled.source, list(compiled.include_paths), compiled.decl.name, program_dir
+    )
     h_file.parent.mkdir(parents=True, exist_ok=True)
     h_file.write_text(compile_interface_to_header(compiled.decl, compiled.scope, canonical_name), encoding="utf-8")
     return h_file

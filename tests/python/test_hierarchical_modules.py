@@ -214,6 +214,21 @@ class TestHierarchicalModuleExecution(unittest.TestCase):
         )
         compile_c_to_object(c_file, self.root / "both.o", include_paths=[build_dir])
 
+    def test_same_named_interfaces_under_the_program_directory_get_distinct_guards(self) -> None:
+        """a/Item and b/Item, under the program's directory and no include
+        path, are named by their paths from it, so their headers' include
+        guards differ."""
+        headers = []
+        for sub in ("a", "b"):
+            (self.root / sub).mkdir(parents=True)
+            intf = self.root / sub / "item.int.quest"
+            intf.write_text("interface Item\nexport\n    v(): Int\nend;\n", encoding="utf-8")
+            h, _ = compile_interface_with_header(intf, build_dir=self.root / ".build", program_dir=self.root)
+            headers.append(h.read_text(encoding="utf-8"))
+        self.assertIn("#ifndef QUEST_INTF_A__ITEM_H", headers[0])
+        self.assertIn("#ifndef QUEST_INTF_B__ITEM_H", headers[1])
+
+
 def _write_units(directory: Path, units: dict[str, str]) -> None:
     for name, text in units.items():
         path = directory / name
