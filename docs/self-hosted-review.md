@@ -80,7 +80,7 @@ bag):
   - `modules/units` adds an error with an empty message just to stop;
   - `modules/elaboration:252` and `modules/paths:130` parse even when tokenizing failed.
 
-**The program's environment** (current and program directory, source file, `compilingC`, build directory, include
+**The program's environment** (current and program directory, source file, `importsThroughInterfaces`, build directory, include
 paths):
 
 - It is set up in `main.quest:1112-1149`, `build/engine.mod.quest:393-410` and `lsp/analysis.mod.quest:95-108`.
@@ -92,7 +92,7 @@ paths):
 - Their order is written in `ir/pipeline.runPasses` and again in `driver/main.quest:316-350`'s `lowered`, its own
   array of the five steps.
 - The sequence of lower, `openImports` or merge, verify, `setReferencesAlike`, then passes appears again in
-  `codegen/backend.programToC` and `moduleFileToC`, and in both JIT targets (`jit/target.mod.quest:319-346`,
+  `codegen/backend.codeOfProgram` and `codeOfModuleFile`, and in both JIT targets (`jit/target.mod.quest:319-346`,
   `jit/target.wasm.mod.quest:144-160`).
 - The JIT also repeats `codegen/native.unitCode`'s SSA build-and-lower.
 
@@ -110,7 +110,7 @@ paths):
 **The driver's own mode** is decided in four places:
 
 - the top of `options` (`compileMode`, `fmtMode`, `lspMode`, plus scattered backend changes);
-- main's top-level lets (`cPipeline`, `pipeline`);
+- main's top-level lets (`compiledPipeline`, `pipeline`);
 - an 8-clause conjunction that sends a program to `buildProgram` or `run()` (`main.quest:1248-1251`);
 - the elsif chain in `run()`.
 
@@ -409,7 +409,7 @@ These are the findings not covered by §2, by area, most valuable first.
   `typecheck`'s unused `newChecker`, `checkExpr`, and `synthExpr` exports.
 - **`tuples.tupleScope` is 405 lines.** It takes eleven parameters and has fourteen mutable locals. Lift its four
   per-component cases into functions over a local state tuple.
-- **`env.T` mixes too much.** It holds the scope stack alongside the build options (`compilingC` is read in 7 modules
+- **`env.T` mixes too much.** It holds the scope stack alongside the build options (`importsThroughInterfaces` is read in 7 modules
   and `buildDir` in 10), the loader's session state, and REPL slots. Group the options as `e.options`, as the bootstrap
   does.
 - **The name `Env` means three things.** `env.T`, `kinds.Env`, and `subtyping.Env` are different, and
@@ -433,8 +433,8 @@ These are the findings not covered by §2, by area, most valuable first.
 - **`modules/artifacts/moduleCompiler` belongs to the build layer.** It imports `build/`, and `build/` imports it, so
   §5's layers are not acyclic as written. Its main-unit and module-unit code-emitting tails are near copies of the
   engine's. Move it to `build/`, mirrored in the bootstrap, and share the tail.
-- **"C" names that mean any backend.** These include `cPipeline`, `cPhases`, `unitToC`, `programToC`, the field `c`
-  that holds wasm bytes, `compilingC`, and `compileCSource`. Rename the identifiers, not the golden-facing phase names.
+- **"C" names that mean any backend.** These include `compiledPipeline`, `backendPhases`, `codeOfUnit`, `codeOfProgram`, the field `c`
+  that holds wasm bytes, `importsThroughInterfaces`, and `buildExecutable`. Rename the identifiers, not the golden-facing phase names.
 - **The REPL, the JIT run, and the kernel are written as near copies.** Factor out `programArgs`, `importerName`,
   `report(bag sm)`, and one function that continues interactively.
 - **`modules/graph` does three jobs.** It resolves imports, holds the unit graph, and lays out artifacts in a build

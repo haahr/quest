@@ -120,7 +120,7 @@ let programName = commandLine.programName
 let irStages = commandLine.irStages
 let phases = commandLine.phases
 let ssaPhases = commandLine.ssaPhases
-let cPhases = commandLine.cPhases
+let backendPhases = commandLine.backendPhases
 let isOneOf = strings.isOneOf
 let usage(message: String): Ok = commandLine.usage(message)
 
@@ -174,14 +174,14 @@ let flushDumps(): Ok =
 
 (* Whether the program goes through a compiled backend (C, ssac, arm64, or
  * wasm): via `compile`, -o, linked object files, or a backend phase *)
-let cPipeline =
+let compiledPipeline =
     begin
         let var dumpsC = false
         for i = 0 upto {extent options.dumpAfter - 1} do
-            if isOneOf(options.dumpAfter[i] cPhases) then dumpsC := true end
+            if isOneOf(options.dumpAfter[i] backendPhases) then dumpsC := true end
         end
         compileMode orif maybe.isSome(options.output) orif {extent options.extraObjects > 0}
-            orif isOneOf(options.stopAfter cPhases)
+            orif isOneOf(options.stopAfter backendPhases)
             orif dumpsC
     end
 
@@ -241,7 +241,7 @@ let pipeline: Array(String) =
                 lastIr := i
             end
         end
-        if cPipeline then
+        if compiledPipeline then
             irThrough("described")
             vector.append(ps "codegen_c")
             (* arm64's code is its assembly, which codegen_c prints too *)
@@ -469,19 +469,19 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
     begin
         let located = fun(message: String): Ok
             diagbag.add(bag diagnostics.error(message location.span(location.file(sm) 0 1)))
-        Let Translated = maybe.T(Tuple c: String unit: nodes.Unit end)
-        let translated = reportingInternal(bag maybe.none(:Tuple c: String unit: nodes.Unit end)
+        Let Translated = maybe.T(Tuple code: String unit: nodes.Unit end)
+        let translated = reportingInternal(bag maybe.none(:Tuple code: String unit: nodes.Unit end)
                 fun(): Translated
                     begin
                         let unit = lowered(program e sm compiledPrintsResult "described")
                         maybe.some(tuple
-                            let c = cBackend.unitToC(unit maybe.none(:String) programBackend)
+                            let code = cBackend.codeOfUnit(unit maybe.none(:String) programBackend)
                             let unit = unit
                         end)
                     end)
         if maybe.isSome(translated) then
             let t = maybe.unwrap(translated)
-            if shows("codegen_c") orif shows("codegen_arm64") then dump(t.c) end
+            if shows("codegen_c") orif shows("codegen_arm64") then dump(t.code) end
             if shows("codegen_wasm") then dump(cBackend.wasmText(t.unit)) end
             let running = reaches("run_c_compiled")
             let writing = {compileMode orif maybe.isSome(options.output)} andif not(options.stopGiven)
@@ -516,14 +516,14 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     let target = maybe.unwrap(compileOutput)
                     try
                         let w = writer.file(target)
-                        writer.putString(w t.c)
+                        writer.putString(w t.code)
                         writer.close(w)
                     when writer.error then
                         failWith("error writing '" <> target <> "'")
                     end
                 else
                     flushDumps()
-                    writer.putString(writer.output t.c)
+                    writer.putString(writer.output t.code)
                 end
             elsif choice.isWasm(programBackend) andif {running orif writing} then
                 (* Builds and runs or writes the WebAssembly bundle
@@ -555,7 +555,7 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     let objects = engine.buildModules(wasmEngine modules importer e.programDir)
                     let units = wasmBundle.ordered(objects buildDir)
                     if writing then
-                        wasmBundle.write(files.absolute(maybe.unwrap(compileOutput)) t.c runtimeBytes units)
+                        wasmBundle.write(files.absolute(maybe.unwrap(compileOutput)) t.code runtimeBytes units)
                     else
                         let base = compilerRunner.temporaryBinary()
                         let program = base <> ".wasm"
@@ -566,7 +566,7 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                                 writer.putString(w contents)
                                 writer.close(w)
                             end
-                        save(program t.c)
+                        save(program t.code)
                         save(runtimePath runtimeBytes)
                         let r = wasmBundle.asRun(system.run(wasmBundle.command(options.wasmEngine program
                                 wasmRuntime.name runtimePath units options.programArgs)))
@@ -612,11 +612,11 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                         let assembly = choice.isAssembly(programBackend)
                         let flags = vector.fromArray(cBackend.cFlags(programBackend))
                         if assembly then vector.append(flags "-g") end
-                        compilerRunner.compileCSource(t.c files.absolute(maybe.unwrap(compileOutput))
+                        compilerRunner.buildExecutable(t.code files.absolute(maybe.unwrap(compileOutput))
                                 options.nogc maybe.none() objects vector.toArray(flags) assembly)
                     else
                         let binary = compilerRunner.temporaryBinary()
-                        compilerRunner.compileCSource(t.c binary false maybe.none() objects
+                        compilerRunner.buildExecutable(t.code binary false maybe.none() objects
                                 cBackend.cFlags(programBackend) choice.isAssembly(programBackend))
                         let r = compilerRunner.runBinary(binary options.programArgs)
                         if system.fileExists(binary) then system.removeFile(binary) end
@@ -846,7 +846,7 @@ let run(): Ok =
                     (* The file -i runs, and the REPL's inputs, are interactive
                      * (docs/repl.md section 6) *)
                     e.interactive := options.interactive
-                    if cPipeline orif options.jit then
+                    if compiledPipeline orif options.jit then
                         (* For compiled backends and the JIT, imported modules
                          * are checked through their interfaces using artifacts
                          * from the build directory, which is searched first.
@@ -854,7 +854,7 @@ let run(): Ok =
                          * memory (docs/jit.md section 3.4.1). *)
                         let artifacts = if options.jit andif maybe.isNone(options.buildDir) then memoryFiles.root
                             else buildDir end
-                        e.compilingC := not(options.wholeProgram)
+                        e.importsThroughInterfaces := not(options.wholeProgram)
                         (* The JIT's units copy no inlined module (ir/opened),
                          * so their sources are not elaborated *)
                         e.openInlined := not(options.jit)

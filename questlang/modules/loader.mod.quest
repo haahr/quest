@@ -94,7 +94,7 @@ export
                 end
             if maybe.isSome(e.buildDir) then
                 maybe.some(files.absolute(maybe.unwrap(e.buildDir)))
-            elsif not(e.compilingC) then
+            elsif not(e.importsThroughInterfaces) then
                 maybe.none()
             elsif maybe.isSome(resolved.source) then
                 maybe.some(ancestor(maybe.unwrap(resolved.source)
@@ -334,10 +334,11 @@ export
                  * though its object is built apart, as the build has marked
                  * it *)
                 let opened =
-                    e.compilingC andif e.openInlined andif inlined.isInlined(canon) andif maybe.isSome(filePath)
+                    e.importsThroughInterfaces andif e.openInlined andif inlined.isInlined(canon)
+                        andif maybe.isSome(filePath)
                 if u.precompiled andif not(opened) then
                     synthesizePrecompiled()
-                elsif e.compilingC andif {strutil.contains(canon "/") orif strutil.contains(name "/")}
+                elsif e.importsThroughInterfaces andif {strutil.contains(canon "/") orif strutil.contains(name "/")}
                         andif maybe.isSome(filePath) andif not(opened) then
                     (* Separate compilation of hierarchical modules: importers
                      * are typed against the module's interface, and building

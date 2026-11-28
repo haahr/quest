@@ -12,7 +12,7 @@
  *          (ssa/pipeline) and printed as C by codegen/c/ssac
  *   arm64  the same SSA form is compiled to assembly (codegen/arm64/codegen)
  *   wasm   the IR is compiled to a WebAssembly module (wasm/codegen), and
- *          unitToC returns its encoded bytes (docs/wasm.md)
+ *          codeOfUnit returns its encoded bytes (docs/wasm.md)
  *
  * Each backend raises its own exception when it cannot compile a unit (such
  * as the C printer's, SSA builder's, ssac's, arm64's, or wasm's unsupported,
@@ -38,22 +38,22 @@ export
      * module bytes for wasm. For the C printer, output includes interfaceHeader
      * when provided. Raises unsupported if the backend cannot compile the
      * unit. *)
-    unitToC(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String): String
+    codeOfUnit(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String): String
     (* Returns a unit's WebAssembly module in text format (wasm/printer),
-     * matching the binary module that unitToC returns for the wasm backend.
+     * matching the binary module that codeOfUnit returns for the wasm backend.
      * Raises unsupported if compilation fails. *)
     wasmText(unit: nodes.Unit): String
     (* The flags a backend's C is compiled with, besides the C compiler's
      * usual ones *)
     cFlags(backend: String): Array(String)
-    (* A program's code, as unitToC prints it, and its described unit *)
-    programToC(program: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult: Bool
+    (* A program's code, as codeOfUnit prints it, and its described unit *)
+    codeOfProgram(program: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult: Bool
             backend: String)
-            : Tuple c: String unit: nodes.Unit end
-    (* Compiles a module file via unitToC, exporting its interface members and
+            : Tuple code: String unit: nodes.Unit end
+    (* Compiles a module file via codeOfUnit, exporting its interface members and
      * its interface fingerprint (modules/artifacts/fingerprint) as the symbol
      * qh_<module> in native code or as a custom section in WebAssembly *)
-    moduleFileToC(m: typedAst.Binding e: env.T sourceMap: maybe.T(location.SourceMap)
+    codeOfModuleFile(m: typedAst.Binding e: env.T sourceMap: maybe.T(location.SourceMap)
             interfaceHeader: maybe.T(String) backend: String fingerprint: String): String
     (* The stamp of the runtime wasm units are built against, and the one a
      * wasm object's bytes carry, or "" *)

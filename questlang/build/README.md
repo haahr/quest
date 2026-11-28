@@ -96,7 +96,7 @@ the build compiles, so each import is searched for once), artifact paths under t
 interface compiler and manifests in [`artifacts/`](../modules/artifacts/README.md). Which backend compiles each unit comes from
 `questlang/codegen/choice`, and the manifest records it. When the driver compiles a program's own unit itself (a run
 through `run_c_compiled`, or `--whole-program`, whose unit has its modules merged into it), it calls `buildModules`
-only for the modules that unit still imports, and links the result with `compileCSource`. The bootstrap counterpart is
+only for the modules that unit still imports, and links the result with `buildExecutable`. The bootstrap counterpart is
 [`bootstrap/python/quest/build/`](../../bootstrap/python/quest/build/README.md), which builds serially.
 
 ## Further reading

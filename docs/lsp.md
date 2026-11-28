@@ -61,7 +61,7 @@ compiler prints for a program.
 ## 3. Checking a Document
 
 `questlang/lsp/analysis` checks a document as the driver checks a program, in an environment of its own:
-- **What it sees:** the units it imports, through their interfaces (`compilingC`), with `.qi` artifacts in the build
+- **What it sees:** the units it imports, through their interfaces (`importsThroughInterfaces`), with `.qi` artifacts in the build
   directory, which is searched first.
 - **Units files too:** a module or interface file type-checks as a program whose one phrase declares it.
 - **Fresh each time:** each check starts from a new environment. Only the interfaces' artifacts carry over between

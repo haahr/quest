@@ -388,7 +388,7 @@ export
                     e.units := graph.newGraphWith(eng.resolver)
                     for i = 0 upto {extent search - 1} do vector.append(e.includePaths search[i]) end
                     (* Compiled to C, with the build directory's artifacts *)
-                    e.compilingC := true
+                    e.importsThroughInterfaces := true
                     e.buildDir := maybe.some(str(eng.buildDir))
 
                     let interfaces = vector.new(:manifest.ImportedInterfaceRef)
@@ -426,10 +426,10 @@ export
                     (* The backend's and the IR passes' failures become the
                      * unit's error, as moduleCompiler makes them *)
                     let translated =
-                        try cBackend.programToC(typed e maybe.some(sm) false false backend)
+                        try cBackend.codeOfProgram(typed e maybe.some(sm) false false backend)
                         when cBackend.unsupported with m then
-                            diagnostics.fail(:Tuple c: String unit: nodes.Unit end m 0)
-                        when nodes.irError with m then diagnostics.fail(:Tuple c: String unit: nodes.Unit end m 0)
+                            diagnostics.fail(:Tuple code: String unit: nodes.Unit end m 0)
+                        when nodes.irError with m then diagnostics.fail(:Tuple code: String unit: nodes.Unit end m 0)
                         end
                     let modules = unitModuleRefs(vector.toArray(imports)
                             passes.implicitImports(translated.unit typed) e.currentDir
@@ -441,7 +441,7 @@ export
                         let interfaceName = maybe.none(:String)
                         let source = mainFile
                         let backend = backend
-                        let code = translated.c
+                        let code = translated.code
                         let codeFile = choice.codeFile(a.c backend)
                         let object = a.o
                         let qm = a.qm
