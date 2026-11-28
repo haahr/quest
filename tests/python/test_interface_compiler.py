@@ -106,8 +106,8 @@ end;
             h_path, qi_path = compile_interface_with_header(p)
             h_text = h_path.read_text(encoding="utf-8")
             self.assertIn("typedef struct quest_rec_Geometry_Point", h_text)
-            self.assertIn("QInt x;", h_text)
-            self.assertIn("QInt y;", h_text)
+            self.assertIn("QInt qf_x;", h_text)
+            self.assertIn("QInt qf_y;", h_text)
             self.assertIn("typedef QRecordVal quest_type_Geometry_Point;", h_text)
             self.assertIn("typedef QVal quest_type_Geometry_Shape;", h_text)
 
