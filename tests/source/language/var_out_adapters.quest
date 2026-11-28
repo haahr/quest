@@ -77,3 +77,44 @@ let dk = dynamic.be(:All(out v: Large) Ok dynamic.new(:All(out v: Small) Ok pick
 let var l2: Large = variant a of Large with "first" end
 dk(@l2)
 print("dynamic variant: " <> case l2 when a with s then "a " <> s when b with n then "b " <> conv.int(n) end)
+
+(* Through the uniform path: closures made by generic code, whose types are
+ * laid out generically, adapted to native types, so called through their
+ * types' invokers. An out variant of a subtype, read at a supertype, and var
+ * parameters of a type parameter, at Real and Bool, each passed as a
+ * temporary holding its QVal word. The generic functions are held in mutable
+ * variables, so that none is specialized *)
+let packed(A::TYPE): dynamic.T =
+    begin
+        let set(out r: A y: A): Ok = r := y
+        dynamic.new(:All(out r: A y: A) Ok set)
+    end
+let var packedV = packed
+let du = dynamic.be(:All(out v: Large y: Small) Ok packedV(:Small))
+let var l3: Large = variant a of Large with "first" end
+du(@l3 variant b of Small with 8 end)
+print("uniform variant: " <> case l3 when a with s then "a " <> s when b with n then "b " <> conv.int(n) end)
+let swapped(A::TYPE): dynamic.T =
+    begin
+        let swap(var r: A y: A): A = begin let old = r r := y old end
+        dynamic.new(:All(var r: A y: A) A swap)
+    end
+let var swappedV = swapped
+let dr = dynamic.be(:All(var r: Real y: Real) Real swappedV(:Real))
+let var rr = 1.5
+let oldR = dr(@rr 2.5)
+print("uniform real: " <> conv.real(rr) <> " " <> conv.real(oldR))
+let db = dynamic.be(:All(var r: Bool y: Bool) Bool swappedV(:Bool))
+let var bb = false
+let oldB = db(@bb true)
+print("uniform bool: " <> conv.bool(bb) <> " " <> conv.bool(oldB))
+
+(* A var parameter whose types are one, through an adapter made for another
+ * parameter's: its location is passed as it is, so a write the function makes
+ * before it raises is seen by the caller's handler *)
+exception Stop: Ok end
+let assignThenRaise(var r: Super s: Super): Ok = begin r := record z = 99 end raise Stop end end
+let dt = dynamic.be(:All(var r: Super s: Sub) Ok dynamic.new(:All(var r: Super s: Super) Ok assignThenRaise))
+let var w: Super = record z = 1 end
+try dt(@w record a = 1 z = 2 end) when Stop then print("raised") end
+print("written before the raise: " <> conv.int(w.z))

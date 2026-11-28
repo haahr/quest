@@ -1021,10 +1021,19 @@ export
                     let callArgs = vector.new(:String)
                     add(callArgs "(void *)e->orig")
                     for k = 0 upto {nq - 1} do add(callArgs "qv_desc_" <> cInt(k)) end
-                    (* The direct path's var and out arguments that may hold a
-                     * value of a subtype pass a temporary, converted back
-                     * after the call *)
+                    (* A var or out argument whose parameter's types differ
+                     * (their descriptors are not one) is passed as a
+                     * temporary, converted in from the location and back into
+                     * it after the call: on the direct path one that may hold
+                     * a value of a subtype, of the location's own
+                     * representation (the closure's is the same); on the
+                     * uniform path every one, a QVal, whose word holds any
+                     * representation's cell from its start, as the closure's
+                     * invoker reads its own. Where the descriptors are one the
+                     * location is passed as it is, so that the closure's
+                     * writes reach it as they are made *)
                     let writebacks = vector.new(:String)
+                    let uniformBacks = vector.new(:String)
                     for j = 0 upto {np - 1} do
                         let p = vector.get(sig.params j)
                         let name = "qv_arg_" <> cInt(j)
@@ -1034,10 +1043,16 @@ export
                             add(paramDecls location <> " *" <> name)
                             add(uniform slot <> ".p = (void *)" <> name <> ";")
                             let s = shapes.shape(p.type)
-                            if slots.mayBeStoredAsSubtype(s) then
-                                let temp = "qv_loc_" <> cInt(j)
+                            if isOk(p.type) then
+                                add(callArgs name)
+                            else
                                 let toFrom = "to->params[" <> cInt(j) <> "].type, from->params[" <> cInt(j) <> "].type"
                                 let fromTo = "from->params[" <> cInt(j) <> "].type, to->params[" <> cInt(j) <> "].type"
+                                let differ =
+                                    "to->params[" <> cInt(j) <> "].type != from->params[" <> cInt(j) <> "].type"
+                                let current =
+                                    "quest_convert(" <> types.shapeSlotToQval("(*" <> name <> ")" s) <> ", " <> toFrom
+                                        <> ")"
                                 (* An out argument's pointer starts null,
                                  * and is written back only if the closure
                                  * assigned it *)
@@ -1047,27 +1062,34 @@ export
                                     else
                                         layout.isPointer(s)
                                     end}
-                                if unassigned then
-                                    add(direct location <> " " <> temp <> " = NULL;")
+                                let cell = "qv_cell_" <> cInt(j)
+                                add(uniform "QVal " <> cell <> ";")
+                                add(uniform "if (" <> differ <> ") { " <> cell <> " = "
+                                    <> {if unassigned then "(QVal){ .p = NULL }" else current end} <> "; " <> slot
+                                    <> ".p = (void *)&" <> cell <> "; }")
+                                let cellBack =
+                                    types.shapeQvalToSlot("quest_convert(" <> cell <> ", " <> fromTo <> ")" s)
+                                add(uniformBacks "if (" <> slot <> ".p != (void *)" <> name
+                                    <> {if unassigned then " && " <> cell <> ".p != NULL" else "" end} <> ") { *"
+                                    <> name <> " = " <> cellBack <> "; quest_barrier_slot(" <> name <> "); }")
+                                if slots.mayBeStoredAsSubtype(s) then
+                                    let temp = "qv_loc_" <> cInt(j)
+                                    let ref = "qv_ref_" <> cInt(j)
+                                    add(direct location <> " " <> temp <> ";")
+                                    add(direct location <> " *" <> ref <> " = " <> name <> ";")
+                                    let initial = if unassigned then "NULL" else types.shapeQvalToSlot(current s) end
+                                    add(direct "if (" <> differ <> ") { " <> temp <> " = " <> initial <> "; " <> ref
+                                        <> " = &" <> temp <> "; }")
+                                    let back =
+                                        types.shapeQvalToSlot("quest_convert(" <> types.shapeSlotToQval(temp s) <> ", "
+                                            <> fromTo <> ")" s)
+                                    add(writebacks "if (" <> ref <> " != " <> name
+                                        <> {if unassigned then " && " <> temp <> " != NULL" else "" end} <> ") { *"
+                                        <> name <> " = " <> back <> "; quest_barrier_slot(" <> name <> "); }")
+                                    add(callArgs ref)
                                 else
-                                    let current =
-                                        "quest_convert(" <> types.shapeSlotToQval("(*" <> name <> ")" s) <> ", "
-                                            <> toFrom <> ")"
-                                    add(direct location <> " " <> temp <> " = " <> types.shapeQvalToSlot(current s)
-                                        <> ";")
+                                    add(callArgs name)
                                 end
-                                let back =
-                                    types.shapeQvalToSlot("quest_convert(" <> types.shapeSlotToQval(temp s) <> ", "
-                                        <> fromTo <> ")" s)
-                                let store = "{ *" <> name <> " = " <> back <> "; quest_barrier_slot(" <> name <> "); }"
-                                add(writebacks if unassigned then
-                                    "if (" <> temp <> " != NULL) " <> store
-                                else
-                                    store
-                                end)
-                                add(callArgs "&" <> temp)
-                            else
-                                add(callArgs name)
                             end
                         elsif isOk(p.type) then
                             add(paramDecls "QVal " <> name)
@@ -1092,6 +1114,7 @@ export
                         addAll(direct writebacks)
                         add(direct "return;")
                         add(uniform "(void)" <> invokeExpr <> ";")
+                        addAll(uniform uniformBacks)
                     else
                         if slots.mayBeStoredAsSubtype(shapes.shape(ret)) then
                             add(direct retC <> " qv_result = " <> callExpr <> ";")
@@ -1106,7 +1129,15 @@ export
                         else
                             add(direct "return " <> callExpr <> ";")
                         end
-                        add(uniform "return " <> types.qvalUnwrap("quest_convert(" <> invokeExpr
+                        let invoked =
+                            if vector.empty(uniformBacks) then
+                                invokeExpr
+                            else
+                                add(uniform "QVal qv_invoked = " <> invokeExpr <> ";")
+                                addAll(uniform uniformBacks)
+                                "qv_invoked"
+                            end
+                        add(uniform "return " <> types.qvalUnwrap("quest_convert(" <> invoked
                             <> ", from->result_type, to->result_type)" ret) <> ";")
                     end
                     let thunk = "quest_thunk_" <> tag

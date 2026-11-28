@@ -75,7 +75,7 @@ b14(%37: ptr, %38: ptr, %39: int):
   jump b13(%37, %38, %39)
 }
 
-function quest_thunk_fun_92778d9e08c9326a(%0: ptr, %1: int, %2: ptr): int slots [16:8] {
+function quest_thunk_fun_92778d9e08c9326a(%0: ptr, %1: int, %2: ptr): int slots [8:8 16:8] {
 b0(%0: ptr, %1: int, %2: ptr):
   %3: ptr = load8 %0 + 8
   %4: ptr = load8 %0 + 16
@@ -93,17 +93,41 @@ b2():
   %12: ptr = load8 %7 + 48
   %13: ptr = load8 %5 + 48
   %14: val = call quest_convert(%11, %12, %13)
-  %15: val = toVal %2
-  %16: ptr = slot 0
-  store8 %16 + 0, %14
-  store8 %16 + 8, %15
-  %17: ptr = load8 %5 + 24
-  %18: val = callIndirect %17, %3, %16
-  %19: ptr = load8 %5 + 8
-  %20: ptr = load8 %7 + 8
-  %21: val = call quest_convert(%18, %19, %20)
-  %22: int = fromVal %21
-  return %22
+  %15: ptr = slot 0
+  %17: ptr = load8 %7 + 64
+  %18: ptr = load8 %5 + 64
+  %19: int = pne %17, %18
+  branch %19, b3(), b4(%2)
+b3():
+  %20: int = load8 %2 + 0
+  %21: val = toVal %20
+  %24: val = call quest_convert(%21, %17, %18)
+  store8 %15 + 0, %24
+  jump b4(%15)
+b4(%16: ptr):
+  %25: val = toVal %16
+  %26: ptr = slot 1
+  store8 %26 + 0, %14
+  store8 %26 + 8, %25
+  %27: ptr = load8 %5 + 24
+  %28: val = callIndirect %27, %3, %26
+  %29: int = pne %16, %2
+  branch %29, b6(), b5()
+b5():
+  %35: ptr = load8 %5 + 8
+  %36: ptr = load8 %7 + 8
+  %37: val = call quest_convert(%28, %35, %36)
+  %38: int = fromVal %37
+  return %38
+b6():
+  %30: val = load8 %15 + 0
+  %31: ptr = load8 %5 + 64
+  %32: ptr = load8 %7 + 64
+  %33: val = call quest_convert(%30, %31, %32)
+  %34: int = fromVal %33
+  store8 %2 + 0, %34
+  call quest_barrier_slot(%2)
+  jump b5()
 }
 
 function quest_adapt_fun_92778d9e08c9326a(%0: ptr, %1: ptr, %2: ptr): ptr {

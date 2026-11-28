@@ -987,10 +987,18 @@ class CDeclarationEmitter:
             uniform: list[str] = [f"QVal qv_args[{c_int(max(1, nq + len(params)))}];"]
             uniform.extend(f"qv_args[{c_int(k)}].p = (void *)qv_desc_{c_int(k)};" for k in range(nq))
             call_args = ["(void *)e->orig"] + [f"qv_desc_{c_int(k)}" for k in range(nq)]
-            # The direct path's var and out arguments that may hold a value of
-            # a subtype pass a temporary, converted back after the call
+            # A var or out argument whose parameter's types differ (their
+            # descriptors are not one) is passed as a temporary, converted in
+            # from the location and back into it after the call: on the direct
+            # path one that may hold a value of a subtype, of the location's
+            # own representation (the closure's is the same); on the uniform
+            # path every one, a QVal, whose word holds any representation's
+            # cell from its start, as the closure's invoker reads its own.
+            # Where the descriptors are one the location is passed as it is,
+            # so that the closure's writes reach it as they are made
             direct_args = list(call_args)
             writebacks: list[str] = []
+            uniform_backs: list[str] = []
             for i, p in enumerate(params):
                 name = f"qv_arg_{c_int(i)}"
                 slot = f"qv_args[{c_int(nq + i)}]"
@@ -998,25 +1006,45 @@ class CDeclarationEmitter:
                     location = location_representation(p.type_val)
                     param_decls.append(f"{location} *{name}")
                     uniform.append(f"{slot}.p = (void *){name};")
-                    if may_be_stored_as_subtype(shape(p.type_val)):
-                        temp = f"qv_loc_{c_int(i)}"
-                        s = shape(p.type_val)
-                        to_from = f"to->params[{c_int(i)}].type, from->params[{c_int(i)}].type"
-                        from_to = f"from->params[{c_int(i)}].type, to->params[{c_int(i)}].type"
-                        # An out argument's pointer starts null, and is written
-                        # back only if the closure assigned it
-                        unassigned = p.is_out and location.endswith("*")
-                        if unassigned:
-                            direct.append(f"{location} {temp} = NULL;")
-                        else:
-                            current = f"quest_convert({shape_slot_to_qval(f'(*{name})', s)}, {to_from})"
-                            direct.append(f"{location} {temp} = {shape_qval_to_slot(current, s)};")
-                        back = shape_qval_to_slot(f"quest_convert({shape_slot_to_qval(temp, s)}, {from_to})", s)
-                        store = f"{{ *{name} = {back}; quest_barrier_slot({name}); }}"
-                        writebacks.append(f"if ({temp} != NULL) {store}" if unassigned else store)
-                        call_args.append(name)
-                        direct_args.append(f"&{temp}")
+                    call_args.append(name)
+                    if p.type_val is OK_TYPE:
+                        direct_args.append(name)
                         continue
+                    s = shape(p.type_val)
+                    to_from = f"to->params[{c_int(i)}].type, from->params[{c_int(i)}].type"
+                    from_to = f"from->params[{c_int(i)}].type, to->params[{c_int(i)}].type"
+                    differ = f"to->params[{c_int(i)}].type != from->params[{c_int(i)}].type"
+                    current = f"quest_convert({shape_slot_to_qval(f'(*{name})', s)}, {to_from})"
+                    # An out argument's pointer starts null, and is written
+                    # back only if the closure assigned it
+                    unassigned = p.is_out and location.endswith("*")
+                    cell = f"qv_cell_{c_int(i)}"
+                    uniform.append(f"QVal {cell};")
+                    uniform.append(
+                        f"if ({differ}) {{ {cell} = {'(QVal){ .p = NULL }' if unassigned else current}; "
+                        f"{slot}.p = (void *)&{cell}; }}"
+                    )
+                    back = shape_qval_to_slot(f"quest_convert({cell}, {from_to})", s)
+                    assigned = f" && {cell}.p != NULL" if unassigned else ""
+                    uniform_backs.append(
+                        f"if ({slot}.p != (void *){name}{assigned}) {{ *{name} = {back}; quest_barrier_slot({name}); }}"
+                    )
+                    if not may_be_stored_as_subtype(s):
+                        direct_args.append(name)
+                        continue
+                    temp = f"qv_loc_{c_int(i)}"
+                    ref = f"qv_ref_{c_int(i)}"
+                    direct.append(f"{location} {temp};")
+                    direct.append(f"{location} *{ref} = {name};")
+                    initial = "NULL" if unassigned else shape_qval_to_slot(current, s)
+                    direct.append(f"if ({differ}) {{ {temp} = {initial}; {ref} = &{temp}; }}")
+                    back = shape_qval_to_slot(f"quest_convert({shape_slot_to_qval(temp, s)}, {from_to})", s)
+                    assigned = f" && {temp} != NULL" if unassigned else ""
+                    writebacks.append(
+                        f"if ({ref} != {name}{assigned}) {{ *{name} = {back}; quest_barrier_slot({name}); }}"
+                    )
+                    direct_args.append(ref)
+                    continue
                 elif p.type_val is OK_TYPE:
                     param_decls.append(f"QVal {name}")
                     uniform.append(f"{slot} = {name};")
@@ -1038,6 +1066,7 @@ class CDeclarationEmitter:
                 direct.extend(writebacks)
                 direct.append("return;")
                 uniform.append(f"(void){invoke_expr};")
+                uniform.extend(uniform_backs)
             else:
                 if may_be_stored_as_subtype(shape(ret_t)):
                     direct.append(f"{ret_c} qv_result = {call_expr};")
@@ -1054,11 +1083,15 @@ class CDeclarationEmitter:
                     direct.append("return qv_result;")
                 else:
                     direct.append(f"return {call_expr};")
-                uniform.append(
-                    "return "
-                    + qval_unwrap(f"quest_convert({invoke_expr}, from->result_type, to->result_type)", ret_t, self.record_ctx)
-                    + ";"
+                invoked = invoke_expr
+                if uniform_backs:
+                    uniform.append(f"QVal qv_invoked = {invoke_expr};")
+                    uniform.extend(uniform_backs)
+                    invoked = "qv_invoked"
+                result = qval_unwrap(
+                    f"quest_convert({invoked}, from->result_type, to->result_type)", ret_t, self.record_ctx
                 )
+                uniform.append(f"return {result};")
             thunk = f"quest_thunk_{tag}"
             lines.append(f"static {ret_c} {call(thunk, param_decls)} {{")
             lines.append("    const QFunAdapterClosure *e = (const QFunAdapterClosure *)_raw_env;")

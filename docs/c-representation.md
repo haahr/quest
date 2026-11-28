@@ -982,10 +982,14 @@ struct QTypeDescriptor {
   (`quest_fun_signature_equivalent`, recorded in the adapter's closure as `direct`), as closures of types related
   by subtyping do; otherwise (one of the two types is laid out generically, §6.4.5) it calls it through the invoker
   of the closure's type, `quest_invoke_fun_<digest>`, which takes the type parameters' descriptors and the arguments
-  in their `QVal` forms, calls the closure with that type's C signature, and returns the result's `QVal` form. On the
-  direct path a `var` or `out` argument of a type that may be laid out as a subtype's (`mayBeStoredAsSubtype`) is
-  passed as a temporary of one word, converted in from the location (an `out` argument's pointer starts null) and
-  back into it after the call (an `out` argument's only if the closure assigned it). Runtime subtyping of function
+  in their `QVal` forms, calls the closure with that type's C signature, and returns the result's `QVal` form. A
+  `var` or `out` argument whose parameter descriptors differ between the two types is passed as a temporary of one
+  word, converted in from the location (an `out` argument's pointer starts null) and back into it after the call (an
+  `out` argument's only if the closure assigned it): on the direct path one of a type that may be laid out as a
+  subtype's (`mayBeStoredAsSubtype`), in the location's own representation; on the uniform path every one, as a
+  `QVal` holding its `QVal` form, which the invoker reads as a cell of its own type (a cell's value starts at the
+  word's first byte). Where the two descriptors are one, the location is passed as it is, so that the closure's
+  writes reach it as they are made, even if it then raises. Runtime subtyping of function
   types is contravariant in value parameters, invariant in `var` parameters, and covariant in `out` parameters and
   the result. Polymorphic function types (`All(A::TYPE x: A) A`) are described the
   same way, plus `quantifier_count` and `quantifier_bounds`: their type parameters are passed as descriptors before the

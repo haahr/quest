@@ -200,16 +200,84 @@ export
                 at := at + n
                 vector.append(paramValues vs)
             end
+            (* A var or out argument whose parameter's types differ (their
+             * descriptors are not one) is passed as a temporary of one word,
+             * converted in from the location (an out argument's whose word is
+             * a pointer starts null) and back into it after the call (an
+             * unassigned one's left as it was): on the direct path one that
+             * may hold a value of a subtype, its word as the location holds it
+             * (the closure's is the same); on the uniform path every one, its
+             * QVal word, which holds any representation's cell from its
+             * start, as the closure's invoker reads its own. Where the
+             * descriptors are one the location is passed as it is, so that
+             * the closure's writes reach it as they are made. Each one's
+             * parameter, location, the reference passed (the location or the
+             * temporary), the temporary, and whether it starts null *)
+            Let Back = Tuple j: Int location: Int ref: Int temp: Int unassigned: Bool end
+            let startsNull(p: model.Param): Bool =
+                begin
+                    let ps = shapes.shape(p.type)
+                    p.isOut
+                        andif {if layout.isBoxedInSlots(ps) then layout.slotIsPointer(ps) else layout.isPointer(ps) end}
+                end
+            (* The reference passed for parameter j at location: a temporary
+             * holding initial's word (made only where the descriptors differ)
+             * or the location *)
+            let reference(j: Int location: Int unassigned: Bool initial: All() Int): Back =
+                begin
+                    let temp = ssa.slotAddress(tf thunk.cur ssa.newSlot(tf 8 8))
+                    let copy = control.newBlock(thunk)
+                    let join = control.newBlock(thunk)
+                    let ref = ssa.addParam(tf join vals.tPtr)
+                    vals.terminate(thunk option termBranch of ssa.Terminator with
+                        let cond = vals.binary(thunk ssa.opPne paramType(thunk to j) paramType(thunk from j))
+                        let ifTrue = ssa.target(copy vals.noValues)
+                        let ifFalse = ssa.target(join array of location end)
+                    end)
+                    thunk.cur := copy
+                    vals.store(thunk temp 0 8 if unassigned then vals.toVal(thunk vals.null(thunk)) else initial() end)
+                    vals.jump(thunk join array of temp end)
+                    thunk.cur := join
+                    tuple
+                        let j = j
+                        let location = location
+                        let ref = ref
+                        let temp = temp
+                        let unassigned = unassigned
+                    end
+                end
+            (* After the call: each temporary's word, converted, stored back
+             * by store *)
+            let writeBack(backs: vector.T(Back) store: All(b: Back w: Int) Ok): Ok =
+                for k = 0 upto {vector.length(backs) - 1} do
+                    let b = vector.get(backs k)
+                    let join = control.newBlock(thunk)
+                    let copied = control.newBlock(thunk)
+                    vals.terminate(thunk option termBranch of ssa.Terminator with
+                        let cond = vals.binary(thunk ssa.opPne b.ref b.location)
+                        let ifTrue = ssa.target(copied vals.noValues)
+                        let ifFalse = ssa.target(join vals.noValues)
+                    end)
+                    thunk.cur := copied
+                    let word = vals.loadWord(thunk b.temp 0 vals.tVal)
+                    if b.unassigned then
+                        let write = control.newBlock(thunk)
+                        vals.terminate(thunk option termBranch of ssa.Terminator with
+                            let cond = vals.binary(thunk ssa.opPne vals.fromVal(thunk word vals.tPtr) vals.null(thunk))
+                            let ifTrue = ssa.target(write vals.noValues)
+                            let ifFalse = ssa.target(join vals.noValues)
+                        end)
+                        thunk.cur := write
+                    end
+                    store(b convertWord(thunk word paramType(thunk from b.j) paramType(thunk to b.j)))
+                    vals.callVoid(thunk "quest_barrier_slot" array of b.location end)
+                    vals.jump(thunk join vals.noValues)
+                    thunk.cur := join
+                end
             (* Fast path: signatures match, so call orig directly at this C
              * signature *)
             thunk.cur := directB
             let var directArgs = vals.concat(array of orig end descs)
-            (* A var or out argument that may hold a value of a subtype is
-             * passed as a temporary, its one word converted in (an out
-             * argument's whose word is a pointer starts null) and back after
-             * the call (an unassigned one's left as it was): each one's
-             * parameter, location, temporary, and whether it starts null *)
-            Let Back = Tuple j: Int location: Int temp: Int unassigned: Bool end
             let backs = vector.new(:Back)
             for j = 0 upto {np - 1} do
                 let p = vector.get(sig.params j)
@@ -217,22 +285,11 @@ export
                 let ps = shapes.shape(p.type)
                 let converted = not(byLocation(p)) andif not(isOk(p.type)) andif slots.mayBeStoredAsSubtype(ps)
                 if byLocation(p) andif slots.mayBeStoredAsSubtype(ps) then
-                    let temp = ssa.slotAddress(tf thunk.cur ssa.newSlot(tf 8 8))
-                    let unassigned = p.isOut
-                        andif {if layout.isBoxedInSlots(ps) then layout.slotIsPointer(ps) else layout.isPointer(ps) end}
-                    let initial =
-                        if unassigned then vals.toVal(thunk vals.null(thunk))
-                        else convertWord(thunk vals.loadWord(thunk vs[0] 0 vals.tVal) paramType(thunk to j)
-                                paramType(thunk from j))
-                        end
-                    vals.store(thunk temp 0 8 initial)
-                    vector.append(backs tuple
-                        let j = j
-                        let location = vs[0]
-                        let temp = temp
-                        let unassigned = unassigned
-                    end)
-                    directArgs := vals.concat(directArgs array of temp end)
+                    let b = reference(j vs[0] startsNull(p) fun(): Int
+                        convertWord(thunk vals.loadWord(thunk vs[0] 0 vals.tVal) paramType(thunk to j)
+                                paramType(thunk from j)))
+                    vector.append(backs b)
+                    directArgs := vals.concat(directArgs array of b.ref end)
                 else
                     directArgs := vals.concat(directArgs if converted then
                         vals.fromWord(thunk
@@ -247,25 +304,7 @@ export
             let directResults = calls.resultsOf(thunk retParts vals.callQuest(thunk ""
                     vals.concat(array of closureFn(thunk orig) end directArgs) shifted(s.pairs 1) shifted(s.narrow
                             1) retParts))
-            for k = 0 upto {vector.length(backs) - 1} do
-                let b = vector.get(backs k)
-                let word = vals.loadWord(thunk b.temp 0 vals.tVal)
-                let join = control.newBlock(thunk)
-                if b.unassigned then
-                    let write = control.newBlock(thunk)
-                    vals.terminate(thunk option termBranch of ssa.Terminator with
-                        let cond = vals.binary(thunk ssa.opPne vals.fromVal(thunk word vals.tPtr) vals.null(thunk))
-                        let ifTrue = ssa.target(write vals.noValues)
-                        let ifFalse = ssa.target(join vals.noValues)
-                    end)
-                    thunk.cur := write
-                end
-                let back = convertWord(thunk word paramType(thunk from b.j) paramType(thunk to b.j))
-                vals.store(thunk b.location 0 8 back)
-                vals.callVoid(thunk "quest_barrier_slot" array of b.location end)
-                vals.jump(thunk join vals.noValues)
-                thunk.cur := join
-            end
+            writeBack(backs fun(b: Back w: Int): Ok vals.store(thunk b.location 0 8 w))
             returnValues(thunk if not(isOk(ret)) andif slots.mayBeStoredAsSubtype(shapes.shape(ret)) then
                 vals.fromWord(thunk
                         convertWord(thunk vals.toWord(thunk directResults ret)
@@ -275,14 +314,32 @@ export
                 directResults
             end)
             (* Slow path: signatures differ, so pack arguments as QVal words
-             * and call orig through its own type's invoker *)
+             * and call orig through its own type's invoker; a location's value
+             * is read and written in its own representation, as its QVal
+             * word *)
             thunk.cur := uniformB
+            let boxed(t: Type): Bool = layout.isBoxedInSlots(shapes.shape(t))
             let words = array of({nq + np} 0)
             for k = 0 upto {nq - 1} do words[k] := vals.toVal(thunk descs[k]) end
+            let uniformBacks = vector.new(:Back)
             for j = 0 upto {np - 1} do
                 let p = vector.get(sig.params j)
                 let vs = vector.get(paramValues j)
-                words[nq + j] := if byLocation(p) then vals.toVal(thunk vs[0])
+                words[nq + j] := if byLocation(p) andif isOk(p.type) then vals.toVal(thunk vs[0])
+                    elsif byLocation(p) then
+                        let b = reference(j vs[0] startsNull(p) fun(): Int
+                            begin
+                                let held = vals.readLocation(thunk vs[0] p.type)
+                                let w =
+                                    if boxed(p.type) then
+                                        vals.toVal(thunk held[0])
+                                    else
+                                        vals.toWord(thunk held p.type)
+                                    end
+                                convertWord(thunk w paramType(thunk to j) paramType(thunk from j))
+                            end)
+                        vector.append(uniformBacks b)
+                        vals.toVal(thunk b.ref)
                     elsif isOk(p.type) then vs[0]
                     else convertWord(thunk vals.toWord(thunk vs p.type) paramType(thunk to j) paramType(thunk from j))
                     end
@@ -291,6 +348,16 @@ export
             let invoker = vals.loadWord(thunk from runtimeLayout.offset("QFunTypeDescriptor" "invoke") vals.tPtr)
             let invoked = vals.callQuest(thunk "" array of invoker orig argsArray end vals.noValues vals.noValues
                     array of parts.part(vals.tVal 8 false) end)[0]
+            writeBack(uniformBacks fun(b: Back w: Int): Ok
+                begin
+                    let t = vector.get(sig.params b.j).type
+                    vals.writeLocation(thunk b.location t
+                            if boxed(t) then
+                                array of vals.fromVal(thunk w vals.tPtr) end
+                            else
+                                vals.fromWord(thunk w t)
+                            end)
+                end)
             returnValues(thunk if isOk(ret) then
                 vals.noValues
             else

@@ -476,4 +476,255 @@
                       ))))
               )))
         )))
+    (TypedLetValue 'packed' :type All(A :: TYPE) dynamic.T
+      :value (TypedFun :params () :type All(A :: TYPE) dynamic.T
+        :body (TypedBlock :type dynamic.T
+          :bindings (
+            (TypedLetValue 'set' :type Fun(out r: A y: A): Ok
+              :value (TypedFun :params (('r' : A) ('y' : A)) :type Fun(out r: A y: A): Ok
+                :body (TypedAssign
+                  :target (TypedVar 'r' :type Var(A))
+                  :value (TypedVar 'y' :type A))))
+          )
+          :result (TypedApp :type T
+            :func (TypedTypeApp [Fun(out r: A y: A): Ok] :type Fun(a: Fun(out r: A y: A): Ok): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedVar 'set' :type Fun(out r: A y: A): Ok)
+            )))))
+    (TypedLetValue 'packedV' :type All(A :: TYPE) dynamic.T
+      :value (TypedVar 'packed' :type All(A :: TYPE) dynamic.T))
+    (TypedLetValue 'du' :type Fun(out v: Large y: Small): Ok
+      :value (TypedApp :type Fun(out v: Large y: Small): Ok
+        :func (TypedTypeApp [Fun(out v: Large y: Small): Ok] :type Fun(d: T): Fun(out v: Large y: Small): Ok
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedTypeApp [Small] :type dynamic.T
+            :func (TypedDerefCell :type All(A :: TYPE) dynamic.T
+              :target (TypedVar 'packedV' :type Var(All(A :: TYPE) dynamic.T))))
+        )))
+    (TypedLetValue 'l3' :type Large
+      :value (TypedVariant 'a' :type Large
+        :payload (TypedString 'first' :type String)))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'du' :type Fun(out v: Large y: Small): Ok)
+        :args (
+          (TypedVar 'l3' :type Var(Large))
+          (TypedVariant 'b' :type Small
+            :payload (TypedInt 8 :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'uniform variant: ' :type String)
+            :right (TypedCase :type String
+              :target (TypedDerefCell :type Large
+                :target (TypedVar 'l3' :type Var(Large)))
+              :branches (
+                (TypedCaseBranch tags=(a) :binder 's'
+                  :body (TypedInfix '<>' :type String
+                    :left (TypedString 'a ' :type String)
+                    :right (TypedVar 's' :type String)))
+                (TypedCaseBranch tags=(b) :binder 'n'
+                  :body (TypedInfix '<>' :type String
+                    :left (TypedString 'b ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                        :target (TypedVar 'conv' :type Module 'conv'))
+                      :args (
+                        (TypedVar 'n' :type Int)
+                      ))))
+              )))
+        )))
+    (TypedLetValue 'swapped' :type All(A :: TYPE) dynamic.T
+      :value (TypedFun :params () :type All(A :: TYPE) dynamic.T
+        :body (TypedBlock :type dynamic.T
+          :bindings (
+            (TypedLetValue 'swap' :type Fun(var r: A y: A): A
+              :value (TypedFun :params (('r' : A) ('y' : A)) :type Fun(var r: A y: A): A
+                :body (TypedBlock :type A
+                  :bindings (
+                    (TypedLetValue 'old' :type A
+                      :value (TypedDerefCell :type A
+                        :target (TypedVar 'r' :type Var(A))))
+                    (TypedExprStmt
+                      :expr (TypedAssign
+                        :target (TypedVar 'r' :type Var(A))
+                        :value (TypedVar 'y' :type A)))
+                  )
+                  :result (TypedVar 'old' :type A))))
+          )
+          :result (TypedApp :type T
+            :func (TypedTypeApp [Fun(var r: A y: A): A] :type Fun(a: Fun(var r: A y: A): A): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedVar 'swap' :type Fun(var r: A y: A): A)
+            )))))
+    (TypedLetValue 'swappedV' :type All(A :: TYPE) dynamic.T
+      :value (TypedVar 'swapped' :type All(A :: TYPE) dynamic.T))
+    (TypedLetValue 'dr' :type Fun(var r: Real y: Real): Real
+      :value (TypedApp :type Fun(var r: Real y: Real): Real
+        :func (TypedTypeApp [Fun(var r: Real y: Real): Real] :type Fun(d: T): Fun(var r: Real y: Real): Real
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedTypeApp [Real] :type dynamic.T
+            :func (TypedDerefCell :type All(A :: TYPE) dynamic.T
+              :target (TypedVar 'swappedV' :type Var(All(A :: TYPE) dynamic.T))))
+        )))
+    (TypedLetValue 'rr' :type Real
+      :value (TypedReal 1.5 :type Real))
+    (TypedLetValue 'oldR' :type Real
+      :value (TypedApp :type Real
+        :func (TypedVar 'dr' :type Fun(var r: Real y: Real): Real)
+        :args (
+          (TypedVar 'rr' :type Var(Real))
+          (TypedReal 2.5 :type Real)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'uniform real: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'real' :type Fun(r: Real): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedDerefCell :type Real
+                    :target (TypedVar 'rr' :type Var(Real)))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'real' :type Fun(r: Real): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedVar 'oldR' :type Real)
+                  )))))
+        )))
+    (TypedLetValue 'db' :type Fun(var r: Bool y: Bool): Bool
+      :value (TypedApp :type Fun(var r: Bool y: Bool): Bool
+        :func (TypedTypeApp [Fun(var r: Bool y: Bool): Bool] :type Fun(d: T): Fun(var r: Bool y: Bool): Bool
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedTypeApp [Bool] :type dynamic.T
+            :func (TypedDerefCell :type All(A :: TYPE) dynamic.T
+              :target (TypedVar 'swappedV' :type Var(All(A :: TYPE) dynamic.T))))
+        )))
+    (TypedLetValue 'bb' :type Bool
+      :value (TypedBool false))
+    (TypedLetValue 'oldB' :type Bool
+      :value (TypedApp :type Bool
+        :func (TypedVar 'db' :type Fun(var r: Bool y: Bool): Bool)
+        :args (
+          (TypedVar 'bb' :type Var(Bool))
+          (TypedBool true)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'uniform bool: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedDerefCell :type Bool
+                    :target (TypedVar 'bb' :type Var(Bool)))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedVar 'oldB' :type Bool)
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedException 'Stop' :type Exception))
+    (TypedLetValue 'assignThenRaise' :type Fun(var r: Super s: Super): Ok
+      :value (TypedFun :params (('r' : Super) ('s' : Super)) :type Fun(var r: Super s: Super): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedAssign
+                :target (TypedVar 'r' :type Var(Super))
+                :value (TypedRecord :type Record z: Int end
+                  :fields (
+                    (TypedRecordField 'z'
+                      :value (TypedInt 99 :type Int))
+                  ))))
+          )
+          :result (TypedRaise :type Ok
+            :exc (TypedVar 'Stop' :type Exception)))))
+    (TypedLetValue 'dt' :type Fun(var r: Super s: Sub): Ok
+      :value (TypedApp :type Fun(var r: Super s: Sub): Ok
+        :func (TypedTypeApp [Fun(var r: Super s: Sub): Ok] :type Fun(d: T): Fun(var r: Super s: Sub): Ok
+          :func (TypedSelect 'be' :type All(A :: TYPE) Fun(d: T): A
+            :target (TypedVar 'dynamic' :type Module 'dynamic')))
+        :args (
+          (TypedApp :type T
+            :func (TypedTypeApp [Fun(var r: Super s: Super): Ok] :type Fun(a: Fun(var r: Super s: Super): Ok): T
+              :func (TypedSelect 'new' :type All(A :: TYPE) Fun(a: A): T
+                :target (TypedVar 'dynamic' :type Module 'dynamic')))
+            :args (
+              (TypedVar 'assignThenRaise' :type Fun(var r: Super s: Super): Ok)
+            ))
+        )))
+    (TypedLetValue 'w' :type Super
+      :value (TypedRecord :type Record z: Int end
+        :fields (
+          (TypedRecordField 'z'
+            :value (TypedInt 1 :type Int))
+        )))
+    (TypedExprStmt
+      :expr (TypedTry :type Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'dt' :type Fun(var r: Super s: Sub): Ok)
+          :args (
+            (TypedVar 'w' :type Var(Super))
+            (TypedRecord :type Record a: Int z: Int end
+              :fields (
+                (TypedRecordField 'a'
+                  :value (TypedInt 1 :type Int))
+                (TypedRecordField 'z'
+                  :value (TypedInt 2 :type Int))
+              ))
+          ))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedVar 'Stop' :type Exception)
+            :body (TypedApp :type Ok
+              :func (TypedVar 'print' :type Fun(s: String): Ok)
+              :args (
+                (TypedString 'raised' :type String)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'written before the raise: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'z' :type Int
+                  :target (TypedDerefCell :type Super
+                    :target (TypedVar 'w' :type Var(Super))))
+              )))
+        )))
   ))

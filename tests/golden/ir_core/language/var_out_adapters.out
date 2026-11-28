@@ -146,29 +146,129 @@ main {
     join k2(r.5: String) {
       let %61: String = prim <>("dynamic variant: ", r.5) @79:7
       do call print(%61) @79:1
+      funs {
+        fun packed [A::TYPE](): dynamic.T {
+          funs {
+            fun set.1(out r.6: A, y.2: A): Ok {
+              r.6 := y.2 @89:38
+              return ok
+            }
+          }
+          let %62: T = call dynamic.new [Fun(out r: A y: A): Ok](set.1) @90:9
+          return %62
+        }
+      }
+      var packedV: All(A :: TYPE) dynamic.T = packed @92:1
+      let %63: dynamic.T = type_app packedV [Small] @93:52
+      let du: Fun(out v: Large y: Small): Ok = call dynamic.be [Fun(out v: Large y: Small): Ok](%63) @93:10
+      let %64: Large = variant(a, "first") @94:21
+      var l3: Large = %64 @94:1
+      let %65: Var(Large) = addr l3 @95:4
+      let %66: Small = variant(b, 8) @95:8
+      do call du(%65, %66) @95:1
+      join k3(r.7: String) {
+        let %67: String = prim <>("uniform variant: ", r.7) @96:7
+        do call print(%67) @96:1
+        funs {
+          fun swapped [A::TYPE](): dynamic.T {
+            funs {
+              fun swap(var r.8: A, y.3: A): A {
+                let old: A = r.8 @99:54
+                r.8 := y.3 @99:56
+                return old
+              }
+            }
+            let %68: T = call dynamic.new [Fun(var r: A y: A): A](swap) @100:9
+            return %68
+          }
+        }
+        var swappedV: All(A :: TYPE) dynamic.T = swapped @102:1
+        let %69: dynamic.T = type_app swappedV [Real] @103:52
+        let dr: Fun(var r: Real y: Real): Real = call dynamic.be [Fun(var r: Real y: Real): Real](%69) @103:10
+        var rr: Real = 1.5 @104:1
+        let %70: Var(Real) = addr rr @105:15
+        let oldR: Real = call dr(%70, 2.5) @105:12
+        let %71: String = call conv.real(rr) @106:27
+        let %72: String = call conv.real(oldR) @106:51
+        let %73: String = prim <>(" ", %72) @106:44
+        let %74: String = prim <>(%71, %73) @106:27
+        let %75: String = prim <>("uniform real: ", %74) @106:7
+        do call print(%75) @106:1
+        let %76: dynamic.T = type_app swappedV [Bool] @107:52
+        let db: Fun(var r: Bool y: Bool): Bool = call dynamic.be [Fun(var r: Bool y: Bool): Bool](%76) @107:10
+        var bb: Bool = false @108:1
+        let %77: Var(Bool) = addr bb @109:15
+        let oldB: Bool = call db(%77, true) @109:12
+        let %78: String = call conv.bool(bb) @110:27
+        let %79: String = call conv.bool(oldB) @110:51
+        let %80: String = prim <>(" ", %79) @110:44
+        let %81: String = prim <>(%78, %80) @110:27
+        let %82: String = prim <>("uniform bool: ", %81) @110:7
+        do call print(%82) @110:1
+        let Stop: Exception = exception Stop @115:1
+        funs {
+          fun assignThenRaise(var r.9: Super, s.2: Super): Ok {
+            let %83: Record z: Int end = record(z = 99) @116:61
+            r.9 := %83 @116:56
+            raise Stop @116:79
+          }
+        }
+        let %84: T = call dynamic.new [Fun(var r: Super s: Super): Ok](assignThenRaise) @117:50
+        let dt: Fun(var r: Super s: Sub): Ok = call dynamic.be [Fun(var r: Super s: Sub): Ok](%84) @117:10
+        let %85: Record z: Int end = record(z = 1) @118:20
+        var w: Super = %85 @118:1
+        try catching (Stop) {
+          let %86: Var(Super) = addr w @119:8
+          let %87: Record a: Int z: Int end = record(a = 1, z = 2) @119:11
+          do call dt(%86, %87) @119:5
+        } handle (e: Exception) {
+          let %88: Bool = prim is(e, Stop) @119:1
+          if %88 { @119:1
+            do call print("raised") @119:50
+          } else {
+            reraise e @119:1
+          }
+        }
+        let %89: Int = record_field(w, z) @120:48
+        let %90: String = call conv.int(%89) @120:39
+        let %91: String = prim <>("written before the raise: ", %90) @120:7
+        do call print(%91) @120:1
+      } in {
+        switch tag(l3) { @96:30
+          case a (s.3: String): {
+            let %92: String = prim <>("a ", s.3) @96:57
+            jump k3(%92) @96:30
+          }
+          case b (n.1: Int): {
+            let %93: String = call conv.int(n.1) @96:94
+            let %94: String = prim <>("b ", %93) @96:86
+            jump k3(%94) @96:30
+          }
+        }
+      }
     } in {
       switch tag(l2) { @79:30
-        case a (s.2: String): {
-          let %62: String = prim <>("a ", s.2) @79:57
-          jump k2(%62) @79:30
+        case a (s.4: String): {
+          let %95: String = prim <>("a ", s.4) @79:57
+          jump k2(%95) @79:30
         }
-        case b (n.1: Int): {
-          let %63: String = call conv.int(n.1) @79:94
-          let %64: String = prim <>("b ", %63) @79:86
-          jump k2(%64) @79:30
+        case b (n.2: Int): {
+          let %96: String = call conv.int(n.2) @79:94
+          let %97: String = prim <>("b ", %96) @79:86
+          jump k2(%97) @79:30
         }
       }
     }
   } in {
     switch tag(large) { @40:22
-      case a (s.3: String): {
-        let %65: String = prim <>("a ", s.3) @40:52
-        jump k1(%65) @40:22
+      case a (s.5: String): {
+        let %98: String = prim <>("a ", s.5) @40:52
+        jump k1(%98) @40:22
       }
-      case b (n.2: Int): {
-        let %66: String = call conv.int(n.2) @40:89
-        let %67: String = prim <>("b ", %66) @40:81
-        jump k1(%67) @40:22
+      case b (n.3: Int): {
+        let %99: String = call conv.int(n.3) @40:89
+        let %100: String = prim <>("b ", %99) @40:81
+        jump k1(%100) @40:22
       }
     }
   }
