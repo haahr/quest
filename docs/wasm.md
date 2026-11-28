@@ -442,6 +442,9 @@ in tail position, and a uniform entry's call when the result is a reference.
   that value into an accumulator and branches to the loop; each other return gives what it returns combined with
   the accumulator, which starts at the operation's identity (`accumulation`). A function with a `try` is not
   converted, and in a converted one no other tail call is made, since it would return without the accumulator.
+  Since the value is folded in before the branch, a site whose value the call can change (a located variable, such
+  as a `var` parameter, or a global), which the code reads after the call returns, stays a call
+  (`accumulateSite`, `tests/source/language/accumulating_changed_operand.quest`).
 
 A uniform entry that must box its result, and a caller that must unbox one, leave a frame. A loop written through
 closures that passes through one each time around grows the stack where natively it does not. With §3.2, and `Ok`

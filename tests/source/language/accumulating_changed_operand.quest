@@ -1,0 +1,16 @@
+(* Recursions whose result is combined after the call with a value the call
+ * changes: a var parameter, and a var field of a top-level tuple. The
+ * operand is read after the call returns, so the backends' accumulator,
+ * which folds the operand in before the call (docs/wasm.md section 3.3),
+ * must leave such a site alone, giving 6 and 9 (with it, 3 and 2). *)
+
+import conv : Conv
+import writer : Writer
+
+let rec f(n: Int var g: Int): Int = begin g := g + 1 if n <= 0 then 0 else f(n - 1 @g) + g end end
+let var g = 0
+writer.putString(writer.output conv.int(f(2 @g)) <> "\n")
+
+let c = tuple let var t = 0 end
+let rec h(n: Int): Int = begin c.t := c.t + 1 if n <= 0 then 1 else h(n - 1) * c.t end end
+writer.putString(writer.output conv.int(h(2)) <> "\n")

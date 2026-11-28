@@ -1,0 +1,151 @@
+function qf_f(%0: ptr, %1: int, %2: ptr): int {
+b0(%0: ptr, %1: int, %2: ptr):
+  @10:48
+  %3: int = load8 %2 + 0
+  %4: int = const 1
+  %5: int = add %3, %4
+  @10:43
+  store8 %2 + 0, %5
+  @10:57
+  %6: int = const 0
+  %7: int = le %1, %6
+  @10:54
+  branch %7, b1(), b2()
+b1():
+  @10:54
+  %8: int = const 0
+  return %8
+b2():
+  @10:78
+  %9: int = const 1
+  %10: int = sub %1, %9
+  @10:76
+  %11: ptr = null
+  %12: int = call qf_f(%11, %10, %2)
+  %13: int = load8 %2 + 0
+  %14: int = add %12, %13
+  @10:54
+  return %14
+}
+
+function qf_h(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  @15:39
+  %2: ptr = symbol g_c
+  %3: ptr = load8 %2 + 0
+  %4: int = load8 %3 + 0
+  %5: int = const 1
+  %6: int = add %4, %5
+  @15:32
+  store8 %3 + 0, %6
+  @15:50
+  %9: int = const 0
+  %10: int = le %1, %9
+  @15:47
+  branch %10, b1(), b2()
+b1():
+  @15:47
+  %11: int = const 1
+  return %11
+b2():
+  @15:71
+  %12: int = const 1
+  %13: int = sub %1, %12
+  @15:69
+  %14: ptr = null
+  %15: int = call qf_h(%14, %13)
+  @15:80
+  %16: ptr = symbol g_c
+  %17: ptr = load8 %16 + 0
+  %18: int = load8 %17 + 0
+  @15:69
+  %19: int = mul %15, %18
+  @15:47
+  return %19
+}
+
+function qr_register_dicts() {
+b0():
+  %0: ptr = symbol qr_roots
+  call quest_register_roots(%0)
+  %1: ptr = symbol qr_frames
+  call quest_register_frames(%1)
+  %2: ptr = symbol qr_funcs
+  %3: int = const 3
+  tail call quest_register_funcs(%2, %3)
+}
+
+function main exported(%0: int, %1: ptr) int32 [0]: int result int32 slots [8:8] {
+b0(%0: int, %1: ptr):
+  call quest_gc_init()
+  call quest_builtins_init(%0, %1) int32 [0]
+  call qr_register_dicts()
+  call qv_mod_conv_init()
+  call qv_mod_writer_init()
+  %2: ptr = symbol qf_f_closure
+  %3: ptr = symbol g_f
+  store8 %3 + 0, %2
+  @11:1
+  %4: ptr = slot 0
+  %5: int = const 0
+  store8 %4 + 0, %5
+  @12:18
+  %7: ptr = symbol qm_writer
+  %8: ptr = load8 %7 + 0
+  %9: ptr = load8 %7 + 8
+  %10: int = load8 %9 + 40
+  %11: ptr = ptrAdd %8, %10
+  %12: ptr = load8 %11 + 0
+  @12:41
+  %14: ptr = null
+  %15: int = const 2
+  %16: int = call qf_f(%14, %15, %4)
+  @12:32
+  %17: ptr = call qv_conv_int(%16)
+  %18: ptr = symbol qso_4 + 8
+  %19: ptr = call quest_string_concat(%17, %18)
+  @12:1
+  call quest_writer_put_string(%12, %19)
+  @14:9
+  %20: int = const 8
+  %21: ptr = symbol quest_layout_QTuple_Int
+  %22: ptr = call quest_alloc(%20, %21)
+  store8 %22 + 0, %5
+  %24: ptr = symbol g_c
+  store8 %24 + 0, %22
+  %25: ptr = symbol qf_h_closure
+  %26: ptr = symbol g_h
+  store8 %26 + 0, %25
+  @16:18
+  %28: ptr = load8 %7 + 0
+  %29: ptr = load8 %7 + 8
+  %30: int = load8 %29 + 40
+  %31: ptr = ptrAdd %28, %30
+  %32: ptr = load8 %31 + 0
+  @16:41
+  %35: int = call qf_h(%14, %15)
+  @16:32
+  %36: ptr = call qv_conv_int(%35)
+  %38: ptr = call quest_string_concat(%36, %18)
+  @16:1
+  call quest_writer_put_string(%32, %38)
+  return %5
+}
+
+data g_c writable zero 8
+data qf_f_closure words [qf_f]
+data qf_h_closure words [qf_h]
+data qs_1 text "f"
+data qs_2 text "h"
+data qs_3 text "<main>"
+data qr_frames words [0]
+data qr_funcs words [qf_f, qs_1, qf_h, qs_2, main, qs_3]
+data g_f writable zero 8
+data qs_4 text "\n"
+data qso_4 words [quest_layout_string + ~9223372036854775808, 1, qs_4]
+data g_h writable zero 8
+data qs_5 text "QTuple_Int"
+data qlk_QTuple_Int words [0]
+data quest_layout_QTuple_Int words [qs_5, 4294967296, 8, 4294967296, qlk_QTuple_Int]
+data qr_roots words [g_c, 1, g_f, 1, g_h, 1, 0, 0]
+

@@ -4566,10 +4566,19 @@ export
             if tried then 0 else op end
         end
     let combine(f: F): Ok = emit(f i(if f.accOp is 1 then ops.i64Add else ops.i64Mul end))
+    (* Whether atom a, the operand a site folds into the accumulator before
+     * its recursive call, has the value it would have after the call: not a
+     * located variable (a var parameter, say) or a global, which the call
+     * can change, and which the code without the accumulator reads after
+     * it. Any other variable is bound before the call, and keeps its value. *)
+    let foldable(f: F a: ir.Atom): Bool =
+        case a when atomVar with x then not(isLocated(f x.v)) andif not(isGlobal(f x.v)) else true end
     (* If ss[k] starts an accumulating self-call site (self-call, combine with
-     * f.accOp, and return of the combined result), emits the accumulator
-     * update and back-branch to the function loop. Returns the number of
-     * statements consumed from ss (2 or 3), or 0 if not a site. *)
+     * f.accOp of an operand the call cannot change, and return of the
+     * combined result), emits the accumulator update and back-branch to the
+     * function loop. Returns the number of statements consumed from ss (2 or
+     * 3), or 0 if not a site, which compiles as a call whose result, as every
+     * other return's, is combined with the accumulator. *)
     let accumulateSite(f: F ss: Array(ir.Stmt) k: Int after: maybe.T(ir.Stmt)): Int =
         if {f.accOp is 0} orif {{k + 1} >= extent ss} then
             0
@@ -4581,7 +4590,7 @@ export
                 let site = maybe.unwrap(call)
                 let c = combining(ss[k + 1] site.v f.accOp)
                 let next = if {k + 2} < extent ss then maybe.some(ss[k + 2]) else after end
-                if maybe.isNone(c) orif maybe.isNone(next)
+                if maybe.isNone(c) orif maybe.isNone(next) orif not(foldable(f maybe.unwrap(c).other))
                         orif not(returnsResult(f
                                 maybe.some(maybe.unwrap(c).result)
                                 maybe.unwrap(next))) then
