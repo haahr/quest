@@ -146,3 +146,37 @@ b7():
   %9: int = const 3
   return %9
 }
+== a check that stays: the same symbol at another offset
+function offsets(%0: ptr): int {
+b0(%0: ptr):
+  %1: ptr = symbol qd_table
+  %2: int = peq %0, %1
+  branch %2, b3(), b1()
+b1():
+  %3: ptr = symbol qd_table + 8
+  %4: int = peq %0, %3
+  branch %4, b3(), b2()
+b2():
+  %5: int = const 1
+  return %5
+b3():
+  %6: int = const 2
+  return %6
+}
+-- after conditions: false
+function offsets(%0: ptr): int {
+b0(%0: ptr):
+  %1: ptr = symbol qd_table
+  %2: int = peq %0, %1
+  branch %2, b3(), b1()
+b1():
+  %3: ptr = symbol qd_table + 8
+  %4: int = peq %0, %3
+  branch %4, b3(), b2()
+b2():
+  %5: int = const 1
+  return %5
+b3():
+  %6: int = const 2
+  return %6
+}

@@ -71,8 +71,9 @@ export
                     else maybe.none(:Bool)
                 end
             (* A value as text that is the same for values that must be equal:
-             * a constant, a null, or a symbol by what it is, an invariant load
-             * by its address, a copy as what it copies *)
+             * a constant, a null, or a symbol by what it is (its name and
+             * offset), an invariant load by its address, a copy as what it
+             * copies *)
             let rec operand(v: Int depth: Int): String =
                 begin
                     let d = defs[v]
@@ -83,7 +84,7 @@ export
                         case i.op
                             when opConst then "c" <> conv.int(i.imm)
                             when opNull then "n"
-                            when opSymbol then "s" <> i.symbol
+                            when opSymbol then "s" <> i.symbol <> "+" <> conv.int(i.imm)
                             when opCopy then operand(i.args[0] depth + 1)
                             when opLoad then
                                 if i.invariant then

@@ -5,8 +5,8 @@
  * before and after the pass and verified: a null check made again, on a null
  * of its own, which becomes a jump; a bounds check made again, on its length
  * loaded again, likewise; the negation of a known pointer equality; and checks
- * that stay, on another array, and in a block the first check does not
- * dominate. *)
+ * that stay, on another array, in a block the first check does not dominate,
+ * and on a symbol at another offset. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
@@ -113,5 +113,24 @@ show("checks that stay: another array, and one not dominated" array of
     "b7():"
     "  %9: int = const 3"
     "  return %9"
+    "}"
+end)
+
+show("a check that stays: the same symbol at another offset" array of
+    "function offsets(%0: ptr): int {"
+    "b0(%0: ptr):"
+    "  %1: ptr = symbol qd_table"
+    "  %2: int = peq %0, %1"
+    "  branch %2, b3(), b1()"
+    "b1():"
+    "  %3: ptr = symbol qd_table + 8"
+    "  %4: int = peq %0, %3"
+    "  branch %4, b3(), b2()"
+    "b2():"
+    "  %5: int = const 1"
+    "  return %5"
+    "b3():"
+    "  %6: int = const 2"
+    "  return %6"
     "}"
 end)
