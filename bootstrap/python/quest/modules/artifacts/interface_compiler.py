@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, NamedTuple, Optional
 
 import quest.syntax.ast as ast
 from quest.config.abi import (
@@ -351,6 +351,41 @@ def _type_signatures(
     return result
 
 
+class QiImport(NamedTuple):
+    """An import item as a .qi records it: the names it binds (none for an import
+    of the interface alone), the module paths it gives them (none when they are
+    the names), and the interface path. Its text is :I with no names,
+    n1,n2=p1,p2:I with module paths, and n1,n2:I otherwise, I being the
+    interface path; format_qi_import writes it and parse_qi_import reads it
+    back."""
+    names: tuple[str, ...]
+    module_paths: tuple[str, ...]
+    interface_path: str
+
+
+def format_qi_import(item: QiImport) -> str:
+    """The text of a .qi's import entry (QiImport)."""
+    if not item.names:
+        return f":{item.interface_path}"
+    if item.module_paths:
+        return f"{','.join(item.names)}={','.join(item.module_paths)}:{item.interface_path}"
+    return f"{','.join(item.names)}:{item.interface_path}"
+
+
+def parse_qi_import(text: str) -> QiImport:
+    """A .qi's import entry, read back from its text (QiImport)."""
+    if text.startswith(":"):
+        return QiImport((), (), text[1:])
+    if "=" in text:
+        names_part, rest = text.split("=", 1)
+        paths_part, interface_path = rest.split(":", 1)
+        return QiImport(tuple(names_part.split(",")), tuple(paths_part.split(",")), interface_path)
+    if ":" in text:
+        names_part, interface_path = text.split(":", 1)
+        return QiImport(tuple(names_part.split(",")), (), interface_path)
+    return QiImport((), (), text)
+
+
 def compile_interface_to_qi(
     decl: ast.InterfaceDecl,
     iface_scope: Scope,
@@ -376,19 +411,11 @@ def compile_interface_to_qi(
     (Resolver.interface_dependencies), recorded so that the .qi is stale when
     one of them changes.
     """
-    imports_elems: list[QString] = []
-    for imp in decl.imports:
-        if not imp.names:
-            imports_elems.append(QString(f":{imp.effective_interface_path}"))
-        elif imp.module_paths:
-            imports_elems.append(
-                QString(f"{','.join(imp.names)}={','.join(imp.module_paths)}:{imp.effective_interface_path}")
-            )
-        else:
-            imports_elems.append(
-                QString(f"{','.join(imp.names)}:{imp.effective_interface_path}")
-            )
-    imports_arr = QArray(imports_elems)
+    imports_arr = QArray([
+        QString(format_qi_import(QiImport(tuple(imp.names), tuple(imp.module_paths or ()),
+                                          imp.effective_interface_path)))
+        for imp in decl.imports
+    ])
 
     type_records: list[QRecord] = []
     value_records: list[QRecord] = []
@@ -803,56 +830,34 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
     if "imports" in rec.fields and isinstance(rec.fields["imports"], QArray):
 
         for imp_elem in rec.fields["imports"].elements:
-            imp_str = str(imp_elem.value)
-            if imp_str.startswith(":"):
-                imp_name = imp_str[1:]
-                imp_scope = env.lookup_interface(imp_name)
-                if imp_scope is None:
-                    imp_scope = load_interface(imp_name, env)
+            qi_import = parse_qi_import(str(imp_elem.value))
+            names = qi_import.names
+            mpaths = qi_import.module_paths or names
+            imp_name = qi_import.interface_path
+
+            imp_scope = env.lookup_interface(imp_name)
+            if imp_scope is None:
+                imp_scope = load_interface(imp_name, env)
+
+            if not names:
                 for t_name, t_sym in imp_scope.types.items():
                     imp_scope_frame.declare_type(t_sym)
                 for k_name, k_sym in imp_scope.kinds.items():
                     imp_scope_frame.declare_kind(k_sym)
             else:
-                if "=" in imp_str:
-                    names_part, rest = imp_str.split("=", 1)
-                    mpaths_part, iface_part = rest.split(":", 1)
-                    names = tuple(names_part.split(","))
-                    mpaths = tuple(mpaths_part.split(","))
-                    imp_name = iface_part
-                elif ":" in imp_str:
-                    names_part, iface_part = imp_str.split(":", 1)
-                    names = tuple(names_part.split(","))
-                    mpaths = names
-                    imp_name = iface_part
-                else:
-                    names = ()
-                    mpaths = ()
-                    imp_name = imp_str
-
-                imp_scope = env.lookup_interface(imp_name)
-                if imp_scope is None:
-                    imp_scope = load_interface(imp_name, env)
-
-                if not names:
-                    for t_name, t_sym in imp_scope.types.items():
-                        imp_scope_frame.declare_type(t_sym)
-                    for k_name, k_sym in imp_scope.kinds.items():
-                        imp_scope_frame.declare_kind(k_sym)
-                else:
-                    for iname, mod_path in zip(names, mpaths):
-                        registered_scope = separately_compiled_module_scope(mod_path, imp_scope, env)
-                        env.register_module(iname, registered_scope)
-                        env.register_module(mod_path, registered_scope)
-                        env.register_module(imp_name, registered_scope)
-                        # The interface's types name an imported module's
-                        # abstract types by the module's own name (vector.T),
-                        # whatever the interface imported it as (vec =
-                        # collections/vector), so the module is known by that
-                        # name too, unless something else already is
-                        own = registered_scope.module_name
-                        if own and not env.has_module(own):
-                            env.register_module(own, registered_scope)
+                for iname, mod_path in zip(names, mpaths):
+                    registered_scope = separately_compiled_module_scope(mod_path, imp_scope, env)
+                    env.register_module(iname, registered_scope)
+                    env.register_module(mod_path, registered_scope)
+                    env.register_module(imp_name, registered_scope)
+                    # The interface's types name an imported module's
+                    # abstract types by the module's own name (vector.T),
+                    # whatever the interface imported it as (vec =
+                    # collections/vector), so the module is known by that
+                    # name too, unless something else already is
+                    own = registered_scope.module_name
+                    if own and not env.has_module(own):
+                        env.register_module(own, registered_scope)
 
     iface_scope = Scope(name=f"interface_{name}", parent=imp_scope_frame)
     iface_scope.is_unsound = bool(rec.fields["isUnsound"].value)

@@ -1,6 +1,7 @@
 """The C headers of interfaces (`.int.h`): for each interface, its aggregate
 structs, its types' C representations, and its members' signatures, which C that
-uses the interface includes. The build writes and keeps them (build/headers.py).
+uses the interface includes. The build writes and keeps them
+(build/interface_headers.py).
 
 The self-hosted counterpart is questlang/codegen/c/headers.
 """

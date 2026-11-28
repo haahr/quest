@@ -17,7 +17,7 @@ import tempfile
 import unittest
 
 from quest.build.compiler_runner import find_c_compiler, get_runtime_dir
-from quest.build.headers import compile_interface_with_header
+from quest.build.interface_headers import compile_interface_with_header
 from quest.modules.artifacts.manifest import read_qm
 from quest.build.module_compiler import compile_module_file
 from quest.driver import main as driver

@@ -16,7 +16,7 @@ from pathlib import Path
 import unittest
 
 from quest.types.env import Environment
-from quest.build.headers import compile_interface_with_header
+from quest.build.interface_headers import compile_interface_with_header
 from quest.modules.artifacts.interface_compiler import format_type_for_qi, load_interface_from_qi_file
 from quest.types import (
     INT_TYPE, TYPE_KIND, QOptionField, QOptionType, QTupleField, QTupleType, QTypeVar, QVariantField,

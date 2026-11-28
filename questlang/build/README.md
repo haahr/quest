@@ -83,7 +83,7 @@ of thousands of programs does not recompile the runtime for each ([docs/testing.
 
 A module's generated C includes its interface's header (`.int.h`), which declares the module's record and exported
 functions for C code. The C backend writes a header's text (`questlang/codegen/c/headers`);
-[`headers.int.quest`](headers.int.quest) decides where it lives and when it must be rewritten. A header sits beside its
+[`interfaceheaders.int.quest`](interfaceheaders.int.quest) decides where it lives and when it must be rewritten. A header sits beside its
 interface's `.qi`, and is current when written after that `.qi`, which is itself rebuilt whenever the interface or one
 it depends on changes. So keeping headers current reduces to keeping `.qi` files current, which the interface compiler
 does. The module compiler calls `ensureImportedInterfaceHeader` before compiling a module, and the driver calls

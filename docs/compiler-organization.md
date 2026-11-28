@@ -156,8 +156,9 @@ questlang/
 │
 ├── config/                  # The ABI version and artifacts' format
 ├── build/                   # The build engine and its log; modulecompiler, a module file's code, object, and
-│                            # manifest; compilerrunner, the host C compiler and linker; headers, interfaces' C
-│                            # headers kept beside their .qi files; workers, the processes of a parallel build (-j)
+│                            # manifest; compilerrunner, the host C compiler and linker; interfaceheaders,
+│                            # interfaces' C headers kept beside their .qi files; workers, the processes of a
+│                            # parallel build (-j)
 │
 └── driver/                  # Compiler driver (the bootstrap's driver/, and its pipeline)
     ├── main                 # Main routine: every phase, -e, -i, and the bootstrap's compiling options
@@ -435,7 +436,7 @@ Layer 9: driver/*
 
 The modules' artifacts, which read and write `.qi` files through `values/dynamicjson`, come before `codegen/`, whose
 `c/headers` imports the interface compiler. The module compiler is the build's (`build/moduleCompiler`): it imports
-the backends, `build/compilerRunner`, and `build/headers`, and the build engine, its workers, and the JIT, which loads
+the backends, `build/compilerRunner`, and `build/interfaceHeaders`, and the build engine, its workers, and the JIT, which loads
 module files through it, import it. So `build/` sits above the backends and the artifacts it writes, and `jit/`
 above `build/`.
 

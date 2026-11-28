@@ -27,7 +27,7 @@ or calls changes, so artifacts of another version cannot be linked with this com
 and is at least as new as it, and no interface it depends on, directly or through other interfaces, is newer or
 would now resolve to a different file. Otherwise the source is compiled again, the interfaces it imports first
 ([docs/build-process.md](../../../docs/build-process.md) §5). An interface's C header (`.int.h`) is not made here; the
-C backend writes it, and [`questlang/build/headers`](../../build/headers.int.quest) keeps it beside the `.qi`.
+C backend writes it, and [`questlang/build/interfaceHeaders`](../../build/interfaceheaders.int.quest) keeps it beside the `.qi`.
 
 ## Manifests: the `.qm`
 
@@ -35,9 +35,9 @@ C backend writes it, and [`questlang/build/headers`](../../build/headers.int.que
 the modules it imports (each with the interface the importer expects and the source it was found in), the interfaces
 it was compiled against with their modification times, and the ABI version, compiler, and backend of its artifacts.
 A program's main routine has one too. The build engine reads it for two things: to learn which modules a unit
-imports, so it can queue them, and to decide whether the unit is stale (`unitStaleness`): a missing or old artifact,
-another ABI version or backend, a manifest written by the other compiler, a newer interface, or an import that would
-now find another file. The `.qm` is JSON written exactly as the bootstrap writes it, but each compiler uses only the
+imports, so it can queue them, and to decide whether the unit is stale: `unitStaleness` judges the artifacts (one
+missing or old, another ABI version, a manifest written by the other compiler, a newer interface), and the engine's
+`buildStaleness` adds its own reasons (another backend, or an import that would now find another file). The `.qm` is JSON written exactly as the bootstrap writes it, but each compiler uses only the
 module artifacts it made itself ([docs/build-process.md](../../../docs/build-process.md) §4.3).
 
 ## Fingerprints for the JIT

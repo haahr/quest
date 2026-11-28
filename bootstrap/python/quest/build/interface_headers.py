@@ -7,7 +7,7 @@ as new as its .qi, which is rebuilt whenever the interface's source or an
 interface it depends on changes (docs/build-process.md §5). A header's text is
 codegen/c/headers.py's.
 
-The self-hosted counterpart is questlang/build/headers.
+The self-hosted counterpart is questlang/build/interfaceheaders.
 """
 
 from __future__ import annotations

@@ -365,30 +365,59 @@ export
         tuple let name = name let value = value end
     let arrayOf(xs: vector.T(Value)): Value = option vArray of Value with let a = vector.toArray(xs) end
 
+    Let QiImport = Tuple names: Array(String) modulePaths: Array(String) interfacePath: String end
+
+    let formatQiImport(i: QiImport): String =
+        if extent i.names is 0 then
+            ":" <> i.interfacePath
+        elsif extent i.modulePaths > 0 then
+            strutil.joinArray("," i.names) <> "=" <> strutil.joinArray("," i.modulePaths) <> ":" <> i.interfacePath
+        else
+            strutil.joinArray("," i.names) <> ":" <> i.interfacePath
+        end
+
+    let parseQiImport(text: String): QiImport =
+        begin
+            (* What follows s's character at *)
+            let after(s: String at: Int): String = stringOp.getSub(s {at + 1} {{stringOp.length(s) - at} - 1})
+            let names(s: String): Array(String) = vector.toArray(strutil.split(s ","))
+            let qiImport(ns: Array(String) ps: Array(String) path: String): QiImport =
+                tuple let names = ns let modulePaths = ps let interfacePath = path end
+            let none = array of :String end
+            if strutil.startsWith(text ":") then
+                qiImport(none none after(text 0))
+            elsif strutil.contains(text "=") then
+                let at = strutil.find(text "=")
+                let rest = after(text at)
+                let c = strutil.find(rest ":")
+                qiImport(names(stringOp.getSub(text 0 at)) names(stringOp.getSub(rest 0 c)) after(rest c))
+            elsif strutil.contains(text ":") then
+                let c = strutil.find(text ":")
+                qiImport(names(stringOp.getSub(text 0 c)) none after(text c))
+            else
+                qiImport(none none text)
+            end
+        end
+
     (* Serializes an elaborated interface to .qi JSON text from its declaration,
      * elaborated scope, source path, recorded interface dependencies, and
      * whether its module is inlined into its importers (modules/inlined) *)
     let compileInterfaceToQi(decl: ast.InterfaceDecl scope: Scope source: maybe.T(String)
             deps: Array(paths.InterfaceDependency) inlinedModule: Bool): String =
         begin
-            (* Encode each import item as text: :I for a bare interface import,
-             * n1,n2=p1,p2:I when local names map to explicit module paths, and
-             * n1,n2:I otherwise, where I is the interface path.
-             * loadInterfaceFromQiFile and fingerprint.importedPath parse this
-             * format back. *)
+            (* Each import item as text (formatQiImport) *)
             let imports = vector.new(:Value)
             for i = 0 upto {vector.length(decl.imports) - 1} do
                 let imp = vector.get(decl.imports i)
-                let names = strutil.join("," imp.names)
                 let hasModulePaths = maybe.isSome(imp.modulePaths)
                     andif not(vector.empty(maybe.unwrap(imp.modulePaths)))
-                vector.append(imports str(
-                        if vector.empty(imp.names) then ":" <> ast.effectiveInterfacePath(imp)
-                        elsif hasModulePaths then
-                            names <> "=" <> strutil.join("," maybe.unwrap(imp.modulePaths)) <> ":"
-                                <> ast.effectiveInterfacePath(imp)
-                        else names <> ":" <> ast.effectiveInterfacePath(imp)
-                        end))
+                vector.append(imports str(formatQiImport(tuple
+                    let names = vector.toArray(imp.names)
+                    let modulePaths =
+                        if hasModulePaths then vector.toArray(maybe.unwrap(imp.modulePaths)) else array of :String end
+                        end
+                    let interfacePath = ast.effectiveInterfacePath(imp)
+                end)))
             end
 
             (* A member of a recursive group records its body, with the other
@@ -870,49 +899,27 @@ export
                     end
                 end
             for i = 0 upto {extent importsOf - 1} do
-                let impText = case importsOf[i] when vString with x then x.s else "" end
-                if strutil.startsWith(impText ":") then
-                    elaboration.declareTypesAndKinds(interfaceOf(stringOp.getSub(impText 1
-                            {stringOp.length(impText) - 1}))
-                            frame)
+                let imp = parseQiImport(case importsOf[i] when vString with x then x.s else "" end)
+                let impName = imp.interfacePath
+                let impScope = interfaceOf(impName)
+                if extent imp.names is 0 then
+                    elaboration.declareTypesAndKinds(impScope frame)
                 else
-                    let var names = vector.new(:String)
-                    let var modulePaths = vector.new(:String)
-                    let var impName = impText
-                    let colon(s: String): Int = strutil.find(s ":")
-                    if strutil.contains(impText "=") then
-                        let at = strutil.find(impText "=")
-                        let rest = stringOp.getSub(impText {at + 1} {{stringOp.length(impText) - at} - 1})
-                        let c = colon(rest)
-                        names := strutil.split(stringOp.getSub(impText 0 at) ",")
-                        modulePaths := strutil.split(stringOp.getSub(rest 0 c) ",")
-                        impName := stringOp.getSub(rest {c + 1} {{stringOp.length(rest) - c} - 1})
-                    elsif strutil.contains(impText ":") then
-                        let c = colon(impText)
-                        names := strutil.split(stringOp.getSub(impText 0 c) ",")
-                        modulePaths := names
-                        impName := stringOp.getSub(impText {c + 1} {{stringOp.length(impText) - c} - 1})
-                    end
-                    let impScope = interfaceOf(impName)
-                    if vector.empty(names) then
-                        elaboration.declareTypesAndKinds(impScope frame)
-                    else
-                        for j = 0 upto {vector.length(names) - 1} do
-                            let modPath = vector.get(modulePaths j)
-                            let registered = elaboration.separatelyCompiledModuleScope(modPath impScope e)
-                            env.registerModule(e vector.get(names j) registered)
-                            env.registerModule(e modPath registered)
-                            env.registerModule(e impName registered)
-                            (* The interface's types name an imported module's
-                             * abstract types by the module's own name
-                             * (vector.T), whatever the interface imported it
-                             * as (vec = collections/vector), so the module is
-                             * known by that name too, unless something else
-                             * already is *)
-                            if maybe.isSome(registered.moduleName) then
-                                let own = maybe.unwrap(registered.moduleName)
-                                if not(env.hasModule(e own)) then env.registerModule(e own registered) end
-                            end
+                    for j = 0 upto {extent imp.names - 1} do
+                        let modPath = if extent imp.modulePaths > 0 then imp.modulePaths[j] else imp.names[j] end
+                        let registered = elaboration.separatelyCompiledModuleScope(modPath impScope e)
+                        env.registerModule(e imp.names[j] registered)
+                        env.registerModule(e modPath registered)
+                        env.registerModule(e impName registered)
+                        (* The interface's types name an imported module's
+                         * abstract types by the module's own name
+                         * (vector.T), whatever the interface imported it
+                         * as (vec = collections/vector), so the module is
+                         * known by that name too, unless something else
+                         * already is *)
+                        if maybe.isSome(registered.moduleName) then
+                            let own = maybe.unwrap(registered.moduleName)
+                            if not(env.hasModule(e own)) then env.registerModule(e own registered) end
                         end
                     end
                 end

@@ -71,7 +71,7 @@ export
      * main.main.o; counter.qm, counter.mod.c, and counter.o; and the
      * interface's counter.qi and counter.int.h.
      *
-     * A unit is stale (unitStaleness) if an artifact is missing or older than
+     * A unit is stale (buildStaleness) if an artifact is missing or older than
      * the source, if its artifacts were made for another ABI version (another
      * layout of data and calls, which this compiler's code cannot be linked
      * with), if an interface it was compiled against has changed since, or if
@@ -305,10 +305,12 @@ export
             change
         end
 
-    (* Returns why a unit with a source file is stale, or none if up to date
-     * (docs/build-process.md section 7.1). Checks artifact freshness, backend
-     * match, WebAssembly runtime compatibility, and whether imports still
-     * resolve to the same files. *)
+    (* Why a unit with a source file is stale, or none if its artifacts a are
+     * up to date (docs/build-process.md section 7.1): manifest.unitStaleness's
+     * reasons, which concern the artifacts' files and what the manifest
+     * records, and the build's own: another backend, a WebAssembly object built
+     * against another runtime, or an import that would now resolve to another
+     * file *)
     let artifactStaleness(eng: T source: String a: placement.ModuleArtifacts
             programDir: maybe.T(String)): maybe.T(String) =
         begin
@@ -347,10 +349,12 @@ export
                     maybe.some(changed))
         end
 
-    (* Why a unit is stale: artifactStaleness's reason, or, when the build
-     * reports inferable type arguments, which only checking the unit finds,
-     * that *)
-    let unitStaleness(eng: T source: String a: placement.ModuleArtifacts programDir: maybe.T(String)): maybe.T(String) =
+    (* Why the build must compile a unit with a source file again, if it must:
+     * artifactStaleness's reason, or, when the build reports inferable type
+     * arguments, which only checking the unit finds, that. (Not
+     * manifest.unitStaleness, which judges the artifacts alone.) *)
+    let buildStaleness(eng: T source: String a: placement.ModuleArtifacts
+            programDir: maybe.T(String)): maybe.T(String) =
         if stringOp.length(eng.reportInferable) > 0 then maybe.some("reporting inferable type arguments")
         else artifactStaleness(eng source a programDir)
         end
@@ -761,7 +765,7 @@ export
                                 <> pyList(search))
                         end
                     else
-                        reason := unitStaleness(eng maybe.unwrap(src) a programDir)
+                        reason := buildStaleness(eng maybe.unwrap(src) a programDir)
                         if maybe.isSome(reason) then
                             (* Fresh artifacts next to the source (from a
                              * standalone compilation) are used like those in
@@ -769,7 +773,7 @@ export
                              * section 5.2) *)
                             let beside = placement.artifactsIn(files.parent(maybe.unwrap(src)) artifactStem)
                             if not(eq(beside.qm a.qm))
-                                    andif maybe.isNone(unitStaleness(eng maybe.unwrap(src) beside programDir))
+                                    andif maybe.isNone(buildStaleness(eng maybe.unwrap(src) beside programDir))
                                     andif eq(maybe.unwrapOr(manifestName(beside.qm) "") canon)
                                     andif maybe.isSome(manifestName(beside.qm)) then
                                 a := beside
@@ -1042,7 +1046,7 @@ export
             log(eng "QUEUE INIT" "enqueued main routine " <> quoted(item))
             log(eng "POP QUEUE" quoted(item) <> " (kind=main)")
             let a = mainArtifacts(eng main)
-            let reason = unitStaleness(eng main a maybe.some(files.parent(main)))
+            let reason = buildStaleness(eng main a maybe.some(files.parent(main)))
             let imported =
                 if maybe.isSome(reason) then
                     log(eng "EVAL STALENESS" quoted(item) <> " -> STALE (" <> maybe.unwrap(reason) <> ")")

@@ -33,7 +33,7 @@ from quest.modules.resolution import Resolver, Roots, import_resolution_change, 
 from quest.modules.graph import UnitGraph
 from quest.modules.units import UnitKind, file_unit_kind
 from quest.modules.loader import load_interface
-from quest.build.headers import compile_interface_with_header
+from quest.build.interface_headers import compile_interface_with_header
 from quest.build.module_compiler import UnitCode, compile_module_file, write_unit
 from quest.modules.paths import (
     DEFAULT_LIB_DIR,
@@ -202,7 +202,7 @@ class BuildEngine:
     main.main.o; counter.qm, counter.mod.c, and counter.o; and the interface's
     counter.qi and counter.int.h.
 
-    A unit is stale (_unit_staleness) if an artifact is missing or older than
+    A unit is stale (_build_staleness) if an artifact is missing or older than
     the source, if its artifacts were made for another ABI version (another
     layout of data and calls, which this compiler's code cannot be linked with),
     if an interface it was compiled against has changed since, or if one of its
@@ -374,13 +374,14 @@ class BuildEngine:
 
         return (c_path, o_path, qm_path, imported_modules)
 
-    def _unit_staleness(
+    def _build_staleness(
         self, source: Path, qm_path: Path, c_path: Path, o_path: Path, program_dir: Optional[Path]
     ) -> Optional[str]:
-        """Returns why a unit with a source file must be recompiled, or None if
-        it is up to date (§7.1).
+        """Returns why the build must compile a unit with a source file again, or
+        None if it is up to date (§7.1).
 
-        Besides the artifacts' own freshness, the unit's imports must still
+        Besides the artifacts' own freshness (manifest.unit_staleness, which
+        judges the artifacts alone), the unit's imports must still
         resolve to the files it was compiled against: its compilation resolves
         them from its own directory and the engine's search paths, which may
         have changed since (a different -I, say).
@@ -419,7 +420,7 @@ class BuildEngine:
         qm_path, c_path, o_path = self.main_artifact_paths(main_file)
 
         compiled_units: list[str] = []
-        reason = self._unit_staleness(main_file, qm_path, c_path, o_path, main_file.parent)
+        reason = self._build_staleness(main_file, qm_path, c_path, o_path, main_file.parent)
         if reason is not None:
             self.logger.log("EVAL STALENESS", f"'{item_name}' -> STALE ({reason})")
             self.logger.log("COMPILE MAIN", f"'{item_name}'")
@@ -590,7 +591,7 @@ class BuildEngine:
                         f"or precompiled object in {search_paths}"
                     )
             else:
-                reason = self._unit_staleness(mod_src, qm_path, c_path, o_path, program_dir)
+                reason = self._build_staleness(mod_src, qm_path, c_path, o_path, program_dir)
                 if reason is not None:
                     # Fresh artifacts next to the source (from a standalone
                     # compilation) are used like those in the build directory
@@ -598,7 +599,7 @@ class BuildEngine:
                     beside = list(ModuleArtifacts.in_dir(mod_src.parent, stem).paths())
                     if (
                         beside[0] != qm_path
-                        and self._unit_staleness(mod_src, *beside, program_dir) is None
+                        and self._build_staleness(mod_src, *beside, program_dir) is None
                         and _manifest_name(beside[0]) == canon_name
                     ):
                         qm_path, c_path, o_path = beside

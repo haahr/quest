@@ -843,8 +843,8 @@ build engine, so there is exactly one implementation of staleness checks, artifa
 | :--- | :--- |
 | Import resolution, unit names, typed units (§2.1) | `quest.modules.resolution` (`Resolver`), `quest.modules.graph` (`UnitGraph`) |
 | Interface staleness & regeneration (§5) | `interface_compiler.ensure_resolved_interface_artifacts` |
-| Interface headers (§5.3) | `codegen.c.headers.ensure_interface_header` |
-| Module / main staleness (§7.1) | `BuildEngine._unit_staleness` |
+| Interface headers (§5.3) | `build.interface_headers.ensure_interface_header` |
+| Module / main staleness (§7.1) | `BuildEngine._build_staleness` (`manifest.unit_staleness` for the artifacts alone) |
 | Module queue, conformance, cycles (§7.1, §6.3, §8.2) | `BuildEngine.build_modules` |
 | Modules a unit links against (§6.2) | `build.engine.unit_module_refs` |
 | Artifact paths under the build directory (§3.2) | `graph.unit_artifact_dir`, `ModuleArtifacts`, `interface_qi_file`, `interface_header_file` |

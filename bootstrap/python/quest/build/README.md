@@ -28,7 +28,7 @@ README introduces the concepts; this one says where they are here and what diffe
 - **The host C compiler.** [`compiler_runner.py`](compiler_runner.py) finds clang or gcc, knows the flags C units
   get, compiles the runtime's objects once and caches them, and compiles, links, and runs programs
   ([docs/codegen-c.md](../../../../docs/codegen-c.md) §11).
-- **Interface headers.** [`headers.py`](headers.py) keeps each interface's C header (`.int.h`) beside its `.qi`,
+- **Interface headers.** [`interface_headers.py`](interface_headers.py) keeps each interface's C header (`.int.h`) beside its `.qi`,
   rewriting it when the `.qi` is newer, so that a module's C can include its interface's declarations. The header's
   text comes from `quest/codegen/c/headers.py`.
 

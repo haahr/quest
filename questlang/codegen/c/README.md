@@ -66,7 +66,7 @@ backends use too.
 
 When a C unit imports a module, it needs that module's structs and member signatures. [`headers`](headers.int.quest)
 writes an interface's C header (`.int.h`), from the compiled interface, with its aggregate structs, its types' C
-representations, and its members' signatures; [`../../build/headers`](../../build/headers.int.quest) writes it beside
+representations, and its members' signatures; [`../../build/interfaceHeaders`](../../build/interfaceheaders.int.quest) writes it beside
 the interface's `.qi` file when a C compilation needs it. The arm64 backend reads layouts from interfaces directly and
 needs no headers.
 

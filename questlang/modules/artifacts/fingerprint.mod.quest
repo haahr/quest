@@ -4,7 +4,6 @@ module fingerprint : Fingerprint
 import
     conv : Conv
     raised : Raised
-    stringOp = string : StringOp
 
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
@@ -25,13 +24,9 @@ import
 export
     Let Value = values.Value
 
-    (* The interface path an import of a .qi names: what follows its last
-     * colon (maybe=util/maybe:util/Maybe, :Word) *)
-    let importedPath(imp: String): String =
-        begin
-            let at = strutil.rfind(imp ":")
-            if at < 0 then imp else stringOp.getSub(imp {at + 1} {{stringOp.length(imp) - at} - 1}) end
-        end
+    (* The interface path an import of a .qi names (util/Maybe in
+     * maybe=util/maybe:util/Maybe) *)
+    let importedPath(imp: String): String = interfaceCompiler.parseQiImport(imp).interfacePath
 
     (* The parsed metadata record stored in a .qi file *)
     let qiRecord(qi: String): Value = interfaceCompiler.qiRecord(qi "")

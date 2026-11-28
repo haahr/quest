@@ -13,7 +13,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "bootstrap" / "python"))
 
 from quest.build.compiler_runner import run_binary
-from quest.build.headers import compile_interface_with_header
+from quest.build.interface_headers import compile_interface_with_header
 from quest.build.module_compiler import compile_module_file
 from quest.driver.main import run_compile, run_driver
 
