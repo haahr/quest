@@ -208,7 +208,7 @@ export
         opLoad with var address: Atom end
     end
 
-    and ParamEntry = Tuple v: Variable mode: String end
+    and ParamEntry = Tuple v: Variable mode: shapes.ParamMode end
     (* A function: v names it; after closure conversion, a function is one of
      * the unit's, and env, if any, is the environment of the closure it runs *)
     and Function = Tuple
@@ -623,6 +623,15 @@ export
             let var thunkParams = array of :DescriptorParam end
             let var tagMap = maybe.none()
             let var thunk = maybe.none()
+        end
+
+    let modeName(m: shapes.ParamMode): String =
+        case m when modeValue then "value" when modeVar then "var" when modeOut then "out" end
+
+    let modeOf(isVar: Bool isOut: Bool): shapes.ParamMode =
+        if isVar then option modeVar of shapes.ParamMode end
+        elsif isOut then option modeOut of shapes.ParamMode end
+        else option modeValue of shapes.ParamMode end
         end
 
     let newFunction(v: Variable typeParams: Array(TypeParam) params: Array(ParamEntry) resultType: Type body: Body

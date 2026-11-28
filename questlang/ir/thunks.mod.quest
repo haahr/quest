@@ -161,10 +161,10 @@ export
             let res = vector.new(:nodes.ParamEntry)
             for i = 0 upto {extent sig.params - 1} do
                 let p = sig.params[i]
-                let mode = if p.isVar then "var" elsif p.isOut then "out" else "value" end
+                let mode = nodes.modeOf(p.isVar p.isOut)
                 let hint = if stringOp.length(p.name) > 0 then p.name else "a" end
                 vector.append(res tuple
-                    let v = nodes.newVar(hint p.type not(eq(mode "value")))
+                    let v = nodes.newVar(hint p.type not(mode?modeValue))
                     let mode = mode
                 end)
             end
@@ -178,10 +178,10 @@ export
             let res = vector.new(:Atom)
             for i = 0 upto {extent params - 1} do
                 let p = params[i]
-                if not(eq(p.mode "value")) then
+                if not(p.mode?modeValue) then
                     (* Of the location's type, as lowering types an argument
                      * @x *)
-                    let refType = if eq(p.mode "var") then model.varType(p.v.type) else model.outType(p.v.type) end
+                    let refType = if p.mode?modeVar then model.varType(p.v.type) else model.outType(p.v.type) end
                     let a = nodes.newVar(p.v.hint refType false)
                     vector.append(stmts nodes.letStmt(a option opAddrVar of Op with let var v = p.v end))
                     vector.append(res nodes.atomOfVar(a))
@@ -595,7 +595,7 @@ export
                     andif {extent f.descriptorParams is 0} andif {extent f.viewMaps is 0} andif not(f.unboxedResult)
                     andif maybe.isSome(f.env) andif {extent k.typeArgs is 0} andif {extent k.descriptors is 0}
                 for i = 0 upto {extent f.params - 1} do
-                    if not(eq(f.params[i].mode "value")) then simple := false end
+                    if not(f.params[i].mode?modeValue) then simple := false end
                 end
                 if simple then
                     let source = written.funSignature(x.plan.source)

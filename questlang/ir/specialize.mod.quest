@@ -154,7 +154,7 @@ export
             for i = 0 upto {extent f.params - 1} do
                 let p = f.params[i]
                 if not(found) then
-                    if not(eq(p.mode "value")) andif mentionsAny(p.v.type ids) then found := true end
+                    if not(p.mode?modeValue) andif mentionsAny(p.v.type ids) then found := true end
                     if shapes.kindIs(shapes.shape(p.v.type) shapes.shapeTuple)
                             andif mentionsAny(p.v.type ids) then found := true end
                 end
@@ -168,7 +168,7 @@ export
     let cloneFunction(c: cloning.Cloner f: nodes.Function): nodes.Function =
         begin
             cloning.bindAll(c f.body)
-            let params = array of(extent f.params tuple let v = f.v let mode = "" end)
+            let params = array of(extent f.params tuple let v = f.v let mode = nodes.modeOf(false false) end)
             for i = 0 upto {extent f.params - 1} do
                 params[i] := tuple let v = cloning.fresh(c f.params[i].v) let mode = f.params[i].mode end
             end
@@ -195,8 +195,8 @@ export
                 ps[i] := tuple
                     let name = if i < extent names then names[i] else params[i].v.hint end
                     let type = params[i].v.type
-                    let isVar = eq(params[i].mode "var")
-                    let isOut = eq(params[i].mode "out")
+                    let isVar = params[i].mode?modeVar
+                    let isOut = params[i].mode?modeOut
                 end
             end
             let cloneType = model.funType(ps resultType)

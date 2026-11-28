@@ -861,16 +861,15 @@ export
                                     let args = vector.new(:Atom)
                                     for i = 0 upto {extent f.params - 1} do
                                         let p = f.params[i]
-                                        let mode = if p.isVar orif p.type.form?typeVar then "var"
-                                            elsif p.isOut orif p.type.form?typeOut then "out"
-                                            else "value" end
-                                        let param = fresh(p.name unref(p.type) not(eq(mode "value")))
+                                        let mode = nodes.modeOf(p.isVar orif p.type.form?typeVar
+                                                p.isOut orif p.type.form?typeOut)
+                                        let param = fresh(p.name unref(p.type) not(mode?modeValue))
                                         vector.append(params tuple let v = param let mode = mode end)
-                                        if eq(mode "value") then
+                                        if mode?modeValue then
                                             vector.append(args va(param))
                                         else
                                             let refType =
-                                                if eq(mode "var") then
+                                                if mode?modeVar then
                                                     model.varType(param.type)
                                                 else
                                                     model.outType(param.type)
@@ -1753,7 +1752,7 @@ export
                 let entry = vector.new(:Stmt)
                 for i = 0 upto {extent x.params - 1} do
                     let p = x.params[i]
-                    let mode = if p.isVar then "var" elsif p.isOut then "out" else "value" end
+                    let mode = nodes.modeOf(p.isVar p.isOut)
                     let paramType = unref(p.type)
                     let expectedType =
                         if maybe.isSome(expected) then
@@ -1761,7 +1760,7 @@ export
                         else
                             maybe.none(:Type)
                         end
-                    if eq(mode "value") andif maybe.isSome(expectedType)
+                    if mode?modeValue andif maybe.isSome(expectedType)
                             andif not(subtyping.isTypeEqual(maybe.unwrap(expectedType) paramType maybe.none())) then
                         let param = fresh(p.symbol.name maybe.unwrap(expectedType) false)
                         vector.append(entry
@@ -1769,7 +1768,7 @@ export
                         vector.append(params tuple let v = param let mode = mode end)
                     else
                         vector.append(params tuple
-                            let v = bindSymbol(l p.symbol maybe.some(paramType) not(eq(mode "value")))
+                            let v = bindSymbol(l p.symbol maybe.some(paramType) not(mode?modeValue))
                             let mode = mode
                         end)
                     end
@@ -1816,11 +1815,11 @@ export
             let args = vector.new(:Atom)
             for i = 0 upto {extent params - 1} do
                 let entry = params[i]
-                if eq(entry.mode "value") then
+                if entry.mode?modeValue then
                     vector.append(args va(entry.v))
                 else
                     let refType =
-                        if eq(entry.mode "var") then model.varType(entry.v.type) else model.outType(entry.v.type) end
+                        if entry.mode?modeVar then model.varType(entry.v.type) else model.outType(entry.v.type) end
                     vector.append(args letOp(l option opAddrVar of Op with let var v = entry.v end refType none))
                 end
             end
