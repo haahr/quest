@@ -603,4 +603,68 @@
                 ))
             ))
         )))
+    (TypedLetValue 'inc' :rec :type Fun(var n: Int k: Int): Ok
+      :value (TypedFun :params (('n' : Int) ('k' : Int)) :type Fun(var n: Int k: Int): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedExprStmt
+              :expr (TypedIf :type Ok
+                :cond (TypedInfix '>' :type Bool
+                  :left (TypedVar 'k' :type Int)
+                  :right (TypedInt 0 :type Int))
+                :then (TypedApp :type Ok
+                  :func (TypedVar 'inc' :type Fun(var n: Int k: Int): Ok)
+                  :args (
+                    (TypedVar 'n' :type Var(Int))
+                    (TypedInfix '-' :type Int
+                      :left (TypedVar 'k' :type Int)
+                      :right (TypedInt 1 :type Int))
+                  ))
+                :else (TypedAssign
+                  :target (TypedVar 'n' :type Var(Int))
+                  :value (TypedInfix '+' :type Int
+                    :left (TypedDerefCell :type Int
+                      :target (TypedVar 'n' :type Var(Int)))
+                    :right (TypedInt 1 :type Int)))))
+          )
+          :result (TypedOk))))
+    (TypedLetValue 'viaCallee' :type Fun(): Int
+      :value (TypedFun :params () :type Fun(): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'x' :type Int
+              :value (TypedInt 0 :type Int))
+          )
+          :result (TypedTry :type Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedApp :type Ok
+                    :func (TypedVar 'inc' :type Fun(var n: Int k: Int): Ok)
+                    :args (
+                      (TypedVar 'x' :type Var(Int))
+                      (TypedInt 0 :type Int)
+                    )))
+              )
+              :result (TypedRaise :type Int
+                :exc (TypedVar 'Stop' :type Exception)))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedVar 'Stop' :type Exception)
+                :body (TypedDerefCell :type Int
+                  :target (TypedVar 'x' :type Var(Int))))
+            )))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedVar 'viaCallee' :type Fun(): Int)
+                :args ())
+            ))
+        )))
   ))

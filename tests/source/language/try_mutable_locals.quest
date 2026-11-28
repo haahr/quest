@@ -127,3 +127,15 @@ let rec bodyOnly(n: Int): Int =
     end
 print(conv.int(bodyOnly(5)))
 print(conv.int(bodyOnly(~50)))
+
+(* 9. Assigned through its address by a callee, the assignment out of the try
+ * body's sight: the C compiler, once it has inlined the callee, may keep the
+ * local in a register across setjmp, so every local whose address a function
+ * with a try takes is volatile *)
+let rec inc(var n: Int k: Int): Ok = begin if k > 0 then inc(@n k - 1) else n := n + 1 end ok end
+let viaCallee(): Int =
+    begin
+        let var x = 0
+        try inc(@x 0) raise Stop end when Stop then x end
+    end
+print(conv.int(viaCallee()))

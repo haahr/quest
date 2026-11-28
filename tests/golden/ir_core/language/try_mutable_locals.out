@@ -295,5 +295,43 @@ main {
   let %77: Int = call bodyOnly(-50) @129:16
   let %78: String = call conv.int(%77) @129:7
   do call print(%78) @129:1
+  funs rec {
+    fun inc(var n.9: Int, k: Int): Ok {
+      let %79: Bool = prim >(k, 0) @135:47
+      if %79 { @135:44
+        let %80: Var(Int) = addr n.9 @135:62
+        let %81: Int = prim -(k, 1) @135:65
+        do call inc(%80, %81) @135:58
+      } else {
+        let %82: Int = prim +(n.9, 1) @135:82
+        n.9 := %82 @135:77
+      }
+      return ok
+    }
+  }
+  funs {
+    fun viaCallee(): Int {
+      var x.4: Int = 0 @138:9
+      join k5(r.5: Int) {
+        return r.5
+      } in {
+        try catching (Stop) {
+          let %83: Var(Int) = addr x.4 @139:17
+          do call inc(%83, 0) @139:13
+          raise Stop @139:23
+        } handle (e.9: Exception) {
+          let %84: Bool = prim is(e.9, Stop) @139:9
+          if %84 { @139:9
+            jump k5(x.4) @139:9
+          } else {
+            reraise e.9 @139:9
+          }
+        }
+      }
+    }
+  }
+  let %85: Int = call viaCallee() @141:16
+  let %86: String = call conv.int(%85) @141:7
+  do call print(%86) @141:1
 }
 

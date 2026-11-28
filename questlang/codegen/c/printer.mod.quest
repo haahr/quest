@@ -2733,7 +2733,12 @@ export
     (* The variables a try body assigns, which C must declare volatile for the
      * handler to read them after longjmp; and those it stores through, since
      * clang may keep the fields of an object allocated in the function, whose
-     * address does not escape, in registers that longjmp restores *)
+     * address does not escape, in registers that longjmp restores. In a
+     * function with a try, every variable whose address it takes (@x) too:
+     * a callee given the address may assign the variable, and clang, once it
+     * has inlined the callee, may keep the variable in a register across the
+     * try's setjmp all the same. The address may be taken before the try and
+     * passed into it, so the variables are those of the whole function *)
     let volatileVars(b: nodes.Body): maps.IntSet =
         begin
             let found = maps.newIntSet()
@@ -2743,8 +2748,16 @@ export
                     else ok
                 end
             let statements = walk.walkStatements(b false)
+            let var tries = false
+            for i = 0 upto {vector.length(statements) - 1} do
+                case vector.get(statements i) when sTry then tries := true else ok end
+            end
             for i = 0 upto {vector.length(statements) - 1} do
                 case vector.get(statements i)
+                    when sLet with x then
+                        case x.value when opAddrVar with y then if tries then mark(found y.v.id) end else ok end
+                    when sDo with x then
+                        case x.value when opAddrVar with y then if tries then mark(found y.v.id) end else ok end
                     when sTry with x then
                         let inner = walk.walkStatements(x.body false)
                         for j = 0 upto {vector.length(inner) - 1} do

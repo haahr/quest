@@ -1972,9 +1972,19 @@ class CPrinter:
         the handler to read them after longjmp; and those it stores through,
         since clang may keep the fields of an object allocated in the
         function, whose address does not escape, in registers that longjmp
-        restores."""
+        restores. In a function with a try, every variable whose address it
+        takes (@x) too: a callee given the address may assign the variable,
+        and clang, once it has inlined the callee, may keep the variable in a
+        register across the try's setjmp all the same. The address may be
+        taken before the try and passed into it, so the variables are those of
+        the whole function."""
         found: set[int] = set()
-        for s in walk_statements(body, into_functions=False):
+        statements = list(walk_statements(body, into_functions=False))
+        if any(isinstance(s, ir.Try) for s in statements):
+            for s in statements:
+                if isinstance(s, (ir.Let, ir.Do)) and isinstance(s.value, ir.AddrVar):
+                    found.add(id(s.value.var))
+        for s in statements:
             if isinstance(s, ir.Try):
                 for t in walk_statements(s.body, into_functions=False):
                     if isinstance(t, ir.Assign):

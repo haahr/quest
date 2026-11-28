@@ -1296,8 +1296,9 @@ A local that is modified between `setjmp` and `longjmp` and is not `volatile` ha
 `longjmp` (C99 §7.13.2.1), and at `-O2` clang keeps such locals in registers, so an assignment made in the protected
 body before a raise was lost. Mutable locals (`let var`) assigned in the protected body of a `try` are therefore
 declared `volatile` (`volatile_vars` in `codegen/c/printer.py`, `printer.volatileVars` in the self-hosted compiler), and
-the address of one passed for a
-`var` or `out` argument is cast to a plain pointer. Named exceptions constructed locally are `volatile` for the same
+so is every local whose address a function with a `try` takes (`@x`), anywhere in it: a callee may assign it through
+the address, and once clang inlines the callee the assignment is the function's own. The address of a `volatile`
+local passed for a `var` or `out` argument is cast to a plain pointer. Named exceptions constructed locally are `volatile` for the same
 reason.
 
 ---
