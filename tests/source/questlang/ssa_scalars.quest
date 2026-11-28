@@ -8,7 +8,8 @@
  * parameters bound to one another as well; an option holding a tuple, both
  * replaced; a tuple carried round an outer loop by a parameter nothing uses,
  * which is dropped; a carried tuple holding a pointer, whose write barriers go
- * with it; and what is left: objects passed to a call, stored to once made,
+ * with it; a tuple read through a pointer into it made before its last store;
+ * and what is left: objects passed to a call, stored to once made,
  * joined with another value, or holding a pointer of their own group. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
@@ -78,6 +79,25 @@ show("a loop carrying a tuple" array of
     "  jump b1(%15)"
     "b3():"
     "  return %8"
+    "}"
+end)
+
+(* A pair whose second word is read through a pointer into it made before its
+ * last store: the pointer's values are the pair's, known once it is made *)
+show("a pointer into a tuple made before its last store" array of
+    "function second(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 16"
+    "  %100: ptr = symbol quest_layout_t"
+    "  %2: ptr = call quest_alloc(%1, %100)"
+    "  %3: int = const 8"
+    "  %4: ptr = ptrAdd %2, %3"
+    "  store8 %2 + 0, %0"
+    "  store8 %4 + 0, %0"
+    "  %5: int = load8 %4 + 0"
+    "  %6: int = load8 %2 + 0"
+    "  %7: int = add %5, %6"
+    "  return %7"
     "}"
 end)
 

@@ -850,6 +850,10 @@ export
                         hashMap.insert(values v vector.toArray(result))
                         ok
                     end
+                (* The base of a pointer derived from v: an allocation's own
+                 * value, for a pointer into it, even before its last store
+                 * makes its values (made sets base then); else v's base *)
+                let baseOf(v: Int): Int = if s.exact[v] >= 0 then vector.get(s.originValue s.exact[v]) else base[v] end
                 (* Walks blocks in reverse postorder so each pointer's scalar
                  * values are recorded before any dominated block uses them;
                  * block parameters were recorded above to handle loop back
@@ -875,9 +879,9 @@ export
                                 if vector.get(s.lastStore a) is k then made(a kept i.loc) end
                             elsif ssa.isOp(i ssa.opPtrAdd) andif isPointer(i.args[0])
                                     andif {s.originOf[result] < 0} then
-                                base[result] := base[i.args[0]]
+                                base[result] := baseOf(i.args[0])
                             elsif ssa.isOp(i ssa.opUnproxy) andif isPointer(i.args[0]) then
-                                base[result] := base[i.args[0]]
+                                base[result] := baseOf(i.args[0])
                             elsif ssa.isOp(i ssa.opLoad) andif isPointer(i.args[0]) then
                                 let p = i.args[0]
                                 let w = proxyFold.wordOf(s.off[p] i.imm i.width)

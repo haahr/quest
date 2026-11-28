@@ -51,6 +51,30 @@ b2():
 b3():
   return %103
 }
+== a pointer into a tuple made before its last store
+function second(%0: int): int {
+b0(%0: int):
+  %1: int = const 16
+  %100: ptr = symbol quest_layout_t
+  %2: ptr = call quest_alloc(%1, %100)
+  %3: int = const 8
+  %4: ptr = ptrAdd %2, %3
+  store8 %2 + 0, %0
+  store8 %4 + 0, %0
+  %5: int = load8 %4 + 0
+  %6: int = load8 %2 + 0
+  %7: int = add %5, %6
+  return %7
+}
+-- after scalars: 1 replaced
+function second(%0: int): int {
+b0(%0: int):
+  %1: int = const 16
+  %100: ptr = symbol quest_layout_t
+  %3: int = const 8
+  %7: int = add %0, %0
+  return %7
+}
 == a loop carrying a tuple, with its barriers
 function walk(%0: ptr, %1: int): ptr {
 b0(%0: ptr, %1: int):
