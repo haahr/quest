@@ -667,47 +667,71 @@ export
         end
 
     (* ======================================================================
-     * 6. Decimal
+     * 6. Decimal and other radixes
      * ====================================================================== *)
 
-    (* The chunks toString and fromString convert a limb at a time: 10^18
-     * fits an Int *)
-    let chunk = 1000000000000000000
+    (* The digits fromString converts at a time: 10^18 fits an Int *)
     let chunkDigits = 18
 
-    let toString(t: T): String =
-        if extent t is 1 then
-            conv.int(word.toInt(t[0]))
+    let digitChar(d: Int): Char =
+        if d < 10 then ascii.char(ascii.val('0') + d) else ascii.char({ascii.val('a') + d} - 10) end
+
+    (* A chunk at a time: the largest power of the radix up to 2^62 (10^18
+     * for decimal), divided out of |t| in place until it is zero, then each
+     * chunk's digits, the first without leading zeros. A decimal Int, what
+     * toString is mostly given, goes to conv.int instead: the loop takes
+     * 2.2 times its instructions on one-limb values *)
+    let toRadixString(t: T radix: Int): String =
+        if {radix < 2} orif {radix > 36} then raise domain end
+        elsif {radix is 10} andif {extent t is 1} then conv.int(word.toInt(t[0]))
+        elsif isZero(t) then "0"
         else
-            (* |t|, divided by 10^18 in place until it is zero *)
+            let var width = 1
+            let var big = radix
+            while big <= {4611686018427387904 / radix} do
+                big := big * radix
+                width := width + 1
+            end
             let m = if negative(t) then magnitude(t) else copy(t extent t) end
             let var n = magnitudeLength(m)
             let chunks = array of({2 * n} + 1 0)
             let var count = 0
             while {n > 1} orif {m[0] isnot zeroW} do
-                chunks[count] := word.toInt(divideByWord(m n word.fromInt(chunk) m))
+                chunks[count] := word.toInt(divideByWord(m n word.fromInt(big) m))
                 count := count + 1
                 while {n > 1} andif {m[n - 1] is zeroW} do n := n - 1 end
             end
-            let s = stringOp.new({count * chunkDigits} + 1 '0')
+            let s = stringOp.new({count * width} + 1 '0')
             let var pos = 0
             if negative(t) then
                 stringOp.setChar(s 0 '~')
                 pos := 1
             end
-            let first = conv.int(chunks[count - 1])
-            stringOp.setSub(s pos first 0 stringOp.length(first))
-            pos := pos + stringOp.length(first)
+            let first = chunks[count - 1]
+            let var firstWidth = 0
+            let var p = first
+            while p > 0 do
+                p := p / radix
+                firstWidth := firstWidth + 1
+            end
+            let var c = first
+            for i = firstWidth - 1 downto 0 do
+                stringOp.setChar(s pos + i digitChar(c % radix))
+                c := c / radix
+            end
+            pos := pos + firstWidth
             for k = count - 2 downto 0 do
-                let var c = chunks[k]
-                for i = chunkDigits - 1 downto 0 do
-                    stringOp.setChar(s pos + i ascii.char(ascii.val('0') + {c % 10}))
-                    c := c / 10
+                c := chunks[k]
+                for i = width - 1 downto 0 do
+                    stringOp.setChar(s pos + i digitChar(c % radix))
+                    c := c / radix
                 end
-                pos := pos + chunkDigits
+                pos := pos + width
             end
             stringOp.getSub(s 0 pos)
         end
+
+    let toString(t: T): String = toRadixString(t 10)
 
     let fromString(s: String): maybe.T(T) =
         begin
@@ -864,7 +888,7 @@ export
         end
 
     (* ======================================================================
-     * 8. Reals and radixes
+     * 8. Reals
      * ====================================================================== *)
 
     (* 2 to the power e >= 0, by squaring; infinity when it is too large *)
@@ -897,60 +921,5 @@ export
             if {c > 0} orif {{c is 0} andif {word.andBits(top[0] oneW) is oneW}} then top := add(top one) end
             let x = {real.int(toInt(top)) ** power2(extra / 2)} ** power2(extra - extra / 2)
             if negative(t) then 0.0 -- x else x end
-        end
-
-    let digitChar(d: Int): Char =
-        if d < 10 then ascii.char(ascii.val('0') + d) else ascii.char({ascii.val('a') + d} - 10) end
-
-    (* As toString, a chunk at a time: the largest power of the radix below
-     * 2^62, divided out of |t| in place until it is zero *)
-    let toRadixString(t: T radix: Int): String =
-        if {radix < 2} orif {radix > 36} then raise domain end
-        elsif radix is 10 then toString(t)
-        elsif isZero(t) then "0"
-        else
-            let var width = 1
-            let var big = radix
-            while big <= {4611686018427387904 / radix} do
-                big := big * radix
-                width := width + 1
-            end
-            let m = if negative(t) then magnitude(t) else copy(t extent t) end
-            let var n = magnitudeLength(m)
-            let chunks = array of({2 * n} + 1 0)
-            let var count = 0
-            while {n > 1} orif {m[0] isnot zeroW} do
-                chunks[count] := word.toInt(divideByWord(m n word.fromInt(big) m))
-                count := count + 1
-                while {n > 1} andif {m[n - 1] is zeroW} do n := n - 1 end
-            end
-            let s = stringOp.new({count * width} + 1 '0')
-            let var pos = 0
-            if negative(t) then
-                stringOp.setChar(s 0 '~')
-                pos := 1
-            end
-            let first = chunks[count - 1]
-            let var firstWidth = 0
-            let var p = first
-            while p > 0 do
-                p := p / radix
-                firstWidth := firstWidth + 1
-            end
-            let var c = first
-            for i = firstWidth - 1 downto 0 do
-                stringOp.setChar(s pos + i digitChar(c % radix))
-                c := c / radix
-            end
-            pos := pos + firstWidth
-            for k = count - 2 downto 0 do
-                c := chunks[k]
-                for i = width - 1 downto 0 do
-                    stringOp.setChar(s pos + i digitChar(c % radix))
-                    c := c / radix
-                end
-                pos := pos + width
-            end
-            stringOp.getSub(s 0 pos)
         end
 end
