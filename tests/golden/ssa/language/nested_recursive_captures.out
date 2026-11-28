@@ -1,0 +1,127 @@
+function qf_h(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  @15:46
+  %18: int = const 0
+  jump b4(%0, %1, %18)
+b1():
+  @15:46
+  %17: int = add %15, %2
+  return %17
+b2():
+  @15:70
+  %7: int = const 1
+  %8: int = sub %14, %7
+  @15:68
+  %9: int = call qf_h(%3, %8)
+  @15:79
+  %10: int = const 0
+  @15:68
+  %16: int = add %15, %9
+  jump b3(%4, %10, %16)
+b3(%13: ptr, %14: int, %15: int):
+  %2: int = load8 %13 + 8 invariant
+  %3: ptr = load8 %13 + 16 invariant
+  %4: ptr = load8 %13 + 24 invariant
+  @15:49
+  %5: int = const 0
+  %6: int = eq %14, %5
+  @15:46
+  branch %6, b1(), b2()
+b4(%19: ptr, %20: int, %21: int):
+  @15:46
+  jump b3(%19, %20, %21)
+}
+
+function qf_f(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  @9:8
+  %2: int = const 100
+  %3: int = gt %1, %2
+  @9:5
+  branch %3, b1(), b2()
+b1():
+  @10:11
+  %4: int = const 100
+  %5: int = sub %1, %4
+  @10:9
+  %6: ptr = null
+  %7: int = call qf_f(%6, %5)
+  %8: int = const 1
+  %9: int = add %7, %8
+  @9:5
+  return %9
+b2():
+  @9:5
+  %10: int = const 32
+  %11: ptr = symbol quest_layout_closure_qf_h
+  %12: ptr = call quest_alloc(%10, %11)
+  %13: ptr = symbol qf_h
+  store8 %12 + 0, %13
+  store8 %12 + 8, %1
+  store8 %12 + 24, %12
+  call quest_barrier(%12)
+  @16:21
+  store8 %12 + 16, %12
+  call quest_barrier(%12)
+  @18:13
+  tail %14: int = call qf_h(%12, %1)
+}
+
+function qr_register_dicts() {
+b0():
+  %0: ptr = symbol qr_roots
+  call quest_register_roots(%0)
+  %1: ptr = symbol qr_frames
+  call quest_register_frames(%1)
+  %2: ptr = symbol qr_funcs
+  %3: int = const 3
+  tail call quest_register_funcs(%2, %3)
+}
+
+function main exported(%0: int, %1: ptr) int32 [0]: int result int32 {
+b0(%0: int, %1: ptr):
+  call quest_gc_init()
+  call quest_builtins_init(%0, %1) int32 [0]
+  call qr_register_dicts()
+  call qv_mod_conv_init()
+  call qv_mod_writer_init()
+  %2: ptr = symbol qf_f_closure
+  %3: ptr = symbol g_f
+  store8 %3 + 0, %2
+  @21:1
+  %5: int = const 3
+  @22:18
+  %7: ptr = symbol qm_writer
+  %8: ptr = load8 %7 + 0
+  %9: ptr = load8 %7 + 8
+  %10: int = load8 %9 + 40
+  %11: ptr = ptrAdd %8, %10
+  %12: ptr = load8 %11 + 0
+  @22:41
+  %13: ptr = null
+  %16: int = call qf_f(%13, %5)
+  @22:32
+  %17: ptr = call qv_conv_int(%16)
+  %18: ptr = symbol qso_4 + 8
+  %19: ptr = call quest_string_concat(%17, %18)
+  @22:1
+  call quest_writer_put_string(%12, %19)
+  %20: int = const 0
+  return %20
+}
+
+data qf_h_closure words [qf_h]
+data qf_f_closure words [qf_f]
+data qs_1 text "f.h"
+data qs_2 text "f"
+data qs_3 text "<main>"
+data qr_frames words [0]
+data qr_funcs words [qf_h, qs_1, qf_f, qs_2, main, qs_3]
+data g_f writable zero 8
+data qs_4 text "\n"
+data qso_4 words [quest_layout_string + ~9223372036854775808, 1, qs_4]
+data qs_5 text "closure_qf_h"
+data qlk_closure_qf_h words [16842752]
+data quest_layout_closure_qf_h words [qs_5, 0, 32, 17179869184, qlk_closure_qf_h]
+data qr_roots words [g_f, 1, 0, 0]
+

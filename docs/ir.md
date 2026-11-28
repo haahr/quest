@@ -249,7 +249,9 @@ Operations that can raise (calls, array indexing, `payload` of the wrong tag, di
   unit's or module's top level are globals (in the self-hosted compiler, those that a function or another top level
   names, §8.2).
 - `let rec (x: τ ...) { body }` binds recursive values: `body` computes each variable's value (a constructor or a
-  function), and closures made in it may refer to all of them.
+  function), and closures made in it may refer to all of them. A backend stores a closure's captures of them once
+  `body` has run; `body` may hold another `let rec`, whose closures may capture the outer one's variables, which are
+  stored once the outer `body` has run.
 - `store r.name := a`, `store t.#i := a`, `store a[i] := v`, and `store *p := a` store into a `var` component, an
   array element, or the location at an address.
 - `do op` evaluates an operation for its effect.

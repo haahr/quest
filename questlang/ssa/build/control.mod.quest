@@ -299,15 +299,18 @@ export
                 let var at = extent descs + 1
                 for i = 0 upto {extent x.captures - 1} do
                     let a = x.captures[i]
-                    let isDeferred =
-                        case a
-                            when atomVar with y then
-                                maybe.isSome(fn.deferred)
-                                    andif hashSet.contains(maybe.unwrap(fn.deferred).vars y.v.id)
-                            else false
-                        end
-                    if isDeferred then
-                        vector.append(maybe.unwrap(fn.deferred).captures
+                    (* The innermost let rec that binds a, if one being
+                     * built does: its captures are stored after its body *)
+                    let var owner = ~1
+                    case a
+                        when atomVar with y then
+                            for g = 0 upto {vector.length(fn.deferred) - 1} do
+                                if hashSet.contains(vector.get(fn.deferred g).vars y.v.id) then owner := g end
+                            end
+                        else ok
+                    end
+                    if owner >= 0 then
+                        vector.append(vector.get(fn.deferred owner).captures
                                 tuple let env = clos let offset = 8 * at let a = a end)
                         at := at + extent parts.ofType(ir.atomType(a))
                     else
@@ -692,12 +695,12 @@ export
      * which the closures it made could not take before *)
     and letRec(fn: vals.Fn x: ir.StmtLetRec): Ok =
         begin
-            let saved = fn.deferred
             let vars = maps.newIntSet()
             for i = 0 upto {extent x.vars - 1} do vals.mark(vars x.vars[i].id) end
             let d = tuple let vars = vars let captures = vector.new(:vals.DeferredCapture) end
-            fn.deferred := maybe.some(d)
+            vector.append(fn.deferred d)
             body(fn x.body)
+            let ignored = vector.pop(fn.deferred)
             for i = 0 upto {vector.length(d.captures) - 1} do
                 let c = vector.get(d.captures i)
                 let vs = vals.atom(fn c.a)
@@ -707,7 +710,6 @@ export
                     vals.callVoid(fn "quest_barrier" array of c.env end)
                 end
             end
-            fn.deferred := saved
         end
 
     (* Lowers a case on a variant or option to an SSA switch on its tag,

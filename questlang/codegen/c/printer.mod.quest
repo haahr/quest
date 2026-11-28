@@ -164,7 +164,10 @@ export
      *     and odd(n: Int): Bool = ... even(n - 1) ...
      *
      * even's environment is made before odd's closure exists, and its
-     * capture of odd is stored once both are made. *)
+     * capture of odd is stored once both are made. A let rec's body may hold
+     * another let rec, whose closures may capture the outer one's variables
+     * too, so deferred holds every let rec being printed, innermost last, and
+     * a capture waits for the body of the one that binds its variable. *)
     Let DeferredCapture = Tuple env: String index: Int a: Atom end
     Let Deferred = Tuple vars: maps.IntSet captures: vector.T(DeferredCapture) end
 
@@ -221,7 +224,7 @@ export
         (* The lines printed that call a function (beginInit) *)
         var calls: Int
         var pending: maybe.T(Pending)
-        var deferred: maybe.T(Deferred)
+        deferred: vector.T(Deferred)
         (* The declarations' printer, made by declarationLines, which
          * importDeclarations uses too *)
         var emitter: maybe.T(declarations.Emitter)
@@ -1877,12 +1880,17 @@ export
                     let a = o.captures[i]
                     let v = atomVar(a)
                     let var isDeferred = false
-                    if maybe.isSome(p.deferred) andif maybe.isSome(v) then
-                        let d = maybe.unwrap(p.deferred)
-                        if hashSet.contains(d.vars maybe.unwrap(v).id) then
-                            (* A variable of the let rec being made, which holds
-                             * its value once the let rec's body has run *)
-                            vector.append(d.captures tuple let env = env let index = i let a = a end)
+                    if maybe.isSome(v) then
+                        (* A variable of a let rec being made, which holds its
+                         * value once that let rec's body has run: the
+                         * innermost that binds it *)
+                        let var owner = ~1
+                        for g = 0 upto {vector.length(p.deferred) - 1} do
+                            if hashSet.contains(vector.get(p.deferred g).vars maybe.unwrap(v).id) then owner := g end
+                        end
+                        if owner >= 0 then
+                            vector.append(vector.get(p.deferred owner).captures
+                                    tuple let env = env let index = i let a = a end)
                             isDeferred := true
                         end
                     end
@@ -2342,19 +2350,18 @@ export
             when sSwitch with x then switch(p x)
             when sInspect with x then inspectAuto(p x)
             when sLetRec with x then
-                let saved = p.deferred
                 let vars = maps.newIntSet()
                 for i = 0 upto {extent x.vars - 1} do mark(vars x.vars[i].id) end
                 let d = tuple let vars = vars let captures = vector.new(:DeferredCapture) end
-                p.deferred := maybe.some(d)
+                vector.append(p.deferred d)
                 body(p x.body)
+                let ignored = vector.pop(p.deferred)
                 for i = 0 upto {vector.length(d.captures) - 1} do
                     let c = vector.get(d.captures i)
                     (* The environment was made before the body ran *)
                     emit(p c.env <> "->c" <> cInt(c.index) <> " = " <> atom(p c.a) <> ";")
                     if holdsPointer(atomType(c.a)) then emit(p "quest_barrier(" <> c.env <> ");") end
                 end
-                p.deferred := saved
             when sIf with x then
                 emit(p "if (" <> atom(p x.cond) <> ") {")
                 block(p x.thenBody)
@@ -3388,7 +3395,7 @@ export
             let var tmp = 0
             let var calls = 0
             let var pending = maybe.none()
-            let var deferred = maybe.none()
+            let deferred = vector.new()
             let var emitter = maybe.none()
         end)
 end

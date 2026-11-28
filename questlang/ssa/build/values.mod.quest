@@ -89,10 +89,11 @@ export
     (* A capture of a variable a let rec binds, stored once the let rec's body
      * has run: the environment, the capture's offset in it, and the atom *)
     Def DeferredCapture = Tuple env: Int offset: Int a: Atom end
-    (* The let rec being built: the variables it binds, by id, and the
+    (* A let rec being built: the variables it binds, by id, and the
      * captures of them made so far. A closure of a let rec captures
-     * variables that the let rec has not bound yet (its own, or a sibling's),
-     * so the closure's words for them are stored after the body. *)
+     * variables that the let rec has not bound yet (its own, or a sibling's,
+     * or an enclosing let rec's), so the closure's words for them are stored
+     * after the body of the let rec that binds them. *)
     Def Deferred = Tuple vars: maps.IntSet captures: vector.T(DeferredCapture) end
 
     (* How a variable of the function being built is held: as SSA values (an
@@ -132,8 +133,9 @@ export
         (* The function's IR closure (its environment's layout), if it is a
          * lifted function's *)
         closure: maybe.T(ir.OpMakeClosure)
-        (* The innermost let rec being built, if any *)
-        var deferred: maybe.T(Deferred)
+        (* The let recs being built, innermost last: a let rec's body may hold
+         * another, whose closures may capture the outer one's variables too *)
+        deferred: vector.T(Deferred)
         (* The handler records of the trys entered, innermost last, and for
          * each loop and join point the number entered where it is defined *)
         handlers: vector.T(Int)
@@ -798,7 +800,7 @@ export
             let joinParts = maps.newStringMap()
             let loops = maps.newStringMap()
             let closure = closure
-            let var deferred = maybe.none()
+            let deferred = vector.new()
             let handlers = vector.new()
             let labelDepth = maps.newStringMap()
         end

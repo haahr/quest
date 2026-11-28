@@ -1,0 +1,22 @@
+(* A recursive value's body that holds a recursive group of its own, whose
+   closure captures the outer group's variable as well as its own: each
+   capture is stored once the group that binds it has run, the inner one's
+   after the inner body and the outer one's after the outer body *)
+import conv : Conv
+import writer : Writer
+
+let rec f(n: Int): Int =
+    if n > 100 then
+        f(n - 100) + 1
+    else
+        begin
+            let rec g: All(x: Int) Int =
+                begin
+                    let rec h(y: Int): Int = if y is 0 then n else g(y - 1) + h(0) end
+                    h
+                end
+            g(n)
+        end
+    end
+let var t = 3
+writer.putString(writer.output conv.int(f(t)) <> "\n")

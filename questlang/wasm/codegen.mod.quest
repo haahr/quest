@@ -4953,14 +4953,28 @@ export
                 emit(f i1(ops.arraySet tSlots))
             when sLetRec with x then
                 (* The body makes the values, whose closures' captures of them
-                 * are filled in once it has *)
+                 * are filled in once it has. A let rec in the body may make
+                 * closures that capture this one's variables too, which it
+                 * leaves among the patches for this one to fill *)
                 let first = vector.length(f.patches)
-                for k = 0 upto extent x.vars - 1 do hashSet.insert(f.deferred x.vars[k].id) end
+                let own = maps.newIntSet()
+                for k = 0 upto extent x.vars - 1 do
+                    hashSet.insert(f.deferred x.vars[k].id)
+                    hashSet.insert(own x.vars[k].id)
+                end
                 f.after := maybe.none()
                 body(f x.body)
                 for k = 0 upto extent x.vars - 1 do hashSet.delete(f.deferred x.vars[k].id) end
+                let mine = vector.new(:Patch)
+                let others = vector.new(:Patch)
                 while vector.length(f.patches) > first do
                     let pt = vector.pop(f.patches)
+                    let bound = case pt.atom when atomVar with v then hashSet.contains(own v.v.id) else false end
+                    vector.append(if bound then mine else others end pt)
+                end
+                while not(vector.empty(others)) do vector.append(f.patches vector.pop(others)) end
+                for m = 0 upto vector.length(mine) - 1 do
+                    let pt = vector.get(mine m)
                     let n = extent pt.parts
                     if n is 1 then
                         emit(f i1(ops.localGet pt.holder))

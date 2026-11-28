@@ -187,6 +187,7 @@ class CPrinter:
         # Builtins bound by lets (by variable), each a static closure
         self.builtins: dict[int, ir.Builtin] = {}
         self.handler_vars: set[int] = set()
+        self.deferred = []
         # The pairs of tuple types converted by casts (whose layouts agree,
         # which the C asserts)
         self.tuple_casts: dict[tuple[str, str], tuple[QType, QType]] = {}
@@ -1492,16 +1493,20 @@ class CPrinter:
         for i, d in enumerate(o.descriptors):
             self.emit(f"{env}->d{c_int(i)} = {self.descriptor(d)};")
         for i, a in enumerate(o.captures):
-            if self.deferred is not None and isinstance(a, ir.Var) and id(a) in self.deferred[0]:
-                # A variable of the let rec being made, which holds its value
-                # once the let rec's body has run
-                self.deferred[1].append((env, i, a))
+            # A variable of a let rec being made, which holds its value once
+            # that let rec's body has run: the innermost that binds it
+            owner = next((g for g in reversed(self.deferred) if isinstance(a, ir.Var) and id(a) in g[0]), None)
+            if owner is not None:
+                owner[1].append((env, i, a))
                 continue
             self.emit(f"{env}->c{c_int(i)} = {self.atom(a)};")
         self.init_barrier(env, mark)
         return f"((QClosure *){env})"
 
-    deferred: Optional[tuple[set[int], list]] = None
+    # The let recs being printed, innermost last, each with its variables and
+    # the captures of them to store after its body: a let rec's body may hold
+    # another, whose closures may capture the outer one's variables too
+    deferred: list[tuple[set[int], list]]
 
     # Statements
 
@@ -1606,15 +1611,15 @@ class CPrinter:
             case ir.Inspect(value=value, cases=cases, else_body=else_body, auto_type=auto_t, offset=offset):
                 self.inspect(value, cases, else_body, auto_t, offset, s.witness)
             case ir.LetRec(vars=vars_, body=body):
-                saved = self.deferred
-                self.deferred = ({id(v) for v in vars_}, [])
+                group: tuple[set[int], list] = ({id(v) for v in vars_}, [])
+                self.deferred.append(group)
                 self.body(body)
-                for env, i, var in self.deferred[1]:
+                self.deferred.pop()
+                for env, i, var in group[1]:
                     # The environment was made before the body ran
                     self.emit(f"{env}->c{c_int(i)} = {self.atom(var)};")
                     if self.holds_pointer(var.type):
                         self.emit(f"quest_barrier({env});")
-                self.deferred = saved
             case ir.If(cond=cond, then_body=then_body, else_body=else_body):
                 self.emit(f"if ({self.atom(cond)}) {{")
                 self.block(then_body)
