@@ -1,0 +1,38 @@
+(* Language: a function that calls an external C function and then returns
+   something other than the call's result is not a forwarding of the external.
+   The native backends call an external directly in place of a function that
+   only forwards to it (forwardedExternal in questlang/ssa/build/calls), so
+   they must not take a function of that form that returns another value *)
+
+import conv : Conv
+import writer : Writer
+
+let p(n: Int): Ok = writer.putString(writer.output conv.int(n) <> "\n")
+
+interface M export
+    g(s: String): Int
+    k(s: String): Int
+end
+unsound module m : M export
+    Let H = All(n: Int) Int
+    let getChar(s: String i: Int): Char = external "quest_string_get_char"
+    (* 1. f is recursive, so it is never inlined, and it returns h, not the
+       character *)
+    let rec f(s: String i: Int): H =
+        begin
+            let c = getChar(s i)
+            h
+        end
+    and h(n: Int): Int = if n is 0 then 1 else f("abc" 0)(n - 1) + 1 end
+    let g(s: String): Int = h(3)
+    (* 2. j returns 42, not the character, where it is not inlined *)
+    let j(s: String i: Int): Int =
+        begin
+            let c = getChar(s i)
+            42
+        end
+    let k(s: String): Int = j(s 0) + j(s 0)
+end
+
+p(m.g("abc"))
+p(m.k("abc"))

@@ -1,0 +1,130 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedLetValue 'p' :type Fun(n: Int): Ok
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedVar 'n' :type Int)
+                ))
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedInterface 'M'
+      :signatures ())
+    (TypedModule 'm' implements 'M'
+      :bindings (
+        (TypedLetType 'H' :kind TYPE)
+        (TypedLetValue 'getChar' :type Fun(s: String i: Int): Char
+          :value (TypedExternal 'quest_string_get_char' :type Fun(s: String i: Int): Char))
+        (TypedLetValueGroup 'f' 'h'
+          :members (
+            (TypedLetValue 'f' :rec :type Fun(s: String i: Int): H
+              :value (TypedFun :params (('s' : String) ('i' : Int)) :type Fun(s: String i: Int): H
+                :body (TypedBlock :type H
+                  :bindings (
+                    (TypedLetValue 'c' :type Char
+                      :value (TypedApp :type Char
+                        :func (TypedVar 'getChar' :type Fun(s: String i: Int): Char)
+                        :args (
+                          (TypedVar 's' :type String)
+                          (TypedVar 'i' :type Int)
+                        )))
+                  )
+                  :result (TypedVar 'h' :type Fun(n: Int): Int))))
+            (TypedLetValue 'h' :rec :type Fun(n: Int): Int
+              :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+                :body (TypedIf :type Int
+                  :cond (TypedInfix 'is' :type Bool
+                    :left (TypedVar 'n' :type Int)
+                    :right (TypedInt 0 :type Int))
+                  :then (TypedInt 1 :type Int)
+                  :else (TypedInfix '+' :type Int
+                    :left (TypedApp :type Int
+                      :func (TypedApp :type H
+                        :func (TypedVar 'f' :type Fun(s: String i: Int): H)
+                        :args (
+                          (TypedString 'abc' :type String)
+                          (TypedInt 0 :type Int)
+                        ))
+                      :args (
+                        (TypedInfix '-' :type Int
+                          :left (TypedVar 'n' :type Int)
+                          :right (TypedInt 1 :type Int))
+                      ))
+                    :right (TypedInt 1 :type Int)))))
+          ))
+        (TypedLetValue 'g' :type Fun(s: String): Int
+          :value (TypedFun :params (('s' : String)) :type Fun(s: String): Int
+            :body (TypedApp :type Int
+              :func (TypedVar 'h' :type Fun(n: Int): Int)
+              :args (
+                (TypedInt 3 :type Int)
+              ))))
+        (TypedLetValue 'j' :type Fun(s: String i: Int): Int
+          :value (TypedFun :params (('s' : String) ('i' : Int)) :type Fun(s: String i: Int): Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedLetValue 'c' :type Char
+                  :value (TypedApp :type Char
+                    :func (TypedVar 'getChar' :type Fun(s: String i: Int): Char)
+                    :args (
+                      (TypedVar 's' :type String)
+                      (TypedVar 'i' :type Int)
+                    )))
+              )
+              :result (TypedInt 42 :type Int))))
+        (TypedLetValue 'k' :type Fun(s: String): Int
+          :value (TypedFun :params (('s' : String)) :type Fun(s: String): Int
+            :body (TypedInfix '+' :type Int
+              :left (TypedApp :type Int
+                :func (TypedVar 'j' :type Fun(s: String i: Int): Int)
+                :args (
+                  (TypedVar 's' :type String)
+                  (TypedInt 0 :type Int)
+                ))
+              :right (TypedApp :type Int
+                :func (TypedVar 'j' :type Fun(s: String i: Int): Int)
+                :args (
+                  (TypedVar 's' :type String)
+                  (TypedInt 0 :type Int)
+                )))))
+      ))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedSelect 'g' :type Fun(s: String): Int
+              :target (TypedVar 'm' :type Module 'm'))
+            :args (
+              (TypedString 'abc' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'p' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedSelect 'k' :type Fun(s: String): Int
+              :target (TypedVar 'm' :type Module 'm'))
+            :args (
+              (TypedString 'abc' :type String)
+            ))
+        )))
+  ))

@@ -371,19 +371,38 @@ export
     (* Returns the external C symbol if f is a simple forwarding thunk
      * (questlang/ir/thunks) that takes no type descriptors, calls the external
      * with f's value parameters in order, and immediately returns the result
-     * (or ok). Returns none otherwise. *)
+     * (or ok). Returns none otherwise. A caller then calls the external in
+     * f's place, so the return must be of the call's own result: the let's
+     * variable, or ok after a call made for its effect alone; a function of
+     * the same form that returns something else, as an unsound module's
+     * wrapper can, is not a forwarding *)
     let forwardedExternal(f: ir.Function): maybe.T(String) =
         begin
             let stmts = f.body.statements
             let var found = maybe.none(:String)
             if {vector.length(stmts) is 2} andif {extent f.descriptorParams is 0} then
+                let returned =
+                    case vector.get(stmts 1) when sReturn with x then maybe.some(x.value) else maybe.none(:ir.Atom) end
+                let returnsOk =
+                    maybe.isSome(returned)
+                        andif case maybe.unwrap(returned)
+                            when atomConst with a then a.c.value?constOk
+                            when atomVar then false
+                        end
+                let returnsVar =
+                    fun(v: ir.Variable): Bool
+                        maybe.isSome(returned)
+                            andif case maybe.unwrap(returned)
+                                when atomVar with a then a.v.id is v.id
+                                when atomConst then false
+                            end
                 let call =
                     case vector.get(stmts 0)
-                        when sLet with x then maybe.some(x.value)
-                        when sDo with x then maybe.some(x.value)
+                        when sLet with x then if returnsVar(x.v) then maybe.some(x.value) else maybe.none(:ir.Op) end
+                        when sDo with x then if returnsOk then maybe.some(x.value) else maybe.none(:ir.Op) end
                         else maybe.none(:ir.Op)
                     end
-                let returns = case vector.get(stmts 1) when sReturn then true else false end
+                let returns = maybe.isSome(call)
                 case maybe.unwrapOr(call option opAtom of ir.Op with let var atom = ir.atomOfVar(f.v) end)
                     when opCallExternal with x then
                         let var forwards = returns andif {extent x.descriptors is 0}
