@@ -209,7 +209,8 @@ Each input is also a compilation session of its own (`UnitGraph.new_session`): i
 that it finds interface and module files created since an earlier input, including one that failed for want of them.
 Units already loaded stay as they were loaded: editing a module file that an earlier input imported does not change
 it in the session. A module declared in an input (`module m: I ... end`) is run where it is declared, so declaring it
-again in a later input replaces it.
+again in a later input replaces it, with the new declaration's interface; declaring it twice in one input is an
+error, as in a program.
 
 Example:
 ```quest

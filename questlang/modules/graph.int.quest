@@ -31,7 +31,16 @@ export
         var precompiled: Bool
     end
 
-    Def UnitGraph = Tuple resolver: resolution.Resolver units: maps.StringMap(Unit) end
+    (* Where a module is declared: an offset in a file *)
+    Def Declaration = Tuple file: String offset: Int end
+    (* The units; the modules declared in this session, by canonical name;
+     * and the modules declared in any session *)
+    Def UnitGraph = Tuple
+        resolver: resolution.Resolver
+        units: maps.StringMap(Unit)
+        declarations: maps.StringMap(Declaration)
+        everDeclared: maps.StringSet
+    end
     newGraph(): UnitGraph
     newGraphWith(res: resolution.Resolver): UnitGraph
     (* The unit of this kind and name, added if not yet known *)
@@ -40,6 +49,14 @@ export
     interfaceScope(g: UnitGraph canonicalName: String): maybe.T(symbols.Scope)
     typedModule(g: UnitGraph canonicalName: String): maybe.T(typedAst.Binding)
     isPrecompiled(g: UnitGraph name: String): Bool
+    (* Where the module canonicalName was declared in this session, if it was;
+     * a second declaration of one name is an error (modules/elaboration) *)
+    declaration(g: UnitGraph canonicalName: String): maybe.T(Declaration)
+    declare(g: UnitGraph canonicalName: String d: Declaration): Ok
+    (* Whether the module canonicalName was declared in any session: a REPL
+     * input that declares it again replaces it, with an export scope of its
+     * own *)
+    everDeclared(g: UnitGraph canonicalName: String): Bool
     (* The loaded interfaces' scopes, and the export scopes of modules known
      * through their interfaces, by name *)
     Def NamedScope = Tuple name: String scope: symbols.Scope end
@@ -51,7 +68,8 @@ export
 
     (* Starts a new compilation session on the graph: imports are resolved
      * again, so that files created since are found, and the units loaded stay
-     * loaded, as they were elaborated (the REPL starts one for each input) *)
+     * loaded, as they were elaborated (the REPL starts one for each input),
+     * and the modules declared before may be declared again *)
     newSession(g: UnitGraph): Ok
     (* The units' typed forms, for restore (the REPL rolls back an input that
      * failed) *)

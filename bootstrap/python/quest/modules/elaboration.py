@@ -17,7 +17,14 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import quest.syntax.ast as ast
-from quest.common.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at_import, diagnostic_of
+from quest.common.diagnostics import (
+    Diagnostic,
+    DiagnosticLabel,
+    QuestCompilerError,
+    QuestTypeError,
+    at_import,
+    diagnostic_of,
+)
 from quest.common.location import read_source
 from quest.typechecker.checks import check_binder
 from quest.typechecker.elaborate_types import (
@@ -403,6 +410,24 @@ def _register_abstract_types(canon: str, export_scope: Scope, internal_scope: Sc
         register_abstract_type_representation(f"{canon}.{type_name}", type_var, internal_sym.definition)
 
 
+def _declare_module_once(decl: ast.ModuleDecl, canon: str, env: Environment) -> bool:
+    """Records that the module canon is declared at decl, or fails if it was
+    declared already in this session: the two would be one unit, with one
+    export scope and one record, so the second is reported, with a label at
+    the first. Returns whether an earlier session declared it, which a REPL
+    input that declares it again replaces."""
+    redeclared = env.units.ever_declared(canon)
+    first = env.units.declaration(canon)
+    if first is not None:
+        source_map, offset = first
+        error = QuestTypeError(f"Module '{decl.name}' is declared more than once", offset=decl.offset)
+        label = DiagnosticLabel(offset, 6, "first declared here", is_primary=False, source_map=source_map)
+        error.import_labels = (label,)
+        raise error
+    env.units.declare(canon, env.source_map, decl.offset)
+    return redeclared
+
+
 def elaborate_module(
     decl: ast.ModuleDecl,
     env: Environment,
@@ -441,6 +466,7 @@ def elaborate_module(
     Finally m is declared as a value, a record of its exported values, from
     which m.f selects.
     """
+    redeclared = _declare_module_once(decl, resolve_module(decl.name, env).canonical_name, env)
     target_interface_scope = env.lookup_interface(decl.interface_name)
     if target_interface_scope is None:
         target_interface_scope = load_interface(decl.interface_name, env)
@@ -619,7 +645,9 @@ def elaborate_module(
     #    types)
     canon = resolve_module(decl.name, env).canonical_name
     unit = env.units.unit(UnitKind.MODULE, canon)
-    module_export_scope = unit.export_scope
+    # A module declared again (in a later REPL input) gets an export scope of
+    # its own, for its own interface
+    module_export_scope = None if redeclared else unit.export_scope
     if module_export_scope is None:
         # An external type is named as extract_module_external_types names it,
         # and as runs that type modules through their interfaces have it

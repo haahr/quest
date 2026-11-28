@@ -25,6 +25,9 @@ Quest implements a first-order module system as described by Luca Cardelli in *T
   `let var`, at the interface's type itself rather than a subtype, since code outside both reads and writes it
   (`c.count := 5`, `bump(@c.count)`). It is one location, a `var` field of the module's record, which every importer's
   reads and writes reach; `.qi` files record which values are `var`.
+- **One declaration per module:** A module's canonical name (§2.3) names one unit, so a program, or a REPL input,
+  that declares two modules of one name is rejected at the second declaration, whose diagnostic points at the first
+  (`Module 'm' is declared more than once`), whatever their interfaces.
 - **Singleton Module Semantics:** Modules are instantiated at most once at link time. When multiple modules or phrases
   import the same module (e.g. in diamond dependencies), all importers share the identical runtime record and mutable
   state cells.

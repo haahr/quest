@@ -78,12 +78,36 @@ class UnitGraph:
     """
     resolver: Resolver = field(default_factory=Resolver)
     _units: dict[tuple[UnitKind, str], Unit] = field(default_factory=dict)
+    # The modules declared in this session, by canonical name: where each is
+    # declared, as the source map of its file and an offset in it
+    _declarations: dict[str, tuple[Any, int]] = field(default_factory=dict)
+    # The modules declared in any session
+    _ever_declared: set[str] = field(default_factory=set)
 
     def new_session(self) -> None:
         """Starts a new compilation session on this graph: imports are resolved
         again, so that files created since are found. Units already loaded stay
-        loaded, as they were elaborated (the REPL starts one for each input)."""
+        loaded, as they were elaborated (the REPL starts one for each input),
+        and the modules declared before may be declared again."""
         self.resolver.forget()
+        self._declarations.clear()
+
+    def declaration(self, canonical_name: str) -> Optional[tuple[Any, int]]:
+        """Where the module canonical_name was declared in this session (its
+        file's source map and an offset), if it was; a second declaration of
+        one name is an error (quest.modules.elaboration)."""
+        return self._declarations.get(canonical_name)
+
+    def declare(self, canonical_name: str, source_map: Any, offset: int) -> None:
+        """Records where the module canonical_name is declared."""
+        self._declarations[canonical_name] = (source_map, offset)
+        self._ever_declared.add(canonical_name)
+
+    def ever_declared(self, canonical_name: str) -> bool:
+        """Whether the module canonical_name was declared in any session: a
+        REPL input that declares it again replaces it, with an export scope of
+        its own."""
+        return canonical_name in self._ever_declared
 
     def unit(self, kind: UnitKind, canonical_name: str) -> Unit:
         """The unit of this kind named canonical_name, added if not yet

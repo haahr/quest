@@ -3,6 +3,7 @@
 module graph : Graph
 import
     collections/hashMap : collections/HashMap
+    collections/hashSet : collections/HashSet
     collections/vector : collections/Vector
     util/iter : util/Iter
     util/maybe : util/Maybe
@@ -24,9 +25,21 @@ export
         var precompiled: Bool
     end
 
-    Let UnitGraph = Tuple resolver: resolution.Resolver units: maps.StringMap(Unit) end
+    Let Declaration = Tuple file: String offset: Int end
+    Let UnitGraph = Tuple
+        resolver: resolution.Resolver
+        units: maps.StringMap(Unit)
+        declarations: maps.StringMap(Declaration)
+        everDeclared: maps.StringSet
+    end
 
-    let newGraphWith(res: resolution.Resolver): UnitGraph = tuple let resolver = res let units = maps.newStringMap() end
+    let newGraphWith(res: resolution.Resolver): UnitGraph =
+        tuple
+            let resolver = res
+            let units = maps.newStringMap()
+            let declarations = maps.newStringMap()
+            let everDeclared = maps.newStringSet()
+        end
     let newGraph(): UnitGraph = newGraphWith(resolution.newResolver())
 
     let kindName(k: units.UnitKind): String =
@@ -75,6 +88,18 @@ export
             maybe.isSome(found) andif maybe.unwrap(found).precompiled
         end
 
+    let declaration(g: UnitGraph canonicalName: String): maybe.T(Declaration) =
+        hashMap.get(g.declarations canonicalName)
+
+    let declare(g: UnitGraph canonicalName: String d: Declaration): Ok =
+        begin
+            hashMap.insert(g.declarations canonicalName d)
+            hashSet.insert(g.everDeclared canonicalName)
+            ok
+        end
+
+    let everDeclared(g: UnitGraph canonicalName: String): Bool = hashSet.contains(g.everDeclared canonicalName)
+
     Let NamedScope = Tuple name: String scope: symbols.Scope end
 
     let interfaceScopes(g: UnitGraph): Array(NamedScope) =
@@ -122,7 +147,11 @@ export
             end
         end
 
-    let newSession(g: UnitGraph): Ok = hashMap.clear(g.resolver.memo)
+    let newSession(g: UnitGraph): Ok =
+        begin
+            hashMap.clear(g.resolver.memo)
+            hashMap.clear(g.declarations)
+        end
 
     Let Snapshot = Array(Unit)
 

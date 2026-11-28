@@ -679,8 +679,32 @@ export
             sym
         end
 
+    (* Records that the module canon is declared at offset, or fails if it was
+     * declared already in this session: the two would be one unit, with one
+     * export scope and one record, so the second is reported, with a label at
+     * the first. Returns whether an earlier session declared it, which a REPL
+     * input that declares it again replaces. *)
+    let declareModuleOnce(decl: ast.ModuleDecl canon: String offset: Int e: env.T): Bool =
+        begin
+            let redeclared = graph.everDeclared(e.units canon)
+            let first = graph.declaration(e.units canon)
+            if maybe.isSome(first) then
+                let d = maybe.unwrap(first)
+                let err = diagnostics.errorAt("Module '" <> decl.name <> "' is declared more than once" offset)
+                vector.append(err.labels tuple
+                    let sp = location.span(d.file d.offset {d.offset + 6})
+                    let message = "first declared here"
+                    let isPrimary = false
+                end)
+                diagnostics.raiseError(:Ok err)
+            end
+            graph.declare(e.units canon tuple let file = e.sourceFile let offset = offset end)
+            redeclared
+        end
+
     let elaborateModule(decl: ast.ModuleDecl offset: Int e: env.T): typedAst.Binding =
         begin
+            let redeclared = declareModuleOnce(decl resolution.canonicalName(env.resolveModule(e decl.name)) offset e)
             let found = env.lookupInterface(e decl.interfaceName)
             let targetInterface =
                 if maybe.isSome(found) then
@@ -782,8 +806,10 @@ export
              *    types *)
             let canon = resolution.canonicalName(env.resolveModule(e decl.name))
             let u = graph.unit(e.units option moduleUnit of units.UnitKind end canon)
+            (* A module declared again (in a later REPL input) gets an export
+             * scope of its own, for its own interface *)
             let exportScope =
-                if maybe.isNone(u.exportScope) then
+                if maybe.isNone(u.exportScope) orif redeclared then
                     let concrete = maps.newStringMap(:Type)
                     let types = pairs(internalScope.types)
                     for i = 0 upto {extent types - 1} do
